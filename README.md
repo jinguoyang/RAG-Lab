@@ -16,6 +16,7 @@ rag-lab/
 ├── AGENTS.md                  # Codex / Agent 协作约定
 ├── DESIGN.md                  # 页面设计与视觉风格要求
 ├── README.md                  # 项目开发说明入口
+├── frontend/                  # 当前正式前端入口，基于 React + Vite
 ├── docs/                      # 项目文档区
 │   ├── 00-项目导航.md
 │   ├── 01-项目管理/
@@ -26,12 +27,14 @@ rag-lab/
 │   └── 06-发布与运维/
 └── screanshot/
     ├── P01-登录页.png 等       # 设计稿截图
-    └── prototype/             # React + Vite 原型演示工程
+    └── prototype/             # 设计原型归档，保留原型工程
 ```
 
 说明：
 
-- 当前仓库已落地的是文档和前端原型。
+- 当前仓库已落地的是文档、设计原型和正式前端工程入口。
+- `frontend/` 从 `screanshot/prototype/` 复制而来，作为正式前端开发入口。
+- `screanshot/prototype/` 作为设计原型归档保留，不直接承载正式开发。
 - 后端服务、数据库迁移、Worker、部署脚本等目录尚未创建，后续应按系统设计和编码规范小步补齐。
 
 ## 文档入口
@@ -49,12 +52,12 @@ rag-lab/
 
 ## 本地运行方式
 
-### 运行原型
+### 运行前端
 
-原型工程位于 `screanshot/prototype/`。
+正式前端工程位于 `frontend/`。
 
 ```powershell
-cd C:\Users\Public\Documents\Code\jin\rag-lab\screanshot\prototype
+cd C:\Users\Public\Documents\Code\jin\rag-lab\frontend
 npm install
 npm run dev
 ```
@@ -64,7 +67,7 @@ npm run dev
 ### 构建检查
 
 ```powershell
-cd C:\Users\Public\Documents\Code\jin\rag-lab\screanshot\prototype
+cd C:\Users\Public\Documents\Code\jin\rag-lab\frontend
 npm run build
 ```
 
@@ -87,7 +90,7 @@ npm run build
 - motion
 - react-router
 
-依赖版本以 `screanshot/prototype/package.json` 和 `package-lock.json` 为准。
+正式前端依赖版本以 `frontend/package.json` 和 `package-lock.json` 为准；原型依赖保留在 `screanshot/prototype/`。
 
 ### 设计确定但尚未落代码的依赖
 

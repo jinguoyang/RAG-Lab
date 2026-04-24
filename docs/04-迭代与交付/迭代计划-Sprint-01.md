@@ -9,7 +9,7 @@
 
 ## 2. 本 Sprint 目标
 
-- 明确正式前端工程入口，决定继续演进 `screanshot/prototype` 或迁出到正式前端目录。
+- 明确正式前端工程入口，在保留 `screanshot/prototype` 原型归档的前提下建立 `frontend/`。
 - 搭建 FastAPI 后端工程骨架，形成清晰的应用入口、配置加载和路由结构。
 - 提供 `.env.example`，记录本地开发必需配置。
 - 实现后端 `/health` 健康检查接口。
@@ -19,7 +19,7 @@
 
 | 编号 | Backlog | 标题 | 优先级 | 预估 | 负责人 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| S1-001 | B-001 | 建立正式前端工程入口或明确 prototype 演进路径 | P0 | 0.5d |  | Todo |
+| S1-001 | B-001 | 建立正式前端工程入口或明确 prototype 演进路径 | P0 | 0.5d |  | Done |
 | S1-002 | B-002 | 搭建 FastAPI 后端工程骨架 | P0 | 1d |  | Todo |
 | S1-003 | B-003 | 增加后端配置加载与 `.env.example` | P0 | 0.5d |  | Todo |
 | S1-004 | B-004 | 实现 `/health` 健康检查接口 | P0 | 0.5d |  | Todo |
@@ -51,3 +51,12 @@
 ## 7. 后续衔接
 
 Sprint 01 完成后，从 [产品待办清单](./产品待办清单.md) 中优先选择 E1 用户与知识库基础相关条目进入下一轮 Sprint。
+
+## 8. 决策记录
+
+### S1-001 前端工程入口
+
+- 决策：新增 `frontend/` 作为正式前端入口，保留 `screanshot/prototype/` 作为设计原型归档。
+- 原因：复制现有 prototype 可以复用 Vite、React、TypeScript、路由、样式和页面资产，同时避免正式开发污染原型目录。
+- 已完成：复制 prototype 到 `frontend/`，排除 `node_modules` 和 `dist`；将正式前端包名设为 `@rag-lab/frontend`；补充 `frontend/README.md`；在根 README 中明确前端入口。
+- 后续：正式前端开发只改 `frontend/`；除非同步设计原型，不直接修改 `screanshot/prototype/`。
