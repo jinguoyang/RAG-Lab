@@ -68,3 +68,10 @@ class DocumentUploadResponse(BaseModel):
     version: DocumentVersionDTO
     ingestJob: IngestJobDTO
     storedFile: StoredFileDTO
+
+
+class DocumentDetailDTO(BaseModel):
+    """文档详情响应，包含当前 active version 摘要。"""
+
+    document: DocumentDTO
+    activeVersion: DocumentVersionDTO | None

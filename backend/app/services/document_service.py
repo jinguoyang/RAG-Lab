@@ -2,17 +2,20 @@ from hashlib import sha256
 from pathlib import PurePath
 from uuid import UUID, uuid4
 
-from sqlalchemy import RowMapping, insert, select, update
+import sqlalchemy as sa
+from sqlalchemy import RowMapping, func, insert, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.schemas.auth import CurrentUserResponse
 from app.schemas.document import (
+    DocumentDetailDTO,
     DocumentDTO,
     DocumentUploadResponse,
     DocumentVersionDTO,
     IngestJobDTO,
     StoredFileDTO,
 )
+from app.schemas.common import PageResponse
 from app.tables import (
     document_versions,
     documents,
@@ -224,3 +227,143 @@ def create_document_upload(
         ingestJob=_to_ingest_job_dto(job_row),
         storedFile=_to_stored_file_dto(stored_file_row),
     )
+
+
+def list_documents(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    page_no: int,
+    page_size: int,
+    keyword: str | None,
+) -> PageResponse[DocumentDTO] | None:
+    """分页查询文档中心列表，按更新时间倒序返回当前知识库文档。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+
+    condition = (documents.c.kb_id == kb_id) & (documents.c.deleted_at.is_(None))
+    if keyword:
+        keyword_pattern = f"%{keyword.strip()}%"
+        condition = condition & or_(
+            documents.c.name.ilike(keyword_pattern),
+            documents.c.document_id.cast(sa.String).ilike(keyword_pattern),
+        )
+
+    total = session.execute(select(func.count()).select_from(documents).where(condition)).scalar_one()
+    rows = session.execute(
+        select(documents)
+        .where(condition)
+        .order_by(documents.c.updated_at.desc(), documents.c.created_at.desc())
+        .offset((page_no - 1) * page_size)
+        .limit(page_size)
+    ).mappings()
+    return PageResponse(
+        items=[_to_document_dto(row) for row in rows],
+        pageNo=page_no,
+        pageSize=page_size,
+        total=total,
+    )
+
+
+def get_document_detail(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    document_id: UUID,
+) -> DocumentDetailDTO | None:
+    """读取文档详情，并附带 active version 摘要用于 P07 顶部信息区。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+
+    document_row = session.execute(
+        select(documents)
+        .where(
+            documents.c.kb_id == kb_id,
+            documents.c.document_id == document_id,
+            documents.c.deleted_at.is_(None),
+        )
+        .limit(1)
+    ).mappings().first()
+    if document_row is None:
+        return None
+
+    active_version = None
+    if document_row["active_version_id"]:
+        active_version = session.execute(
+            select(document_versions)
+            .where(document_versions.c.version_id == document_row["active_version_id"])
+            .limit(1)
+        ).mappings().first()
+
+    return DocumentDetailDTO(
+        document=_to_document_dto(document_row),
+        activeVersion=_to_version_dto(active_version) if active_version else None,
+    )
+
+
+def list_document_versions(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    document_id: UUID,
+) -> list[DocumentVersionDTO] | None:
+    """返回指定文档的版本列表，默认按版本号倒序。"""
+    if get_document_detail(session, current_user, kb_id, document_id) is None:
+        return None
+
+    rows = session.execute(
+        select(document_versions)
+        .where(document_versions.c.document_id == document_id)
+        .order_by(document_versions.c.version_no.desc(), document_versions.c.created_at.desc())
+    ).mappings()
+    return [_to_version_dto(row) for row in rows]
+
+
+def list_ingest_jobs(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    page_no: int,
+    page_size: int,
+    document_id: UUID | None = None,
+) -> PageResponse[IngestJobDTO] | None:
+    """分页查询知识库入库作业，可按文档 ID 收窄范围。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+
+    condition = ingest_jobs.c.kb_id == kb_id
+    if document_id is not None:
+        condition = condition & (ingest_jobs.c.document_id == document_id)
+
+    total = session.execute(select(func.count()).select_from(ingest_jobs).where(condition)).scalar_one()
+    rows = session.execute(
+        select(ingest_jobs)
+        .where(condition)
+        .order_by(ingest_jobs.c.created_at.desc())
+        .offset((page_no - 1) * page_size)
+        .limit(page_size)
+    ).mappings()
+    return PageResponse(
+        items=[_to_ingest_job_dto(row) for row in rows],
+        pageNo=page_no,
+        pageSize=page_size,
+        total=total,
+    )
+
+
+def get_ingest_job(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    job_id: UUID,
+) -> IngestJobDTO | None:
+    """读取单个入库作业；不可见知识库和不存在作业统一返回 None。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+
+    row = session.execute(
+        select(ingest_jobs)
+        .where(ingest_jobs.c.kb_id == kb_id, ingest_jobs.c.job_id == job_id)
+        .limit(1)
+    ).mappings().first()
+    return _to_ingest_job_dto(row) if row else None
