@@ -49,6 +49,7 @@ python -m uvicorn app.main:app --reload
 
 启动后可访问：
 
+- `http://127.0.0.1:8000/api/v1/health`
 - `http://127.0.0.1:8000/docs`
 - `http://127.0.0.1:8000/redoc`
 
@@ -95,4 +96,4 @@ Copy-Item .env.example .env
 - API 层只负责请求解析、鉴权入口和响应组装。
 - Service 层负责业务流程和事务边界。
 - 后续接入外部组件时优先通过 Provider / Adapter 隔离实现差异。
-- 当前骨架不包含 `/health`，该接口由 S1-004 单独实现。
+- `/api/v1/health` 只做服务进程级探活，不探测数据库或外部依赖。

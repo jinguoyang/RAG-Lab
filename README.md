@@ -104,7 +104,10 @@ cd C:\Users\Public\Documents\Code\jin\rag-lab\backend
 .\scripts\start-dev.ps1
 ```
 
-启动后访问 `http://127.0.0.1:8000/docs`。
+启动后可访问：
+
+- `http://127.0.0.1:8000/api/v1/health`
+- `http://127.0.0.1:8000/docs`
 
 ## 依赖说明
 
