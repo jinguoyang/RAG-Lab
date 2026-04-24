@@ -70,8 +70,10 @@ conda run -n rag-lab python -m alembic upgrade head
 ```
 
 当前 E1 迁移会创建 `users`、`user_groups`、`user_group_members`、`knowledge_bases` 基础表，并写入开发期默认用户和默认知识库。
+当前 E2 迁移会创建 `stored_files`、`documents`、`document_versions`、`ingest_jobs`，用于文档中心最小上传与作业追踪链路。
 
 更完整的 E1 初始化与联调说明见：[E1 本地验证说明](../docs/04-迭代与交付/E1-本地验证说明.md)。
+更完整的 E2 文档中心验证说明见：[E2 本地验证说明](../docs/04-迭代与交付/E2-本地验证说明.md)。
 
 ## 最小验证
 
@@ -83,6 +85,7 @@ conda run -n rag-lab python -m compileall app
 conda run -n rag-lab python -m alembic current
 conda run -n rag-lab python -c "from fastapi.testclient import TestClient; from app.main import app; r=TestClient(app).get('/api/v1/health'); print(r.status_code); print(r.json())"
 conda run -n rag-lab python -c "from fastapi.testclient import TestClient; from app.main import app; c=TestClient(app); print(c.get('/api/v1/auth/me').status_code); print(c.get('/api/v1/knowledge-bases').status_code)"
+conda run -n rag-lab python -c "from fastapi.testclient import TestClient; from app.main import app; c=TestClient(app); kb=c.get('/api/v1/knowledge-bases').json()['items'][0]['kbId']; print(c.get(f'/api/v1/knowledge-bases/{kb}/documents').status_code); print(c.get(f'/api/v1/knowledge-bases/{kb}/ingest-jobs').status_code)"
 ```
 
 验证通过标准：
@@ -91,6 +94,7 @@ conda run -n rag-lab python -c "from fastapi.testclient import TestClient; from 
 - Alembic 能读取迁移配置并连接数据库。
 - `/api/v1/health` 返回 `200`。
 - `/api/v1/auth/me` 和 `/api/v1/knowledge-bases` 返回 `200`。
+- `/api/v1/knowledge-bases/{kbId}/documents` 和 `/api/v1/knowledge-bases/{kbId}/ingest-jobs` 返回 `200`。
 - 响应包含 `status`、`app_name`、`version`、`environment`。
 
 ## 目录结构
