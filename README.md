@@ -17,6 +17,7 @@ rag-lab/
 ├── DESIGN.md                  # 页面设计与视觉风格要求
 ├── README.md                  # 项目开发说明入口
 ├── frontend/                  # 当前正式前端入口，基于 React + Vite
+├── backend/                   # FastAPI 后端工程入口
 ├── docs/                      # 项目文档区
 │   ├── 00-项目导航.md
 │   ├── 01-项目管理/
@@ -64,14 +65,39 @@ npm run dev
 
 启动后按终端输出访问本地 Vite 地址，通常为 `http://localhost:5173`。
 
-### 构建检查
+### 构建前端
 
 ```powershell
 cd C:\Users\Public\Documents\Code\jin\rag-lab\frontend
 npm run build
 ```
 
-当前 `package.json` 只定义了 `dev` 和 `build` 脚本，尚未定义 lint、test 或后端启动命令。
+当前前端 `package.json` 只定义了 `dev` 和 `build` 脚本，尚未定义 lint 或 test 命令。
+
+### 创建后端 Conda 环境
+
+后端使用项目专属 Conda 环境 `rag-lab`。
+
+```powershell
+cd C:\Users\Public\Documents\Code\jin\rag-lab\backend
+conda env create -f environment.yml
+```
+
+如果环境已经存在，使用：
+
+```powershell
+cd C:\Users\Public\Documents\Code\jin\rag-lab\backend
+conda env update -f environment.yml --prune
+```
+
+### 启动后端
+
+```powershell
+cd C:\Users\Public\Documents\Code\jin\rag-lab\backend
+.\scripts\start-dev.ps1
+```
+
+启动后访问 `http://127.0.0.1:8000/docs`。
 
 ## 依赖说明
 
@@ -91,6 +117,14 @@ npm run build
 - react-router
 
 正式前端依赖版本以 `frontend/package.json` 和 `package-lock.json` 为准；原型依赖保留在 `screanshot/prototype/`。
+
+后端当前已落地依赖：
+
+- Python 3.12
+- FastAPI
+- Uvicorn
+
+后端依赖版本以 `backend/environment.yml` 和 `backend/requirements.txt` 为准。
 
 ### 设计确定但尚未落代码的依赖
 
