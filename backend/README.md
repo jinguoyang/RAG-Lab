@@ -53,6 +53,22 @@ python -m uvicorn app.main:app --reload
 - `http://127.0.0.1:8000/docs`
 - `http://127.0.0.1:8000/redoc`
 
+## 最小验证
+
+提交前至少运行：
+
+```powershell
+cd C:\Users\Public\Documents\Code\jin\rag-lab\backend
+conda run -n rag-lab python -m compileall app
+conda run -n rag-lab python -c "from fastapi.testclient import TestClient; from app.main import app; r=TestClient(app).get('/api/v1/health'); print(r.status_code); print(r.json())"
+```
+
+验证通过标准：
+
+- Python 编译无错误。
+- `/api/v1/health` 返回 `200`。
+- 响应包含 `status`、`app_name`、`version`、`environment`。
+
 ## 目录结构
 
 ```text

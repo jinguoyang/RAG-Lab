@@ -53,6 +53,12 @@ rag-lab/
 
 ## 本地运行方式
 
+### 环境前提
+
+- Node.js 与 npm 可用。
+- Conda 可用。
+- 后端 Conda 环境名固定为 `rag-lab`。
+
 ### 运行前端
 
 正式前端工程位于 `frontend/`。
@@ -108,6 +114,29 @@ cd C:\Users\Public\Documents\Code\jin\rag-lab\backend
 
 - `http://127.0.0.1:8000/api/v1/health`
 - `http://127.0.0.1:8000/docs`
+
+### 最小验证命令
+
+前端构建验证：
+
+```powershell
+cd C:\Users\Public\Documents\Code\jin\rag-lab\frontend
+npm run build
+```
+
+后端导入和健康检查验证：
+
+```powershell
+cd C:\Users\Public\Documents\Code\jin\rag-lab\backend
+conda run -n rag-lab python -m compileall app
+conda run -n rag-lab python -c "from fastapi.testclient import TestClient; from app.main import app; r=TestClient(app).get('/api/v1/health'); print(r.status_code); print(r.json())"
+```
+
+预期结果：
+
+- 前端构建成功生成 `dist/`。
+- 后端编译无错误。
+- 健康检查状态码为 `200`，响应中包含 `status`、`app_name`、`version`、`environment`。
 
 ## 依赖说明
 

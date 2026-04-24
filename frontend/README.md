@@ -27,6 +27,21 @@ cd C:\Users\Public\Documents\Code\jin\rag-lab\frontend
 npm run build
 ```
 
+## 最小验证
+
+当前前端工程只定义了 `dev` 和 `build` 脚本。提交前至少运行：
+
+```powershell
+cd C:\Users\Public\Documents\Code\jin\rag-lab\frontend
+npm run build
+```
+
+验证通过标准：
+
+- Vite 构建成功。
+- 没有 TypeScript 或打包错误。
+- 生成的 `dist/` 不提交到 Git。
+
 ## 开发约定
 
 - 页面入口从 `src/main.tsx` 挂载到 `src/app/App.tsx`。
