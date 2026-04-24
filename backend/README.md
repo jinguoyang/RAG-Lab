@@ -106,6 +106,30 @@ Copy-Item .env.example .env
 | `RAG_LAB_ENVIRONMENT` | `local` | 运行环境标识 |
 | `RAG_LAB_API_V1_PREFIX` | `/api/v1` | v1 API 前缀 |
 | `RAG_LAB_BACKEND_CORS_ORIGINS` | `[]` | 前端允许来源，JSON 数组格式 |
+| `RAG_LAB_DEV_AUTH_ENABLED` | `true` | 是否启用开发期认证占位 |
+| `RAG_LAB_DEV_DEFAULT_USERNAME` | `admin` | 默认开发用户 |
+| `RAG_LAB_DEV_DEFAULT_SECURITY_LEVEL` | `public` | 默认开发密级，保持开放以便联调 |
+
+## 开发期认证
+
+当前只实现开发期认证占位，内置两个用户：
+
+| 用户名 | 角色 | 说明 |
+| --- | --- | --- |
+| `admin` | `platform_admin` | 默认用户，具备开发期管理能力 |
+| `user` | `platform_user` | 普通开发用户，用于验证非管理员视角 |
+
+当前用户接口：
+
+```text
+GET /api/v1/auth/me
+```
+
+默认返回 `admin`。如需临时切换用户，可在请求头中传入：
+
+```text
+X-Dev-User: user
+```
 
 ## 开发约定
 

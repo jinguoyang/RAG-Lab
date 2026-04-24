@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     environment: str = "local"
     api_v1_prefix: str = "/api/v1"
     backend_cors_origins: list[str] = Field(default_factory=list)
+    dev_auth_enabled: bool = True
+    dev_default_username: str = "admin"
+    dev_default_security_level: str = "public"
 
     model_config = SettingsConfigDict(
         env_file=".env",
