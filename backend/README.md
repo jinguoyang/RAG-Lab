@@ -64,9 +64,31 @@ backend/
 │   └── main.py       # FastAPI 应用入口
 ├── scripts/
 │   └── start-dev.ps1 # 本地开发启动脚本
+├── .env.example      # 本地配置示例
 ├── environment.yml   # Conda 环境定义
 └── requirements.txt  # pip 依赖清单，由 environment.yml 引用
 ```
+
+## 配置说明
+
+后端配置由 `app/core/config.py` 统一读取，优先使用环境变量，也支持读取 `backend/.env`。
+
+初始化本地配置：
+
+```powershell
+cd C:\Users\Public\Documents\Code\jin\rag-lab\backend
+Copy-Item .env.example .env
+```
+
+当前支持的配置项：
+
+| 配置项 | 默认值 | 说明 |
+| --- | --- | --- |
+| `RAG_LAB_APP_NAME` | `RAG-Lab API` | OpenAPI 文档展示的应用名称 |
+| `RAG_LAB_APP_VERSION` | `0.1.0` | 应用版本 |
+| `RAG_LAB_ENVIRONMENT` | `local` | 运行环境标识 |
+| `RAG_LAB_API_V1_PREFIX` | `/api/v1` | v1 API 前缀 |
+| `RAG_LAB_BACKEND_CORS_ORIGINS` | `[]` | 前端允许来源，JSON 数组格式 |
 
 ## 开发约定
 

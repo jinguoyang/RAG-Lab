@@ -92,6 +92,13 @@ conda env update -f environment.yml --prune
 
 ### 启动后端
 
+首次启动前可复制本地配置：
+
+```powershell
+cd C:\Users\Public\Documents\Code\jin\rag-lab\backend
+Copy-Item .env.example .env
+```
+
 ```powershell
 cd C:\Users\Public\Documents\Code\jin\rag-lab\backend
 .\scripts\start-dev.ps1
