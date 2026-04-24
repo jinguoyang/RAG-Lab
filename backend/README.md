@@ -4,7 +4,7 @@
 
 `backend/` 是 RAG-Lab 的 FastAPI 后端工程入口。
 
-当前阶段只搭建最小应用骨架，不接入 PostgreSQL、Redis、MinIO、Milvus、OpenSearch、Neo4j 或模型服务。后续功能应按 Sprint 计划逐步接入。
+当前阶段已搭建最小应用骨架，并开始接入 PostgreSQL 迁移基础；Redis、MinIO、Milvus、OpenSearch、Neo4j 或模型服务仍按后续 Sprint 逐步接入。
 
 ## 本地运行
 
@@ -53,6 +53,24 @@ python -m uvicorn app.main:app --reload
 - `http://127.0.0.1:8000/docs`
 - `http://127.0.0.1:8000/redoc`
 
+### 3. 执行数据库迁移
+
+迁移使用 Alembic，数据库连接从 `RAG_LAB_DATABASE_URL` 或 `DATABASE_URL` 读取。初始化本地 `.env` 后，按实际 PostgreSQL 地址调整连接串：
+
+```powershell
+cd C:\Users\Public\Documents\Code\jin\rag-lab\backend
+.\scripts\migrate.ps1
+```
+
+也可以手动执行：
+
+```powershell
+cd C:\Users\Public\Documents\Code\jin\rag-lab\backend
+conda run -n rag-lab python -m alembic upgrade head
+```
+
+首个迁移版本会创建 `users`、`user_groups`、`user_group_members` 三张基础表。
+
 ## 最小验证
 
 提交前至少运行：
@@ -60,12 +78,14 @@ python -m uvicorn app.main:app --reload
 ```powershell
 cd C:\Users\Public\Documents\Code\jin\rag-lab\backend
 conda run -n rag-lab python -m compileall app
+conda run -n rag-lab python -m alembic current
 conda run -n rag-lab python -c "from fastapi.testclient import TestClient; from app.main import app; r=TestClient(app).get('/api/v1/health'); print(r.status_code); print(r.json())"
 ```
 
 验证通过标准：
 
 - Python 编译无错误。
+- Alembic 能读取迁移配置并连接数据库。
 - `/api/v1/health` 返回 `200`。
 - 响应包含 `status`、`app_name`、`version`、`environment`。
 
@@ -106,6 +126,7 @@ Copy-Item .env.example .env
 | `RAG_LAB_ENVIRONMENT` | `local` | 运行环境标识 |
 | `RAG_LAB_API_V1_PREFIX` | `/api/v1` | v1 API 前缀 |
 | `RAG_LAB_BACKEND_CORS_ORIGINS` | `[]` | 前端允许来源，JSON 数组格式 |
+| `RAG_LAB_DATABASE_URL` | 空 | PostgreSQL 连接串，供 Alembic 和后续数据库访问使用 |
 | `RAG_LAB_DEV_AUTH_ENABLED` | `true` | 是否启用开发期认证占位 |
 | `RAG_LAB_DEV_DEFAULT_USERNAME` | `admin` | 默认开发用户 |
 | `RAG_LAB_DEV_DEFAULT_SECURITY_LEVEL` | `public` | 默认开发密级，保持开放以便联调 |

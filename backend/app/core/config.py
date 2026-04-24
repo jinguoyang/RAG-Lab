@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     environment: str = "local"
     api_v1_prefix: str = "/api/v1"
     backend_cors_origins: list[str] = Field(default_factory=list)
+    database_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("RAG_LAB_DATABASE_URL", "DATABASE_URL"),
+    )
     dev_auth_enabled: bool = True
     dev_default_username: str = "admin"
     dev_default_security_level: str = "public"
