@@ -1,19 +1,54 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
+import { Alert } from "../components/rag/Alert";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "../components/rag/Card";
 import { Input } from "../components/rag/Input";
 import { StatusBadge } from "../components/rag/Badge";
 import { Search, Plus } from "lucide-react";
+import { toKnowledgeBaseCard } from "../adapters/knowledgeBaseAdapter";
+import { fetchKnowledgeBases } from "../services/knowledgeBaseService";
+import type { KnowledgeBaseCardViewModel } from "../types/knowledgeBase";
 
 export function PlatformHome() {
   const navigate = useNavigate();
+  const [keyword, setKeyword] = useState("");
+  const [kbs, setKbs] = useState<KnowledgeBaseCardViewModel[]>([]);
+  const [total, setTotal] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const kbs = [
-    { id: "kb-001", name: "Financial Q3 Reports", desc: "Internal financial reports and statements.", status: "active", updated: "2026-04-22 10:30" },
-    { id: "kb-002", name: "HR Policies", desc: "Company guidelines and employee handbooks.", status: "active", updated: "2026-04-21 15:45" },
-    { id: "kb-003", name: "Product Specs 2026", desc: "Technical product specifications and roadmaps.", status: "inactive", updated: "2026-04-10 09:12" },
-  ];
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      setIsLoading(true);
+      setErrorMessage(null);
+      fetchKnowledgeBases(keyword)
+        .then((page) => {
+          if (controller.signal.aborted) {
+            return;
+          }
+          setKbs(page.items.map(toKnowledgeBaseCard));
+          setTotal(page.total);
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            setErrorMessage("知识库列表读取失败，请确认后端服务和数据库迁移已完成。");
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setIsLoading(false);
+          }
+        });
+    }, 250);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [keyword]);
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -31,26 +66,62 @@ export function PlatformHome() {
       <div className="mt-8 mb-6 flex items-center gap-4">
         <div className="relative w-80">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-gray" />
-          <Input placeholder="Search knowledge bases..." className="pl-9" />
+          <Input
+            value={keyword}
+            onChange={(event) => setKeyword(event.target.value)}
+            placeholder="Search knowledge bases..."
+            className="pl-9"
+          />
         </div>
         <div className="text-sm text-stone-gray ml-auto">
-          Showing {kbs.length} Knowledge Bases
+          Showing {total} Knowledge Bases
         </div>
       </div>
 
+      {errorMessage && (
+        <Alert variant="error" title="加载失败" className="mb-6">
+          {errorMessage}
+        </Alert>
+      )}
+
+      {isLoading && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[0, 1, 2].map((item) => (
+            <Card key={item} className="animate-pulse">
+              <CardHeader>
+                <div className="h-5 w-2/3 rounded bg-border-warm" />
+              </CardHeader>
+              <CardContent>
+                <div className="h-4 w-full rounded bg-border-cream" />
+                <div className="mt-3 h-4 w-1/2 rounded bg-border-cream" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {!isLoading && !errorMessage && kbs.length === 0 && (
+        <Card>
+          <CardContent>
+            <p className="text-sm text-stone-gray">暂无可见知识库。</p>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {kbs.map((kb) => (
+        {!isLoading && !errorMessage && kbs.map((kb) => (
           <Card key={kb.id} className="hover:border-terracotta cursor-pointer transition-colors" onClick={() => navigate(`/kb/${kb.id}`)}>
             <CardHeader className="pb-2">
               <div className="flex justify-between items-start">
                 <CardTitle>{kb.name}</CardTitle>
-                <StatusBadge status={kb.status as any} />
+                <StatusBadge status={kb.status} />
               </div>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-stone-gray mb-4 line-clamp-2 h-10">{kb.desc}</p>
+              <p className="text-sm text-stone-gray mb-4 line-clamp-2 h-10">{kb.description}</p>
               <div className="text-xs font-mono text-olive-gray">ID: {kb.id}</div>
-              <div className="text-xs text-stone-gray mt-1">Updated: {kb.updated}</div>
+              <div className="text-xs text-stone-gray mt-1">Retrieval: {kb.retrievalSummary}</div>
+              <div className="text-xs text-stone-gray mt-1">Updated: {kb.updatedAtLabel}</div>
             </CardContent>
             <CardFooter className="pt-2">
               <Button variant="ghost" size="sm" className="w-full justify-center">

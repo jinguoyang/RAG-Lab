@@ -1,14 +1,21 @@
+import { useEffect, useState } from "react";
 import { PageHeader } from "../components/rag/PageHeader";
+import { Alert } from "../components/rag/Alert";
 import { Card, CardHeader, CardTitle, CardContent } from "../components/rag/Card";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
 import { Button } from "../components/rag/Button";
 import { StatusBadge } from "../components/rag/Badge";
 import { Upload, Settings, RefreshCw } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
+import { fetchKnowledgeBase } from "../services/knowledgeBaseService";
+import type { KnowledgeBase } from "../types/knowledgeBase";
 
 export function KBOverview() {
   const navigate = useNavigate();
   const { kbId } = useParams();
+  const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBase | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const recentJobs = [
     { id: "job-1092", type: "Document Ingest", status: "success", time: "10 mins ago" },
@@ -16,11 +23,43 @@ export function KBOverview() {
     { id: "job-1090", type: "Document Ingest", status: "failed", time: "2 hours ago" },
   ];
 
+  useEffect(() => {
+    if (!kbId) {
+      setErrorMessage("缺少知识库 ID。");
+      setIsLoading(false);
+      return;
+    }
+
+    let ignore = false;
+    setIsLoading(true);
+    setErrorMessage(null);
+    fetchKnowledgeBase(kbId)
+      .then((data) => {
+        if (!ignore) {
+          setKnowledgeBase(data);
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setErrorMessage("知识库详情读取失败，请确认该知识库仍可访问。");
+        }
+      })
+      .finally(() => {
+        if (!ignore) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [kbId]);
+
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8">
       <PageHeader
-        title="Knowledge Base Overview"
-        description="Core metrics and recent activity for this knowledge base."
+        title={knowledgeBase?.name || "Knowledge Base Overview"}
+        description={knowledgeBase?.description || "Core metrics and recent activity for this knowledge base."}
         actions={
           <>
             <Button variant="outline" onClick={() => navigate(`/kb/${kbId}/config`)}>
@@ -32,6 +71,21 @@ export function KBOverview() {
           </>
         }
       />
+
+      {errorMessage && (
+        <Alert variant="error" title="加载失败">
+          {errorMessage}
+        </Alert>
+      )}
+
+      {isLoading && (
+        <Card className="animate-pulse">
+          <CardContent>
+            <div className="h-5 w-64 rounded bg-border-warm" />
+            <div className="mt-3 h-4 w-96 rounded bg-border-cream" />
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card>
@@ -115,19 +169,23 @@ export function KBOverview() {
             <CardContent className="space-y-4 pt-6">
               <div>
                 <p className="text-xs text-stone-gray mb-1">Active Revision</p>
-                <p className="font-medium text-near-black">rev_042</p>
+                <p className="font-medium text-near-black">{knowledgeBase?.activeConfigRevisionId || "Not configured"}</p>
               </div>
               <div>
                 <p className="text-xs text-stone-gray mb-1">Retrieval Strategy</p>
-                <p className="text-near-black">Hybrid (Dense + Sparse) + Graph</p>
+                <p className="text-near-black">
+                  Dense
+                  {knowledgeBase?.sparseIndexEnabled ? " + Sparse" : ""}
+                  {knowledgeBase?.graphIndexEnabled ? " + Graph" : ""}
+                </p>
               </div>
               <div>
-                <p className="text-xs text-stone-gray mb-1">Rerank Model</p>
-                <p className="text-near-black">bge-reranker-v2-m3</p>
+                <p className="text-xs text-stone-gray mb-1">Default Security Level</p>
+                <p className="text-near-black">{knowledgeBase?.defaultSecurityLevel || "public"}</p>
               </div>
               <div>
-                <p className="text-xs text-stone-gray mb-1">Generation Model</p>
-                <p className="text-near-black">claude-3-5-sonnet</p>
+                <p className="text-xs text-stone-gray mb-1">Status</p>
+                <p className="text-near-black">{knowledgeBase?.status || "active"}</p>
               </div>
               <Button variant="outline" className="w-full mt-4" onClick={() => navigate(`/kb/${kbId}/qa`)}>
                 Test Configuration

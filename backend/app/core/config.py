@@ -11,7 +11,10 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     environment: str = "local"
     api_v1_prefix: str = "/api/v1"
-    backend_cors_origins: list[str] = Field(default_factory=list)
+    backend_cors_origins: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("RAG_LAB_BACKEND_CORS_ORIGINS", "CORS_ORIGINS"),
+    )
     database_url: str | None = Field(
         default=None,
         validation_alias=AliasChoices("RAG_LAB_DATABASE_URL", "DATABASE_URL"),
