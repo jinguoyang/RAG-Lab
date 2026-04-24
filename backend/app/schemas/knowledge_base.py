@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field
+from uuid import UUID
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class RequiredForActivationDTO(BaseModel):
@@ -31,8 +33,17 @@ class KnowledgeBaseCreateRequest(BaseModel):
 
     name: str = Field(min_length=1, max_length=128)
     description: str | None = None
-    ownerId: str | None = None
+    ownerId: UUID | None = None
     defaultSecurityLevel: str = Field(default="public", min_length=1, max_length=32)
     sparseIndexEnabled: bool = False
     graphIndexEnabled: bool = False
     requiredForActivation: RequiredForActivationDTO | None = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        """创建前裁剪名称，避免空白字符串绕过最小长度校验。"""
+        stripped_value = value.strip()
+        if not stripped_value:
+            raise ValueError("Knowledge base name is required.")
+        return stripped_value

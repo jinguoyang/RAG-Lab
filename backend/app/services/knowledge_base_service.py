@@ -108,7 +108,7 @@ def create_knowledge_base(
     request: KnowledgeBaseCreateRequest,
 ) -> KnowledgeBaseDTO:
     """创建知识库基础记录；完整成员绑定和权限矩阵在后续 backlog 落地。"""
-    owner_id = UUID(request.ownerId or current_user.user.userId)
+    owner_id = request.ownerId or UUID(current_user.user.userId)
     activation = request.requiredForActivation or RequiredForActivationDTO(
         sparse=request.sparseIndexEnabled,
         graph=False,
@@ -119,7 +119,7 @@ def create_knowledge_base(
         insert(knowledge_bases)
         .values(
             kb_id=kb_id,
-            name=request.name.strip(),
+            name=request.name,
             description=request.description,
             owner_id=owner_id,
             default_security_level=request.defaultSecurityLevel,

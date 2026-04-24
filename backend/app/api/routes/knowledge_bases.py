@@ -2,6 +2,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -37,7 +38,14 @@ def create_knowledge_base_endpoint(
     session: Session = Depends(get_db_session),
 ) -> KnowledgeBaseDTO:
     """创建知识库基础记录，供 E1 平台工作台联调使用。"""
-    return create_knowledge_base(session, current_user, request)
+    try:
+        return create_knowledge_base(session, current_user, request)
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Knowledge base conflicts with existing data.",
+        ) from exc
 
 
 @router.get("/{kb_id}", response_model=KnowledgeBaseDTO)
