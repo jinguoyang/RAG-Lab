@@ -344,7 +344,7 @@ export function QADebug() {
     const actionMessage = {
       run: "已保留本次调试记录，后续可在 QA History 中继续回看。",
       preset: "已保存为调试预设。是否真正持久化可留到详细设计与研发阶段。",
-      draft: "已生成新的 revision 草稿入口，用于后续沉淀到配置中心。",
+      draft: "已生成可沉淀到配置中心的 revision 草稿入口，但不会直接修改 active pipeline。",
     };
 
     setFeedback({
@@ -373,7 +373,7 @@ export function QADebug() {
         <div>
           <h1 className="text-xl font-serif text-near-black">QA Debugger</h1>
           <p className="text-xs text-stone-gray">
-            执行单次问答实验，查看改写、召回、融合、引用与异常反馈。
+            执行单次问答实验，查看实际执行链路；本页只做临时覆盖，不修改正式 Pipeline 拓扑。
           </p>
         </div>
         <div className="flex gap-3">
@@ -583,7 +583,7 @@ export function QADebug() {
                         <Copy className="w-4 h-4 mr-2" /> 保存为预设
                       </Button>
                       <Button variant="outline" size="sm" onClick={() => handleSaveAction("draft")}>
-                        生成 Revision 草稿
+                        沉淀为 Revision 草稿
                       </Button>
                     </div>
                   </div>
@@ -599,7 +599,7 @@ export function QADebug() {
                 <div className="p-2 border-b border-border-cream">
                   <Tabs.List className="flex gap-2 flex-wrap">
                     <Tabs.Trigger value="trace" className="px-4 py-2 text-sm font-medium text-stone-gray hover:text-near-black data-[state=active]:bg-parchment data-[state=active]:text-terracotta rounded-md transition-colors">
-                      Pipeline Trace
+                      Executed Pipeline Trace
                     </Tabs.Trigger>
                     <Tabs.Trigger value="retrieval" className="px-4 py-2 text-sm font-medium text-stone-gray hover:text-near-black data-[state=active]:bg-parchment data-[state=active]:text-terracotta rounded-md transition-colors">
                       Retrieval & Fusion
@@ -611,6 +611,9 @@ export function QADebug() {
                 </div>
 
                 <Tabs.Content value="trace" className="p-6 space-y-8 outline-none">
+                  <div className="rounded-lg border border-border-cream bg-parchment p-3 text-xs leading-relaxed text-stone-gray">
+                    这里展示的是本次 QARun 实际执行链路。Query Rewrite、Retrieval、Fusion、Permission Filter、Generation、Citation 的拓扑来自 P08 当前 revision；本页覆盖项仅影响本次运行参数。
+                  </div>
                   <div className="relative pl-6 border-l-2 border-border-cream space-y-8">
                     <div className="relative">
                       <div className="absolute w-4 h-4 rounded-full bg-parchment border-2 border-terracotta -left-[35px] top-1"></div>
