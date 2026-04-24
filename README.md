@@ -9,10 +9,30 @@
 - 瀑布负责阶段关口与评审产物
 - 敏捷负责阶段内部的 Sprint 开发与交付
 
-## 当前仓库重点内容
+## 项目结构
 
-- `docs/`：项目文档区
-- `screanshot/prototype/`：原型演示工程
+```text
+rag-lab/
+├── AGENTS.md                  # Codex / Agent 协作约定
+├── DESIGN.md                  # 页面设计与视觉风格要求
+├── README.md                  # 项目开发说明入口
+├── docs/                      # 项目文档区
+│   ├── 00-项目导航.md
+│   ├── 01-项目管理/
+│   ├── 02-需求与原型/
+│   ├── 03-系统设计/
+│   ├── 04-迭代与交付/
+│   ├── 05-测试与验收/
+│   └── 06-发布与运维/
+└── screanshot/
+    ├── P01-登录页.png 等       # 设计稿截图
+    └── prototype/             # React + Vite 原型演示工程
+```
+
+说明：
+
+- 当前仓库已落地的是文档和前端原型。
+- 后端服务、数据库迁移、Worker、部署脚本等目录尚未创建，后续应按系统设计和编码规范小步补齐。
 
 ## 文档入口
 
@@ -20,8 +40,18 @@
 - [需求规格说明书](./docs/02-需求与原型/需求规格说明书.md)
 - [原型设计文档](./docs/02-需求与原型/原型设计文档.md)
 - [Figma视觉原型说明](./docs/02-需求与原型/Figma视觉原型说明.md)
+- [总体设计说明书](./docs/03-系统设计/总体设计说明书.md)
+- [详细设计说明书](./docs/03-系统设计/详细设计说明书.md)
+- [接口设计说明](./docs/03-系统设计/接口设计说明.md)
+- [数据模型设计](./docs/03-系统设计/数据模型设计.md)
+- [数据库设计](./docs/03-系统设计/数据库设计.md)
+- [编码规范](./docs/04-迭代与交付/编码规范.md)
 
-## 原型运行方式
+## 本地运行方式
+
+### 运行原型
+
+原型工程位于 `screanshot/prototype/`。
 
 ```powershell
 cd C:\Users\Public\Documents\Code\jin\rag-lab\screanshot\prototype
@@ -29,11 +59,59 @@ npm install
 npm run dev
 ```
 
-## 推荐文档推进顺序
+启动后按终端输出访问本地 Vite 地址，通常为 `http://localhost:5173`。
 
-1. 完成需求与原型评审
-2. 编写项目计划与里程碑
-3. 编写总体设计说明书
-4. 编写详细设计说明书、接口设计说明、数据模型设计
-5. 建立产品待办清单与 Sprint 计划
-6. 编写测试计划与验收清单
+### 构建检查
+
+```powershell
+cd C:\Users\Public\Documents\Code\jin\rag-lab\screanshot\prototype
+npm run build
+```
+
+当前 `package.json` 只定义了 `dev` 和 `build` 脚本，尚未定义 lint、test 或后端启动命令。
+
+## 依赖说明
+
+### 当前已落地依赖
+
+原型工程使用：
+
+- React 18
+- Vite 6
+- TypeScript / TSX
+- Tailwind CSS 4
+- Radix UI 组件族
+- MUI icons
+- lucide-react
+- recharts
+- motion
+- react-router
+
+依赖版本以 `screanshot/prototype/package.json` 和 `package-lock.json` 为准。
+
+### 设计确定但尚未落代码的依赖
+
+系统设计建议后续实现采用：
+
+- 后端：Python FastAPI
+- 任务框架：Celery + Redis
+- 主数据库：PostgreSQL
+- 对象存储：MinIO
+- Dense 检索：Milvus，必要时可评估 pgvector
+- Sparse 检索：OpenSearch
+- 图数据库：Neo4j
+- 模型服务：统一封装 LLM / Embedding / Rerank Provider
+
+这些依赖当前还没有对应工程目录、配置或迁移脚本。实现时应先参考 `docs/03-系统设计/` 下的设计文档，再新增最小必要代码。
+
+## 推荐开发前阅读顺序
+
+1. [项目导航](./docs/00-项目导航.md)
+2. [需求规格说明书](./docs/02-需求与原型/需求规格说明书.md)
+3. [原型设计文档](./docs/02-需求与原型/原型设计文档.md)
+4. [总体设计说明书](./docs/03-系统设计/总体设计说明书.md)
+5. [详细设计说明书](./docs/03-系统设计/详细设计说明书.md)
+6. [接口设计说明](./docs/03-系统设计/接口设计说明.md)
+7. [数据模型设计](./docs/03-系统设计/数据模型设计.md)
+8. [数据库设计](./docs/03-系统设计/数据库设计.md)
+9. [编码规范](./docs/04-迭代与交付/编码规范.md)
