@@ -44,22 +44,22 @@ interface HistoryRecord {
 const INITIAL_HISTORY: HistoryRecord[] = [
   {
     id: "run-88f9",
-    query: "What are the main risks associated with Q3 delays?",
+    query: "Q3 延期的主要风险是什么？",
     status: "success",
     user: "admin",
-    time: "10 mins ago",
+    time: "10 分钟前",
     rev: "rev_042",
     rating: "up",
     hasOverrides: false,
-    failureType: "None",
+    failureType: "无",
     answer: "Aurora 延期可能带来 1200 万美元收入缺口，并造成 Q4 供应链连锁风险。",
   },
   {
     id: "run-88fa",
-    query: "Show me the employee handbook on remote work.",
+    query: "给我看远程办公的员工手册。",
     status: "success",
     user: "jdoe",
-    time: "1 hour ago",
+    time: "1 小时前",
     rev: "rev_042",
     rating: "down",
     hasOverrides: true,
@@ -68,10 +68,10 @@ const INITIAL_HISTORY: HistoryRecord[] = [
   },
   {
     id: "run-88fb",
-    query: "What are the main risks associated with Q3 delays?",
+    query: "Q3 延期的主要风险是什么？",
     status: "partial",
     user: "asmith",
-    time: "3 hours ago",
+    time: "3 小时前",
     rev: "rev_041",
     rating: "none",
     hasOverrides: true,
@@ -80,10 +80,10 @@ const INITIAL_HISTORY: HistoryRecord[] = [
   },
   {
     id: "run-88fc",
-    query: "Explain the API v2 rate limits.",
+    query: "解释一下 API v2 的限流规则。",
     status: "failed",
     user: "system",
-    time: "1 day ago",
+    time: "1 天前",
     rev: "rev_041",
     rating: "none",
     hasOverrides: false,
@@ -176,11 +176,11 @@ export function QAHistory() {
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6 flex flex-col h-full overflow-hidden">
       <PageHeader
-        title="QA History & Monitoring"
+        title="QA 历史与监控"
         description="查看历史运行、人工反馈、失败归因与同 query 回放。"
         actions={
           <Button variant="outline">
-            <Download className="w-4 h-4 mr-2" /> Export Snapshot
+            <Download className="w-4 h-4 mr-2" /> 导出快照
           </Button>
         }
       />
@@ -210,8 +210,8 @@ export function QAHistory() {
           value={revisionFilter}
           onChange={(e) => setRevisionFilter(e.target.value)}
         >
-          <option value="">All Revisions</option>
-          <option value="rev_042">rev_042 (Active)</option>
+          <option value="">全部版本</option>
+          <option value="rev_042">rev_042（当前生效）</option>
           <option value="rev_041">rev_041</option>
         </select>
         <select
@@ -219,20 +219,20 @@ export function QAHistory() {
           value={feedbackFilter}
           onChange={(e) => setFeedbackFilter(e.target.value)}
         >
-          <option value="">Any Feedback</option>
-          <option value="up">Positive</option>
-          <option value="down">Negative</option>
-          <option value="none">Unrated</option>
+          <option value="">全部反馈</option>
+          <option value="up">正向</option>
+          <option value="down">负向</option>
+          <option value="none">未标注</option>
         </select>
         <select
           className="px-3 py-2 bg-ivory border border-border-cream rounded-md text-sm text-near-black focus:outline-none"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
         >
-          <option value="">All Statuses</option>
-          <option value="success">Success</option>
-          <option value="partial">Partial</option>
-          <option value="failed">Failed</option>
+          <option value="">全部状态</option>
+          <option value="success">成功</option>
+          <option value="partial">部分成功</option>
+          <option value="failed">失败</option>
         </select>
       </div>
 
@@ -240,14 +240,14 @@ export function QAHistory() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Run ID</TableHead>
-              <TableHead className="w-1/3">Query</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>User</TableHead>
-              <TableHead>Revision</TableHead>
-              <TableHead>Feedback</TableHead>
+              <TableHead>运行 ID</TableHead>
+              <TableHead className="w-1/3">问题</TableHead>
+              <TableHead>状态</TableHead>
+              <TableHead>用户</TableHead>
+              <TableHead>版本</TableHead>
+              <TableHead>反馈</TableHead>
               <TableHead>失败类型</TableHead>
-              <TableHead>Actions</TableHead>
+              <TableHead>操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -266,7 +266,7 @@ export function QAHistory() {
                     <Badge variant={run.rev === "rev_042" ? "success" : "default"}>
                       {run.rev}
                     </Badge>
-                    {run.hasOverrides && <Badge variant="warning">Overrides</Badge>}
+                    {run.hasOverrides && <Badge variant="warning">存在覆盖参数</Badge>}
                   </div>
                 </TableCell>
                 <TableCell>
@@ -283,7 +283,7 @@ export function QAHistory() {
                       variant="ghost"
                       size="sm"
                       onClick={() => setSelectedRun(run)}
-                      title="View Details"
+                      title="查看详情"
                     >
                       <Eye className="w-4 h-4 text-terracotta" />
                     </Button>
@@ -291,7 +291,7 @@ export function QAHistory() {
                       variant="ghost"
                       size="sm"
                       onClick={() => replayRun(run)}
-                      title="Replay in Debugger"
+                      title="回放到调试器"
                     >
                       <PlayCircle className="w-4 h-4 text-terracotta" />
                     </Button>
@@ -306,19 +306,19 @@ export function QAHistory() {
       <Drawer
         isOpen={selectedRun !== null}
         onClose={() => setSelectedRun(null)}
-        title={selectedRun ? `Run Details · ${selectedRun.id}` : "Run Details"}
+        title={selectedRun ? `运行详情 · ${selectedRun.id}` : "运行详情"}
         width="640px"
       >
         {selectedRun && (
           <>
-            <DrawerSection title="Run Snapshot">
+            <DrawerSection title="运行快照">
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <StatusBadge status={selectedRun.status} />
                   <Badge variant={selectedRun.rev === "rev_042" ? "success" : "default"}>
                     {selectedRun.rev}
                   </Badge>
-                  {selectedRun.hasOverrides && <Badge variant="warning">Overrides</Badge>}
+                  {selectedRun.hasOverrides && <Badge variant="warning">存在覆盖参数</Badge>}
                 </div>
                 <div className="text-sm text-near-black">
                   <div className="font-medium">{selectedRun.query}</div>

@@ -95,12 +95,12 @@ const PIPELINE_STAGES: PipelineStage[] = [
   {
     id: "preprocess",
     title: "1. 输入与问题预处理",
-    summary: "Input 与 Query Rewrite 固定发生在检索之前。",
+    summary: "输入与 Query Rewrite 固定发生在检索之前。",
   },
   {
     id: "retrieval",
     title: "2. 并行召回",
-    summary: "Dense / Sparse / Graph 可开关，但至少保留一路。",
+    summary: "Dense / Sparse / Graph 通道可开关，但至少保留一路。",
   },
   {
     id: "fusion",
@@ -144,8 +144,8 @@ function NodeCard({
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-semibold text-near-black">{node.label}</span>
-              {node.locked && <Badge variant="info">Locked</Badge>}
-              {!node.enabled && <Badge variant="inactive">Disabled</Badge>}
+              {node.locked && <Badge variant="info">已锁定</Badge>}
+              {!node.enabled && <Badge variant="inactive">已禁用</Badge>}
             </div>
             <p className="mt-1 text-xs leading-relaxed text-stone-gray">{node.description}</p>
           </div>
@@ -163,7 +163,7 @@ function NodeCard({
 export function ConfigCenter() {
   const [activeTab, setActiveTab] = useState("designer");
   const [revisions, setRevisions] = useState(INITIAL_REVISIONS);
-  const [selectedTemplate, setSelectedTemplate] = useState("Standard Hybrid (Default)");
+  const [selectedTemplate, setSelectedTemplate] = useState("标准混合（默认）");
   const [selectedNodeId, setSelectedNodeId] = useState("queryRewrite");
   const [isRevisionDrawerOpen, setIsRevisionDrawerOpen] = useState(false);
   const [pendingActivation, setPendingActivation] = useState<string | null>(null);
@@ -202,7 +202,7 @@ export function ConfigCenter() {
       },
       {
         id: "queryRewrite",
-        label: "Query Rewrite",
+        label: "问题改写",
         stageId: "preprocess",
         description: "对原始问题做改写、扩展和保留原问策略。",
         enabled: queryRewriteEnabled,
@@ -319,7 +319,7 @@ export function ConfigCenter() {
 
   const validationRules = [
     {
-      label: "Query Rewrite 如果启用，必须位于 Retrieval 前。",
+      label: "问题改写如果启用，必须位于检索前。",
       valid: true,
     },
     {
@@ -407,7 +407,7 @@ export function ConfigCenter() {
     );
     setFeedback({
       variant: "warning",
-      title: "Active Revision 已切换",
+      title: "生效版本已切换",
       message: `后续 QA 调试将基于 ${pendingActivation} 的 Pipeline 编排执行。`,
     });
     setIsActivationDialogOpen(false);
@@ -450,28 +450,28 @@ export function ConfigCenter() {
   return (
     <div className="flex h-full flex-col space-y-6 overflow-hidden p-8">
       <PageHeader
-        title="Configuration Center"
+        title="配置中心"
         description="以受约束 Pipeline Designer 定义知识库默认检索链路、模型策略与 revision 生效关系。"
         actions={
           <>
             <Button variant="outline" onClick={() => setIsRevisionDrawerOpen(true)}>
-              <History className="mr-2 h-4 w-4" /> 查看 Revisions
+              <History className="mr-2 h-4 w-4" /> 查看版本历史
             </Button>
             <Button variant="outline" onClick={() => handleIllegalOperation("验证会带着当前草稿跳转到 P09，P09 只做单次运行覆盖，不修改正式拓扑。")}>
-              <PlayCircle className="mr-2 h-4 w-4" /> 验证此 Pipeline
+              <PlayCircle className="mr-2 h-4 w-4" /> 验证当前 Pipeline
             </Button>
             <Button variant="primary" disabled={!isPipelineValid} onClick={handleSaveRevision}>
-              <Save className="mr-2 h-4 w-4" /> 保存为新 Revision
+              <Save className="mr-2 h-4 w-4" /> 保存为新版本
             </Button>
           </>
         }
         contextLabels={
           <>
-            <Badge variant="success">Active Revision: {activeRevision}</Badge>
+            <Badge variant="success">生效版本：{activeRevision}</Badge>
             <Badge variant={isPipelineValid ? "success" : "error"}>
-              {isPipelineValid ? "Valid Pipeline" : "Invalid Pipeline"}
+              {isPipelineValid ? "Pipeline 合法" : "Pipeline 非法"}
             </Badge>
-            {hasUnsavedChanges && <Badge variant="warning">Unsaved Changes</Badge>}
+            {hasUnsavedChanges && <Badge variant="warning">有未保存修改</Badge>}
           </>
         }
       />
@@ -491,15 +491,15 @@ export function ConfigCenter() {
           <Card>
             <CardHeader className="py-3">
               <CardTitle className="flex items-center gap-2 text-sm" serif={false}>
-                <Layers className="h-4 w-4 text-terracotta" /> Pipeline Templates
+                <Layers className="h-4 w-4 text-terracotta" /> Pipeline 模板
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 p-4">
               {[
-                "Standard Hybrid (Default)",
-                "High Recall Mode",
-                "Strict Citation Mode",
-                "Graph-heavy Mode",
+                "标准混合（默认）",
+                "高召回模式",
+                "严格引用模式",
+                "图谱增强模式",
               ].map((template) => (
                 <button
                   key={template}
@@ -520,23 +520,23 @@ export function ConfigCenter() {
           <Card>
             <CardHeader className="py-3">
               <CardTitle className="flex items-center gap-2 text-sm" serif={false}>
-                <Database className="h-4 w-4 text-terracotta" /> Node Library
+                <Database className="h-4 w-4 text-terracotta" /> 节点库
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 p-4 text-xs">
               <div className="rounded-lg border border-border-cream bg-parchment p-3">
                 <p className="mb-2 font-medium text-near-black">可配置节点</p>
-                <p className="text-stone-gray">Query Rewrite、Dense、Sparse、Graph、Rerank 可调参数或开关。</p>
+                <p className="text-stone-gray">问题改写、Dense、Sparse、Graph、Rerank 支持参数调整或开关控制。</p>
               </div>
               <div className="rounded-lg border border-border-cream bg-parchment p-3">
                 <p className="mb-2 flex items-center gap-2 font-medium text-near-black">
                   <Lock className="h-3 w-3" /> 系统锁定节点
                 </p>
-                <p className="text-stone-gray">Input、Fusion、Permission Filter、Citation、Trace 不允许删除。</p>
+                <p className="text-stone-gray">输入、融合、权限过滤、引用、Trace 不允许删除。</p>
               </div>
               <div className="rounded-lg border border-dashed border-border-warm bg-ivory p-3">
                 <p className="mb-2 font-medium text-near-black">未来扩展</p>
-                <p className="text-stone-gray">HTTP Tool、自定义 Python 节点暂不进入 V1，避免工作流失控。</p>
+                <p className="text-stone-gray">HTTP 工具、自定义 Python 节点暂不进入 V1，避免工作流失控。</p>
               </div>
             </CardContent>
           </Card>
@@ -547,10 +547,10 @@ export function ConfigCenter() {
             <CardHeader className="border-b border-border-cream pb-0">
               <Tabs.List className="flex gap-6">
                 <Tabs.Trigger value="designer" className="pb-3 text-sm font-medium text-stone-gray transition-all hover:text-near-black data-[state=active]:border-b-2 data-[state=active]:border-terracotta data-[state=active]:text-terracotta">
-                  Constrained Pipeline Designer
+                  受约束 Pipeline 设计器
                 </Tabs.Trigger>
                 <Tabs.Trigger value="diff" className="pb-3 text-sm font-medium text-stone-gray transition-all hover:text-near-black data-[state=active]:border-b-2 data-[state=active]:border-terracotta data-[state=active]:text-terracotta">
-                  Diff (vs {activeRevision})
+                  差异对比（相对 {activeRevision}）
                 </Tabs.Trigger>
               </Tabs.List>
             </CardHeader>
@@ -565,7 +565,7 @@ export function ConfigCenter() {
                         视觉上采用工作流画布，但连线和阶段由系统生成，用户只能在合法节点内配置。
                       </p>
                     </div>
-                    <Badge variant="info">No free-form DAG</Badge>
+                    <Badge variant="info">不支持自由 DAG</Badge>
                   </div>
                 </div>
 
@@ -589,7 +589,7 @@ export function ConfigCenter() {
                                 <p className="text-xs text-stone-gray">{stage.summary}</p>
                               </div>
                             </div>
-                            <Badge variant="default">Stage locked</Badge>
+                            <Badge variant="default">阶段已锁定</Badge>
                           </div>
                           <div className="grid grid-cols-1 gap-3 2xl:grid-cols-3">
                             {stageNodes.map((node) => (
@@ -627,16 +627,16 @@ export function ConfigCenter() {
           <Card>
             <CardHeader className="py-3">
               <CardTitle className="flex items-center gap-2 text-sm" serif={false}>
-                <SlidersHorizontal className="h-4 w-4 text-terracotta" /> Node Inspector
+                <SlidersHorizontal className="h-4 w-4 text-terracotta" /> 节点检查器
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 p-4">
               <div>
                 <div className="mb-2 flex flex-wrap items-center gap-2">
                   <span className="font-medium text-near-black">{selectedNode.label}</span>
-                  {selectedNode.locked && <Badge variant="info">Locked</Badge>}
+                  {selectedNode.locked && <Badge variant="info">已锁定</Badge>}
                   <Badge variant={selectedNode.enabled ? "success" : "inactive"}>
-                    {selectedNode.enabled ? "Enabled" : "Disabled"}
+                    {selectedNode.enabled ? "已启用" : "已禁用"}
                   </Badge>
                 </div>
                 <p className="text-sm leading-relaxed text-stone-gray">{selectedNode.description}</p>
@@ -694,7 +694,7 @@ export function ConfigCenter() {
           <Card>
             <CardHeader className="py-3">
               <CardTitle className="flex items-center gap-2 text-sm" serif={false}>
-                <AlertTriangle className="h-4 w-4 text-terracotta" /> Validation
+                <AlertTriangle className="h-4 w-4 text-terracotta" /> 校验结果
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 p-4">
@@ -721,10 +721,10 @@ export function ConfigCenter() {
       <Drawer
         isOpen={isRevisionDrawerOpen}
         onClose={() => setIsRevisionDrawerOpen(false)}
-        title="Revision History"
+        title="版本历史"
         width="640px"
       >
-        <DrawerSection title="Revisions">
+        <DrawerSection title="版本列表">
           <div className="space-y-3">
             {revisions.map((revision) => (
               <div
@@ -735,7 +735,7 @@ export function ConfigCenter() {
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="font-medium text-near-black">{revision.id}</p>
-                      {revision.active && <Badge variant="success">Active</Badge>}
+                      {revision.active && <Badge variant="success">当前生效</Badge>}
                     </div>
                     <p className="mt-1 text-xs text-stone-gray">
                       {revision.createdBy} · {revision.createdAt}
@@ -752,7 +752,7 @@ export function ConfigCenter() {
                       className="text-terracotta"
                       onClick={() => requestActivate(revision.id)}
                     >
-                      设为 Active
+                      设为生效版本
                     </Button>
                   )}
                 </div>
@@ -765,7 +765,7 @@ export function ConfigCenter() {
       <Dialog open={isActivationDialogOpen} onOpenChange={setIsActivationDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>确认切换 Active Revision</DialogTitle>
+            <DialogTitle>确认切换生效版本</DialogTitle>
             <DialogDescription>
               配置切换后会影响后续 QA 调试与历史比对结果。目标 revision 内保存的是受约束 pipelineDefinition。
             </DialogDescription>

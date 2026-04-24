@@ -68,13 +68,13 @@ const SCENARIO_MAP: Record<DebugScenario, ScenarioPayload> = {
       "Q3 产品延期的核心风险主要集中在收入缺口和市场窗口损失。根据 Q3 Draft Report，Aurora 产品线延迟 4 周可能带来约 1200 万美元的季度收入缺口。",
       "图检索进一步补充了根因链路：APAC 区域的 Supplier B 已被标记为 bottleneck，这意味着问题不仅影响 Q3，还会把 Q4 的供应计划继续拖长。",
     ],
-    runMeta: "run_88f92a • 1.2s • 428 tokens • active rev_042",
+    runMeta: "run_88f92a • 1.2 秒 • 428 tokens • 生效版本 rev_042",
     rewrite:
       "Q3 product delays impact risk revenue supply chain Aurora supplier bottleneck",
     retrievalCards: [
-      { channel: "Dense", summary: "Top 20 chunks, score floor 0.75" },
-      { channel: "Sparse", summary: "Top 15 chunks, keyword hits on Aurora and APAC" },
-      { channel: "Graph", summary: "Depth 2, 8 entities, 2 critical relations" },
+      { channel: "Dense", summary: "Top 20 chunks，阈值 0.75" },
+      { channel: "Sparse", summary: "Top 15 chunks，命中 Aurora 和 APAC 关键词" },
+      { channel: "Graph", summary: "深度 2，命中 8 个实体、2 条关键关系" },
     ],
     candidates: [
       {
@@ -106,15 +106,15 @@ const SCENARIO_MAP: Record<DebugScenario, ScenarioPayload> = {
         title: "Q3_Earnings_Report_Draft.pdf",
         snippet:
           "\"...delaying the Aurora product line by even 4 weeks could result in a projected $12M miss on the quarterly forecast...\"",
-        meta: "Chunk ID: chk-001 | Page: 4 | 点击跳转文档详情",
+        meta: "Chunk ID: chk-001 | 第 4 页 | 点击跳转文档详情",
       },
       {
         id: "2",
         type: "graph",
-        title: "Graph Subgraph: APAC Suppliers",
+        title: "图谱子图：APAC 供应商",
         snippet:
           "Paths: (Aurora Line) -[DEPENDS_ON]-> (Supplier B) -[LOCATED_IN]-> (APAC). Supplier B Status: BOTTLENECK.",
-        meta: "Derived from Graph Retrieval",
+        meta: "来源于图谱检索",
       },
     ],
     diagnostics: {
@@ -131,7 +131,7 @@ const SCENARIO_MAP: Record<DebugScenario, ScenarioPayload> = {
       "当前结果为部分降级成功。系统仍然给出了文档侧可验证结论：Aurora 产品线延期会造成收入缺口，并影响 Q4 计划。",
       "但图检索链路本次执行失败，因此根因网络只保留了文本侧证据，图侧关系没有进入最终上下文。",
     ],
-    runMeta: "run_91ad43 • 1.6s • 396 tokens • partial degrade",
+    runMeta: "run_91ad43 • 1.6 秒 • 396 tokens • 部分降级",
     notice: {
       variant: "warning",
       title: "部分降级成功",
@@ -140,9 +140,9 @@ const SCENARIO_MAP: Record<DebugScenario, ScenarioPayload> = {
     },
     rewrite: "Aurora delay revenue impact Q3 Q4 supply chain risk",
     retrievalCards: [
-      { channel: "Dense", summary: "Top 20 chunks, completed" },
-      { channel: "Sparse", summary: "Top 15 chunks, completed" },
-      { channel: "Graph", summary: "Timeout after 800ms, skipped in final context" },
+      { channel: "Dense", summary: "Top 20 chunks，已完成" },
+      { channel: "Sparse", summary: "Top 15 chunks，已完成" },
+      { channel: "Graph", summary: "800ms 后超时，已从最终上下文跳过" },
     ],
     candidates: [
       {
@@ -162,7 +162,7 @@ const SCENARIO_MAP: Record<DebugScenario, ScenarioPayload> = {
       {
         id: "graph-timeout",
         source: "Graph",
-        title: "Graph retrieval request",
+        title: "图谱检索请求",
         score: "-",
         decision: "失败，未进入融合",
       },
@@ -174,7 +174,7 @@ const SCENARIO_MAP: Record<DebugScenario, ScenarioPayload> = {
         title: "Q3_Earnings_Report_Draft.pdf",
         snippet:
           "\"...delaying the Aurora product line by even 4 weeks could result in a projected $12M miss...\"",
-        meta: "Chunk ID: chk-001 | Page: 4 | 点击跳转文档详情",
+        meta: "Chunk ID: chk-001 | 第 4 页 | 点击跳转文档详情",
       },
     ],
     diagnostics: {
@@ -191,7 +191,7 @@ const SCENARIO_MAP: Record<DebugScenario, ScenarioPayload> = {
       "当前回答成功生成，但最终上下文经过权限裁剪。系统命中了两个高相关候选，其中 1 个因为权限不足未进入生成上下文。",
       "因此回答仍能给出收入风险结论，但不会展示被裁剪 chunk 的正文内容。",
     ],
-    runMeta: "run_71ce22 • 1.1s • 355 tokens • permission filtered",
+    runMeta: "run_71ce22 • 1.1 秒 • 355 tokens • 权限过滤",
     notice: {
       variant: "info",
       title: "存在权限裁剪",
@@ -200,9 +200,9 @@ const SCENARIO_MAP: Record<DebugScenario, ScenarioPayload> = {
     },
     rewrite: "Aurora product delay revenue impact privileged chunks filtered",
     retrievalCards: [
-      { channel: "Dense", summary: "Top 20 chunks, one confidential chunk filtered" },
+      { channel: "Dense", summary: "Top 20 chunks，其中 1 个机密 chunk 被过滤" },
       { channel: "Sparse", summary: "Top 15 chunks" },
-      { channel: "Graph", summary: "Depth 2, graph summary retained" },
+      { channel: "Graph", summary: "深度 2，保留图摘要" },
     ],
     candidates: [
       {
@@ -215,7 +215,7 @@ const SCENARIO_MAP: Record<DebugScenario, ScenarioPayload> = {
       {
         id: "chk-sec-009",
         source: "Dense",
-        title: "Confidential board memo excerpt",
+        title: "机密董事会备忘录片段",
         score: "0.89",
         decision: "权限过滤，未进入最终上下文",
       },
@@ -234,14 +234,14 @@ const SCENARIO_MAP: Record<DebugScenario, ScenarioPayload> = {
         title: "Q3_Earnings_Report_Draft.pdf",
         snippet:
           "\"...the projected $12M miss on the quarterly forecast...\"",
-        meta: "Chunk ID: chk-001 | Page: 4 | 点击跳转文档详情",
+        meta: "Chunk ID: chk-001 | 第 4 页 | 点击跳转文档详情",
       },
       {
         id: "2",
         type: "graph",
-        title: "Graph Summary",
+        title: "图摘要",
         snippet: "Supplier B remains the critical bottleneck in APAC.",
-        meta: "Confidential chunk filtered before generation",
+        meta: "机密 chunk 已在生成前过滤",
       },
     ],
     diagnostics: {
@@ -371,17 +371,17 @@ export function QADebug() {
     <div className="flex flex-col h-full bg-parchment">
       <div className="shrink-0 p-4 border-b border-border-cream bg-ivory flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-serif text-near-black">QA Debugger</h1>
+          <h1 className="text-xl font-serif text-near-black">QA 调试器</h1>
           <p className="text-xs text-stone-gray">
             执行单次问答实验，查看实际执行链路；本页只做临时覆盖，不修改正式 Pipeline 拓扑。
           </p>
         </div>
         <div className="flex gap-3">
           <Button variant="outline" onClick={handleReplayHistory}>
-            <HistoryIcon className="w-4 h-4 mr-2" /> Recent Runs
+            <HistoryIcon className="w-4 h-4 mr-2" /> 最近运行
           </Button>
           <Button variant="primary" disabled={isRunning} onClick={handleRun}>
-            <Play className="w-4 h-4 mr-2" /> {isRunning ? "Running..." : "Run Debug"}
+            <Play className="w-4 h-4 mr-2" /> {isRunning ? "运行中..." : "开始调试"}
           </Button>
         </div>
       </div>
@@ -412,7 +412,7 @@ export function QADebug() {
                 }`}
                 onClick={() => setOverrideMode(false)}
               >
-                使用 Active Revision
+                使用生效版本
               </button>
               <button
                 className={`rounded-md border px-3 py-2 text-left ${
@@ -428,10 +428,10 @@ export function QADebug() {
           </div>
 
           <div className="space-y-3">
-            <label className="text-sm font-medium text-near-black">Original Query</label>
+            <label className="text-sm font-medium text-near-black">原始问题</label>
             <textarea
               className="w-full h-24 p-3 bg-parchment border border-border-cream rounded-lg text-sm focus:ring-1 focus:ring-focus-blue focus:outline-none resize-none"
-              placeholder="What are the main risks associated with Q3 product delays?"
+              placeholder="Q3 产品延期的主要风险是什么？"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -444,7 +444,7 @@ export function QADebug() {
           <div className="border border-border-cream rounded-lg overflow-hidden">
             <div className="bg-parchment p-3 border-b border-border-cream flex items-center justify-between">
               <span className="text-sm font-medium text-near-black flex items-center gap-2">
-                <Settings2 className="w-4 h-4 text-terracotta" /> Temp Overrides
+                <Settings2 className="w-4 h-4 text-terracotta" /> 临时覆盖参数
               </span>
               <label className="flex items-center gap-2 text-xs">
                 <input
@@ -453,7 +453,7 @@ export function QADebug() {
                   checked={overrideMode}
                   onChange={(e) => setOverrideMode(e.target.checked)}
                 />
-                Enable
+                启用
               </label>
             </div>
             <div className="p-4 space-y-4 bg-ivory">
@@ -471,7 +471,7 @@ export function QADebug() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-medium text-stone-gray">Query Rewrite</label>
+                <label className="text-xs font-medium text-stone-gray">问题改写</label>
                 <label className="flex items-center gap-2 bg-parchment p-2 rounded border border-border-cream text-sm">
                   <input
                     type="checkbox"
@@ -484,7 +484,7 @@ export function QADebug() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-medium text-stone-gray">Retrieval Channels</label>
+                <label className="text-xs font-medium text-stone-gray">检索通道</label>
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <label className="flex items-center gap-2 bg-parchment p-2 rounded border border-border-cream">
                     <input
@@ -523,7 +523,7 @@ export function QADebug() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-medium text-stone-gray">Reranker Top-N</label>
+                <label className="text-xs font-medium text-stone-gray">重排 Top-N</label>
                 <Input
                   type="number"
                   value={rerankerTopN}
@@ -551,9 +551,9 @@ export function QADebug() {
             <div className="flex-1 flex items-center justify-center">
               <div className="space-y-4 text-center">
                 <div className="w-8 h-8 border-4 border-terracotta border-t-transparent rounded-full animate-spin mx-auto"></div>
-                <p className="text-sm font-medium text-near-black">Executing RAG Pipeline...</p>
+                <p className="text-sm font-medium text-near-black">正在执行 RAG Pipeline...</p>
                 <p className="text-xs text-stone-gray font-mono">
-                  {scenario === "partial" ? "Graph retrieval timeout fallback" : "Retrieving from Hybrid Index"}
+                  {scenario === "partial" ? "图检索超时，已回退" : "正在从混合索引检索"}
                 </p>
               </div>
             </div>
@@ -574,7 +574,7 @@ export function QADebug() {
                     <span className="text-xs text-stone-gray font-mono">{result.runMeta}</span>
                   </div>
                   <div className="flex items-center justify-between gap-4">
-                    <h2 className="font-serif text-xl text-near-black">Final Answer</h2>
+                    <h2 className="font-serif text-xl text-near-black">最终答案</h2>
                     <div className="flex items-center gap-2">
                       <Button variant="ghost" size="sm" onClick={() => handleSaveAction("run")}>
                         <Save className="w-4 h-4 mr-2" /> 保存本次结果
@@ -599,25 +599,25 @@ export function QADebug() {
                 <div className="p-2 border-b border-border-cream">
                   <Tabs.List className="flex gap-2 flex-wrap">
                     <Tabs.Trigger value="trace" className="px-4 py-2 text-sm font-medium text-stone-gray hover:text-near-black data-[state=active]:bg-parchment data-[state=active]:text-terracotta rounded-md transition-colors">
-                      Executed Pipeline Trace
+                      实际执行链路
                     </Tabs.Trigger>
                     <Tabs.Trigger value="retrieval" className="px-4 py-2 text-sm font-medium text-stone-gray hover:text-near-black data-[state=active]:bg-parchment data-[state=active]:text-terracotta rounded-md transition-colors">
-                      Retrieval & Fusion
+                      检索与融合
                     </Tabs.Trigger>
                     <Tabs.Trigger value="evidence" className="px-4 py-2 text-sm font-medium text-stone-gray hover:text-near-black data-[state=active]:bg-parchment data-[state=active]:text-terracotta rounded-md transition-colors">
-                      Evidence & Citations
+                      证据与引用
                     </Tabs.Trigger>
                   </Tabs.List>
                 </div>
 
                 <Tabs.Content value="trace" className="p-6 space-y-8 outline-none">
                   <div className="rounded-lg border border-border-cream bg-parchment p-3 text-xs leading-relaxed text-stone-gray">
-                    这里展示的是本次 QARun 实际执行链路。Query Rewrite、Retrieval、Fusion、Permission Filter、Generation、Citation 的拓扑来自 P08 当前 revision；本页覆盖项仅影响本次运行参数。
+                    这里展示的是本次 QARun 实际执行链路。问题改写、检索、融合、权限过滤、生成、引用的拓扑来自 P08 当前 revision；本页覆盖项仅影响本次运行参数。
                   </div>
                   <div className="relative pl-6 border-l-2 border-border-cream space-y-8">
                     <div className="relative">
                       <div className="absolute w-4 h-4 rounded-full bg-parchment border-2 border-terracotta -left-[35px] top-1"></div>
-                      <h3 className="text-sm font-bold text-near-black mb-1">1. Query Rewrite</h3>
+                      <h3 className="text-sm font-bold text-near-black mb-1">1. 问题改写</h3>
                       <div className="text-xs text-stone-gray mb-2 font-mono">
                         {rewriteEnabled ? "150ms • prompt v2" : "Skipped • using original query"}
                       </div>
@@ -628,9 +628,9 @@ export function QADebug() {
 
                     <div className="relative">
                       <div className="absolute w-4 h-4 rounded-full bg-parchment border-2 border-terracotta -left-[35px] top-1"></div>
-                      <h3 className="text-sm font-bold text-near-black mb-1">2. Multi-way Retrieval</h3>
+                      <h3 className="text-sm font-bold text-near-black mb-1">2. 多路检索</h3>
                       <div className="text-xs text-stone-gray mb-2 font-mono">
-                        Dense / Sparse / Graph channels
+                        Dense / Sparse / Graph 通道
                       </div>
                       <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
                         {result.retrievalCards.map((card) => (
@@ -652,7 +652,7 @@ export function QADebug() {
 
                     <div className="relative">
                       <div className="absolute w-4 h-4 rounded-full bg-parchment border-2 border-terracotta -left-[35px] top-1"></div>
-                      <h3 className="text-sm font-bold text-near-black mb-1">3. Fusion & Rerank</h3>
+                      <h3 className="text-sm font-bold text-near-black mb-1">3. 融合与重排</h3>
                       <div className="text-xs text-stone-gray mb-2 font-mono">
                         RRF + reranker topN={rerankerTopN}
                       </div>
@@ -663,9 +663,9 @@ export function QADebug() {
 
                     <div className="relative">
                       <div className="absolute w-4 h-4 rounded-full bg-parchment border-2 border-success-green -left-[35px] top-1"></div>
-                      <h3 className="text-sm font-bold text-near-black mb-1">4. LLM Generation</h3>
+                      <h3 className="text-sm font-bold text-near-black mb-1">4. LLM 生成</h3>
                       <div className="text-xs text-stone-gray mb-2 font-mono">
-                        Strict citations injected
+                        已注入严格引用约束
                       </div>
                       <div className="text-xs text-stone-gray flex items-center gap-1">
                         <Info className="w-3 h-3" /> 回答、证据、上下文裁剪信息已汇总到同一页面。
@@ -736,29 +736,29 @@ export function QADebug() {
           {showResults ? (
             <>
               <h3 className="font-serif text-lg text-near-black mb-4 flex items-center gap-2">
-                <Activity className="w-5 h-5 text-terracotta" /> Diagnostics
+                <Activity className="w-5 h-5 text-terracotta" /> 诊断信息
               </h3>
 
               <div className="space-y-4">
                 <Card>
                   <CardHeader className="py-3 px-4 bg-parchment border-b border-border-cream">
-                    <CardTitle className="text-sm">Retrieval Funnel</CardTitle>
+                    <CardTitle className="text-sm">检索漏斗</CardTitle>
                   </CardHeader>
                   <CardContent className="p-4 space-y-3">
                     <div className="flex justify-between text-xs">
-                      <span className="text-stone-gray">Total Recalled</span>
+                      <span className="text-stone-gray">总召回量</span>
                       <span className="font-mono text-near-black">{result.diagnostics.recalled}</span>
                     </div>
                     <div className="flex justify-between text-xs">
-                      <span className="text-stone-gray">Post-Dedup</span>
+                      <span className="text-stone-gray">去重后</span>
                       <span className="font-mono text-near-black">{result.diagnostics.deduped}</span>
                     </div>
                     <div className="flex justify-between text-xs">
-                      <span className="text-stone-gray">Permission Filtered</span>
+                      <span className="text-stone-gray">权限过滤</span>
                       <span className="font-mono text-error-red">{result.diagnostics.filtered}</span>
                     </div>
                     <div className="flex justify-between text-xs font-medium border-t border-border-cream pt-2">
-                      <span className="text-near-black">Final Context Size</span>
+                      <span className="text-near-black">最终上下文大小</span>
                       <span className="font-mono text-near-black">{result.diagnostics.finalContext}</span>
                     </div>
                   </CardContent>
@@ -766,12 +766,12 @@ export function QADebug() {
 
                 <Card>
                   <CardHeader className="py-3 px-4 bg-parchment border-b border-border-cream">
-                    <CardTitle className="text-sm">Reranker Impact</CardTitle>
+                    <CardTitle className="text-sm">重排影响</CardTitle>
                   </CardHeader>
                   <CardContent className="p-4 text-xs space-y-2">
                     <p className="text-olive-gray">{result.diagnostics.rerankSummary}</p>
                     <div className="pt-2 border-t border-border-cream text-stone-gray">
-                      当前覆盖模式：{overrideMode ? "本次运行覆盖参数" : "Active revision"}
+                      当前覆盖模式：{overrideMode ? "本次运行覆盖参数" : "生效版本"}
                     </div>
                   </CardContent>
                 </Card>

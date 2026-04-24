@@ -9,5 +9,27 @@ $EnvName = "rag-lab"
 
 Set-Location $BackendRoot
 
-# 使用项目专属 Conda 环境启动，避免误用 base 或其他项目环境。
-conda run -n $EnvName python -m uvicorn app.main:app --reload --host 127.0.0.1 --port $Port
+# Resolve the real conda.exe and bypass the broken PowerShell conda wrapper.
+function Get-CondaExecutable {
+    if ($env:CONDA_EXE -and (Test-Path -LiteralPath $env:CONDA_EXE)) {
+        return $env:CONDA_EXE
+    }
+
+    $fallbackPaths = @(
+        "C:\ProgramData\anaconda3\Scripts\conda.exe",
+        "C:\ProgramData\miniconda3\Scripts\conda.exe"
+    )
+
+    foreach ($path in $fallbackPaths) {
+        if (Test-Path -LiteralPath $path) {
+            return $path
+        }
+    }
+
+    throw "Unable to find conda.exe. Please verify that Conda is installed."
+}
+
+$CondaExe = Get-CondaExecutable
+
+# Start with the project-specific Conda env to avoid using base by mistake.
+& $CondaExe run -n $EnvName python -m uvicorn app.main:app --reload --host 127.0.0.1 --port $Port

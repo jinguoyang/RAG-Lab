@@ -53,12 +53,12 @@ export function PlatformHome() {
   return (
     <div className="p-8 max-w-7xl mx-auto">
       <PageHeader
-        title="Knowledge Bases"
-        description="Select a knowledge base to enter the workspace or create a new one."
+        title="知识库"
+        description="选择一个知识库进入工作区，或新建知识库。"
         actions={
           <Button variant="primary">
             <Plus className="w-4 h-4 mr-2" />
-            Create Knowledge Base
+            新建知识库
           </Button>
         }
       />
@@ -69,12 +69,12 @@ export function PlatformHome() {
           <Input
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
-            placeholder="Search knowledge bases..."
+            placeholder="搜索知识库..."
             className="pl-9"
           />
         </div>
         <div className="text-sm text-stone-gray ml-auto">
-          Showing {total} Knowledge Bases
+          共显示 {total} 个知识库
         </div>
       </div>
 
@@ -120,12 +120,12 @@ export function PlatformHome() {
             <CardContent>
               <p className="text-sm text-stone-gray mb-4 line-clamp-2 h-10">{kb.description}</p>
               <div className="text-xs font-mono text-olive-gray">ID: {kb.id}</div>
-              <div className="text-xs text-stone-gray mt-1">Retrieval: {kb.retrievalSummary}</div>
-              <div className="text-xs text-stone-gray mt-1">Updated: {kb.updatedAtLabel}</div>
+              <div className="text-xs text-stone-gray mt-1">检索策略：{kb.retrievalSummary}</div>
+              <div className="text-xs text-stone-gray mt-1">最近更新：{kb.updatedAtLabel}</div>
             </CardContent>
             <CardFooter className="pt-2">
               <Button variant="ghost" size="sm" className="w-full justify-center">
-                Enter Workspace
+                进入工作区
               </Button>
             </CardFooter>
           </Card>

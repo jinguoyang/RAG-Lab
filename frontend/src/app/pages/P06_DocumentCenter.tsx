@@ -58,7 +58,7 @@ const INITIAL_DOCS: DocumentRecord[] = [
     status: "success",
     parsedAt: "2026-04-22 14:30",
     uploader: "admin",
-    level: "Confidential",
+    level: "机密",
   },
   {
     id: "doc-9013",
@@ -67,7 +67,7 @@ const INITIAL_DOCS: DocumentRecord[] = [
     status: "running",
     parsedAt: "2026-04-22 14:15",
     uploader: "jdoe",
-    level: "Internal",
+    level: "内部",
   },
   {
     id: "doc-9014",
@@ -76,7 +76,7 @@ const INITIAL_DOCS: DocumentRecord[] = [
     status: "failed",
     parsedAt: "2026-04-21 09:00",
     uploader: "asmith",
-    level: "Internal",
+    level: "内部",
   },
   {
     id: "doc-9015",
@@ -85,7 +85,7 @@ const INITIAL_DOCS: DocumentRecord[] = [
     status: "success",
     parsedAt: "2026-04-20 16:45",
     uploader: "admin",
-    level: "Public",
+    level: "公开",
   },
 ];
 
@@ -94,21 +94,21 @@ const INITIAL_JOBS: IngestJob[] = [
     id: "job-1095",
     docName: "Employee_Handbook_2026.docx",
     status: "running",
-    stage: "Chunking + embedding",
+    stage: "切块 + 向量化",
     triggeredAt: "2026-04-22 14:15",
   },
   {
     id: "job-1094",
     docName: "API_v2_Specification.md",
     status: "failed",
-    stage: "Parser validation",
+    stage: "解析器校验",
     triggeredAt: "2026-04-21 09:00",
   },
   {
     id: "job-1093",
     docName: "Q3_Earnings_Report_Draft.pdf",
     status: "success",
-    stage: "Completed",
+    stage: "已完成",
     triggeredAt: "2026-04-22 14:30",
   },
 ];
@@ -128,7 +128,7 @@ export function DocumentCenter() {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isReparseConfirmOpen, setIsReparseConfirmOpen] = useState(false);
   const [uploadName, setUploadName] = useState("New_Quarterly_Report.pdf");
-  const [uploadLevel, setUploadLevel] = useState("Internal");
+  const [uploadLevel, setUploadLevel] = useState("内部");
   const [feedback, setFeedback] = useState<{
     variant: "success" | "info" | "warning";
     title: string;
@@ -167,7 +167,7 @@ export function DocumentCenter() {
       id: `job-${Math.floor(1000 + Math.random() * 9000)}`,
       docName: uploadName,
       status: "queued",
-      stage: "Queued for parser",
+      stage: "等待解析器处理",
       triggeredAt: "刚刚",
     };
 
@@ -196,9 +196,9 @@ export function DocumentCenter() {
     setJobs((current) => [
       {
         id: `job-${Math.floor(1000 + Math.random() * 9000)}`,
-        docName: `${selected.length} documents`,
+        docName: `${selected.length} 份文档`,
         status: "running",
-        stage: "Bulk re-parse started",
+        stage: "批量重解析已启动",
         triggeredAt: "刚刚",
       },
       ...current,
@@ -226,7 +226,7 @@ export function DocumentCenter() {
         id: `job-${Math.floor(1000 + Math.random() * 9000)}`,
         docName: target.name,
         status: "running",
-        stage: "Retry from failed stage",
+        stage: "从失败阶段重试",
         triggeredAt: "刚刚",
       },
       ...current,
@@ -259,7 +259,7 @@ export function DocumentCenter() {
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8">
       <PageHeader
-        title="Document Center"
+        title="文档中心"
         description="管理文档、版本、重解析任务与最近 ingest 作业。"
         actions={
           <>
@@ -301,10 +301,10 @@ export function DocumentCenter() {
               onChange={(e) => setStatusFilter(e.target.value as "" | DocStatus)}
             >
               <option value="">全部状态</option>
-              <option value="queued">Queued</option>
-              <option value="running">Running</option>
-              <option value="success">Success</option>
-              <option value="failed">Failed</option>
+              <option value="queued">排队中</option>
+              <option value="running">运行中</option>
+              <option value="success">成功</option>
+              <option value="failed">失败</option>
             </select>
             <div className="ml-auto flex items-center gap-3 text-sm text-stone-gray">
               <span>当前结果 {filteredDocs.length} 条</span>
@@ -350,7 +350,7 @@ export function DocumentCenter() {
                       />
                     </TableHead>
                     <TableHead>文档名</TableHead>
-                    <TableHead>Active Ver.</TableHead>
+                    <TableHead>生效版本</TableHead>
                     <TableHead>状态</TableHead>
                     <TableHead>密级</TableHead>
                     <TableHead>最近解析</TableHead>
@@ -413,7 +413,7 @@ export function DocumentCenter() {
 
         <aside className="space-y-4">
           <div className="rounded-xl border border-border-cream bg-ivory p-5">
-            <h3 className="font-serif text-lg text-near-black">最近 Ingest 作业</h3>
+            <h3 className="font-serif text-lg text-near-black">最近入库作业</h3>
             <p className="mt-1 text-sm text-stone-gray">
               原型阶段至少要把“任务反馈区”显式画出来。
             </p>
@@ -463,9 +463,9 @@ export function DocumentCenter() {
                 value={uploadLevel}
                 onChange={(e) => setUploadLevel(e.target.value)}
               >
-                <option>Public</option>
-                <option>Internal</option>
-                <option>Confidential</option>
+                <option>公开</option>
+                <option>内部</option>
+                <option>机密</option>
               </select>
             </div>
           </div>

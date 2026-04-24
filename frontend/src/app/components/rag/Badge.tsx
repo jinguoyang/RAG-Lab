@@ -37,14 +37,14 @@ interface StatusBadgeProps {
 
 export function StatusBadge({ status, className = '' }: StatusBadgeProps) {
   const statusConfig = {
-    queued: { variant: 'queued' as const, icon: '○', label: 'Queued' },
-    running: { variant: 'running' as const, icon: '◐', label: 'Running' },
-    success: { variant: 'success' as const, icon: '✓', label: 'Success' },
-    failed: { variant: 'error' as const, icon: '✕', label: 'Failed' },
-    cancelled: { variant: 'inactive' as const, icon: '−', label: 'Cancelled' },
-    partial: { variant: 'warning' as const, icon: '!', label: 'Partial' },
-    active: { variant: 'active' as const, icon: '●', label: 'Active' },
-    inactive: { variant: 'inactive' as const, icon: '○', label: 'Inactive' }
+    queued: { variant: 'queued' as const, icon: '○', label: '排队中' },
+    running: { variant: 'running' as const, icon: '◐', label: '运行中' },
+    success: { variant: 'success' as const, icon: '✓', label: '成功' },
+    failed: { variant: 'error' as const, icon: '✕', label: '失败' },
+    cancelled: { variant: 'inactive' as const, icon: '−', label: '已取消' },
+    partial: { variant: 'warning' as const, icon: '!', label: '部分成功' },
+    active: { variant: 'active' as const, icon: '●', label: '已启用' },
+    inactive: { variant: 'inactive' as const, icon: '○', label: '未启用' }
   };
 
   const config = statusConfig[status];

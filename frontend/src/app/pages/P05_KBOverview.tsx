@@ -18,9 +18,9 @@ export function KBOverview() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const recentJobs = [
-    { id: "job-1092", type: "Document Ingest", status: "success", time: "10 mins ago" },
-    { id: "job-1091", type: "Graph Build", status: "running", time: "1 hour ago" },
-    { id: "job-1090", type: "Document Ingest", status: "failed", time: "2 hours ago" },
+    { id: "job-1092", type: "文档入库", status: "success", time: "10 分钟前" },
+    { id: "job-1091", type: "图谱构建", status: "running", time: "1 小时前" },
+    { id: "job-1090", type: "文档入库", status: "failed", time: "2 小时前" },
   ];
 
   useEffect(() => {
@@ -58,15 +58,15 @@ export function KBOverview() {
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8">
       <PageHeader
-        title={knowledgeBase?.name || "Knowledge Base Overview"}
-        description={knowledgeBase?.description || "Core metrics and recent activity for this knowledge base."}
+        title={knowledgeBase?.name || "知识库概览"}
+        description={knowledgeBase?.description || "查看该知识库的核心指标和最近活动。"}
         actions={
           <>
             <Button variant="outline" onClick={() => navigate(`/kb/${kbId}/config`)}>
-              <Settings className="w-4 h-4 mr-2" /> Configure
+              <Settings className="w-4 h-4 mr-2" /> 配置
             </Button>
             <Button variant="primary" onClick={() => navigate(`/kb/${kbId}/docs`)}>
-              <Upload className="w-4 h-4 mr-2" /> Upload Documents
+              <Upload className="w-4 h-4 mr-2" /> 上传文档
             </Button>
           </>
         }
@@ -90,57 +90,57 @@ export function KBOverview() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Total Documents</CardTitle>
+            <CardTitle>文档总数</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-serif text-near-black">142</div>
-            <p className="text-sm text-stone-gray mt-1">12 pending indexing</p>
+            <p className="text-sm text-stone-gray mt-1">12 份待索引</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Active Chunks</CardTitle>
+            <CardTitle>有效 Chunk</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-serif text-near-black">15.2K</div>
-            <p className="text-sm text-stone-gray mt-1">~107 chunks/doc avg</p>
+            <p className="text-sm text-stone-gray mt-1">平均每篇约 107 个 chunk</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>QA Sessions (30d)</CardTitle>
+            <CardTitle>QA 会话（30 天）</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-serif text-near-black">1,894</div>
-            <p className="text-sm text-stone-gray mt-1">24% accuracy improvement</p>
+            <p className="text-sm text-stone-gray mt-1">准确率提升 24%</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>System Health</CardTitle>
+            <CardTitle>系统健康度</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
               <span className="w-3 h-3 rounded-full bg-success-green"></span>
-              <span className="text-lg font-medium text-near-black">Healthy</span>
+              <span className="text-lg font-medium text-near-black">健康</span>
             </div>
-            <p className="text-sm text-stone-gray mt-2">Vector & Graph sync ok</p>
+            <p className="text-sm text-stone-gray mt-2">向量与图谱同步正常</p>
           </CardContent>
         </Card>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="col-span-2">
-          <h2 className="font-serif text-xl mb-4">Recent Jobs</h2>
+          <h2 className="font-serif text-xl mb-4">最近作业</h2>
           <Card>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Job ID</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead>作业 ID</TableHead>
+                  <TableHead>类型</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>时间</TableHead>
+                  <TableHead>操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -153,7 +153,7 @@ export function KBOverview() {
                     <TableCell>
                       {job.status === 'failed' && (
                         <Button variant="ghost" size="sm" className="text-terracotta">
-                          <RefreshCw className="w-3 h-3 mr-1" /> Retry
+                          <RefreshCw className="w-3 h-3 mr-1" /> 重试
                         </Button>
                       )}
                     </TableCell>
@@ -164,15 +164,15 @@ export function KBOverview() {
           </Card>
         </div>
         <div>
-           <h2 className="font-serif text-xl mb-4">Current Configuration</h2>
+           <h2 className="font-serif text-xl mb-4">当前配置</h2>
            <Card>
             <CardContent className="space-y-4 pt-6">
               <div>
-                <p className="text-xs text-stone-gray mb-1">Active Revision</p>
-                <p className="font-medium text-near-black">{knowledgeBase?.activeConfigRevisionId || "Not configured"}</p>
+                <p className="text-xs text-stone-gray mb-1">生效版本</p>
+                <p className="font-medium text-near-black">{knowledgeBase?.activeConfigRevisionId || "未配置"}</p>
               </div>
               <div>
-                <p className="text-xs text-stone-gray mb-1">Retrieval Strategy</p>
+                <p className="text-xs text-stone-gray mb-1">检索策略</p>
                 <p className="text-near-black">
                   Dense
                   {knowledgeBase?.sparseIndexEnabled ? " + Sparse" : ""}
@@ -180,15 +180,15 @@ export function KBOverview() {
                 </p>
               </div>
               <div>
-                <p className="text-xs text-stone-gray mb-1">Default Security Level</p>
+                <p className="text-xs text-stone-gray mb-1">默认安全级别</p>
                 <p className="text-near-black">{knowledgeBase?.defaultSecurityLevel || "public"}</p>
               </div>
               <div>
-                <p className="text-xs text-stone-gray mb-1">Status</p>
+                <p className="text-xs text-stone-gray mb-1">状态</p>
                 <p className="text-near-black">{knowledgeBase?.status || "active"}</p>
               </div>
               <Button variant="outline" className="w-full mt-4" onClick={() => navigate(`/kb/${kbId}/qa`)}>
-                Test Configuration
+                测试配置
               </Button>
             </CardContent>
            </Card>

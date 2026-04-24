@@ -26,28 +26,28 @@ export function Login() {
     <div className="min-h-screen bg-parchment flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-serif text-terracotta mb-2">RAG Platform</h1>
-          <p className="text-stone-gray">Enterprise Knowledge Base & Debugging System</p>
+          <h1 className="text-4xl font-serif text-terracotta mb-2">RAG 平台</h1>
+          <p className="text-stone-gray">企业知识库与调试系统</p>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle>Sign In</CardTitle>
+            <CardTitle>登录</CardTitle>
           </CardHeader>
           <form onSubmit={handleLogin}>
             <CardContent className="space-y-4">
               {error && (
-                <Alert variant="error" title="Authentication Failed">
+                <Alert variant="error" title="认证失败">
                   {error}
                 </Alert>
               )}
               <Input 
-                label="Username or Email" 
+                label="用户名或邮箱" 
                 placeholder="admin@example.com"
                 required
               />
               <Input 
-                label="Password" 
+                label="密码" 
                 type="password"
                 placeholder="••••••••"
                 required
@@ -60,7 +60,7 @@ export function Login() {
                 className="w-full"
                 disabled={isLoading}
               >
-                {isLoading ? "Authenticating..." : "Sign In"}
+                {isLoading ? "登录中..." : "登录"}
               </Button>
             </CardFooter>
           </form>

@@ -7,13 +7,13 @@ export function KBLayout() {
   const { kbId } = useParams();
 
   const navItems = [
-    { to: `/kb/${kbId}`, label: "Overview", icon: <LayoutDashboard className="w-4 h-4" />, end: true },
-    { to: `/kb/${kbId}/docs`, label: "Document Center", icon: <FileText className="w-4 h-4" /> },
-    { to: `/kb/${kbId}/config`, label: "Config Center", icon: <Settings className="w-4 h-4" /> },
-    { to: `/kb/${kbId}/qa`, label: "QA Debug", icon: <Stethoscope className="w-4 h-4" /> },
-    { to: `/kb/${kbId}/history`, label: "QA History", icon: <History className="w-4 h-4" /> },
-    { to: `/kb/${kbId}/graph`, label: "Graph Analysis", icon: <Network className="w-4 h-4" /> },
-    { to: `/kb/${kbId}/members`, label: "Members & Permissions", icon: <Shield className="w-4 h-4" /> },
+    { to: `/kb/${kbId}`, label: "概览", icon: <LayoutDashboard className="w-4 h-4" />, end: true },
+    { to: `/kb/${kbId}/docs`, label: "文档中心", icon: <FileText className="w-4 h-4" /> },
+    { to: `/kb/${kbId}/config`, label: "配置中心", icon: <Settings className="w-4 h-4" /> },
+    { to: `/kb/${kbId}/qa`, label: "QA 调试", icon: <Stethoscope className="w-4 h-4" /> },
+    { to: `/kb/${kbId}/history`, label: "QA 历史", icon: <History className="w-4 h-4" /> },
+    { to: `/kb/${kbId}/graph`, label: "图谱分析", icon: <Network className="w-4 h-4" /> },
+    { to: `/kb/${kbId}/members`, label: "成员与权限", icon: <Shield className="w-4 h-4" /> },
   ];
 
   return (
@@ -23,11 +23,11 @@ export function KBLayout() {
         <div className="p-4 border-b border-border-cream">
           <NavLink to="/">
             <Button variant="ghost" size="sm" className="mb-2 -ml-2 text-stone-gray">
-              <ChevronLeft className="w-4 h-4 mr-1" /> Back to Platform
+              <ChevronLeft className="w-4 h-4 mr-1" /> 返回平台
             </Button>
           </NavLink>
-          <h1 className="text-xl font-serif text-terracotta truncate" title="Financial Q3 Reports">Financial Q3 Reports</h1>
-          <p className="text-xs text-stone-gray mt-1">Knowledge Base Workspace</p>
+          <h1 className="text-xl font-serif text-terracotta truncate" title="财务 Q3 报告">财务 Q3 报告</h1>
+          <p className="text-xs text-stone-gray mt-1">知识库工作区</p>
         </div>
         
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
@@ -48,14 +48,14 @@ export function KBLayout() {
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <header className="h-14 border-b border-border-cream bg-ivory flex items-center px-6 justify-between shrink-0">
           <div className="flex items-center gap-4">
-            <span className="text-sm font-medium text-near-black">Financial Q3 Reports</span>
+            <span className="text-sm font-medium text-near-black">财务 Q3 报告</span>
             <div className="flex gap-2">
-              <Badge variant="success">Active Config: rev_042</Badge>
-              <Badge variant="info">KB ID: {kbId}</Badge>
+              <Badge variant="success">生效配置：rev_042</Badge>
+              <Badge variant="info">知识库 ID：{kbId}</Badge>
             </div>
           </div>
           <div className="flex items-center gap-3">
-             <div className="text-sm text-stone-gray">KB Admin</div>
+             <div className="text-sm text-stone-gray">知识库管理员</div>
              <div className="w-8 h-8 rounded-full bg-olive-gray text-white flex items-center justify-center text-sm font-medium">
               OP
             </div>

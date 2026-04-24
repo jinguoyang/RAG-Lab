@@ -87,21 +87,21 @@ const VERSIONS: VersionRecord[] = [
     id: "v3",
     status: "success",
     createdAt: "2026-04-22 14:30",
-    source: "UI Upload",
+    source: "界面上传",
     active: true,
   },
   {
     id: "v2",
     status: "success",
     createdAt: "2026-04-21 11:20",
-    source: "API Upload",
+    source: "API 上传",
     active: false,
   },
   {
     id: "v1",
     status: "failed",
     createdAt: "2026-04-19 09:12",
-    source: "Initial import",
+    source: "首次导入",
     active: false,
   },
 ];
@@ -170,7 +170,7 @@ export function DocumentDetail() {
     );
     setFeedback({
       variant: "warning",
-      title: "Active version 已切换",
+      title: "生效版本已切换",
       message: `已将 ${pendingVersion} 设为当前生效版本。后续 QA 调试将基于新版本执行。`,
     });
     setIsSwitchDialogOpen(false);
@@ -215,7 +215,7 @@ export function DocumentDetail() {
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6 flex flex-col h-full overflow-hidden">
       <div className="flex items-center gap-2 text-sm text-stone-gray mb-2">
-        <span className="cursor-pointer hover:text-terracotta">Documents</span>
+        <span className="cursor-pointer hover:text-terracotta">文档中心</span>
         <ChevronRight className="w-4 h-4" />
         <span className="text-near-black font-medium">Q3_Earnings_Report_Draft.pdf</span>
       </div>
@@ -241,9 +241,9 @@ export function DocumentDetail() {
         }
         contextLabels={
           <>
-            <Badge variant="success">Active: {activeVersion}</Badge>
-            <Badge variant="info">ID: doc-9012</Badge>
-            <Badge variant="warning">Confidential</Badge>
+            <Badge variant="success">生效版本：{activeVersion}</Badge>
+            <Badge variant="info">文档 ID：doc-9012</Badge>
+            <Badge variant="warning">机密</Badge>
           </>
         }
       />
@@ -277,13 +277,13 @@ export function DocumentDetail() {
       <Tabs.Root value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
         <Tabs.List className="flex border-b border-border-cream gap-6 mb-6">
           <Tabs.Trigger value="versions" className="pb-2 text-stone-gray font-medium hover:text-near-black data-[state=active]:text-terracotta data-[state=active]:border-b-2 data-[state=active]:border-terracotta transition-all">
-            Versions ({versions.length})
+            版本（{versions.length}）
           </Tabs.Trigger>
           <Tabs.Trigger value="chunks" className="pb-2 text-stone-gray font-medium hover:text-near-black data-[state=active]:text-terracotta data-[state=active]:border-b-2 data-[state=active]:border-terracotta transition-all">
             Chunks ({CHUNKS.length})
           </Tabs.Trigger>
           <Tabs.Trigger value="jobs" className="pb-2 text-stone-gray font-medium hover:text-near-black data-[state=active]:text-terracotta data-[state=active]:border-b-2 data-[state=active]:border-terracotta transition-all">
-            Ingest Jobs ({jobs.length})
+            入库作业（{jobs.length}）
           </Tabs.Trigger>
         </Tabs.List>
 
@@ -291,10 +291,10 @@ export function DocumentDetail() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-20">Page</TableHead>
-                <TableHead>Content Snippet</TableHead>
-                <TableHead className="w-24">Tokens</TableHead>
-                <TableHead className="w-48">Metadata</TableHead>
+                <TableHead className="w-20">页码</TableHead>
+                <TableHead>内容摘要</TableHead>
+                <TableHead className="w-24">Token 数</TableHead>
+                <TableHead className="w-48">元数据</TableHead>
                 <TableHead className="w-24">Chunk ID</TableHead>
               </TableRow>
             </TableHeader>
@@ -324,12 +324,12 @@ export function DocumentDetail() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Version</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Created At</TableHead>
-                <TableHead>Source</TableHead>
-                <TableHead>Active</TableHead>
-                <TableHead>Action</TableHead>
+                <TableHead>版本</TableHead>
+                <TableHead>状态</TableHead>
+                <TableHead>创建时间</TableHead>
+                <TableHead>来源</TableHead>
+                <TableHead>是否生效</TableHead>
+                <TableHead>操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -343,7 +343,7 @@ export function DocumentDetail() {
                   <TableCell>{version.source}</TableCell>
                   <TableCell>
                     {version.active ? (
-                      <Badge variant="success">Current</Badge>
+                      <Badge variant="success">当前生效</Badge>
                     ) : (
                       <span className="text-stone-gray">-</span>
                     )}
@@ -358,7 +358,7 @@ export function DocumentDetail() {
                         className="text-terracotta"
                         onClick={() => openSwitchDialog(version.id)}
                       >
-                        设为 Active
+                        设为生效版本
                       </Button>
                     )}
                   </TableCell>
@@ -372,13 +372,13 @@ export function DocumentDetail() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Job ID</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Initiator</TableHead>
-                <TableHead>Start Time</TableHead>
-                <TableHead>Duration</TableHead>
-                <TableHead>Error</TableHead>
-                <TableHead>Action</TableHead>
+                <TableHead>作业 ID</TableHead>
+                <TableHead>状态</TableHead>
+                <TableHead>发起人</TableHead>
+                <TableHead>开始时间</TableHead>
+                <TableHead>耗时</TableHead>
+                <TableHead>错误信息</TableHead>
+                <TableHead>操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -418,10 +418,10 @@ export function DocumentDetail() {
       <Drawer
         isOpen={selectedChunk !== null}
         onClose={() => setSelectedChunk(null)}
-        title={displayedChunk.id ? `Chunk Details · ${displayedChunk.id}` : "Chunk Details"}
+        title={displayedChunk.id ? `Chunk 详情 · ${displayedChunk.id}` : "Chunk 详情"}
         width="640px"
       >
-        <DrawerSection title="Raw Text">
+        <DrawerSection title="原始文本">
           {maskChunkText ? (
             <Alert variant="permission" title="正文已脱敏">
               当前用户缺少 `kb.chunk.read` 权限。原型阶段必须把“对象可见但正文不可见”的状态画出来。
@@ -432,7 +432,7 @@ export function DocumentDetail() {
             </div>
           )}
         </DrawerSection>
-        <DrawerSection title="Metadata">
+        <DrawerSection title="元数据">
           <pre className="p-4 bg-parchment border border-border-cream rounded-md text-xs font-mono overflow-auto">
 {`{
   "source_doc": "doc-9012",
@@ -444,7 +444,7 @@ export function DocumentDetail() {
 }`}
           </pre>
         </DrawerSection>
-        <DrawerSection title="Embedding Preview">
+        <DrawerSection title="向量预览">
           <div className="p-4 border border-border-cream rounded-md bg-ivory text-xs font-mono text-stone-gray truncate">
             [0.0123, -0.0456, 0.0891, 0.0023, -0.0567, 0.0189, ...] (1536 dims)
           </div>
@@ -454,7 +454,7 @@ export function DocumentDetail() {
       <Dialog open={isSwitchDialogOpen} onOpenChange={setIsSwitchDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>确认切换 Active Version</DialogTitle>
+            <DialogTitle>确认切换生效版本</DialogTitle>
             <DialogDescription>
               切换后，后续 QA 与检索结果都将以新版本为基准。这类风险操作建议在原型阶段就显式确认。
             </DialogDescription>
