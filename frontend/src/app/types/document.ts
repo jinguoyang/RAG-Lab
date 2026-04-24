@@ -61,7 +61,6 @@ export interface DocumentUploadResponse {
 export interface DocumentRowViewModel {
   id: string;
   name: string;
-  activeVersionLabel: string;
   status: JobStatus;
   securityLevel: string;
   updatedAtLabel: string;

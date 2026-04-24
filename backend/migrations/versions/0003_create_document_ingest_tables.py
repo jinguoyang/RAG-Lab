@@ -1,6 +1,6 @@
 """create document ingest tables
 
-Revision ID: 0003_create_document_ingest_tables
+Revision ID: 0003_document_ingest
 Revises: 0002_create_knowledge_bases
 Create Date: 2026-04-25 00:00:00.000000
 """
@@ -11,7 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0003_create_document_ingest_tables"
+revision: str = "0003_document_ingest"
 down_revision: str | None = "0002_create_knowledge_bases"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

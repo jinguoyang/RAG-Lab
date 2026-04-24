@@ -37,7 +37,6 @@ export function toDocumentRow(document: DocumentDTO): DocumentRowViewModel {
   return {
     id: document.documentId,
     name: document.name,
-    activeVersionLabel: document.activeVersionId ? "v?" : "未生成",
     status: document.status === "active" ? "success" : "cancelled",
     securityLevel: document.securityLevel,
     updatedAtLabel: formatDateTime(document.updatedAt),
