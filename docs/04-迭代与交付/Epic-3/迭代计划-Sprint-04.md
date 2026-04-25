@@ -27,7 +27,7 @@
 | 编号 | Backlog | 标题 | 优先级 | 预估 | 负责人 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
 | S4-001 | B-014 | 实现 Config Template / Config Revision 表与迁移 | P0 | 1d | Codex | Done |
-| S4-002 | B-015 | 实现 Pipeline 校验、保存 Revision、激活 Revision 接口 | P0 | 2d | Codex | Todo |
+| S4-002 | B-015 | 实现 Pipeline 校验、保存 Revision、激活 Revision 接口 | P0 | 2d | Codex | Done |
 | S4-003 | B-016 | 接入配置中心 Revision 列表、保存、激活和校验反馈 | P0 | 2d | Codex | Todo |
 
 ## 5. 建议实现顺序
@@ -70,3 +70,9 @@
 - 决策：Sprint 04 先落 `config_templates` 和 `config_revisions`，暂不落 QA Run 相关表。
 - 原因：本轮目标是配置中心保存与生效闭环；QA 执行和 Trace 持久化属于 E4。
 - 后续：实现 QA Run 时，使用 active `config_revision_id` 锁定运行时配置。
+
+### S4-002 后端 Pipeline 校验范围
+
+- 决策：本轮校验覆盖受约束模式、节点结构、至少一路检索、锁定节点不可禁用、权限过滤在生成前、Query Rewrite 在检索前、Graph 回落 Chunk 和 Citation 必须启用。
+- 原因：这些规则是保存和激活配置前的最小安全边界，足以支撑 P08 真实联调。
+- 后续：Provider 能力声明、Diff、模板后台和从 QARun 沉淀草稿留到后续迭代。
