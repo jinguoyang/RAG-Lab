@@ -107,3 +107,43 @@ ingest_jobs = sa.Table(
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
 )
+
+config_templates = sa.Table(
+    "config_templates",
+    metadata,
+    sa.Column("template_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("name", sa.String(length=128), nullable=False),
+    sa.Column("description", sa.Text(), nullable=True),
+    sa.Column("pipeline_definition", postgresql.JSONB(), nullable=False),
+    sa.Column("default_params", postgresql.JSONB(), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("deleted_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
+config_revisions = sa.Table(
+    "config_revisions",
+    metadata,
+    sa.Column("config_revision_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("kb_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("revision_no", sa.Integer(), nullable=False),
+    sa.Column("source_template_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("pipeline_definition", postgresql.JSONB(), nullable=False),
+    sa.Column("validation_snapshot", postgresql.JSONB(), nullable=False),
+    sa.Column("remark", sa.Text(), nullable=True),
+    sa.Column("activated_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("activated_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("deactivated_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("deactivated_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("deleted_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
