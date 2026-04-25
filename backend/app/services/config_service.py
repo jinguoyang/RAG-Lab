@@ -209,6 +209,18 @@ def validate_pipeline_definition(
     )
 
 
+def validate_pipeline_for_knowledge_base(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    request: PipelineValidateRequest,
+) -> PipelineValidationResultDTO | None:
+    """校验指定知识库的 Pipeline；先确认知识库对当前用户可见。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+    return validate_pipeline_definition(request)
+
+
 def _to_template_dto(row: RowMapping) -> ConfigTemplateDTO:
     """将配置模板行转换为接口 DTO。"""
     return ConfigTemplateDTO(
@@ -337,7 +349,7 @@ def create_config_revision(
                 config_revision_id=uuid4(),
                 kb_id=kb_id,
                 revision_no=revision_no,
-                source_template_id=UUID(request.sourceTemplateId) if request.sourceTemplateId else None,
+                source_template_id=request.sourceTemplateId,
                 status="saved",
                 pipeline_definition={
                     **validation.normalizedPipelineDefinition,

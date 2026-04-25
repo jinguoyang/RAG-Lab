@@ -24,7 +24,7 @@ from app.services.config_service import (
     get_config_revision,
     list_config_revisions,
     list_config_templates,
-    validate_pipeline_definition,
+    validate_pipeline_for_knowledge_base,
 )
 
 template_router = APIRouter(prefix="/config-templates", tags=["config-templates"])
@@ -52,8 +52,10 @@ def validate_pipeline(
     session: Session = Depends(get_db_session),
 ) -> PipelineValidationResultDTO:
     """执行后端 Pipeline 二次校验，当前规则不依赖数据库状态。"""
-    _ = (kb_id, current_user, session)
-    return validate_pipeline_definition(request)
+    response = validate_pipeline_for_knowledge_base(session, current_user, kb_id, request)
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found.")
+    return response
 
 
 @revision_router.post("", response_model=ConfigRevisionCreateResponse, status_code=status.HTTP_201_CREATED)

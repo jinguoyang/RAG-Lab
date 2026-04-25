@@ -82,3 +82,9 @@
 - 决策：P08 保留现有受约束画布交互，只将后端校验、保存 Revision、版本列表和激活动作接入真实接口。
 - 原因：本轮目标是配置中心最小闭环，不扩大到重做视觉结构或 QA 执行链路。
 - 后续：P09 实现后，可复用 active Revision 和 `pipelineDefinition` 生成 Executed Pipeline Trace。
+
+## 10. Epic Review 记录
+
+- Review 发现：Pipeline 校验接口应先确认知识库对当前用户可见，避免绕过知识库维度的访问边界。
+- Review 发现：`sourceTemplateId` 应在 Schema 层声明为 UUID，避免非法字符串进入服务层后产生非预期异常。
+- 处理结果：已补充可见性检查，并将非法 `sourceTemplateId` 收敛为接口参数校验错误。

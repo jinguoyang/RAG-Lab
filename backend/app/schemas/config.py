@@ -1,4 +1,5 @@
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -31,7 +32,7 @@ class ConfigRevisionCreateRequest(BaseModel):
     """保存配置版本请求；保存不等于激活。"""
 
     pipelineDefinition: dict[str, Any]
-    sourceTemplateId: str | None = None
+    sourceTemplateId: UUID | None = None
     remark: str | None = Field(default=None, max_length=500)
 
 
