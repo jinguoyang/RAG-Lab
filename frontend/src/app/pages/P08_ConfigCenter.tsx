@@ -1,4 +1,5 @@
-import { ReactNode, useMemo, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
+import { useParams } from "react-router";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
 import { Card, CardHeader, CardTitle, CardContent } from "../components/rag/Card";
@@ -36,18 +37,22 @@ import {
   Zap,
 } from "lucide-react";
 import * as Tabs from "@radix-ui/react-tabs";
-
-interface RevisionRecord {
-  id: string;
-  createdBy: string;
-  createdAt: string;
-  note: string;
-  status: "success" | "queued";
-  active: boolean;
-}
+import { toRevisionRecord } from "../adapters/configAdapter";
+import {
+  activateConfigRevision,
+  fetchConfigRevisions,
+  saveConfigRevision,
+  validatePipeline,
+} from "../services/configService";
+import type {
+  PipelineDefinition,
+  PipelineValidationResultDTO,
+  RevisionRecordViewModel,
+} from "../types/config";
 
 interface PipelineNode {
   id: string;
+  type: string;
   label: string;
   stageId: string;
   description: string;
@@ -63,33 +68,6 @@ interface PipelineStage {
   title: string;
   summary: string;
 }
-
-const INITIAL_REVISIONS: RevisionRecord[] = [
-  {
-    id: "rev_042",
-    createdBy: "kb_admin",
-    createdAt: "2026-04-22 18:30",
-    note: "当前生产配置，Graph 权重 0.3",
-    status: "success",
-    active: true,
-  },
-  {
-    id: "rev_041",
-    createdBy: "asmith",
-    createdAt: "2026-04-21 10:20",
-    note: "上一个稳定版本",
-    status: "success",
-    active: false,
-  },
-  {
-    id: "rev_040",
-    createdBy: "jdoe",
-    createdAt: "2026-04-20 09:00",
-    note: "禁用 graph 的历史版本",
-    status: "success",
-    active: false,
-  },
-];
 
 const PIPELINE_STAGES: PipelineStage[] = [
   {
@@ -161,8 +139,9 @@ function NodeCard({
  * P08 负责正式 Pipeline 编排、Revision 保存和 Active 切换；单次运行覆盖仍留在 P09。
  */
 export function ConfigCenter() {
+  const { kbId = "" } = useParams();
   const [activeTab, setActiveTab] = useState("designer");
-  const [revisions, setRevisions] = useState(INITIAL_REVISIONS);
+  const [revisions, setRevisions] = useState<RevisionRecordViewModel[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState("标准混合（默认）");
   const [selectedNodeId, setSelectedNodeId] = useState("queryRewrite");
   const [isRevisionDrawerOpen, setIsRevisionDrawerOpen] = useState(false);
@@ -174,6 +153,10 @@ export function ConfigCenter() {
     message: string;
   } | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(true);
+  const [loadingRevisions, setLoadingRevisions] = useState(false);
+  const [savingRevision, setSavingRevision] = useState(false);
+  const [activatingRevision, setActivatingRevision] = useState(false);
+  const [serverValidation, setServerValidation] = useState<PipelineValidationResultDTO | null>(null);
   const [queryRewriteEnabled, setQueryRewriteEnabled] = useState(true);
   const [rerankEnabled, setRerankEnabled] = useState(true);
   const [retrievalChannels, setRetrievalChannels] = useState({
@@ -183,14 +166,36 @@ export function ConfigCenter() {
   });
 
   const activeRevision = useMemo(
-    () => revisions.find((revision) => revision.active)?.id ?? "rev_042",
+    () => revisions.find((revision) => revision.active)?.revisionNo ?? "暂无生效版本",
     [revisions],
   );
+
+  async function loadRevisions() {
+    if (!kbId) return;
+    setLoadingRevisions(true);
+    try {
+      const page = await fetchConfigRevisions(kbId);
+      setRevisions(page.items.map(toRevisionRecord));
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "版本历史加载失败",
+        message: error instanceof Error ? error.message : "请检查后端服务和数据库连接。",
+      });
+    } finally {
+      setLoadingRevisions(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadRevisions();
+  }, [kbId]);
 
   const pipelineNodes = useMemo<PipelineNode[]>(
     () => [
       {
         id: "input",
+        type: "input",
         label: "Input",
         stageId: "preprocess",
         description: "接收用户 query、知识库上下文与当前 revision。",
@@ -202,6 +207,7 @@ export function ConfigCenter() {
       },
       {
         id: "queryRewrite",
+        type: "queryRewrite",
         label: "问题改写",
         stageId: "preprocess",
         description: "对原始问题做改写、扩展和保留原问策略。",
@@ -212,6 +218,7 @@ export function ConfigCenter() {
       },
       {
         id: "dense",
+        type: "denseRetrieval",
         label: "Dense Retrieval",
         stageId: "retrieval",
         description: "向量语义召回，按知识库、版本、权限条件过滤。",
@@ -222,6 +229,7 @@ export function ConfigCenter() {
       },
       {
         id: "sparse",
+        type: "sparseRetrieval",
         label: "Sparse Retrieval",
         stageId: "retrieval",
         description: "BM25/关键词召回，补足实体名、编号和术语命中。",
@@ -232,6 +240,7 @@ export function ConfigCenter() {
       },
       {
         id: "graph",
+        type: "graphRetrieval",
         label: "Graph Retrieval",
         stageId: "retrieval",
         description: "基于 Neo4j 做实体和关系扩展，增强根因链路。",
@@ -242,6 +251,7 @@ export function ConfigCenter() {
       },
       {
         id: "fusion",
+        type: "fusion",
         label: "Fusion",
         stageId: "fusion",
         description: "合并多路召回结果，执行去重、权重融合与候选截断。",
@@ -253,6 +263,7 @@ export function ConfigCenter() {
       },
       {
         id: "permissionFilter",
+        type: "permissionFilter",
         label: "Permission Filter",
         stageId: "fusion",
         description: "在最终上下文进入 LLM 前执行权限裁剪。",
@@ -264,6 +275,7 @@ export function ConfigCenter() {
       },
       {
         id: "rerank",
+        type: "rerank",
         label: "Rerank",
         stageId: "fusion",
         description: "对融合候选做精排，并记录淘汰原因。",
@@ -273,7 +285,20 @@ export function ConfigCenter() {
         rule: "只能处理已融合且已标准化的候选列表。",
       },
       {
+        id: "contextBuilder",
+        type: "contextBuilder",
+        label: "Context Builder",
+        stageId: "generation",
+        description: "将权限过滤后的 Evidence 组织成进入 LLM 的上下文。",
+        locked: true,
+        enabled: true,
+        icon: <Layers className="h-4 w-4" />,
+        params: ["maxContextTokens=6000", "evidenceOnly", "preserve citation anchors"],
+        rule: "只能读取权限过滤后的候选和 Evidence。",
+      },
+      {
         id: "generation",
+        type: "generation",
         label: "LLM Generation",
         stageId: "generation",
         description: "使用授权上下文生成回答，注入引用约束。",
@@ -285,6 +310,7 @@ export function ConfigCenter() {
       },
       {
         id: "citation",
+        type: "citation",
         label: "Citation Builder",
         stageId: "generation",
         description: "把答案片段绑定到 Evidence 与 Chunk。",
@@ -296,6 +322,7 @@ export function ConfigCenter() {
       },
       {
         id: "output",
+        type: "output",
         label: "Answer / Trace / Metrics",
         stageId: "diagnostics",
         description: "输出最终答案、Evidence、运行 Trace 与诊断指标。",
@@ -346,6 +373,45 @@ export function ConfigCenter() {
 
   const isPipelineValid = validationRules.every((rule) => rule.valid);
 
+  function buildPipelineDefinition(): PipelineDefinition {
+    return {
+      version: "1.0",
+      constraintsVersion: "1.0",
+      mode: "constrained-stage-pipeline",
+      stages: PIPELINE_STAGES.map((stage) => stage.id),
+      templateId: selectedTemplate,
+      nodes: pipelineNodes.map((node) => ({
+        id: node.id,
+        type: node.type,
+        stage: node.stageId,
+        enabled: node.enabled,
+        locked: Boolean(node.locked),
+        params: Object.fromEntries(node.params.map((param, index) => [`param${index + 1}`, param])),
+      })),
+    };
+  }
+
+  async function handleValidatePipeline() {
+    if (!kbId) return;
+    try {
+      const result = await validatePipeline(kbId, buildPipelineDefinition());
+      setServerValidation(result);
+      setFeedback({
+        variant: result.valid ? "success" : "error",
+        title: result.valid ? "后端校验通过" : "后端校验未通过",
+        message: result.valid
+          ? "当前 pipelineDefinition 已通过服务端二次校验。"
+          : result.errors.map((error) => error.message).join("；"),
+      });
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "Pipeline 校验请求失败",
+        message: error instanceof Error ? error.message : "请检查后端服务状态。",
+      });
+    }
+  }
+
   function handleTemplateSelect(templateName: string) {
     setSelectedTemplate(templateName);
     setHasUnsavedChanges(true);
@@ -360,7 +426,7 @@ export function ConfigCenter() {
    * 原型阶段这里不要求真实保存配置字段，
    * 但必须明确“保存即生成新 revision”的产品语义。
    */
-  function handleSaveRevision() {
+  async function handleSaveRevision() {
     if (!isPipelineValid) {
       setFeedback({
         variant: "error",
@@ -370,24 +436,30 @@ export function ConfigCenter() {
       return;
     }
 
-    const nextId = `rev_0${43 + revisions.length - INITIAL_REVISIONS.length}`;
-    const nextRevision: RevisionRecord = {
-      id: nextId,
-      createdBy: "current_user",
-      createdAt: "刚刚",
-      note: `基于 ${selectedTemplate} 保存的新 Pipeline revision`,
-      status: "queued",
-      active: false,
-    };
-
-    setRevisions((current) => [nextRevision, ...current]);
-    setHasUnsavedChanges(false);
-    setFeedback({
-      variant: "success",
-      title: "已生成新 Revision",
-      message: `${nextId} 已创建但尚未生效。保存的是受约束 pipelineDefinition，激活仍需二次确认。`,
-    });
-    setIsRevisionDrawerOpen(true);
+    setSavingRevision(true);
+    try {
+      const response = await saveConfigRevision(
+        kbId,
+        buildPipelineDefinition(),
+        `基于 ${selectedTemplate} 保存的新 Pipeline revision`,
+      );
+      setHasUnsavedChanges(false);
+      setFeedback({
+        variant: "success",
+        title: "已生成新 Revision",
+        message: `rev_${String(response.revisionNo).padStart(3, "0")} 已创建但尚未生效。保存的是受约束 pipelineDefinition，激活仍需二次确认。`,
+      });
+      setIsRevisionDrawerOpen(true);
+      await loadRevisions();
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "保存 Revision 失败",
+        message: error instanceof Error ? error.message : "请根据校验结果修复后重试。",
+      });
+    } finally {
+      setSavingRevision(false);
+    }
   }
 
   function requestActivate(revisionId: string) {
@@ -395,23 +467,29 @@ export function ConfigCenter() {
     setIsActivationDialogOpen(true);
   }
 
-  function handleConfirmActivation() {
+  async function handleConfirmActivation() {
     if (!pendingActivation) return;
 
-    setRevisions((current) =>
-      current.map((revision) => ({
-        ...revision,
-        active: revision.id === pendingActivation,
-        status: revision.id === pendingActivation ? "success" : revision.status,
-      })),
-    );
-    setFeedback({
-      variant: "warning",
-      title: "生效版本已切换",
-      message: `后续 QA 调试将基于 ${pendingActivation} 的 Pipeline 编排执行。`,
-    });
-    setIsActivationDialogOpen(false);
-    setPendingActivation(null);
+    setActivatingRevision(true);
+    try {
+      await activateConfigRevision(kbId, pendingActivation);
+      await loadRevisions();
+      setFeedback({
+        variant: "warning",
+        title: "生效版本已切换",
+        message: "后续 QA 调试将基于新的 active ConfigRevision 执行。",
+      });
+      setIsActivationDialogOpen(false);
+      setPendingActivation(null);
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "激活 Revision 失败",
+        message: error instanceof Error ? error.message : "请确认目标版本仍可激活。",
+      });
+    } finally {
+      setActivatingRevision(false);
+    }
   }
 
   function handleNodeToggle(nodeId: string, enabled: boolean) {
@@ -457,11 +535,15 @@ export function ConfigCenter() {
             <Button variant="outline" onClick={() => setIsRevisionDrawerOpen(true)}>
               <History className="mr-2 h-4 w-4" /> 查看版本历史
             </Button>
-            <Button variant="outline" onClick={() => handleIllegalOperation("验证会带着当前草稿跳转到 P09，P09 只做单次运行覆盖，不修改正式拓扑。")}>
-              <PlayCircle className="mr-2 h-4 w-4" /> 验证当前 Pipeline
+            <Button variant="outline" onClick={() => void handleValidatePipeline()}>
+              <PlayCircle className="mr-2 h-4 w-4" /> 后端校验
             </Button>
-            <Button variant="primary" disabled={!isPipelineValid} onClick={handleSaveRevision}>
-              <Save className="mr-2 h-4 w-4" /> 保存为新版本
+            <Button
+              variant="primary"
+              disabled={!isPipelineValid || savingRevision}
+              onClick={() => void handleSaveRevision()}
+            >
+              <Save className="mr-2 h-4 w-4" /> {savingRevision ? "保存中..." : "保存为新版本"}
             </Button>
           </>
         }
@@ -713,6 +795,21 @@ export function ConfigCenter() {
               <div className="pt-2 text-xs text-stone-gray">
                 前端只提供交互护栏；后端保存和执行时仍必须二次校验 pipelineDefinition。
               </div>
+              {serverValidation && (
+                <div className="rounded-lg border border-border-cream bg-[#fffdfa] p-3 text-xs">
+                  <p className="mb-2 font-medium text-near-black">
+                    后端校验：{serverValidation.valid ? "通过" : "未通过"}
+                  </p>
+                  {(serverValidation.errors.length > 0
+                    ? serverValidation.errors
+                    : serverValidation.warnings
+                  ).map((item) => (
+                    <p key={`${item.code}-${item.field}`} className="leading-relaxed text-stone-gray">
+                      {item.code}：{item.message}
+                    </p>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </aside>
@@ -726,6 +823,16 @@ export function ConfigCenter() {
       >
         <DrawerSection title="版本列表">
           <div className="space-y-3">
+            {loadingRevisions && (
+              <div className="rounded-xl border border-border-cream bg-parchment p-4 text-sm text-stone-gray">
+                正在加载真实 Revision 列表...
+              </div>
+            )}
+            {!loadingRevisions && revisions.length === 0 && (
+              <div className="rounded-xl border border-dashed border-border-warm bg-parchment p-4 text-sm text-stone-gray">
+                暂无配置版本。保存当前 Pipeline 后会生成第一个 saved Revision。
+              </div>
+            )}
             {revisions.map((revision) => (
               <div
                 key={revision.id}
@@ -738,7 +845,7 @@ export function ConfigCenter() {
                       {revision.active && <Badge variant="success">当前生效</Badge>}
                     </div>
                     <p className="mt-1 text-xs text-stone-gray">
-                      {revision.createdBy} · {revision.createdAt}
+                      {revision.revisionNo} · {revision.createdBy} · {revision.createdAt}
                     </p>
                   </div>
                   <StatusBadge status={revision.status} />
@@ -779,8 +886,8 @@ export function ConfigCenter() {
             <Button variant="ghost" onClick={() => setIsActivationDialogOpen(false)}>
               取消
             </Button>
-            <Button variant="primary" onClick={handleConfirmActivation}>
-              确认切换
+            <Button variant="primary" disabled={activatingRevision} onClick={() => void handleConfirmActivation()}>
+              {activatingRevision ? "切换中..." : "确认切换"}
             </Button>
           </DialogFooter>
         </DialogContent>
