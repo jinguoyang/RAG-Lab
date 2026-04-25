@@ -1,7 +1,9 @@
+from datetime import UTC, datetime
 from decimal import Decimal
+from hashlib import sha256
 from uuid import UUID, uuid4
 
-from sqlalchemy import RowMapping, insert, select
+from sqlalchemy import RowMapping, insert, select, update
 from sqlalchemy.orm import Session
 
 from app.schemas.auth import CurrentUserResponse
@@ -105,6 +107,131 @@ def _status_progress(row: RowMapping) -> tuple[str, int, str, bool]:
     return "draft", 0, "运行尚未提交", False
 
 
+def _execute_mock_qa_run(session: Session, run_id: UUID, query: str) -> None:
+    """执行开发期 mock Provider，写入可追溯的最小 QA 结果。"""
+    started_at = datetime.now(UTC)
+    rewritten_query = query if query.endswith("?") or query.endswith("？") else f"{query}?"
+    answer = f"这是基于 mock Provider 生成的调试回答：{query}"
+    evidence_id = uuid4()
+    candidate_id = uuid4()
+    citation_id = uuid4()
+    content_snapshot = "mock Provider 当前使用固定证据，用于验证 QARun 状态、Trace、Evidence 和 Citation 链路。"
+    content_hash = sha256(content_snapshot.encode("utf-8")).hexdigest()
+
+    # mock 链路保持安全边界显式可见，后续替换真实 Provider 时仍保留 permissionFilter。
+    trace_steps = [
+        (
+            "queryRewrite",
+            {"query": query},
+            {"rewrittenQuery": rewritten_query},
+            {"latencyMs": 5},
+        ),
+        (
+            "mockRetrieval",
+            {"query": rewritten_query},
+            {"candidateCount": 1},
+            {"latencyMs": 8},
+        ),
+        (
+            "permissionFilter",
+            {"inputCandidates": 1},
+            {"authorizedCandidates": 1, "droppedCandidates": 0},
+            {"latencyMs": 3},
+        ),
+        (
+            "generation",
+            {"evidenceCount": 1},
+            {"answerPreview": answer[:80]},
+            {"latencyMs": 12, "totalTokens": 128},
+        ),
+        (
+            "citation",
+            {"evidenceCount": 1},
+            {"citationCount": 1},
+            {"latencyMs": 2},
+        ),
+    ]
+
+    for index, (step_key, input_summary, output_summary, metrics) in enumerate(trace_steps, start=1):
+        session.execute(
+            insert(qa_run_trace_steps).values(
+                trace_step_id=uuid4(),
+                run_id=run_id,
+                step_order=index,
+                step_key=step_key,
+                status="success",
+                input_summary=input_summary,
+                output_summary=output_summary,
+                metrics=metrics,
+                started_at=started_at,
+                ended_at=datetime.now(UTC),
+            )
+        )
+
+    session.execute(
+        insert(qa_run_candidates).values(
+            candidate_id=candidate_id,
+            run_id=run_id,
+            source_type="mock",
+            raw_score=1,
+            rerank_score=1,
+            rank_no=1,
+            is_authorized=True,
+            metadata={"documentName": "Mock Evidence", "section": "dev-provider"},
+        )
+    )
+    session.execute(
+        insert(qa_run_evidence).values(
+            evidence_id=evidence_id,
+            run_id=run_id,
+            candidate_id=candidate_id,
+            evidence_order=1,
+            content_snapshot=content_snapshot,
+            content_snapshot_hash=content_hash,
+            snapshot_policy="redacted",
+            redaction_status="none",
+            source_snapshot={
+                "documentName": "Mock Evidence",
+                "pageNo": 1,
+                "section": "dev-provider",
+            },
+        )
+    )
+    session.execute(
+        insert(qa_run_citations).values(
+            citation_id=citation_id,
+            run_id=run_id,
+            evidence_id=evidence_id,
+            citation_order=1,
+            label="Mock Evidence#1",
+            location_snapshot={"pageNo": 1, "section": "dev-provider"},
+        )
+    )
+    session.execute(
+        update(qa_runs)
+        .where(qa_runs.c.run_id == run_id)
+        .values(
+            rewritten_query=rewritten_query,
+            status="success",
+            answer=answer,
+            metrics={
+                "latencyMs": 30,
+                "totalTokens": 128,
+                "retrievalDiagnostics": {
+                    "denseCount": 0,
+                    "sparseCount": 0,
+                    "graphCount": 0,
+                    "mockCount": 1,
+                    "droppedByPermission": 0,
+                },
+            },
+            started_at=started_at,
+            finished_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+    )
+
+
 def create_qa_run(
     session: Session,
     current_user: CurrentUserResponse,
@@ -140,6 +267,7 @@ def create_qa_run(
             )
             .returning(qa_runs)
         ).mappings().one()
+        _execute_mock_qa_run(session, run_id, request.query)
         session.commit()
     except Exception:
         session.rollback()
