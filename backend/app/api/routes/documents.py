@@ -23,6 +23,7 @@ from app.services.document_service import (
     list_documents,
     list_ingest_jobs,
 )
+from app.services.object_storage import ObjectStorageError
 
 router = APIRouter(prefix="/knowledge-bases/{kb_id}/documents", tags=["documents"])
 ingest_job_router = APIRouter(
@@ -61,16 +62,22 @@ async def upload_document(
     if not file_bytes:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty.")
 
-    response = create_document_upload(
-        session=session,
-        current_user=current_user,
-        kb_id=kb_id,
-        file_name=file.filename or "uploaded-document",
-        mime_type=file.content_type,
-        file_bytes=file_bytes,
-        name=name,
-        security_level=security_level,
-    )
+    try:
+        response = create_document_upload(
+            session=session,
+            current_user=current_user,
+            kb_id=kb_id,
+            file_name=file.filename or "uploaded-document",
+            mime_type=file.content_type,
+            file_bytes=file_bytes,
+            name=name,
+            security_level=security_level,
+        )
+    except ObjectStorageError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="STORAGE_WRITE_FAILED: object storage write failed.",
+        ) from exc
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found.")
     return response

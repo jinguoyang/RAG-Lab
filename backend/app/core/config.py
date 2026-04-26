@@ -22,6 +22,34 @@ class Settings(BaseSettings):
     dev_auth_enabled: bool = True
     dev_default_username: str = "admin"
     dev_default_security_level: str = "public"
+    storage_backend: str = Field(
+        default="metadata",
+        validation_alias=AliasChoices("RAG_LAB_STORAGE_BACKEND", "STORAGE_BACKEND"),
+    )
+    storage_bucket: str = Field(
+        default="rag-lab-source",
+        validation_alias=AliasChoices("RAG_LAB_STORAGE_BUCKET", "STORAGE_BUCKET"),
+    )
+    storage_object_prefix: str = Field(
+        default="dev",
+        validation_alias=AliasChoices("RAG_LAB_STORAGE_OBJECT_PREFIX", "STORAGE_OBJECT_PREFIX"),
+    )
+    minio_endpoint: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("RAG_LAB_MINIO_ENDPOINT", "MINIO_ENDPOINT"),
+    )
+    minio_access_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("RAG_LAB_MINIO_ACCESS_KEY", "MINIO_ACCESS_KEY"),
+    )
+    minio_secret_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("RAG_LAB_MINIO_SECRET_KEY", "MINIO_SECRET_KEY"),
+    )
+    minio_secure: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("RAG_LAB_MINIO_SECURE", "MINIO_SECURE"),
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",

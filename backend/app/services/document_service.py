@@ -6,6 +6,7 @@ import sqlalchemy as sa
 from sqlalchemy import RowMapping, func, insert, or_, select, update
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.schemas.auth import CurrentUserResponse
 from app.schemas.document import (
     DocumentDetailDTO,
@@ -23,8 +24,7 @@ from app.tables import (
     knowledge_bases,
     stored_files,
 )
-
-DEV_SOURCE_BUCKET = "dev-local"
+from app.services.object_storage import ObjectStorageProvider, get_object_storage_provider
 
 
 def _is_platform_admin(current_user: CurrentUserResponse) -> bool:
@@ -124,12 +124,14 @@ def create_document_upload(
     file_bytes: bytes,
     name: str | None,
     security_level: str | None,
+    storage_provider: ObjectStorageProvider | None = None,
 ) -> DocumentUploadResponse | None:
-    """事务内创建文件、文档、首版本和 queued IngestJob，失败时整体回滚。"""
+    """写入原始文件对象，并事务内创建文件、文档、首版本和 queued IngestJob。"""
     kb_row = _read_visible_knowledge_base(session, current_user, kb_id)
     if kb_row is None:
         return None
 
+    settings = get_settings()
     actor_id = UUID(current_user.user.userId)
     document_id = uuid4()
     version_id = uuid4()
@@ -138,20 +140,24 @@ def create_document_upload(
     normalized_file_name = _safe_file_name(file_name)
     document_name = (name or normalized_file_name).strip() or normalized_file_name
     checksum = sha256(file_bytes).hexdigest()
-    object_key = f"dev/kb/{kb_id}/documents/{document_id}/versions/{version_id}/{normalized_file_name}"
+    object_prefix = settings.storage_object_prefix.strip("/")
+    object_path = f"kb/{kb_id}/documents/{document_id}/versions/{version_id}/{normalized_file_name}"
+    object_key = f"{object_prefix}/{object_path}" if object_prefix else object_path
     sparse_status = "pending" if kb_row["sparse_index_enabled"] else "not_required"
     graph_status = "pending" if kb_row["graph_index_enabled"] else "not_required"
+    storage = storage_provider or get_object_storage_provider()
+    stored_object = storage.put_object(object_key=object_key, data=file_bytes, content_type=mime_type)
 
     try:
         stored_file_row = session.execute(
             insert(stored_files)
             .values(
                 file_id=file_id,
-                bucket=DEV_SOURCE_BUCKET,
-                object_key=object_key,
+                bucket=stored_object.bucket,
+                object_key=stored_object.object_key,
                 file_name=normalized_file_name,
                 mime_type=mime_type,
-                file_size=len(file_bytes),
+                file_size=stored_object.size,
                 checksum=checksum,
                 file_role="source",
                 status="active",
@@ -219,6 +225,11 @@ def create_document_upload(
         session.commit()
     except Exception:
         session.rollback()
+        try:
+            storage.delete_object(stored_object.object_key)
+        except Exception:
+            # 保留原始数据库异常，补偿删除失败交给后续运维巡检处理。
+            pass
         raise
 
     return DocumentUploadResponse(
