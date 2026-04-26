@@ -9,9 +9,10 @@ function revisionStatusToViewStatus(
   status: ConfigRevisionStatus,
 ): RevisionRecordViewModel["status"] {
   if (status === "active") return "active";
+  if (status === "draft") return "draft";
   if (status === "invalid") return "failed";
   if (status === "archived") return "inactive";
-  return "queued";
+  return "saved";
 }
 
 export function toRevisionRecord(revision: ConfigRevisionDTO): RevisionRecordViewModel {
@@ -23,5 +24,6 @@ export function toRevisionRecord(revision: ConfigRevisionDTO): RevisionRecordVie
     note: revision.remark || "未填写保存说明",
     status: revisionStatusToViewStatus(revision.status),
     active: revision.status === "active",
+    canActivate: revision.status === "saved",
   };
 }

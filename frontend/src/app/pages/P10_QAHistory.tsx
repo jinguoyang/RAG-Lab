@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
 import {
@@ -24,22 +24,13 @@ import {
   BookmarkPlus,
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
+import { toQAHistoryRecord, type QAHistoryRecordViewModel } from "../adapters/qaRunAdapter";
+import { fetchQARuns } from "../services/qaRunService";
 
 type RunStatus = "success" | "partial" | "failed";
 type RatingStatus = "up" | "down" | "none";
 
-interface HistoryRecord {
-  id: string;
-  query: string;
-  status: RunStatus;
-  user: string;
-  time: string;
-  rev: string;
-  rating: RatingStatus;
-  hasOverrides: boolean;
-  failureType: string;
-  answer: string;
-}
+type HistoryRecord = QAHistoryRecordViewModel;
 
 const INITIAL_HISTORY: HistoryRecord[] = [
   {
@@ -99,7 +90,7 @@ const INITIAL_HISTORY: HistoryRecord[] = [
 export function QAHistory() {
   const navigate = useNavigate();
   const { kbId } = useParams();
-  const [history, setHistory] = useState(INITIAL_HISTORY);
+  const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [revisionFilter, setRevisionFilter] = useState("");
   const [feedbackFilter, setFeedbackFilter] = useState("");
@@ -111,6 +102,29 @@ export function QAHistory() {
     message: string;
   } | null>(null);
   const [regressionSet, setRegressionSet] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  async function loadHistory(keyword = searchTerm) {
+    if (!kbId) return;
+    setLoading(true);
+    try {
+      const page = await fetchQARuns(kbId, keyword);
+      setHistory(page.items.map(toQAHistoryRecord));
+    } catch (error) {
+      setHistory(INITIAL_HISTORY);
+      setFeedback({
+        variant: "info",
+        title: "已切换到原型数据",
+        message: error instanceof Error ? error.message : "后端 QA 历史接口暂不可用。",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadHistory("");
+  }, [kbId]);
 
   const filteredRuns = useMemo(() => {
     return history.filter((run) => {
@@ -203,8 +217,14 @@ export function QAHistory() {
             className="pl-9"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void loadHistory(searchTerm);
+            }}
           />
         </div>
+        <Button variant="outline" onClick={() => void loadHistory(searchTerm)}>
+          {loading ? "加载中..." : "搜索"}
+        </Button>
         <select
           className="px-3 py-2 bg-ivory border border-border-cream rounded-md text-sm text-near-black focus:outline-none"
           value={revisionFilter}

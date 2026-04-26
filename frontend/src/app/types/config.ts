@@ -68,8 +68,9 @@ export interface RevisionRecordViewModel {
   createdBy: string;
   createdAt: string;
   note: string;
-  status: "queued" | "active" | "inactive" | "failed";
+  status: "draft" | "saved" | "active" | "inactive" | "failed";
   active: boolean;
+  canActivate: boolean;
 }
 
 export type ConfigRevisionPage = PageResponse<ConfigRevisionDTO>;

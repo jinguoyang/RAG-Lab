@@ -852,7 +852,7 @@ export function ConfigCenter() {
                 </div>
                 <p className="text-sm text-stone-gray">{revision.note}</p>
                 <div className="flex justify-end gap-2">
-                  {!revision.active && (
+                  {revision.canActivate && (
                     <Button
                       variant="ghost"
                       size="sm"

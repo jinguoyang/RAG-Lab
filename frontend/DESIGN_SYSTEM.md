@@ -64,7 +64,7 @@ This design system provides a warm, professional, and high-information-density i
 #### Badge & StatusBadge
 - Lightweight status indicators with icon + text
 - Never rely on color alone (includes icon)
-- Variants: success, error, warning, info, queued, running, active, inactive
+- Variants: success, error, warning, info, queued, running, draft, saved, active, inactive
 
 #### Card
 - Ivory surface with cream border

@@ -409,22 +409,21 @@ def activate_config_revision(
     previous_active_id = kb_row["active_config_revision_id"]
 
     try:
-        if previous_active_id and previous_active_id != revision_id:
-            session.execute(
-                update(config_revisions)
-                .where(
-                    config_revisions.c.kb_id == kb_id,
-                    config_revisions.c.config_revision_id == previous_active_id,
-                    config_revisions.c.status == "active",
-                )
-                .values(
-                    status="archived",
-                    deactivated_at=activated_at,
-                    deactivated_by=actor_id,
-                    updated_at=activated_at,
-                    updated_by=actor_id,
-                )
+        session.execute(
+            update(config_revisions)
+            .where(
+                config_revisions.c.kb_id == kb_id,
+                config_revisions.c.config_revision_id != revision_id,
+                config_revisions.c.status == "active",
             )
+            .values(
+                status="archived",
+                deactivated_at=activated_at,
+                deactivated_by=actor_id,
+                updated_at=activated_at,
+                updated_by=actor_id,
+            )
+        )
         session.execute(
             update(config_revisions)
             .where(config_revisions.c.config_revision_id == revision_id)
@@ -432,6 +431,8 @@ def activate_config_revision(
                 status="active",
                 activated_at=activated_at,
                 activated_by=actor_id,
+                deactivated_at=None,
+                deactivated_by=None,
                 updated_at=activated_at,
                 updated_by=actor_id,
             )
