@@ -19,6 +19,8 @@ import {
   Copy,
 } from "lucide-react";
 import * as Tabs from "@radix-ui/react-tabs";
+import { toQADebugResult } from "../adapters/qaRunAdapter";
+import { createQARun, fetchQARunDetail, fetchQARunStatus } from "../services/qaRunService";
 
 type DebugScenario = "success" | "partial" | "permission";
 
@@ -31,14 +33,14 @@ interface RunSeedState {
 
 interface CandidateRecord {
   id: string;
-  source: "Dense" | "Sparse" | "Graph";
+  source: "Dense" | "Sparse" | "Graph" | "Mock";
   title: string;
   score: string;
   decision: string;
 }
 
 interface ScenarioPayload {
-  status: "success" | "partial";
+  status: "success" | "partial" | "failed";
   answer: string[];
   runMeta: string;
   notice?: { variant: "info" | "warning"; title: string; message: string };
@@ -254,6 +256,26 @@ const SCENARIO_MAP: Record<DebugScenario, ScenarioPayload> = {
   },
 };
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function isUuid(value: string | undefined): value is string {
+  return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value));
+}
+
+async function waitForDetailReady(kbId: string, runId: string) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const status = await fetchQARunStatus(kbId, runId);
+    if (status.detailReady) {
+      return status;
+    }
+    await delay(500);
+  }
+
+  throw new Error("QA Run 尚未完成，请稍后在历史页查看。");
+}
+
 /**
  * QA 调试页原型。
  * 原型阶段必须补的是“单次实验闭环”：运行、查看链路、看到降级/权限异常、保存与回放入口。
@@ -268,6 +290,7 @@ export function QADebug() {
   const [isRunning, setIsRunning] = useState(false);
   const [showResults, setShowResults] = useState(Boolean(seed.query));
   const [scenario, setScenario] = useState<DebugScenario>(seed.scenario ?? "success");
+  const [runResult, setRunResult] = useState<ScenarioPayload | null>(null);
   const [overrideMode, setOverrideMode] = useState(Boolean(seed.sourceRunId));
   const [rewriteEnabled, setRewriteEnabled] = useState(true);
   const [channels, setChannels] = useState({
@@ -290,7 +313,7 @@ export function QADebug() {
       : null,
   );
 
-  const result = useMemo(() => SCENARIO_MAP[scenario], [scenario]);
+  const result = useMemo(() => runResult ?? SCENARIO_MAP[scenario], [runResult, scenario]);
 
   useEffect(() => {
     if (!seed.query) return;
@@ -303,7 +326,7 @@ export function QADebug() {
    * 原型运行逻辑只模拟关键状态切换，
    * 重点让评审能看到“单次运行产生哪些中间结果与异常反馈”。
    */
-  function handleRun() {
+  async function handleRun() {
     if (!query.trim()) {
       setFeedback({
         variant: "error",
@@ -325,19 +348,38 @@ export function QADebug() {
     setIsRunning(true);
     setShowResults(false);
     setFeedback(null);
+    setRunResult(null);
 
-    window.setTimeout(() => {
+    try {
+      const created = await createQARun(
+        kbId || "",
+        query.trim(),
+        { rewriteEnabled, channels, rerankerTopN },
+        isUuid(seed.sourceRunId) ? seed.sourceRunId : undefined,
+      );
+      await waitForDetailReady(kbId || "", created.runId);
+      const detail = await fetchQARunDetail(kbId || "", created.runId);
+      const nextResult = toQADebugResult(detail);
+      setRunResult(nextResult);
       setIsRunning(false);
       setShowResults(true);
       setFeedback({
-        variant: result.status === "partial" ? "warning" : "success",
-        title: result.status === "partial" ? "运行完成（部分降级）" : "运行完成",
+        variant: nextResult.status === "partial" ? "warning" : nextResult.status === "failed" ? "error" : "success",
+        title: nextResult.status === "partial" ? "运行完成（部分降级）" : nextResult.status === "failed" ? "运行失败" : "运行完成",
         message:
-          result.status === "partial"
+          nextResult.status === "partial"
             ? "Graph 通道失败但其余链路完成。"
             : "已生成答案、证据、候选和诊断信息。",
       });
-    }, 900);
+    } catch (error) {
+      setIsRunning(false);
+      setShowResults(false);
+      setFeedback({
+        variant: "error",
+        title: "QA Run 创建失败",
+        message: error instanceof Error ? error.message : "请检查后端服务和 active ConfigRevision。",
+      });
+    }
   }
 
   function handleSaveAction(action: "run" | "preset" | "draft") {
@@ -462,7 +504,10 @@ export function QADebug() {
                 <select
                   className="w-full px-3 py-2 bg-parchment border border-border-cream rounded-md text-sm"
                   value={scenario}
-                  onChange={(e) => setScenario(e.target.value as DebugScenario)}
+                  onChange={(e) => {
+                    setScenario(e.target.value as DebugScenario);
+                    setRunResult(null);
+                  }}
                 >
                   <option value="success">正常成功</option>
                   <option value="partial">部分降级成功</option>

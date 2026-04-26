@@ -3,7 +3,7 @@ from decimal import Decimal
 from hashlib import sha256
 from uuid import UUID, uuid4
 
-from sqlalchemy import RowMapping, insert, select, update
+from sqlalchemy import RowMapping, func, insert, select, update
 from sqlalchemy.orm import Session
 
 from app.schemas.auth import CurrentUserResponse
@@ -14,9 +14,11 @@ from app.schemas.qa_run import (
     QARunCreateResponse,
     QARunDetailDTO,
     QARunEvidenceDTO,
+    QARunListItemDTO,
     QARunStatusDTO,
     QARunTraceStepDTO,
 )
+from app.schemas.common import PageResponse
 from app.tables import (
     config_revisions,
     knowledge_bases,
@@ -30,6 +32,14 @@ from app.tables import (
 
 class QARunCreateConflict(ValueError):
     """创建 QARun 时遇到业务状态冲突，例如缺少可运行 Revision。"""
+
+
+RETRIEVAL_NODE_TO_OVERRIDE_KEY = {
+    "denseRetrieval": "dense",
+    "sparseRetrieval": "sparse",
+    "graphRetrieval": "graph",
+}
+MOCK_EVIDENCE_CHUNK_ID = UUID("00000000-0000-0000-0000-000000000001")
 
 
 def _is_platform_admin(current_user: CurrentUserResponse) -> bool:
@@ -73,6 +83,37 @@ def _resolve_runnable_revision(
     if row["status"] in {"draft", "invalid"}:
         raise QARunCreateConflict("Config revision is not runnable.")
     return row
+
+
+def _assert_retrieval_enabled(revision_row: RowMapping, override_snapshot: dict) -> None:
+    """校验本次有效运行配置至少启用一路检索，防止绕过前端护栏。"""
+    nodes = revision_row["pipeline_definition"].get("nodes", [])
+    if not isinstance(nodes, list):
+        raise QARunCreateConflict("Pipeline definition is invalid.")
+
+    channel_overrides = override_snapshot.get("channels", {})
+    if channel_overrides is None:
+        channel_overrides = {}
+    if not isinstance(channel_overrides, dict):
+        raise QARunCreateConflict("Override channels must be an object.")
+
+    enabled_channels: list[str] = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        node_type = node.get("type")
+        channel_key = RETRIEVAL_NODE_TO_OVERRIDE_KEY.get(str(node_type))
+        if channel_key is None:
+            continue
+        base_enabled = node.get("enabled") is not False
+        override_enabled = channel_overrides.get(channel_key, True)
+        if not isinstance(override_enabled, bool):
+            raise QARunCreateConflict(f"Override channel {channel_key} must be boolean.")
+        if base_enabled and override_enabled:
+            enabled_channels.append(channel_key)
+
+    if not enabled_channels:
+        raise QARunCreateConflict("At least one retrieval channel must be enabled.")
 
 
 def _read_visible_qa_run(
@@ -172,6 +213,7 @@ def _execute_mock_qa_run(session: Session, run_id: UUID, query: str) -> None:
         insert(qa_run_candidates).values(
             candidate_id=candidate_id,
             run_id=run_id,
+            chunk_id=MOCK_EVIDENCE_CHUNK_ID,
             source_type="mock",
             raw_score=1,
             rerank_score=1,
@@ -184,6 +226,7 @@ def _execute_mock_qa_run(session: Session, run_id: UUID, query: str) -> None:
         insert(qa_run_evidence).values(
             evidence_id=evidence_id,
             run_id=run_id,
+            chunk_id=MOCK_EVIDENCE_CHUNK_ID,
             candidate_id=candidate_id,
             evidence_order=1,
             content_snapshot=content_snapshot,
@@ -247,6 +290,9 @@ def create_qa_run(
     run_id = uuid4()
     actor_id = UUID(current_user.user.userId)
     override_snapshot = request.overrideParams or {}
+    if request.sourceRunId is not None and _read_visible_qa_run(session, current_user, kb_id, request.sourceRunId) is None:
+        raise QARunCreateConflict("Source QA run not found for this knowledge base.")
+    _assert_retrieval_enabled(revision_row, override_snapshot)
 
     try:
         row = session.execute(
@@ -392,7 +438,7 @@ def get_qa_run_detail(
         evidence=[
             QARunEvidenceDTO(
                 evidenceId=str(evidence_row["evidence_id"]),
-                chunkId=str(evidence_row["chunk_id"]) if evidence_row["chunk_id"] else None,
+                chunkId=str(evidence_row["chunk_id"]),
                 candidateId=str(evidence_row["candidate_id"]) if evidence_row["candidate_id"] else None,
                 contentSnapshot=evidence_row["content_snapshot"],
                 sourceSnapshot=evidence_row["source_snapshot"],
@@ -412,4 +458,53 @@ def get_qa_run_detail(
         trace=trace,
         metrics=row["metrics"],
         createdAt=row["created_at"].isoformat(),
+    )
+
+
+def list_qa_runs(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    page_no: int,
+    page_size: int,
+    keyword: str | None,
+) -> PageResponse[QARunListItemDTO] | None:
+    """分页查询 QA 历史列表，当前按知识库可见性做最小过滤。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+
+    condition = qa_runs.c.kb_id == kb_id
+    if keyword:
+        keyword_pattern = f"%{keyword.strip()}%"
+        condition = condition & qa_runs.c.query.ilike(keyword_pattern)
+
+    total = session.execute(select(func.count()).select_from(qa_runs).where(condition)).scalar_one()
+    rows = session.execute(
+        select(qa_runs)
+        .where(condition)
+        .order_by(qa_runs.c.created_at.desc())
+        .offset((page_no - 1) * page_size)
+        .limit(page_size)
+    ).mappings()
+
+    return PageResponse(
+        items=[
+            QARunListItemDTO(
+                runId=str(row["run_id"]),
+                kbId=str(row["kb_id"]),
+                configRevisionId=str(row["config_revision_id"]),
+                query=row["query"],
+                status=row["status"],
+                answer=row["answer"],
+                hasOverride=row["has_override"],
+                feedbackStatus=row["feedback_status"],
+                createdBy=str(row["created_by"]) if row["created_by"] else None,
+                createdAt=row["created_at"].isoformat(),
+                latencyMs=row["metrics"].get("latencyMs"),
+            )
+            for row in rows
+        ],
+        pageNo=page_no,
+        pageSize=page_size,
+        total=total,
     )

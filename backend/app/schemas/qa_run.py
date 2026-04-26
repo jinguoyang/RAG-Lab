@@ -79,7 +79,7 @@ class QARunEvidenceDTO(BaseModel):
     """授权 Evidence 摘要，后续会与真实 Chunk 权限二次校验衔接。"""
 
     evidenceId: str
-    chunkId: str | None
+    chunkId: str
     candidateId: str | None
     contentSnapshot: str | None
     sourceSnapshot: dict[str, Any]
@@ -112,3 +112,19 @@ class QARunDetailDTO(BaseModel):
     trace: list[QARunTraceStepDTO]
     metrics: dict[str, Any]
     createdAt: str
+
+
+class QARunListItemDTO(BaseModel):
+    """QA 历史列表项，避免 P10 为列表读取完整 Trace 和 Evidence。"""
+
+    runId: str
+    kbId: str
+    configRevisionId: str
+    query: str
+    status: str
+    answer: str | None
+    hasOverride: bool
+    feedbackStatus: str
+    createdBy: str | None
+    createdAt: str
+    latencyMs: int | None = None

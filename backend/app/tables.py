@@ -211,7 +211,7 @@ qa_run_evidence = sa.Table(
     metadata,
     sa.Column("evidence_id", postgresql.UUID(as_uuid=True), primary_key=True),
     sa.Column("run_id", postgresql.UUID(as_uuid=True), nullable=False),
-    sa.Column("chunk_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("chunk_id", postgresql.UUID(as_uuid=True), nullable=False),
     sa.Column("candidate_id", postgresql.UUID(as_uuid=True), nullable=True),
     sa.Column("evidence_order", sa.Integer(), nullable=False),
     sa.Column("content_snapshot", sa.Text(), nullable=True),

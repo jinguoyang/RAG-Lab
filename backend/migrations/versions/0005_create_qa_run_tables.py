@@ -90,7 +90,7 @@ def upgrade() -> None:
         "qa_run_candidates",
         sa.Column("candidate_id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column("run_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("chunk_id", postgresql.UUID(as_uuid=True), nullable=True),
+        sa.Column("chunk_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("source_type", sa.String(length=32), nullable=False),
         sa.Column("raw_score", sa.Numeric(10, 6), nullable=True),
         sa.Column("rerank_score", sa.Numeric(10, 6), nullable=True),
