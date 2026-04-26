@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import RowMapping, func, insert, select, update
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.schemas.auth import CurrentUserResponse
 from app.schemas.qa_run import (
     QARunCandidateDTO,
@@ -28,6 +29,7 @@ from app.tables import (
     qa_run_trace_steps,
     qa_runs,
 )
+from app.services.qa_providers import ProviderCandidate, ProviderError, QARunProviders, get_qa_run_providers
 
 
 class QARunCreateConflict(ValueError):
@@ -116,6 +118,22 @@ def _assert_retrieval_enabled(revision_row: RowMapping, override_snapshot: dict)
         raise QARunCreateConflict("At least one retrieval channel must be enabled.")
 
 
+def _effective_retrieval_channels(revision_row: RowMapping, override_snapshot: dict) -> set[str]:
+    """解析 Revision 与临时覆盖后的有效检索通道，供执行器调用对应 Provider。"""
+    nodes = revision_row["pipeline_definition"].get("nodes", [])
+    channel_overrides = override_snapshot.get("channels", {}) or {}
+    enabled_channels: set[str] = set()
+    for node in nodes if isinstance(nodes, list) else []:
+        if not isinstance(node, dict):
+            continue
+        channel_key = RETRIEVAL_NODE_TO_OVERRIDE_KEY.get(str(node.get("type")))
+        if channel_key is None:
+            continue
+        if node.get("enabled") is not False and channel_overrides.get(channel_key, True) is True:
+            enabled_channels.add(channel_key)
+    return enabled_channels
+
+
 def _read_visible_qa_run(
     session: Session,
     current_user: CurrentUserResponse,
@@ -148,85 +166,285 @@ def _status_progress(row: RowMapping) -> tuple[str, int, str, bool]:
     return "draft", 0, "运行尚未提交", False
 
 
-def _execute_mock_qa_run(session: Session, run_id: UUID, query: str) -> None:
-    """执行开发期 mock Provider，写入可追溯的最小 QA 结果。"""
-    started_at = datetime.now(UTC)
-    rewritten_query = query if query.endswith("?") or query.endswith("？") else f"{query}?"
-    answer = f"这是基于 mock Provider 生成的调试回答：{query}"
-    evidence_id = uuid4()
-    candidate_id = uuid4()
-    citation_id = uuid4()
-    content_snapshot = "mock Provider 当前使用固定证据，用于验证 QARun 状态、Trace、Evidence 和 Citation 链路。"
-    content_hash = sha256(content_snapshot.encode("utf-8")).hexdigest()
+def _insert_trace_step(
+    session: Session,
+    run_id: UUID,
+    step_order: int,
+    step_key: str,
+    status_value: str,
+    input_summary: dict,
+    output_summary: dict,
+    metrics: dict,
+    error_code: str | None = None,
+    error_message: str | None = None,
+    started_at: datetime | None = None,
+) -> None:
+    """写入单个 Trace 步骤，保证成功、跳过和降级路径使用同一结构。"""
+    session.execute(
+        insert(qa_run_trace_steps).values(
+            trace_step_id=uuid4(),
+            run_id=run_id,
+            step_order=step_order,
+            step_key=step_key,
+            status=status_value,
+            input_summary=input_summary,
+            output_summary=output_summary,
+            metrics=metrics,
+            error_code=error_code,
+            error_message=error_message,
+            started_at=started_at,
+            ended_at=datetime.now(UTC),
+        )
+    )
 
-    # mock 链路保持安全边界显式可见，后续替换真实 Provider 时仍保留 permissionFilter。
-    trace_steps = [
-        (
+
+def _execute_provider_qa_run(
+    session: Session,
+    run_id: UUID,
+    kb_id: UUID,
+    query: str,
+    revision_row: RowMapping,
+    override_snapshot: dict,
+    providers: QARunProviders | None = None,
+) -> None:
+    """执行 E5 Provider 编排链路，并在外部组件失败时记录降级 Trace。"""
+    started_at = datetime.now(UTC)
+    provider_set = providers or get_qa_run_providers()
+    settings = get_settings()
+    enabled_channels = _effective_retrieval_channels(revision_row, override_snapshot)
+    trace_order = 1
+    provider_errors: list[str] = []
+
+    try:
+        rewritten_query = provider_set.llm.rewrite_query(query)
+        _insert_trace_step(
+            session,
+            run_id,
+            trace_order,
             "queryRewrite",
+            "success",
             {"query": query},
             {"rewrittenQuery": rewritten_query},
-            {"latencyMs": 5},
-        ),
-        (
-            "mockRetrieval",
-            {"query": rewritten_query},
-            {"candidateCount": 1},
-            {"latencyMs": 8},
-        ),
-        (
-            "permissionFilter",
-            {"inputCandidates": 1},
-            {"authorizedCandidates": 1, "droppedCandidates": 0},
-            {"latencyMs": 3},
-        ),
-        (
-            "generation",
-            {"evidenceCount": 1},
-            {"answerPreview": answer[:80]},
-            {"latencyMs": 12, "totalTokens": 128},
-        ),
-        (
-            "citation",
-            {"evidenceCount": 1},
-            {"citationCount": 1},
-            {"latencyMs": 2},
-        ),
-    ]
+            {"provider": settings.llm_provider},
+            started_at=started_at,
+        )
+    except ProviderError as exc:
+        rewritten_query = query
+        provider_errors.append("queryRewrite")
+        _insert_trace_step(
+            session,
+            run_id,
+            trace_order,
+            "queryRewrite",
+            "partial",
+            {"query": query},
+            {"rewrittenQuery": rewritten_query},
+            {"provider": settings.llm_provider},
+            error_code="PROVIDER_ERROR",
+            error_message=str(exc),
+            started_at=started_at,
+        )
+    trace_order += 1
 
-    for index, (step_key, input_summary, output_summary, metrics) in enumerate(trace_steps, start=1):
-        session.execute(
-            insert(qa_run_trace_steps).values(
-                trace_step_id=uuid4(),
-                run_id=run_id,
-                step_order=index,
-                step_key=step_key,
-                status="success",
-                input_summary=input_summary,
-                output_summary=output_summary,
-                metrics=metrics,
+    try:
+        embedding = provider_set.embedding.embed_query(rewritten_query)
+        _insert_trace_step(
+            session,
+            run_id,
+            trace_order,
+            "embedding",
+            "success",
+            {"query": rewritten_query},
+            {"vectorReady": True, "dimension": len(embedding)},
+            {"provider": settings.embedding_provider},
+            started_at=started_at,
+        )
+        trace_order += 1
+    except ProviderError as exc:
+        embedding = []
+        provider_errors.append("embedding")
+        _insert_trace_step(
+            session,
+            run_id,
+            trace_order,
+            "embedding",
+            "partial",
+            {"query": rewritten_query},
+            {"vectorReady": False},
+            {"provider": settings.embedding_provider},
+            error_code="PROVIDER_ERROR",
+            error_message=str(exc),
+            started_at=started_at,
+        )
+        trace_order += 1
+
+    candidates: list[ProviderCandidate] = []
+    retrieval_steps = [
+        ("dense", "denseRetrieval", settings.dense_retrieval_provider),
+        ("sparse", "sparseRetrieval", settings.sparse_retrieval_provider),
+        ("graph", "graphRetrieval", settings.graph_retrieval_provider),
+    ]
+    for channel, step_key, provider_name in retrieval_steps:
+        if channel not in enabled_channels:
+            _insert_trace_step(
+                session,
+                run_id,
+                trace_order,
+                step_key,
+                "skipped",
+                {"query": rewritten_query},
+                {"reason": "channelDisabled"},
+                {"provider": provider_name},
                 started_at=started_at,
-                ended_at=datetime.now(UTC),
+            )
+            trace_order += 1
+            continue
+
+        try:
+            if channel == "dense":
+                channel_candidates = provider_set.dense.retrieve(kb_id, rewritten_query, embedding, settings.provider_top_k)
+            elif channel == "sparse":
+                channel_candidates = provider_set.sparse.retrieve(kb_id, rewritten_query, settings.provider_top_k)
+            else:
+                channel_candidates = provider_set.graph.retrieve(kb_id, rewritten_query, None, settings.provider_top_k)
+            candidates.extend(channel_candidates)
+            _insert_trace_step(
+                session,
+                run_id,
+                trace_order,
+                step_key,
+                "success",
+                {"query": rewritten_query},
+                {"candidateCount": len(channel_candidates)},
+                {"provider": provider_name},
+                started_at=started_at,
+            )
+        except ProviderError as exc:
+            provider_errors.append(step_key)
+            _insert_trace_step(
+                session,
+                run_id,
+                trace_order,
+                step_key,
+                "partial",
+                {"query": rewritten_query},
+                {"candidateCount": 0},
+                {"provider": provider_name},
+                error_code="PROVIDER_ERROR",
+                error_message=str(exc),
+                started_at=started_at,
+            )
+        trace_order += 1
+
+    if not candidates:
+        candidates = [
+            ProviderCandidate(
+                source_type="mock",
+                chunk_id=MOCK_EVIDENCE_CHUNK_ID,
+                raw_score=1,
+                content="Provider 未返回可用候选，系统使用本地兜底证据保持调试链路可追踪。",
+                metadata={"provider": "fallback"},
+            )
+        ]
+        provider_errors.append("fallbackEvidence")
+
+    try:
+        reranked_candidates = provider_set.rerank.rerank(rewritten_query, candidates, settings.provider_top_k)
+        rerank_status = "success"
+        rerank_error = None
+    except ProviderError as exc:
+        reranked_candidates = candidates[: settings.provider_top_k]
+        rerank_status = "partial"
+        rerank_error = str(exc)
+        provider_errors.append("rerank")
+    _insert_trace_step(
+        session,
+        run_id,
+        trace_order,
+        "rerank",
+        rerank_status,
+        {"inputCandidates": len(candidates)},
+        {"candidateCount": len(reranked_candidates)},
+        {"provider": settings.rerank_provider},
+        error_code="PROVIDER_ERROR" if rerank_error else None,
+        error_message=rerank_error,
+        started_at=started_at,
+    )
+    trace_order += 1
+
+    # 当前仓库尚未落地 Chunk 权限表；这里保留权限裁剪步骤，后续接入 PG Chunk 回表校验。
+    authorized_candidates = reranked_candidates
+    permission_filter_pending = any(candidate.chunk_id is None for candidate in authorized_candidates)
+    if permission_filter_pending:
+        provider_errors.append("permissionFilterPending")
+    _insert_trace_step(
+        session,
+        run_id,
+        trace_order,
+        "permissionFilter",
+        "partial" if permission_filter_pending else "success",
+        {"inputCandidates": len(reranked_candidates)},
+        {
+            "authorizedCandidates": len(authorized_candidates),
+            "droppedCandidates": 0,
+            "note": "Chunk permission table is not available in current sprint.",
+        },
+        {"latencyMs": 0},
+        started_at=started_at,
+    )
+    trace_order += 1
+
+    try:
+        answer = provider_set.llm.generate_answer(query, authorized_candidates)
+        generation_status = "success"
+        generation_error = None
+    except ProviderError as exc:
+        answer = f"Provider 生成失败，返回候选摘要供调试：{query}"
+        generation_status = "partial"
+        generation_error = str(exc)
+        provider_errors.append("generation")
+    _insert_trace_step(
+        session,
+        run_id,
+        trace_order,
+        "generation",
+        generation_status,
+        {"evidenceCount": len(authorized_candidates)},
+        {"answerPreview": answer[:80]},
+        {"provider": settings.llm_provider},
+        error_code="PROVIDER_ERROR" if generation_error else None,
+        error_message=generation_error,
+        started_at=started_at,
+    )
+    trace_order += 1
+
+    evidence_id = uuid4()
+    citation_id = uuid4()
+    top_candidate = authorized_candidates[0]
+    candidate_id = uuid4()
+    content_snapshot = top_candidate.content or "Provider 候选未返回正文，当前仅保留来源摘要。"
+    content_hash = sha256(content_snapshot.encode("utf-8")).hexdigest()
+
+    for index, candidate in enumerate(authorized_candidates, start=1):
+        session.execute(
+            insert(qa_run_candidates).values(
+                candidate_id=candidate_id if index == 1 else uuid4(),
+                run_id=run_id,
+                chunk_id=candidate.chunk_id or MOCK_EVIDENCE_CHUNK_ID,
+                source_type=candidate.source_type,
+                raw_score=candidate.raw_score,
+                rerank_score=candidate.raw_score,
+                rank_no=index,
+                is_authorized=True,
+                metadata=candidate.metadata,
             )
         )
 
     session.execute(
-        insert(qa_run_candidates).values(
-            candidate_id=candidate_id,
-            run_id=run_id,
-            chunk_id=MOCK_EVIDENCE_CHUNK_ID,
-            source_type="mock",
-            raw_score=1,
-            rerank_score=1,
-            rank_no=1,
-            is_authorized=True,
-            metadata={"documentName": "Mock Evidence", "section": "dev-provider"},
-        )
-    )
-    session.execute(
         insert(qa_run_evidence).values(
             evidence_id=evidence_id,
             run_id=run_id,
-            chunk_id=MOCK_EVIDENCE_CHUNK_ID,
+            chunk_id=top_candidate.chunk_id or MOCK_EVIDENCE_CHUNK_ID,
             candidate_id=candidate_id,
             evidence_order=1,
             content_snapshot=content_snapshot,
@@ -234,9 +452,8 @@ def _execute_mock_qa_run(session: Session, run_id: UUID, query: str) -> None:
             snapshot_policy="redacted",
             redaction_status="none",
             source_snapshot={
-                "documentName": "Mock Evidence",
-                "pageNo": 1,
-                "section": "dev-provider",
+                "sourceType": top_candidate.source_type,
+                **top_candidate.metadata,
             },
         )
     )
@@ -246,26 +463,46 @@ def _execute_mock_qa_run(session: Session, run_id: UUID, query: str) -> None:
             run_id=run_id,
             evidence_id=evidence_id,
             citation_order=1,
-            label="Mock Evidence#1",
-            location_snapshot={"pageNo": 1, "section": "dev-provider"},
+            label=f"{top_candidate.source_type}#1",
+            location_snapshot=top_candidate.metadata,
         )
     )
+    _insert_trace_step(
+        session,
+        run_id,
+        trace_order,
+        "citation",
+        "success",
+        {"evidenceCount": 1},
+        {"citationCount": 1},
+        {"latencyMs": 0},
+        started_at=started_at,
+    )
+
+    channel_counts = {"denseCount": 0, "sparseCount": 0, "graphCount": 0, "mockCount": 0}
+    for candidate in authorized_candidates:
+        if candidate.source_type == "dense":
+            channel_counts["denseCount"] += 1
+        elif candidate.source_type == "sparse":
+            channel_counts["sparseCount"] += 1
+        elif candidate.source_type == "graph":
+            channel_counts["graphCount"] += 1
+        else:
+            channel_counts["mockCount"] += 1
+
     session.execute(
         update(qa_runs)
         .where(qa_runs.c.run_id == run_id)
         .values(
             rewritten_query=rewritten_query,
-            status="success",
+            status="partial" if provider_errors else "success",
             answer=answer,
             metrics={
-                "latencyMs": 30,
-                "totalTokens": 128,
+                "latencyMs": int((datetime.now(UTC) - started_at).total_seconds() * 1000),
                 "retrievalDiagnostics": {
-                    "denseCount": 0,
-                    "sparseCount": 0,
-                    "graphCount": 0,
-                    "mockCount": 1,
+                    **channel_counts,
                     "droppedByPermission": 0,
+                    "providerErrors": provider_errors,
                 },
             },
             started_at=started_at,
@@ -313,7 +550,8 @@ def create_qa_run(
             )
             .returning(qa_runs)
         ).mappings().one()
-        _execute_mock_qa_run(session, run_id, request.query)
+        _execute_provider_qa_run(session, run_id, kb_id, request.query, revision_row, override_snapshot)
+        row = session.execute(select(qa_runs).where(qa_runs.c.run_id == run_id).limit(1)).mappings().one()
         session.commit()
     except Exception:
         session.rollback()

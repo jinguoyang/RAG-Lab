@@ -233,3 +233,38 @@ qa_run_citations = sa.Table(
     sa.Column("location_snapshot", postgresql.JSONB(), nullable=False),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
 )
+
+graph_snapshots = sa.Table(
+    "graph_snapshots",
+    metadata,
+    sa.Column("graph_snapshot_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("kb_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("source_scope", postgresql.JSONB(), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("neo4j_graph_key", sa.String(length=128), nullable=True),
+    sa.Column("stale_reason", sa.String(length=64), nullable=True),
+    sa.Column("stale_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("entity_count", sa.Integer(), nullable=True),
+    sa.Column("relation_count", sa.Integer(), nullable=True),
+    sa.Column("community_count", sa.Integer(), nullable=True),
+    sa.Column("job_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("error_message", sa.Text(), nullable=True),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
+graph_chunk_refs = sa.Table(
+    "graph_chunk_refs",
+    metadata,
+    sa.Column("graph_chunk_ref_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("graph_snapshot_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("chunk_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("neo4j_node_key", sa.String(length=128), nullable=True),
+    sa.Column("neo4j_relation_key", sa.String(length=128), nullable=True),
+    sa.Column("community_key", sa.String(length=128), nullable=True),
+    sa.Column("ref_type", sa.String(length=32), nullable=False),
+    sa.Column("metadata", postgresql.JSONB(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+)
