@@ -1,3 +1,4 @@
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -47,3 +48,36 @@ class KnowledgeBaseCreateRequest(BaseModel):
         if not stripped_value:
             raise ValueError("Knowledge base name is required.")
         return stripped_value
+
+
+SubjectType = Literal["user", "group"]
+KbRole = Literal["kb_owner", "kb_editor", "kb_operator", "kb_viewer"]
+
+
+class KbMemberBindingDTO(BaseModel):
+    """知识库成员绑定摘要，供 P12 成员与权限页展示。"""
+
+    bindingId: str
+    kbId: str
+    subjectType: SubjectType
+    subjectId: str
+    subjectName: str
+    subjectStatus: str
+    kbRole: KbRole
+    status: str
+    createdAt: str
+    updatedAt: str
+
+
+class KbMemberCreateRequest(BaseModel):
+    """添加知识库成员绑定请求，一个主体在同一知识库内只保留一个有效角色。"""
+
+    subjectType: SubjectType
+    subjectId: UUID
+    kbRole: KbRole
+
+
+class KbMemberUpdateRequest(BaseModel):
+    """修改知识库成员角色请求；不允许通过更新接口更换绑定主体。"""
+
+    kbRole: KbRole
