@@ -24,11 +24,11 @@ class Settings(BaseSettings):
     dev_default_security_level: str = "public"
     storage_backend: str = Field(
         default="metadata",
-        validation_alias=AliasChoices("RAG_LAB_STORAGE_BACKEND", "STORAGE_BACKEND"),
+        validation_alias=AliasChoices("RAG_LAB_STORAGE_BACKEND", "STORAGE_BACKEND", "OBJECT_STORAGE_PROVIDER"),
     )
     storage_bucket: str = Field(
         default="rag-lab-source",
-        validation_alias=AliasChoices("RAG_LAB_STORAGE_BUCKET", "STORAGE_BUCKET"),
+        validation_alias=AliasChoices("RAG_LAB_STORAGE_BUCKET", "STORAGE_BUCKET", "MINIO_BUCKET"),
     )
     storage_object_prefix: str = Field(
         default="dev",

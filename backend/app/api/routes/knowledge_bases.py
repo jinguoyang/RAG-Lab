@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -12,6 +12,7 @@ from app.schemas.common import PageResponse
 from app.schemas.knowledge_base import (
     KbMemberBindingDTO,
     KbMemberCreateRequest,
+    KbMemberSubjectOptionDTO,
     KbMemberUpdateRequest,
     KnowledgeBaseCreateRequest,
     KnowledgeBaseDTO,
@@ -30,6 +31,7 @@ from app.services.knowledge_base_service import (
     list_knowledge_bases,
     list_kb_members,
     remove_kb_member,
+    search_kb_member_subjects,
     update_kb_member_role,
 )
 
@@ -128,12 +130,39 @@ def read_kb_members(
     page_no: Annotated[int, Query(alias="pageNo", ge=1)] = 1,
     page_size: Annotated[int, Query(alias="pageSize", ge=1, le=100)] = 20,
     keyword: str | None = None,
+    kb_role: Annotated[
+        Literal["kb_owner", "kb_editor", "kb_operator", "kb_viewer"] | None,
+        Query(alias="kbRole"),
+    ] = None,
     current_user: CurrentUserResponse = Depends(get_current_user),
     session: Session = Depends(get_db_session),
 ) -> PageResponse[KbMemberBindingDTO]:
     """分页返回知识库成员绑定，支撑 P12 成员列表。"""
     try:
-        return list_kb_members(session, current_user, kb_id, page_no, page_size, keyword)
+        return list_kb_members(session, current_user, kb_id, page_no, page_size, keyword, kb_role)
+    except Exception as exc:
+        _raise_member_error(exc)
+
+
+@router.get("/{kb_id}/member-subjects/search", response_model=list[KbMemberSubjectOptionDTO])
+def search_kb_member_subjects_endpoint(
+    kb_id: UUID,
+    subject_type: Annotated[Literal["user", "group"], Query(alias="subjectType")],
+    keyword: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=20)] = 8,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> list[KbMemberSubjectOptionDTO]:
+    """搜索可添加到知识库的用户或用户组，供 P12 搜索下拉使用。"""
+    try:
+        return search_kb_member_subjects(
+            session,
+            current_user,
+            kb_id,
+            subject_type,
+            keyword,
+            limit,
+        )
     except Exception as exc:
         _raise_member_error(exc)
 

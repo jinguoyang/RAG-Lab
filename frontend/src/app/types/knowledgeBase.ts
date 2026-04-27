@@ -49,6 +49,15 @@ export interface KbMemberBinding {
   updatedAt: string;
 }
 
+export interface KbMemberSubjectOption {
+  subjectType: KbMemberSubjectType;
+  subjectId: string;
+  label: string;
+  secondaryText: string | null;
+  status: string;
+  isAlreadyBound: boolean;
+}
+
 export interface KbMemberCreateRequest {
   subjectType: KbMemberSubjectType;
   subjectId: string;

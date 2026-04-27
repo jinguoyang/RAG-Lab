@@ -69,6 +69,17 @@ class KbMemberBindingDTO(BaseModel):
     updatedAt: str
 
 
+class KbMemberSubjectOptionDTO(BaseModel):
+    """P12 添加成员下拉选项，避免前端直接输入不可读的 UUID。"""
+
+    subjectType: SubjectType
+    subjectId: str
+    label: str
+    secondaryText: str | None = None
+    status: str
+    isAlreadyBound: bool = False
+
+
 class KbMemberCreateRequest(BaseModel):
     """添加知识库成员绑定请求，一个主体在同一知识库内只保留一个有效角色。"""
 

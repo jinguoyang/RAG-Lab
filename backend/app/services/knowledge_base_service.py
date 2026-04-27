@@ -8,6 +8,7 @@ from app.schemas.common import PageResponse
 from app.schemas.knowledge_base import (
     KbMemberBindingDTO,
     KbMemberCreateRequest,
+    KbMemberSubjectOptionDTO,
     KbMemberUpdateRequest,
     KnowledgeBaseCreateRequest,
     KnowledgeBaseDTO,
@@ -286,6 +287,7 @@ def list_kb_members(
     page_no: int,
     page_size: int,
     keyword: str | None,
+    kb_role: str | None = None,
 ) -> PageResponse[KbMemberBindingDTO]:
     """分页返回知识库成员绑定；列表可读仍受知识库可见性约束。"""
     _ensure_kb_visible(session, current_user, kb_id)
@@ -298,6 +300,8 @@ def list_kb_members(
             users.c.username.ilike(keyword_pattern),
             user_groups.c.name.ilike(keyword_pattern),
         )
+    if kb_role:
+        condition = condition & (kb_member_bindings.c.kb_role == kb_role)
 
     base_select = _member_base_select().where(condition)
     total = session.execute(
@@ -318,6 +322,100 @@ def list_kb_members(
         pageSize=page_size,
         total=total,
     )
+
+
+def search_kb_member_subjects(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    subject_type: str,
+    keyword: str | None,
+    limit: int,
+) -> list[KbMemberSubjectOptionDTO]:
+    """搜索可被绑定到知识库的用户或用户组，并标记已绑定主体。"""
+    _ensure_member_manage_permission(session, current_user, kb_id)
+
+    normalized_keyword = keyword.strip() if keyword else ""
+    bound_subject_ids = set(
+        session.execute(
+            select(kb_member_bindings.c.subject_id).where(
+                kb_member_bindings.c.kb_id == kb_id,
+                kb_member_bindings.c.subject_type == subject_type,
+                kb_member_bindings.c.status == "active",
+            )
+        ).scalars()
+    )
+
+    if subject_type == "user":
+        condition = users.c.status == "active"
+        condition = condition & users.c.deleted_at.is_(None)
+        if normalized_keyword:
+            keyword_pattern = f"%{normalized_keyword}%"
+            condition = condition & or_(
+                users.c.display_name.ilike(keyword_pattern),
+                users.c.username.ilike(keyword_pattern),
+                users.c.email.ilike(keyword_pattern),
+            )
+
+        rows = session.execute(
+            select(
+                users.c.user_id.label("subject_id"),
+                users.c.display_name.label("label"),
+                users.c.username,
+                users.c.email,
+                users.c.status,
+            )
+            .where(condition)
+            .order_by(users.c.display_name.asc(), users.c.username.asc())
+            .limit(limit)
+        ).mappings()
+
+        return [
+            KbMemberSubjectOptionDTO(
+                subjectType="user",
+                subjectId=str(row["subject_id"]),
+                label=row["label"],
+                secondaryText=" · ".join(
+                    part for part in (f"@{row['username']}", row["email"]) if part
+                ),
+                status=row["status"],
+                isAlreadyBound=row["subject_id"] in bound_subject_ids,
+            )
+            for row in rows
+        ]
+
+    condition = user_groups.c.status == "active"
+    condition = condition & user_groups.c.deleted_at.is_(None)
+    if normalized_keyword:
+        keyword_pattern = f"%{normalized_keyword}%"
+        condition = condition & or_(
+            user_groups.c.name.ilike(keyword_pattern),
+            user_groups.c.description.ilike(keyword_pattern),
+        )
+
+    rows = session.execute(
+        select(
+            user_groups.c.group_id.label("subject_id"),
+            user_groups.c.name.label("label"),
+            user_groups.c.description,
+            user_groups.c.status,
+        )
+        .where(condition)
+        .order_by(user_groups.c.name.asc())
+        .limit(limit)
+    ).mappings()
+
+    return [
+        KbMemberSubjectOptionDTO(
+            subjectType="group",
+            subjectId=str(row["subject_id"]),
+            label=row["label"],
+            secondaryText=row["description"],
+            status=row["status"],
+            isAlreadyBound=row["subject_id"] in bound_subject_ids,
+        )
+        for row in rows
+    ]
 
 
 def create_kb_member(

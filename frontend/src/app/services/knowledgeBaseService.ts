@@ -2,10 +2,12 @@ import { apiDelete, apiGet, apiPatchJson, apiPostJson } from "./apiClient";
 import type {
   KbMemberBinding,
   KbMemberCreateRequest,
+  KbMemberSubjectOption,
   KbMemberUpdateRequest,
   KnowledgeBase,
   PageResponse,
   PermissionSummary,
+  KbRole,
 } from "../types/knowledgeBase";
 
 export async function fetchKnowledgeBases(keyword?: string): Promise<PageResponse<KnowledgeBase>> {
@@ -21,13 +23,39 @@ export async function fetchKnowledgeBase(kbId: string): Promise<KnowledgeBase> {
   return apiGet<KnowledgeBase>(`/knowledge-bases/${kbId}`);
 }
 
-export async function fetchKbMembers(kbId: string, keyword?: string): Promise<PageResponse<KbMemberBinding>> {
-  const params = new URLSearchParams({ pageNo: "1", pageSize: "100" });
+interface FetchKbMembersParams {
+  keyword?: string;
+  pageNo?: number;
+  pageSize?: number;
+  kbRole?: KbRole | "";
+}
+
+export async function fetchKbMembers(
+  kbId: string,
+  { keyword, pageNo = 1, pageSize = 20, kbRole }: FetchKbMembersParams = {},
+): Promise<PageResponse<KbMemberBinding>> {
+  const params = new URLSearchParams({ pageNo: String(pageNo), pageSize: String(pageSize) });
+  if (keyword?.trim()) {
+    params.set("keyword", keyword.trim());
+  }
+  if (kbRole) {
+    params.set("kbRole", kbRole);
+  }
+
+  return apiGet<PageResponse<KbMemberBinding>>(`/knowledge-bases/${kbId}/members?${params.toString()}`);
+}
+
+export async function searchKbMemberSubjects(
+  kbId: string,
+  subjectType: "user" | "group",
+  keyword?: string,
+): Promise<KbMemberSubjectOption[]> {
+  const params = new URLSearchParams({ subjectType, limit: "8" });
   if (keyword?.trim()) {
     params.set("keyword", keyword.trim());
   }
 
-  return apiGet<PageResponse<KbMemberBinding>>(`/knowledge-bases/${kbId}/members?${params.toString()}`);
+  return apiGet<KbMemberSubjectOption[]>(`/knowledge-bases/${kbId}/member-subjects/search?${params.toString()}`);
 }
 
 export async function fetchKbPermissionSummary(kbId: string): Promise<PermissionSummary> {
