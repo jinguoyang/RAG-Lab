@@ -47,6 +47,30 @@ export interface IngestJobDTO {
   createdAt: string;
 }
 
+export interface ChunkDTO {
+  chunkId: string;
+  versionId: string;
+  documentId: string;
+  kbId: string;
+  chunkIndex: number;
+  pageNo: number | null;
+  section: string | null;
+  content: string;
+  contentHash: string | null;
+  tokenCount: number | null;
+  securityLevel: string;
+  status: "active" | "inactive" | "deleted";
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface DocumentVersionActivateResponse {
+  documentId: string;
+  activeVersionId: string;
+  previousActiveVersionId: string | null;
+  auditLogId: string;
+}
+
 export interface DocumentDetailDTO {
   document: DocumentDTO;
   activeVersion: DocumentVersionDTO | null;
@@ -88,5 +112,16 @@ export interface IngestJobViewModel {
   errorMessage: string;
 }
 
+export interface ChunkViewModel {
+  id: string;
+  indexLabel: string;
+  pageLabel: string;
+  section: string;
+  preview: string;
+  tokenCount: number | null;
+  metadataText: string;
+}
+
 export type DocumentPage = PageResponse<DocumentDTO>;
 export type IngestJobPage = PageResponse<IngestJobDTO>;
+export type ChunkPage = PageResponse<ChunkDTO>;

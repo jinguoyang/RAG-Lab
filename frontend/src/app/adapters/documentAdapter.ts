@@ -1,4 +1,6 @@
 import type {
+  ChunkDTO,
+  ChunkViewModel,
   DocumentDTO,
   DocumentRowViewModel,
   DocumentVersionDTO,
@@ -69,5 +71,17 @@ export function toIngestJobView(job: IngestJobDTO): IngestJobViewModel {
     progress: job.progress,
     createdAtLabel: formatDateTime(job.createdAt),
     errorMessage: job.errorMessage || "-",
+  };
+}
+
+export function toChunkView(chunk: ChunkDTO): ChunkViewModel {
+  return {
+    id: chunk.chunkId,
+    indexLabel: `#${chunk.chunkIndex}`,
+    pageLabel: chunk.pageNo ? `P${chunk.pageNo}` : "-",
+    section: chunk.section || "-",
+    preview: chunk.content.length > 120 ? `${chunk.content.slice(0, 120)}...` : chunk.content,
+    tokenCount: chunk.tokenCount,
+    metadataText: JSON.stringify(chunk.metadata),
   };
 }
