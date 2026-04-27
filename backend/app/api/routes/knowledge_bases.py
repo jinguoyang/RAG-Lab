@@ -16,6 +16,8 @@ from app.schemas.knowledge_base import (
     KnowledgeBaseCreateRequest,
     KnowledgeBaseDTO,
 )
+from app.schemas.permission import PermissionSummaryDTO
+from app.services.permission_service import get_kb_permission_summary
 from app.services.knowledge_base_service import (
     KbMemberBindingConflictError,
     KbMemberBindingNotFoundError,
@@ -102,6 +104,22 @@ def read_knowledge_base(
             detail="Knowledge base not found.",
         )
     return knowledge_base
+
+
+@router.get("/{kb_id}/permissions/summary", response_model=PermissionSummaryDTO)
+def read_kb_permission_summary(
+    kb_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> PermissionSummaryDTO:
+    """返回当前用户在知识库下的权限摘要，供 P12 和按钮置灰展示。"""
+    summary = get_kb_permission_summary(session, current_user, kb_id)
+    if summary is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Knowledge base not found.",
+        )
+    return summary
 
 
 @router.get("/{kb_id}/members", response_model=PageResponse[KbMemberBindingDTO])

@@ -37,6 +37,18 @@ user_groups = sa.Table(
     sa.Column("deleted_by", postgresql.UUID(as_uuid=True), nullable=True),
 )
 
+user_group_members = sa.Table(
+    "user_group_members",
+    metadata,
+    sa.Column("group_member_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("group_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("user_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("joined_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("left_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
 knowledge_bases = sa.Table(
     "knowledge_bases",
     metadata,
@@ -68,6 +80,53 @@ kb_member_bindings = sa.Table(
     sa.Column("subject_type", sa.String(length=16), nullable=False),
     sa.Column("subject_id", postgresql.UUID(as_uuid=True), nullable=False),
     sa.Column("kb_role", sa.String(length=32), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
+permissions = sa.Table(
+    "permissions",
+    metadata,
+    sa.Column("permission_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("permission_code", sa.String(length=64), nullable=False),
+    sa.Column("scope", sa.String(length=16), nullable=False),
+    sa.Column("name", sa.String(length=128), nullable=False),
+    sa.Column("description", sa.Text(), nullable=True),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
+role_permission_bindings = sa.Table(
+    "role_permission_bindings",
+    metadata,
+    sa.Column("role_permission_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("role_scope", sa.String(length=16), nullable=False),
+    sa.Column("role_code", sa.String(length=32), nullable=False),
+    sa.Column("permission_code", sa.String(length=64), nullable=False),
+    sa.Column("effect", sa.String(length=16), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
+acl_rules = sa.Table(
+    "acl_rules",
+    metadata,
+    sa.Column("acl_rule_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("resource_type", sa.String(length=32), nullable=False),
+    sa.Column("resource_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("subject_type", sa.String(length=16), nullable=False),
+    sa.Column("subject_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("effect", sa.String(length=16), nullable=False),
+    sa.Column("permission_code", sa.String(length=64), nullable=False),
     sa.Column("status", sa.String(length=16), nullable=False),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),

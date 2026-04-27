@@ -13,6 +13,7 @@ from app.schemas.knowledge_base import (
     KnowledgeBaseDTO,
     RequiredForActivationDTO,
 )
+from app.services.permission_service import has_kb_permission, kb_visibility_condition
 from app.tables import kb_member_bindings, knowledge_bases, user_groups, users
 
 
@@ -60,23 +61,9 @@ def _to_dto(row: RowMapping) -> KnowledgeBaseDTO:
     )
 
 
-def _is_platform_admin(current_user: CurrentUserResponse) -> bool:
-    """判断开发期当前用户是否具备平台管理员能力。"""
-    return current_user.user.platformRole == "platform_admin"
-
-
-def _has_permission(current_user: CurrentUserResponse, permission_code: str) -> bool:
-    """检查开发期用户权限摘要，后续可替换为正式权限服务。"""
-    return permission_code in current_user.platformPermissions
-
-
 def _visible_condition(current_user: CurrentUserResponse):
-    """E1 阶段的最小可见性：管理员看全部，普通用户看自己负责的知识库。"""
-    if _is_platform_admin(current_user):
-        return knowledge_bases.c.deleted_at.is_(None)
-    return (knowledge_bases.c.deleted_at.is_(None)) & (
-        knowledge_bases.c.owner_id == UUID(current_user.user.userId)
-    )
+    """知识库可见性以后端权限解析为准，成员绑定后立即影响列表。"""
+    return kb_visibility_condition(current_user)
 
 
 def _ensure_kb_visible(
@@ -101,7 +88,7 @@ def _ensure_member_manage_permission(
 ) -> None:
     """成员变更是权限边界操作，必须先确认知识库可见并具备管理权限。"""
     _ensure_kb_visible(session, current_user, kb_id)
-    if not _has_permission(current_user, "kb.member.manage"):
+    if not has_kb_permission(session, current_user, kb_id, "kb.member.manage"):
         raise KnowledgeBasePermissionError
 
 
