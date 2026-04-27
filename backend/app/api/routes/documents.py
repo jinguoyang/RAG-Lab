@@ -23,6 +23,7 @@ from app.services.document_service import (
     list_documents,
     list_ingest_jobs,
 )
+from app.services.knowledge_base_service import KnowledgeBaseDisabledError
 from app.services.object_storage import ObjectStorageError
 
 router = APIRouter(prefix="/knowledge-bases/{kb_id}/documents", tags=["documents"])
@@ -73,6 +74,11 @@ async def upload_document(
             name=name,
             security_level=security_level,
         )
+    except KnowledgeBaseDisabledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="KB_DISABLED: knowledge base is disabled.",
+        ) from exc
     except ObjectStorageError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

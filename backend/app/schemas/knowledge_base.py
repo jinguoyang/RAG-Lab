@@ -50,6 +50,29 @@ class KnowledgeBaseCreateRequest(BaseModel):
         return stripped_value
 
 
+class KnowledgeBaseUpdateRequest(BaseModel):
+    """更新知识库基础信息请求；未传字段保持原值不变。"""
+
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    description: str | None = None
+    ownerId: UUID | None = None
+    defaultSecurityLevel: str | None = Field(default=None, min_length=1, max_length=32)
+    sparseIndexEnabled: bool | None = None
+    graphIndexEnabled: bool | None = None
+    requiredForActivation: RequiredForActivationDTO | None = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str | None) -> str | None:
+        """更新名称时同样裁剪空白，避免写入不可读名称。"""
+        if value is None:
+            return value
+        stripped_value = value.strip()
+        if not stripped_value:
+            raise ValueError("Knowledge base name is required.")
+        return stripped_value
+
+
 SubjectType = Literal["user", "group"]
 KbRole = Literal["kb_owner", "kb_editor", "kb_operator", "kb_viewer"]
 

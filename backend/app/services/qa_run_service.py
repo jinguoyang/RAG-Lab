@@ -31,6 +31,7 @@ from app.tables import (
 )
 from app.services.qa_providers import ProviderCandidate, ProviderError, QARunProviders, get_qa_run_providers
 from app.services.permission_service import build_chunk_access_filter_context, has_kb_permission
+from app.services.knowledge_base_service import KnowledgeBaseDisabledError
 
 
 class QARunCreateConflict(ValueError):
@@ -572,6 +573,8 @@ def create_qa_run(
     kb_row = _read_visible_knowledge_base(session, current_user, kb_id)
     if kb_row is None:
         return None
+    if kb_row["status"] == "disabled":
+        raise KnowledgeBaseDisabledError
 
     revision_row = _resolve_runnable_revision(session, kb_row, request.configRevisionId)
     run_id = uuid4()

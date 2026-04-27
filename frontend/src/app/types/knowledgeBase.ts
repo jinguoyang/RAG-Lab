@@ -26,6 +26,22 @@ export interface KnowledgeBaseCardViewModel {
   retrievalSummary: string;
 }
 
+export interface KnowledgeBaseCreateRequest {
+  name: string;
+  description?: string | null;
+  ownerId?: string | null;
+  defaultSecurityLevel: string;
+  sparseIndexEnabled: boolean;
+  graphIndexEnabled: boolean;
+  requiredForActivation?: {
+    dense: true;
+    sparse: boolean;
+    graph: boolean;
+  };
+}
+
+export type KnowledgeBaseUpdateRequest = Partial<KnowledgeBaseCreateRequest>;
+
 export interface PageResponse<T> {
   items: T[];
   pageNo: number;

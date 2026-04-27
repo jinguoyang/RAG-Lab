@@ -18,6 +18,7 @@ from app.services.qa_run_service import (
     get_qa_run_status,
     list_qa_runs,
 )
+from app.services.knowledge_base_service import KnowledgeBaseDisabledError
 
 router = APIRouter(prefix="/knowledge-bases/{kb_id}/qa-runs", tags=["qa-runs"])
 
@@ -48,6 +49,11 @@ def create_qa_run_endpoint(
     """创建单次 QA Run；执行器在后续 backlog 接入。"""
     try:
         response = create_qa_run(session, current_user, kb_id, request)
+    except KnowledgeBaseDisabledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="KB_DISABLED: knowledge base is disabled.",
+        ) from exc
     except QARunCreateConflict as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if response is None:

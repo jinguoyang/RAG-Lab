@@ -25,6 +25,7 @@ from app.tables import (
     stored_files,
 )
 from app.services.object_storage import ObjectStorageProvider, get_object_storage_provider
+from app.services.knowledge_base_service import KnowledgeBaseDisabledError
 
 
 def _is_platform_admin(current_user: CurrentUserResponse) -> bool:
@@ -130,6 +131,8 @@ def create_document_upload(
     kb_row = _read_visible_knowledge_base(session, current_user, kb_id)
     if kb_row is None:
         return None
+    if kb_row["status"] == "disabled":
+        raise KnowledgeBaseDisabledError
 
     settings = get_settings()
     actor_id = UUID(current_user.user.userId)
