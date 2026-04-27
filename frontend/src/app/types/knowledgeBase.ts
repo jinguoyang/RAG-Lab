@@ -32,3 +32,39 @@ export interface PageResponse<T> {
   pageSize: number;
   total: number;
 }
+
+export type KbMemberSubjectType = "user" | "group";
+export type KbRole = "kb_owner" | "kb_editor" | "kb_operator" | "kb_viewer";
+
+export interface KbMemberBinding {
+  bindingId: string;
+  kbId: string;
+  subjectType: KbMemberSubjectType;
+  subjectId: string;
+  subjectName: string;
+  subjectStatus: string;
+  kbRole: KbRole;
+  status: "active" | "inactive";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface KbMemberCreateRequest {
+  subjectType: KbMemberSubjectType;
+  subjectId: string;
+  kbRole: KbRole;
+}
+
+export interface KbMemberUpdateRequest {
+  kbRole: KbRole;
+}
+
+export interface PermissionSummary {
+  resourceType: string;
+  resourceId: string;
+  permissions: string[];
+  deniedReasons: string[];
+  roles: string[];
+  subjectKeys: string[];
+  inheritedFromPlatformRole: boolean;
+}
