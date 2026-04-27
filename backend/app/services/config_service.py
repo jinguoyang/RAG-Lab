@@ -12,6 +12,7 @@ from app.schemas.config import (
     ConfigRevisionActivationResponse,
     ConfigRevisionCreateRequest,
     ConfigRevisionCreateResponse,
+    ConfigRevisionDraftFromRevisionRequest,
     ConfigRevisionDTO,
     ConfigTemplateDTO,
     PipelineValidateRequest,
@@ -376,6 +377,70 @@ def create_config_revision(
         ),
         validation,
     )
+
+
+def create_revision_draft_from_revision(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    request: ConfigRevisionDraftFromRevisionRequest,
+) -> ConfigRevisionDTO | None:
+    """复制历史 Revision 为新草稿，不修改源 Revision 的状态和审计字段。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+
+    source_row = session.execute(
+        select(config_revisions)
+        .where(
+            config_revisions.c.kb_id == kb_id,
+            config_revisions.c.config_revision_id == request.sourceRevisionId,
+            config_revisions.c.deleted_at.is_(None),
+        )
+        .limit(1)
+    ).mappings().first()
+    if source_row is None:
+        return None
+
+    actor_id = UUID(current_user.user.userId)
+    revision_no = (
+        session.execute(
+            select(func.coalesce(func.max(config_revisions.c.revision_no), 0)).where(
+                config_revisions.c.kb_id == kb_id
+            )
+        ).scalar_one()
+        + 1
+    )
+    copied_at = _now()
+    validation_snapshot = {
+        **source_row["validation_snapshot"],
+        "copiedFromRevisionId": str(request.sourceRevisionId),
+        "copiedAt": copied_at.isoformat(),
+    }
+    remark = request.remark or f"从 rev_{source_row['revision_no']:03d} 复制为草稿"
+
+    try:
+        row = session.execute(
+            insert(config_revisions)
+            .values(
+                config_revision_id=uuid4(),
+                kb_id=kb_id,
+                revision_no=revision_no,
+                source_template_id=source_row["source_template_id"],
+                status="draft",
+                pipeline_definition=source_row["pipeline_definition"],
+                validation_snapshot=validation_snapshot,
+                remark=remark,
+                created_by=actor_id,
+                updated_by=actor_id,
+            )
+            .returning(config_revisions)
+        ).mappings().one()
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+
+    return _to_revision_dto(row)
 
 
 def activate_config_revision(

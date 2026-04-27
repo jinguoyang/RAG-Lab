@@ -36,6 +36,13 @@ class ConfigRevisionCreateRequest(BaseModel):
     remark: str | None = Field(default=None, max_length=500)
 
 
+class ConfigRevisionDraftFromRevisionRequest(BaseModel):
+    """从历史 Revision 复制为草稿的请求。"""
+
+    sourceRevisionId: UUID
+    remark: str | None = Field(default=None, max_length=500)
+
+
 class ConfigRevisionActivateRequest(BaseModel):
     """激活配置版本请求，confirmImpact 必须为 true。"""
 

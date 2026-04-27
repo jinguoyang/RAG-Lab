@@ -2,6 +2,7 @@ import { apiGet, apiPostJson } from "./apiClient";
 import type {
   ConfigRevisionActivationResponse,
   ConfigRevisionCreateResponse,
+  ConfigRevisionDTO,
   ConfigRevisionPage,
   PipelineDefinition,
   PipelineValidationResultDTO,
@@ -41,5 +42,15 @@ export async function activateConfigRevision(
   return apiPostJson<ConfigRevisionActivationResponse>(
     `/knowledge-bases/${kbId}/config-revisions/${revisionId}/activate`,
     { confirmImpact: true, reason: "P08 配置中心切换生效版本" },
+  );
+}
+
+export async function copyConfigRevisionToDraft(
+  kbId: string,
+  sourceRevisionId: string,
+): Promise<ConfigRevisionDTO> {
+  return apiPostJson<ConfigRevisionDTO>(
+    `/knowledge-bases/${kbId}/config-revisions/drafts/from-revision`,
+    { sourceRevisionId, remark: "P08 从历史 Revision 复制为草稿" },
   );
 }
