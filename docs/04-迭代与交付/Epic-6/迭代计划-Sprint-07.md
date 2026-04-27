@@ -29,7 +29,7 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | S7-001 | B-031 | 实现知识库成员绑定、成员列表、角色修改和移除接口 | P0 | 1d | Codex | Done |
 | S7-002 | B-032 | 实现权限码、角色权限绑定、ACL 规则和权限摘要服务 | P0 | 1d | Codex | Done |
-| S7-003 | B-033 | 生成 ChunkAccessFilter，并在检索 Provider 调用前接入过滤摘要 | P0 | 1d | Codex | Todo |
+| S7-003 | B-033 | 生成 ChunkAccessFilter，并在检索 Provider 调用前接入过滤摘要 | P0 | 1d | Codex | Done |
 | S7-004 | B-034 | 接入成员与权限页 P12 的成员绑定、权限摘要和无权限态 | P0 | 1d | Codex | Todo |
 
 ## 5. 验收标准

@@ -30,6 +30,7 @@ from app.tables import (
     qa_runs,
 )
 from app.services.qa_providers import ProviderCandidate, ProviderError, QARunProviders, get_qa_run_providers
+from app.services.permission_service import build_chunk_access_filter_context, has_kb_permission
 
 
 class QARunCreateConflict(ValueError):
@@ -200,6 +201,7 @@ def _insert_trace_step(
 
 def _execute_provider_qa_run(
     session: Session,
+    current_user: CurrentUserResponse,
     run_id: UUID,
     kb_id: UUID,
     query: str,
@@ -212,6 +214,7 @@ def _execute_provider_qa_run(
     provider_set = providers or get_qa_run_providers()
     settings = get_settings()
     enabled_channels = _effective_retrieval_channels(revision_row, override_snapshot)
+    access_filter = build_chunk_access_filter_context(session, current_user, kb_id)
     trace_order = 1
     provider_errors: list[str] = []
 
@@ -302,11 +305,28 @@ def _execute_provider_qa_run(
 
         try:
             if channel == "dense":
-                channel_candidates = provider_set.dense.retrieve(kb_id, rewritten_query, embedding, settings.provider_top_k)
+                channel_candidates = provider_set.dense.retrieve(
+                    kb_id,
+                    rewritten_query,
+                    embedding,
+                    settings.provider_top_k,
+                    access_filter,
+                )
             elif channel == "sparse":
-                channel_candidates = provider_set.sparse.retrieve(kb_id, rewritten_query, settings.provider_top_k)
+                channel_candidates = provider_set.sparse.retrieve(
+                    kb_id,
+                    rewritten_query,
+                    settings.provider_top_k,
+                    access_filter,
+                )
             else:
-                channel_candidates = provider_set.graph.retrieve(kb_id, rewritten_query, None, settings.provider_top_k)
+                channel_candidates = provider_set.graph.retrieve(
+                    kb_id,
+                    rewritten_query,
+                    None,
+                    settings.provider_top_k,
+                    access_filter,
+                )
             candidates.extend(channel_candidates)
             _insert_trace_step(
                 session,
@@ -316,7 +336,7 @@ def _execute_provider_qa_run(
                 "success",
                 {"query": rewritten_query},
                 {"candidateCount": len(channel_candidates)},
-                {"provider": provider_name},
+                {"provider": provider_name, "accessFilter": access_filter.to_trace_summary()},
                 started_at=started_at,
             )
         except ProviderError as exc:
@@ -372,8 +392,11 @@ def _execute_provider_qa_run(
     )
     trace_order += 1
 
-    # 当前仓库尚未落地 Chunk 权限表；这里保留权限裁剪步骤，后续接入 PG Chunk 回表校验。
+    # 当前仓库尚未落地 Chunk 真值表；这里先用过滤摘要阻止无 Chunk 读取权的候选进入生成。
     authorized_candidates = reranked_candidates
+    if not access_filter.allowed:
+        authorized_candidates = []
+        provider_errors.append("chunkPermissionDenied")
     permission_filter_pending = any(candidate.chunk_id is None for candidate in authorized_candidates)
     if permission_filter_pending:
         provider_errors.append("permissionFilterPending")
@@ -386,13 +409,40 @@ def _execute_provider_qa_run(
         {"inputCandidates": len(reranked_candidates)},
         {
             "authorizedCandidates": len(authorized_candidates),
-            "droppedCandidates": 0,
-            "note": "Chunk permission table is not available in current sprint.",
+            "droppedCandidates": len(reranked_candidates) - len(authorized_candidates),
+            "accessFilter": access_filter.to_trace_summary(),
+            "note": "Chunk truth table will be enforced in E7; current sprint enforces permission summary before provider calls.",
         },
         {"latencyMs": 0},
         started_at=started_at,
     )
     trace_order += 1
+
+    if not authorized_candidates:
+        session.execute(
+            update(qa_runs)
+            .where(qa_runs.c.run_id == run_id)
+            .values(
+                rewritten_query=rewritten_query,
+                status="failed",
+                answer="当前用户没有可用于回答的授权证据。",
+                metrics={
+                    "latencyMs": int((datetime.now(UTC) - started_at).total_seconds() * 1000),
+                    "retrievalDiagnostics": {
+                        "denseCount": 0,
+                        "sparseCount": 0,
+                        "graphCount": 0,
+                        "mockCount": 0,
+                        "droppedByPermission": len(reranked_candidates),
+                        "providerErrors": provider_errors,
+                    },
+                },
+                started_at=started_at,
+                finished_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+        )
+        return
 
     try:
         answer = provider_set.llm.generate_answer(query, authorized_candidates)
@@ -529,6 +579,8 @@ def create_qa_run(
     override_snapshot = request.overrideParams or {}
     if request.sourceRunId is not None and _read_visible_qa_run(session, current_user, kb_id, request.sourceRunId) is None:
         raise QARunCreateConflict("Source QA run not found for this knowledge base.")
+    if not has_kb_permission(session, current_user, kb_id, "kb.qa.run"):
+        raise QARunCreateConflict("Current user cannot run QA in this knowledge base.")
     _assert_retrieval_enabled(revision_row, override_snapshot)
 
     try:
@@ -550,7 +602,7 @@ def create_qa_run(
             )
             .returning(qa_runs)
         ).mappings().one()
-        _execute_provider_qa_run(session, run_id, kb_id, request.query, revision_row, override_snapshot)
+        _execute_provider_qa_run(session, current_user, run_id, kb_id, request.query, revision_row, override_snapshot)
         row = session.execute(select(qa_runs).where(qa_runs.c.run_id == run_id).limit(1)).mappings().one()
         session.commit()
     except Exception:

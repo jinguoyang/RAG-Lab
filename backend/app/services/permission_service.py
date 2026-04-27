@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+from hashlib import sha256
+import json
 from uuid import UUID
 
 from sqlalchemy import RowMapping, and_, exists, or_, select
@@ -24,6 +26,35 @@ class PermissionEvaluation:
     group_ids: set[UUID]
     subject_keys: set[str]
     inherited_from_platform_role: bool
+
+
+@dataclass(frozen=True)
+class ChunkAccessFilterContext:
+    """检索前访问过滤摘要，Provider 用它构造召回前过滤条件。"""
+
+    permission_code: str
+    allow_subject_keys: list[str]
+    deny_subject_keys: list[str]
+    security_level: str
+    document_status: str
+    version_status: str
+    chunk_status: str
+    filter_hash: str
+    allowed: bool
+
+    def to_trace_summary(self) -> dict:
+        """返回可写入 Trace 的脱敏过滤摘要，不包含未授权正文。"""
+        return {
+            "permissionCode": self.permission_code,
+            "allowSubjectKeys": self.allow_subject_keys,
+            "denySubjectKeys": self.deny_subject_keys,
+            "securityLevel": self.security_level,
+            "documentStatus": self.document_status,
+            "versionStatus": self.version_status,
+            "chunkStatus": self.chunk_status,
+            "filterHash": self.filter_hash,
+            "allowed": self.allowed,
+        }
 
 
 def _user_id(current_user: CurrentUserResponse) -> UUID:
@@ -206,4 +237,38 @@ def get_kb_permission_summary(
         roles=sorted(evaluation.kb_roles),
         subjectKeys=sorted(evaluation.subject_keys),
         inheritedFromPlatformRole=evaluation.inherited_from_platform_role,
+    )
+
+
+def build_chunk_access_filter_context(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+) -> ChunkAccessFilterContext:
+    """生成 QA 检索前可传给 Provider 的 Chunk 访问过滤摘要。"""
+    evaluation = evaluate_kb_permissions(session, current_user, kb_id)
+    allowed = "kb.chunk.read" in evaluation.permissions
+    allow_subject_keys = sorted(evaluation.subject_keys) if allowed else []
+    deny_subject_keys = sorted(f"permission:{code}" for code in evaluation.denied_permissions)
+    payload = {
+        "permissionCode": "kb.chunk.read",
+        "allowSubjectKeys": allow_subject_keys,
+        "denySubjectKeys": deny_subject_keys,
+        "securityLevel": current_user.user.securityLevel,
+        "documentStatus": "active",
+        "versionStatus": "active",
+        "chunkStatus": "active",
+        "allowed": allowed,
+    }
+    filter_hash = sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+    return ChunkAccessFilterContext(
+        permission_code="kb.chunk.read",
+        allow_subject_keys=allow_subject_keys,
+        deny_subject_keys=deny_subject_keys,
+        security_level=current_user.user.securityLevel,
+        document_status="active",
+        version_status="active",
+        chunk_status="active",
+        filter_hash=filter_hash,
+        allowed=allowed,
     )

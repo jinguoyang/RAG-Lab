@@ -3,6 +3,7 @@ from hashlib import sha256
 from uuid import UUID
 
 from app.core.config import Settings, get_settings
+from app.services.permission_service import ChunkAccessFilterContext
 
 
 @dataclass(frozen=True)
@@ -71,21 +72,35 @@ class HttpEmbeddingProvider(EmbeddingProvider):
 class DenseRetrievalProvider:
     """Dense Retrieval Provider 抽象，返回值不得直接当作业务真值。"""
 
-    def retrieve(self, kb_id: UUID, query: str, embedding: list[float], limit: int) -> list[ProviderCandidate]:
+    def retrieve(
+        self,
+        kb_id: UUID,
+        query: str,
+        embedding: list[float],
+        limit: int,
+        access_filter: ChunkAccessFilterContext,
+    ) -> list[ProviderCandidate]:
         raise NotImplementedError
 
 
 class LocalDenseRetrievalProvider(DenseRetrievalProvider):
     """本地 Dense 降级 Provider，保留链路形态而不依赖 Milvus。"""
 
-    def retrieve(self, kb_id: UUID, query: str, embedding: list[float], limit: int) -> list[ProviderCandidate]:
+    def retrieve(
+        self,
+        kb_id: UUID,
+        query: str,
+        embedding: list[float],
+        limit: int,
+        access_filter: ChunkAccessFilterContext,
+    ) -> list[ProviderCandidate]:
         return [
             ProviderCandidate(
                 source_type="dense",
                 chunk_id=None,
                 raw_score=0.72,
                 content=f"本地 Dense Provider 降级候选：{query}",
-                metadata={"provider": "local", "kbId": str(kb_id)},
+                metadata={"provider": "local", "kbId": str(kb_id), "accessFilterHash": access_filter.filter_hash},
             )
         ][:limit]
 
@@ -101,12 +116,25 @@ class MilvusDenseRetrievalProvider(DenseRetrievalProvider):
         self._collection = settings.milvus_collection
         self._client = MilvusClient(uri=settings.milvus_uri, token=settings.milvus_token)
 
-    def retrieve(self, kb_id: UUID, query: str, embedding: list[float], limit: int) -> list[ProviderCandidate]:
+    def retrieve(
+        self,
+        kb_id: UUID,
+        query: str,
+        embedding: list[float],
+        limit: int,
+        access_filter: ChunkAccessFilterContext,
+    ) -> list[ProviderCandidate]:
+        filter_expr = (
+            f'kb_id == "{kb_id}" && '
+            f'document_status == "{access_filter.document_status}" && '
+            f'version_status == "{access_filter.version_status}" && '
+            f'chunk_status == "{access_filter.chunk_status}"'
+        )
         try:
             result_sets = self._client.search(
                 collection_name=self._collection,
                 data=[embedding],
-                filter=f'kb_id == "{kb_id}"',
+                filter=filter_expr,
                 limit=limit,
                 output_fields=["chunk_id", "content", "document_id", "version_id", "title", "page_no", "section"],
             )
@@ -132,21 +160,33 @@ class MilvusDenseRetrievalProvider(DenseRetrievalProvider):
 class SparseRetrievalProvider:
     """Sparse Retrieval Provider 抽象，屏蔽 OpenSearch 查询细节。"""
 
-    def retrieve(self, kb_id: UUID, query: str, limit: int) -> list[ProviderCandidate]:
+    def retrieve(
+        self,
+        kb_id: UUID,
+        query: str,
+        limit: int,
+        access_filter: ChunkAccessFilterContext,
+    ) -> list[ProviderCandidate]:
         raise NotImplementedError
 
 
 class LocalSparseRetrievalProvider(SparseRetrievalProvider):
     """本地 Sparse 降级 Provider，便于无 OpenSearch 环境验证 Trace。"""
 
-    def retrieve(self, kb_id: UUID, query: str, limit: int) -> list[ProviderCandidate]:
+    def retrieve(
+        self,
+        kb_id: UUID,
+        query: str,
+        limit: int,
+        access_filter: ChunkAccessFilterContext,
+    ) -> list[ProviderCandidate]:
         return [
             ProviderCandidate(
                 source_type="sparse",
                 chunk_id=None,
                 raw_score=0.65,
                 content=f"本地 Sparse Provider 降级候选：{query}",
-                metadata={"provider": "local", "kbId": str(kb_id)},
+                metadata={"provider": "local", "kbId": str(kb_id), "accessFilterHash": access_filter.filter_hash},
             )
         ][:limit]
 
@@ -166,12 +206,23 @@ class OpenSearchSparseRetrievalProvider(SparseRetrievalProvider):
         self._index = settings.opensearch_index
         self._client = OpenSearch(hosts=hosts, http_auth=auth)
 
-    def retrieve(self, kb_id: UUID, query: str, limit: int) -> list[ProviderCandidate]:
+    def retrieve(
+        self,
+        kb_id: UUID,
+        query: str,
+        limit: int,
+        access_filter: ChunkAccessFilterContext,
+    ) -> list[ProviderCandidate]:
         body = {
             "size": limit,
             "query": {
                 "bool": {
-                    "filter": [{"term": {"kb_id": str(kb_id)}}],
+                    "filter": [
+                        {"term": {"kb_id": str(kb_id)}},
+                        {"term": {"document_status": access_filter.document_status}},
+                        {"term": {"version_status": access_filter.version_status}},
+                        {"term": {"chunk_status": access_filter.chunk_status}},
+                    ],
                     "must": [{"multi_match": {"query": query, "fields": ["content", "title", "section"]}}],
                 }
             },
@@ -199,7 +250,14 @@ class OpenSearchSparseRetrievalProvider(SparseRetrievalProvider):
 class GraphRetrievalProvider:
     """Graph Retrieval Provider 抽象，图结果必须通过 chunk_id 回落。"""
 
-    def retrieve(self, kb_id: UUID, query: str, graph_snapshot_id: UUID | None, limit: int) -> list[ProviderCandidate]:
+    def retrieve(
+        self,
+        kb_id: UUID,
+        query: str,
+        graph_snapshot_id: UUID | None,
+        limit: int,
+        access_filter: ChunkAccessFilterContext,
+    ) -> list[ProviderCandidate]:
         raise NotImplementedError
 
     def search_entities(
@@ -215,14 +273,26 @@ class GraphRetrievalProvider:
 class LocalGraphRetrievalProvider(GraphRetrievalProvider):
     """本地图检索降级 Provider，只返回诊断候选。"""
 
-    def retrieve(self, kb_id: UUID, query: str, graph_snapshot_id: UUID | None, limit: int) -> list[ProviderCandidate]:
+    def retrieve(
+        self,
+        kb_id: UUID,
+        query: str,
+        graph_snapshot_id: UUID | None,
+        limit: int,
+        access_filter: ChunkAccessFilterContext,
+    ) -> list[ProviderCandidate]:
         return [
             ProviderCandidate(
                 source_type="graph",
                 chunk_id=None,
                 raw_score=0.58,
                 content=f"本地 Graph Provider 降级候选：{query}",
-                metadata={"provider": "local", "kbId": str(kb_id), "graphSnapshotId": str(graph_snapshot_id) if graph_snapshot_id else None},
+                metadata={
+                    "provider": "local",
+                    "kbId": str(kb_id),
+                    "graphSnapshotId": str(graph_snapshot_id) if graph_snapshot_id else None,
+                    "accessFilterHash": access_filter.filter_hash,
+                },
             )
         ][:limit]
 
@@ -247,7 +317,14 @@ class Neo4jGraphRetrievalProvider(GraphRetrievalProvider):
         self._database = settings.neo4j_database
         self._driver = GraphDatabase.driver(settings.neo4j_uri, auth=(settings.neo4j_username, settings.neo4j_password))
 
-    def retrieve(self, kb_id: UUID, query: str, graph_snapshot_id: UUID | None, limit: int) -> list[ProviderCandidate]:
+    def retrieve(
+        self,
+        kb_id: UUID,
+        query: str,
+        graph_snapshot_id: UUID | None,
+        limit: int,
+        access_filter: ChunkAccessFilterContext,
+    ) -> list[ProviderCandidate]:
         cypher = """
         MATCH (e:Entity)-[:SUPPORTED_BY]->(c:ChunkRef)
         WHERE e.kb_id = $kb_id

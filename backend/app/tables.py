@@ -134,6 +134,23 @@ acl_rules = sa.Table(
     sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
 )
 
+chunk_access_filters = sa.Table(
+    "chunk_access_filters",
+    metadata,
+    sa.Column("access_filter_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("chunk_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("kb_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("permission_code", sa.String(length=64), nullable=False),
+    sa.Column("allow_subject_keys", postgresql.JSONB(), nullable=False),
+    sa.Column("deny_subject_keys", postgresql.JSONB(), nullable=False),
+    sa.Column("security_level", sa.String(length=32), nullable=False),
+    sa.Column("document_status", sa.String(length=16), nullable=False),
+    sa.Column("version_status", sa.String(length=16), nullable=False),
+    sa.Column("chunk_status", sa.String(length=16), nullable=False),
+    sa.Column("filter_hash", sa.String(length=128), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+)
+
 stored_files = sa.Table(
     "stored_files",
     metadata,
