@@ -151,6 +151,20 @@ chunk_access_filters = sa.Table(
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
 )
 
+audit_logs = sa.Table(
+    "audit_logs",
+    metadata,
+    sa.Column("audit_log_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("actor_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("action", sa.String(length=64), nullable=False),
+    sa.Column("resource_type", sa.String(length=32), nullable=False),
+    sa.Column("resource_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("kb_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("document_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("detail", postgresql.JSONB(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+)
+
 stored_files = sa.Table(
     "stored_files",
     metadata,
@@ -231,6 +245,57 @@ ingest_jobs = sa.Table(
     sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
+chunks = sa.Table(
+    "chunks",
+    metadata,
+    sa.Column("chunk_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("version_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("document_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("kb_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("chunk_index", sa.Integer(), nullable=False),
+    sa.Column("page_no", sa.Integer(), nullable=True),
+    sa.Column("section", sa.String(length=255), nullable=True),
+    sa.Column("content", sa.Text(), nullable=False),
+    sa.Column("content_hash", sa.String(length=128), nullable=True),
+    sa.Column("token_count", sa.Integer(), nullable=True),
+    sa.Column("security_level", sa.String(length=32), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("metadata", postgresql.JSONB(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+)
+
+index_sync_jobs = sa.Table(
+    "index_sync_jobs",
+    metadata,
+    sa.Column("sync_job_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("kb_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("target_store", sa.String(length=32), nullable=False),
+    sa.Column("sync_type", sa.String(length=32), nullable=False),
+    sa.Column("scope", postgresql.JSONB(), nullable=False),
+    sa.Column("required_for_activation", sa.Boolean(), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("error_message", sa.Text(), nullable=True),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
+)
+
+index_sync_records = sa.Table(
+    "index_sync_records",
+    metadata,
+    sa.Column("sync_record_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("sync_job_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("target_store", sa.String(length=32), nullable=False),
+    sa.Column("resource_type", sa.String(length=32), nullable=False),
+    sa.Column("resource_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("operation", sa.String(length=16), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("provider_payload", postgresql.JSONB(), nullable=True),
+    sa.Column("error_message", sa.Text(), nullable=True),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
 )
 
 config_templates = sa.Table(

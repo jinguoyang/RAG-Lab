@@ -31,9 +31,14 @@ class ObjectStorageProvider:
     def delete_object(self, object_key: str) -> None:
         raise NotImplementedError
 
+    def get_object(self, object_key: str) -> bytes | None:
+        raise NotImplementedError
+
 
 class MetadataOnlyStorageProvider(ObjectStorageProvider):
     """开发期占位 Provider，只保留对象引用，便于无 MinIO 环境继续联调。"""
+
+    _objects: dict[str, bytes] = {}
 
     def __init__(self, bucket: str) -> None:
         self._bucket = bucket
@@ -44,10 +49,15 @@ class MetadataOnlyStorageProvider(ObjectStorageProvider):
         data: bytes,
         content_type: str | None = None,
     ) -> StoredObject:
+        self._objects[object_key] = data
         return StoredObject(bucket=self._bucket, object_key=object_key, size=len(data))
 
     def delete_object(self, object_key: str) -> None:
+        self._objects.pop(object_key, None)
         return None
+
+    def get_object(self, object_key: str) -> bytes | None:
+        return self._objects.get(object_key)
 
 
 class MinioStorageProvider(ObjectStorageProvider):
@@ -93,6 +103,17 @@ class MinioStorageProvider(ObjectStorageProvider):
 
     def delete_object(self, object_key: str) -> None:
         self._client.remove_object(self._bucket, object_key)
+
+    def get_object(self, object_key: str) -> bytes | None:
+        try:
+            response = self._client.get_object(self._bucket, object_key)
+            try:
+                return response.read()
+            finally:
+                response.close()
+                response.release_conn()
+        except Exception as exc:
+            raise ObjectStorageError("Object storage read failed.") from exc
 
 
 def get_object_storage_provider() -> ObjectStorageProvider:

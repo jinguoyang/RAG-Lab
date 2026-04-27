@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from pydantic import Field
 
 
 class StoredFileDTO(BaseModel):
@@ -59,6 +60,63 @@ class IngestJobDTO(BaseModel):
     errorCode: str | None
     errorMessage: str | None
     createdAt: str
+
+
+class ChunkDTO(BaseModel):
+    """Chunk 正文真值 DTO；正文读取必须由后端权限控制后返回。"""
+
+    chunkId: str
+    versionId: str
+    documentId: str
+    kbId: str
+    chunkIndex: int
+    pageNo: int | None
+    section: str | None
+    content: str
+    contentHash: str | None
+    tokenCount: int | None
+    securityLevel: str
+    status: str
+    metadata: dict = Field(default_factory=dict)
+    createdAt: str
+
+
+class DocumentReparseRequest(BaseModel):
+    """文档重解析请求；reason 进入作业摘要和审计日志。"""
+
+    reason: str | None = None
+
+
+class DocumentVersionActivateRequest(BaseModel):
+    """切换 active version 的二次确认请求。"""
+
+    confirmImpact: bool
+    reason: str | None = None
+
+
+class DocumentVersionActivateResponse(BaseModel):
+    """文档 active version 切换结果。"""
+
+    documentId: str
+    activeVersionId: str
+    previousActiveVersionId: str | None
+    auditLogId: str
+
+
+class IndexSyncJobDTO(BaseModel):
+    """索引副本同步作业 DTO，用于 P07 和运维入口观察重建状态。"""
+
+    syncJobId: str
+    kbId: str
+    targetStore: str
+    syncType: str
+    scope: dict
+    requiredForActivation: bool
+    status: str
+    errorMessage: str | None
+    createdAt: str
+    startedAt: str | None
+    finishedAt: str | None
 
 
 class DocumentUploadResponse(BaseModel):

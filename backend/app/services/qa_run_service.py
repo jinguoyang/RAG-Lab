@@ -21,7 +21,9 @@ from app.schemas.qa_run import (
 )
 from app.schemas.common import PageResponse
 from app.tables import (
+    chunks,
     config_revisions,
+    document_versions,
     knowledge_bases,
     qa_run_candidates,
     qa_run_citations,
@@ -134,6 +136,33 @@ def _effective_retrieval_channels(revision_row: RowMapping, override_snapshot: d
         if node.get("enabled") is not False and channel_overrides.get(channel_key, True) is True:
             enabled_channels.add(channel_key)
     return enabled_channels
+
+
+def _load_postgres_chunk_candidates(session: Session, kb_id: UUID, limit: int) -> list[ProviderCandidate]:
+    """从 PostgreSQL Chunk 真值表读取 active 版本证据，供本地 Provider 降级链路回表。"""
+    rows = session.execute(
+        select(chunks)
+        .select_from(chunks.join(document_versions, chunks.c.version_id == document_versions.c.version_id))
+        .where(chunks.c.kb_id == kb_id, chunks.c.status == "active", document_versions.c.status == "active")
+        .order_by(chunks.c.created_at.desc(), chunks.c.chunk_index.asc())
+        .limit(limit)
+    ).mappings()
+    return [
+        ProviderCandidate(
+            source_type="postgres",
+            chunk_id=row["chunk_id"],
+            raw_score=0.7,
+            content=row["content"],
+            metadata={
+                "provider": "postgres",
+                "documentId": str(row["document_id"]),
+                "versionId": str(row["version_id"]),
+                "pageNo": row["page_no"],
+                "section": row["section"],
+            },
+        )
+        for row in rows
+    ]
 
 
 def _read_visible_qa_run(
@@ -357,6 +386,22 @@ def _execute_provider_qa_run(
             )
         trace_order += 1
 
+    postgres_candidates = _load_postgres_chunk_candidates(session, kb_id, settings.provider_top_k)
+    if postgres_candidates:
+        candidates = postgres_candidates
+        _insert_trace_step(
+            session,
+            run_id,
+            trace_order,
+            "postgresChunkFallback",
+            "success",
+            {"kbId": str(kb_id)},
+            {"candidateCount": len(postgres_candidates)},
+            {"source": "chunks"},
+            started_at=started_at,
+        )
+        trace_order += 1
+
     if not candidates:
         candidates = [
             ProviderCandidate(
@@ -412,7 +457,7 @@ def _execute_provider_qa_run(
             "authorizedCandidates": len(authorized_candidates),
             "droppedCandidates": len(reranked_candidates) - len(authorized_candidates),
             "accessFilter": access_filter.to_trace_summary(),
-            "note": "Chunk truth table will be enforced in E7; current sprint enforces permission summary before provider calls.",
+            "note": "Chunk truth table is enforced by PostgreSQL fallback when Provider does not return chunk_id.",
         },
         {"latencyMs": 0},
         started_at=started_at,
