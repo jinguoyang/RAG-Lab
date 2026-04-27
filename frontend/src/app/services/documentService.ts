@@ -8,8 +8,17 @@ import type {
   IngestJobPage,
 } from "../types/document";
 
-export async function fetchDocuments(kbId: string, keyword?: string): Promise<DocumentPage> {
-  const params = new URLSearchParams({ pageNo: "1", pageSize: "50" });
+interface FetchDocumentsParams {
+  keyword?: string;
+  pageNo?: number;
+  pageSize?: number;
+}
+
+export async function fetchDocuments(
+  kbId: string,
+  { keyword, pageNo = 1, pageSize = 10 }: FetchDocumentsParams = {},
+): Promise<DocumentPage> {
+  const params = new URLSearchParams({ pageNo: String(pageNo), pageSize: String(pageSize) });
   if (keyword?.trim()) {
     params.set("keyword", keyword.trim());
   }

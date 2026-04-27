@@ -64,7 +64,6 @@ export interface DocumentRowViewModel {
   status: JobStatus;
   securityLevel: string;
   updatedAtLabel: string;
-  sourceType: string;
 }
 
 export interface VersionRowViewModel {

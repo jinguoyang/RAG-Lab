@@ -40,7 +40,6 @@ export function toDocumentRow(document: DocumentDTO): DocumentRowViewModel {
     status: document.status === "active" ? "success" : "cancelled",
     securityLevel: document.securityLevel,
     updatedAtLabel: formatDateTime(document.updatedAt),
-    sourceType: document.sourceType,
   };
 }
 
