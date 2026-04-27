@@ -1,11 +1,14 @@
-import { apiDelete, apiGet, apiPostJson } from "./apiClient";
+import { apiDelete, apiGet, apiPatchJson, apiPostJson } from "./apiClient";
 import type {
   UserCreateRequest,
   UserGroupCreateRequest,
   UserGroupDetail,
   UserGroupPage,
   UserGroupSummary,
+  UserGroupUpdateRequest,
   UserPage,
+  UserStatus,
+  UserUpdateRequest,
   UserSummary,
 } from "../types/userGroup";
 
@@ -35,6 +38,14 @@ export async function disableUser(userId: string): Promise<UserSummary> {
   return apiPostJson<UserSummary>(`/users/${userId}/disable`, {});
 }
 
+export async function updateUser(userId: string, request: UserUpdateRequest): Promise<UserSummary> {
+  return apiPatchJson<UserSummary>(`/users/${userId}`, request);
+}
+
+export async function updateUserStatus(userId: string, status: UserStatus): Promise<UserSummary> {
+  return updateUser(userId, { status });
+}
+
 export async function fetchUserGroups(params: PageParams = {}): Promise<UserGroupPage> {
   return apiGet<UserGroupPage>(`/groups?${buildPageQuery(params)}`);
 }
@@ -45,6 +56,10 @@ export async function createUserGroup(request: UserGroupCreateRequest): Promise<
 
 export async function fetchUserGroup(groupId: string): Promise<UserGroupDetail> {
   return apiGet<UserGroupDetail>(`/groups/${groupId}`);
+}
+
+export async function updateUserGroup(groupId: string, request: UserGroupUpdateRequest): Promise<UserGroupSummary> {
+  return apiPatchJson<UserGroupSummary>(`/groups/${groupId}`, request);
 }
 
 export async function addUsersToGroup(groupId: string, userIds: string[]): Promise<UserGroupDetail> {

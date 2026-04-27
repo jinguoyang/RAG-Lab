@@ -5,8 +5,9 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from ".
 import { Input } from "../components/rag/Input";
 import { Alert } from "../components/rag/Alert";
 import { Badge } from "../components/rag/Badge";
-import { ChevronLeft, ChevronRight, RefreshCw, Search, UserPlus } from "lucide-react";
-import { createUser, disableUser, fetchUsers } from "../services/userGroupService";
+import { useConfirmDialog } from "../components/rag/ConfirmDialog";
+import { ChevronLeft, ChevronRight, Pencil, RefreshCw, Save, Search, UserPlus, X } from "lucide-react";
+import { createUser, disableUser, fetchUsers, updateUser, updateUserStatus } from "../services/userGroupService";
 import type { PlatformRole, UserSummary } from "../types/userGroup";
 
 const PAGE_SIZE = 10;
@@ -15,6 +16,13 @@ const ROLE_LABELS: Record<PlatformRole, string> = {
   platform_admin: "平台管理员",
   platform_user: "平台用户",
 };
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function isValidOptionalEmail(value: string): boolean {
+  const email = value.trim();
+  return !email || EMAIL_PATTERN.test(email);
+}
 
 function formatDate(value: string): string {
   const date = new Date(value);
@@ -28,6 +36,7 @@ function formatDate(value: string): string {
 }
 
 export function UserManagement() {
+  const confirmDialog = useConfirmDialog();
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [keyword, setKeyword] = useState("");
   const [queryKeyword, setQueryKeyword] = useState("");
@@ -41,6 +50,13 @@ export function UserManagement() {
     displayName: "",
     email: "",
     platformRole: "platform_user" as PlatformRole,
+  });
+  const [editingUser, setEditingUser] = useState<UserSummary | null>(null);
+  const [userEditForm, setUserEditForm] = useState({
+    displayName: "",
+    email: "",
+    platformRole: "platform_user" as PlatformRole,
+    securityLevel: "public",
   });
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -80,13 +96,18 @@ export function UserManagement() {
       setFeedback({ variant: "error", title: "用户信息不完整", message: "用户名和显示名称不能为空。" });
       return;
     }
+    if (!isValidOptionalEmail(newUser.email)) {
+      setFeedback({ variant: "error", title: "邮箱格式不正确", message: "请输入类似 user@example.com 的邮箱地址，或留空。" });
+      return;
+    }
 
+    const email = newUser.email.trim();
     setIsSaving(true);
     try {
       await createUser({
         username: newUser.username.trim(),
         displayName: newUser.displayName.trim(),
-        email: newUser.email.trim() || null,
+        email: email || null,
         platformRole: newUser.platformRole,
         securityLevel: "public",
       });
@@ -109,8 +130,67 @@ export function UserManagement() {
     }
   };
 
+  const startEditUser = (user: UserSummary) => {
+    setEditingUser(user);
+    setUserEditForm({
+      displayName: user.displayName,
+      email: user.email ?? "",
+      platformRole: user.platformRole,
+      securityLevel: user.securityLevel,
+    });
+    setFeedback(null);
+  };
+
+  const handleSaveUser = async () => {
+    if (!editingUser) return;
+    if (!userEditForm.displayName.trim() || !userEditForm.securityLevel.trim()) {
+      setFeedback({ variant: "error", title: "用户信息不完整", message: "显示名称和密级不能为空。" });
+      return;
+    }
+    if (!isValidOptionalEmail(userEditForm.email)) {
+      setFeedback({ variant: "error", title: "邮箱格式不正确", message: "请输入类似 user@example.com 的邮箱地址，或留空。" });
+      return;
+    }
+
+    const email = userEditForm.email.trim();
+    setIsSaving(true);
+    try {
+      await updateUser(editingUser.userId, {
+        displayName: userEditForm.displayName.trim(),
+        email: email || null,
+        platformRole: userEditForm.platformRole,
+        securityLevel: userEditForm.securityLevel.trim(),
+      });
+      await loadUsers();
+      setEditingUser(null);
+      setFeedback({ variant: "success", title: "用户已更新", message: `${userEditForm.displayName.trim()} 的资料已保存。` });
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "用户更新失败",
+        message: error instanceof Error ? error.message : "请检查输入后重试。",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleDisableUser = async (user: UserSummary) => {
-    if (!window.confirm(`禁用用户 ${user.displayName}？`)) return;
+    const confirmed = await confirmDialog({
+      title: "确认禁用用户",
+      description: "禁用后，该用户将无法作为 active 主体参与后续授权，请确认这是预期操作。",
+      detail: (
+        <>
+          用户：{user.displayName}
+          <br />
+          账号：@{user.username}
+        </>
+      ),
+      confirmText: "确认禁用",
+      variant: "destructive",
+    });
+
+    if (!confirmed) return;
 
     setIsSaving(true);
     try {
@@ -121,6 +201,23 @@ export function UserManagement() {
       setFeedback({
         variant: "error",
         title: "禁用失败",
+        message: error instanceof Error ? error.message : "请刷新后重试。",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleEnableUser = async (user: UserSummary) => {
+    setIsSaving(true);
+    try {
+      await updateUserStatus(user.userId, "active");
+      await loadUsers();
+      setFeedback({ variant: "success", title: "用户已恢复", message: `${user.displayName} 已恢复为启用状态。` });
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "恢复失败",
         message: error instanceof Error ? error.message : "请刷新后重试。",
       });
     } finally {
@@ -177,6 +274,51 @@ export function UserManagement() {
           <UserPlus className="w-4 h-4 mr-2" /> 新增
         </Button>
       </div>
+
+      {editingUser && (
+        <div className="rounded-lg border border-border-warm bg-ivory p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs text-stone-gray">编辑用户</p>
+              <h2 className="font-serif text-xl text-near-black">@{editingUser.username}</h2>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setEditingUser(null)} disabled={isSaving}>
+              <X className="w-4 h-4 mr-1" /> 取消
+            </Button>
+          </div>
+          <div className="grid grid-cols-1 xl:grid-cols-[220px_minmax(240px,1fr)_180px_160px_auto] gap-3">
+            <Input
+              value={userEditForm.displayName}
+              onChange={(event) => setUserEditForm((current) => ({ ...current, displayName: event.target.value }))}
+              placeholder="显示名称"
+              className="bg-white"
+            />
+            <Input
+              value={userEditForm.email}
+              onChange={(event) => setUserEditForm((current) => ({ ...current, email: event.target.value }))}
+              placeholder="邮箱"
+              className="bg-white"
+            />
+            <select
+              value={userEditForm.platformRole}
+              onChange={(event) => setUserEditForm((current) => ({ ...current, platformRole: event.target.value as PlatformRole }))}
+              className="h-10 rounded-md border border-border-cream bg-white px-3 text-sm text-near-black focus:outline-none"
+            >
+              <option value="platform_user">平台用户</option>
+              <option value="platform_admin">平台管理员</option>
+            </select>
+            <Input
+              value={userEditForm.securityLevel}
+              onChange={(event) => setUserEditForm((current) => ({ ...current, securityLevel: event.target.value }))}
+              placeholder="密级"
+              className="bg-white"
+            />
+            <Button variant="primary" onClick={() => void handleSaveUser()} disabled={isSaving}>
+              <Save className="w-4 h-4 mr-2" /> 保存
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-4">
         <div className="relative w-80 max-w-full">
@@ -239,13 +381,20 @@ export function UserManagement() {
               </TableCell>
               <TableCell>{formatDate(user.updatedAt)}</TableCell>
               <TableCell>
-                {user.status === "active" ? (
-                  <Button variant="ghost" size="sm" disabled={isSaving} onClick={() => void handleDisableUser(user)}>
-                    禁用
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="ghost" size="sm" disabled={isSaving} onClick={() => startEditUser(user)}>
+                    <Pencil className="w-3 h-3 mr-1" /> 编辑
                   </Button>
-                ) : (
-                  <span className="text-sm text-stone-gray">已禁用</span>
-                )}
+                  {user.status === "active" ? (
+                    <Button variant="ghost" size="sm" disabled={isSaving} onClick={() => void handleDisableUser(user)}>
+                      禁用
+                    </Button>
+                  ) : (
+                    <Button variant="ghost" size="sm" disabled={isSaving} onClick={() => void handleEnableUser(user)}>
+                      恢复启用
+                    </Button>
+                  )}
+                </div>
               </TableCell>
             </TableRow>
           ))}

@@ -24,6 +24,14 @@ export interface UserCreateRequest {
   securityLevel: string;
 }
 
+export interface UserUpdateRequest {
+  displayName?: string;
+  email?: string | null;
+  platformRole?: PlatformRole;
+  securityLevel?: string;
+  status?: UserStatus;
+}
+
 export interface UserGroupSummary {
   groupId: string;
   name: string;
@@ -51,6 +59,12 @@ export interface UserGroupDetail extends UserGroupSummary {
 export interface UserGroupCreateRequest {
   name: string;
   description?: string | null;
+}
+
+export interface UserGroupUpdateRequest {
+  name?: string;
+  description?: string | null;
+  status?: GroupStatus;
 }
 
 export type UserPage = PageResponse<UserSummary>;
