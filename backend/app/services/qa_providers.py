@@ -269,6 +269,26 @@ class GraphRetrievalProvider:
     ) -> list[dict]:
         raise NotImplementedError
 
+    def search_paths(
+        self,
+        kb_id: UUID,
+        keyword: str,
+        graph_snapshot_id: UUID | None,
+        limit: int,
+    ) -> list[dict]:
+        """按关键词搜索图关系路径摘要。"""
+        raise NotImplementedError
+
+    def search_communities(
+        self,
+        kb_id: UUID,
+        keyword: str | None,
+        graph_snapshot_id: UUID | None,
+        limit: int,
+    ) -> list[dict]:
+        """按关键词搜索图社区摘要。"""
+        raise NotImplementedError
+
 
 class LocalGraphRetrievalProvider(GraphRetrievalProvider):
     """本地图检索降级 Provider，只返回诊断候选。"""
@@ -300,6 +320,24 @@ class LocalGraphRetrievalProvider(GraphRetrievalProvider):
         self,
         kb_id: UUID,
         keyword: str,
+        graph_snapshot_id: UUID | None,
+        limit: int,
+    ) -> list[dict]:
+        return []
+
+    def search_paths(
+        self,
+        kb_id: UUID,
+        keyword: str,
+        graph_snapshot_id: UUID | None,
+        limit: int,
+    ) -> list[dict]:
+        return []
+
+    def search_communities(
+        self,
+        kb_id: UUID,
+        keyword: str | None,
         graph_snapshot_id: UUID | None,
         limit: int,
     ) -> list[dict]:
@@ -358,6 +396,65 @@ class Neo4jGraphRetrievalProvider(GraphRetrievalProvider):
           AND ($graph_snapshot_id IS NULL OR e.graph_snapshot_id = $graph_snapshot_id)
           AND toLower(e.name) CONTAINS toLower($keyword)
         RETURN e.entity_key AS entityKey, e.name AS name, e.type AS type, e.aliases AS aliases
+        LIMIT $limit
+        """
+        return self._run_read(cypher, kb_id=kb_id, graph_snapshot_id=graph_snapshot_id, keyword=keyword, limit=limit)
+
+    def search_paths(
+        self,
+        kb_id: UUID,
+        keyword: str,
+        graph_snapshot_id: UUID | None,
+        limit: int,
+    ) -> list[dict]:
+        cypher = """
+        MATCH (source:Entity)-[rel:RELATED_TO]->(target:Entity)
+        WHERE source.kb_id = $kb_id
+          AND target.kb_id = $kb_id
+          AND ($graph_snapshot_id IS NULL OR source.graph_snapshot_id = $graph_snapshot_id)
+          AND ($graph_snapshot_id IS NULL OR target.graph_snapshot_id = $graph_snapshot_id)
+          AND (
+            toLower(source.name) CONTAINS toLower($keyword)
+            OR toLower(target.name) CONTAINS toLower($keyword)
+            OR toLower(type(rel)) CONTAINS toLower($keyword)
+          )
+        RETURN
+          coalesce(rel.relation_key, elementId(rel)) AS pathKey,
+          source.entity_key AS sourceEntityKey,
+          source.name AS sourceName,
+          source.type AS sourceType,
+          target.entity_key AS targetEntityKey,
+          target.name AS targetName,
+          target.type AS targetType,
+          type(rel) AS relationType,
+          coalesce(rel.support_node_key, source.entity_key) AS nodeKey,
+          rel.relation_key AS relationKey
+        LIMIT $limit
+        """
+        return self._run_read(cypher, kb_id=kb_id, graph_snapshot_id=graph_snapshot_id, keyword=keyword, limit=limit)
+
+    def search_communities(
+        self,
+        kb_id: UUID,
+        keyword: str | None,
+        graph_snapshot_id: UUID | None,
+        limit: int,
+    ) -> list[dict]:
+        cypher = """
+        MATCH (community:Community)
+        WHERE community.kb_id = $kb_id
+          AND ($graph_snapshot_id IS NULL OR community.graph_snapshot_id = $graph_snapshot_id)
+          AND (
+            $keyword IS NULL
+            OR toLower(community.summary) CONTAINS toLower($keyword)
+            OR toLower(coalesce(community.title, community.community_key)) CONTAINS toLower($keyword)
+          )
+        RETURN
+          community.community_key AS communityKey,
+          coalesce(community.title, community.community_key) AS title,
+          community.summary AS summary,
+          community.entity_count AS entityCount,
+          community.community_key AS communityKeyForSupport
         LIMIT $limit
         """
         return self._run_read(cypher, kb_id=kb_id, graph_snapshot_id=graph_snapshot_id, keyword=keyword, limit=limit)

@@ -38,6 +38,7 @@ from app.tables import (
 from app.services.object_storage import ObjectStorageProvider, get_object_storage_provider
 from app.services.knowledge_base_service import KnowledgeBaseDisabledError
 from app.services.permission_service import build_chunk_access_filter_context, has_kb_permission
+from app.services.graph_service import mark_graph_snapshots_stale
 
 
 class DocumentPermissionError(Exception):
@@ -446,6 +447,8 @@ def run_ingest_job(
             )
             sparse_status = "success"
         if kb_row["graph_index_enabled"]:
+            if new_version_status == "active":
+                mark_graph_snapshots_stale(session, kb_row["kb_id"], "chunk_changed", current_user)
             graph_snapshot_id = uuid4()
             session.execute(
                 insert(graph_snapshots).values(
@@ -1062,11 +1065,7 @@ def activate_document_version(
         .where(documents.c.document_id == document_id)
         .values(active_version_id=version_id, updated_by=UUID(current_user.user.userId), updated_at=func.now())
     )
-    session.execute(
-        update(graph_snapshots)
-        .where(graph_snapshots.c.kb_id == kb_id, graph_snapshots.c.status == "success")
-        .values(status="stale", stale_reason="active_version_changed", stale_at=func.now(), updated_at=func.now())
-    )
+    mark_graph_snapshots_stale(session, kb_id, "active_version_changed", current_user)
     session.commit()
     return DocumentVersionActivateResponse(
         documentId=str(document_id),
