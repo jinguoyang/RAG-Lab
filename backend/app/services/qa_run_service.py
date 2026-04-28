@@ -26,6 +26,7 @@ from app.schemas.qa_run import (
 )
 from app.schemas.common import PageResponse
 from app.schemas.config import ConfigRevisionDTO
+from app.services.audit_service import write_audit_log
 from app.tables import (
     chunks,
     config_revisions,
@@ -993,6 +994,18 @@ def update_qa_run_feedback(
         )
         .returning(qa_runs)
     ).mappings().one()
+    write_audit_log(
+        session,
+        current_user,
+        "qa_run.feedback.update",
+        "qa_run",
+        run_id,
+        kb_id=kb_id,
+        detail={
+            "feedbackStatus": updated["feedback_status"],
+            "failureType": _failure_type(updated),
+        },
+    )
     session.commit()
     return QARunFeedbackResponse(
         runId=str(updated["run_id"]),

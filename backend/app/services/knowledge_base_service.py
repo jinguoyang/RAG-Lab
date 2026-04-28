@@ -15,6 +15,7 @@ from app.schemas.knowledge_base import (
     KnowledgeBaseUpdateRequest,
     RequiredForActivationDTO,
 )
+from app.services.audit_service import write_audit_log
 from app.services.permission_service import has_kb_permission, kb_visibility_condition
 from app.tables import kb_member_bindings, knowledge_bases, user_groups, users
 
@@ -303,6 +304,15 @@ def update_knowledge_base(
         .values(**update_values)
         .returning(knowledge_bases)
     ).mappings().one()
+    write_audit_log(
+        session,
+        current_user,
+        "knowledge_base.update",
+        "knowledge_base",
+        kb_id,
+        kb_id=kb_id,
+        detail={"updatedFields": sorted(requested_fields)},
+    )
     session.commit()
     return _to_dto(row)
 
@@ -326,6 +336,15 @@ def disable_knowledge_base(
         )
         .returning(knowledge_bases)
     ).mappings().one()
+    write_audit_log(
+        session,
+        current_user,
+        "knowledge_base.disable",
+        "knowledge_base",
+        kb_id,
+        kb_id=kb_id,
+        detail={},
+    )
     session.commit()
     return _to_dto(row)
 
@@ -373,6 +392,15 @@ def create_knowledge_base(
             created_by=UUID(current_user.user.userId),
             updated_by=UUID(current_user.user.userId),
         )
+    )
+    write_audit_log(
+        session,
+        current_user,
+        "knowledge_base.create",
+        "knowledge_base",
+        kb_id,
+        kb_id=kb_id,
+        detail={"ownerId": str(owner_id), "name": request.name},
     )
     session.commit()
     return _to_dto(row)
@@ -560,6 +588,19 @@ def create_kb_member(
             updated_by=UUID(current_user.user.userId),
         )
     )
+    write_audit_log(
+        session,
+        current_user,
+        "kb_member.create",
+        "kb_member",
+        binding_id,
+        kb_id=kb_id,
+        detail={
+            "subjectType": request.subjectType,
+            "subjectId": str(request.subjectId),
+            "kbRole": request.kbRole,
+        },
+    )
     session.commit()
     return get_kb_member(session, current_user, kb_id, binding_id)
 
@@ -609,6 +650,15 @@ def update_kb_member_role(
     if result.rowcount == 0:
         session.rollback()
         raise KbMemberBindingNotFoundError
+    write_audit_log(
+        session,
+        current_user,
+        "kb_member.update",
+        "kb_member",
+        binding_id,
+        kb_id=kb_id,
+        detail={"kbRole": request.kbRole},
+    )
     session.commit()
     return get_kb_member(session, current_user, kb_id, binding_id)
 
@@ -638,4 +688,13 @@ def remove_kb_member(
     if result.rowcount == 0:
         session.rollback()
         raise KbMemberBindingNotFoundError
+    write_audit_log(
+        session,
+        current_user,
+        "kb_member.remove",
+        "kb_member",
+        binding_id,
+        kb_id=kb_id,
+        detail={},
+    )
     session.commit()

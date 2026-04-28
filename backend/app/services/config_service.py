@@ -19,6 +19,7 @@ from app.schemas.config import (
     PipelineValidationIssueDTO,
     PipelineValidationResultDTO,
 )
+from app.services.audit_service import write_audit_log
 from app.tables import config_revisions, config_templates, knowledge_bases
 from app.services.knowledge_base_service import KnowledgeBaseDisabledError
 
@@ -348,10 +349,11 @@ def create_config_revision(
     }
 
     try:
+        revision_id = uuid4()
         row = session.execute(
             insert(config_revisions)
             .values(
-                config_revision_id=uuid4(),
+                config_revision_id=revision_id,
                 kb_id=kb_id,
                 revision_no=revision_no,
                 source_template_id=request.sourceTemplateId,
@@ -367,6 +369,15 @@ def create_config_revision(
             )
             .returning(config_revisions)
         ).mappings().one()
+        write_audit_log(
+            session,
+            current_user,
+            "config_revision.create",
+            "config_revision",
+            revision_id,
+            kb_id=kb_id,
+            detail={"revisionNo": revision_no, "status": "saved"},
+        )
         session.commit()
     except Exception:
         session.rollback()
@@ -426,10 +437,11 @@ def create_revision_draft_from_revision(
     remark = request.remark or f"从 rev_{source_row['revision_no']:03d} 复制为草稿"
 
     try:
+        new_revision_id = uuid4()
         row = session.execute(
             insert(config_revisions)
             .values(
-                config_revision_id=uuid4(),
+                config_revision_id=new_revision_id,
                 kb_id=kb_id,
                 revision_no=revision_no,
                 source_template_id=source_row["source_template_id"],
@@ -442,6 +454,18 @@ def create_revision_draft_from_revision(
             )
             .returning(config_revisions)
         ).mappings().one()
+        write_audit_log(
+            session,
+            current_user,
+            "config_revision.create_draft",
+            "config_revision",
+            new_revision_id,
+            kb_id=kb_id,
+            detail={
+                "sourceRevisionId": str(request.sourceRevisionId),
+                "revisionNo": revision_no,
+            },
+        )
         session.commit()
     except Exception:
         session.rollback()
@@ -520,6 +544,18 @@ def activate_config_revision(
                 updated_by=actor_id,
             )
         )
+        audit_log_id = write_audit_log(
+            session,
+            current_user,
+            "config_revision.activate",
+            "config_revision",
+            revision_id,
+            kb_id=kb_id,
+            detail={
+                "previousActiveConfigRevisionId": str(previous_active_id) if previous_active_id else None,
+                "activatedAt": activated_at.isoformat(),
+            },
+        )
         session.commit()
     except Exception:
         session.rollback()
@@ -529,5 +565,5 @@ def activate_config_revision(
         activeConfigRevisionId=str(revision_id),
         previousActiveConfigRevisionId=str(previous_active_id) if previous_active_id else None,
         activatedAt=activated_at.isoformat(),
-        auditLogId=None,
+        auditLogId=str(audit_log_id),
     )
