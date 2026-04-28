@@ -17,8 +17,9 @@ from app.schemas.graph import (
     GraphSupportingChunkDTO,
     GraphSupportingChunksResponse,
 )
+from app.services.permission_service import has_kb_permission
 from app.services.qa_providers import ProviderError, get_qa_run_providers
-from app.tables import graph_chunk_refs, graph_snapshots, knowledge_bases
+from app.tables import chunks, documents, graph_chunk_refs, graph_snapshots, knowledge_bases
 
 
 def _is_platform_admin(current_user: CurrentUserResponse) -> bool:
@@ -56,6 +57,14 @@ def _to_graph_snapshot_dto(row: RowMapping) -> GraphSnapshotDTO:
         createdAt=row["created_at"].isoformat(),
         updatedAt=row["updated_at"].isoformat(),
     )
+
+
+def _preview(content: str, limit: int = 180) -> str:
+    """生成支撑 Chunk 的安全预览，避免图诊断接口直接返回整段正文。"""
+    compact = " ".join(content.split())
+    if len(compact) <= limit:
+        return compact
+    return f"{compact[:limit].rstrip()}..."
 
 
 def list_graph_snapshots(
@@ -263,7 +272,7 @@ def list_supporting_chunks(
     relation_key: str | None,
     community_key: str | None,
 ) -> GraphSupportingChunksResponse | None:
-    """查询图对象支撑 Chunk 引用；正文权限裁剪待 Chunk 真值表落地后补齐。"""
+    """查询图对象支撑 Chunk，并按 Chunk 正文权限做最终裁剪。"""
     if _read_visible_knowledge_base(session, current_user, kb_id) is None:
         return None
 
@@ -275,15 +284,53 @@ def list_supporting_chunks(
     if community_key:
         condition = condition & (graph_chunk_refs.c.community_key == community_key)
 
-    rows = session.execute(select(graph_chunk_refs).where(condition).limit(100)).mappings()
-    return GraphSupportingChunksResponse(
-        items=[
+    ref_rows = list(session.execute(select(graph_chunk_refs).where(condition).limit(100)).mappings())
+    if not ref_rows:
+        return GraphSupportingChunksResponse(items=[], filteredCount=0)
+
+    if not has_kb_permission(session, current_user, kb_id, "kb.chunk.read"):
+        return GraphSupportingChunksResponse(items=[], filteredCount=len(ref_rows))
+
+    chunk_ids = [row["chunk_id"] for row in ref_rows]
+    chunk_rows = session.execute(
+        select(
+            chunks.c.chunk_id,
+            chunks.c.document_id,
+            chunks.c.chunk_index,
+            chunks.c.content,
+            chunks.c.security_level,
+            documents.c.name.label("document_name"),
+        )
+        .select_from(chunks.join(documents, chunks.c.document_id == documents.c.document_id))
+        .where(
+            chunks.c.chunk_id.in_(chunk_ids),
+            chunks.c.kb_id == kb_id,
+            chunks.c.status == "active",
+            documents.c.deleted_at.is_(None),
+        )
+        .limit(100)
+    ).mappings()
+    chunk_by_id = {row["chunk_id"]: row for row in chunk_rows}
+
+    items = []
+    for ref_row in ref_rows:
+        chunk_row = chunk_by_id.get(ref_row["chunk_id"])
+        if chunk_row is None:
+            continue
+        items.append(
             GraphSupportingChunkDTO(
-                chunkId=str(row["chunk_id"]),
-                refType=row["ref_type"],
-                metadata=row["metadata"],
+                chunkId=str(chunk_row["chunk_id"]),
+                documentId=str(chunk_row["document_id"]),
+                documentName=chunk_row["document_name"],
+                chunkIndex=chunk_row["chunk_index"],
+                contentPreview=_preview(chunk_row["content"]),
+                securityLevel=chunk_row["security_level"],
+                refType=ref_row["ref_type"],
+                metadata=ref_row["metadata"],
             )
-            for row in rows
-        ],
-        filteredCount=0,
+        )
+
+    return GraphSupportingChunksResponse(
+        items=items,
+        filteredCount=max(len(ref_rows) - len(items), 0),
     )

@@ -17,16 +17,24 @@ from app.main import app
 
 KB_ID = "11111111-1111-1111-1111-111111111111"
 SNAPSHOT_ID = "22222222-2222-2222-2222-222222222222"
+CHUNK_ID = "33333333-3333-3333-3333-333333333333"
+DOCUMENT_ID = "44444444-4444-4444-4444-444444444444"
 
 
-class _FakeMappingResult:
-    """Provide the minimal SQLAlchemy result surface used by graph visibility checks."""
+class _FakeResult:
+    """Provide the minimal SQLAlchemy result surface used by graph verification."""
 
-    def mappings(self) -> "_FakeMappingResult":
+    def __init__(self, rows):
+        self._rows = rows
+
+    def mappings(self) -> "_FakeResult":
         return self
 
-    def first(self) -> dict:
-        return {"kb_id": KB_ID}
+    def first(self):
+        return self._rows[0] if self._rows else None
+
+    def __iter__(self):
+        return iter(self._rows)
 
 
 class _FakeSnapshotResult:
@@ -37,14 +45,41 @@ class _FakeSnapshotResult:
 
 
 class _FakeSession:
-    """Serve the smallest DB contract required by B-043 graph route verification."""
+    """Serve the smallest DB contract required by Epic 9 graph route verification."""
 
     def execute(self, statement):
         statement_text = str(statement)
         if "FROM knowledge_bases" in statement_text:
-            return _FakeMappingResult()
+            return _FakeResult([{"kb_id": KB_ID}])
         if "graph_snapshots.graph_snapshot_id" in statement_text:
             return _FakeSnapshotResult()
+        if "FROM graph_chunk_refs" in statement_text:
+            return _FakeResult(
+                [
+                    {
+                        "chunk_id": CHUNK_ID,
+                        "ref_type": "entity",
+                        "metadata": {"score": 0.91},
+                    }
+                ]
+            )
+        if "FROM user_group_members" in statement_text or "FROM kb_member_bindings" in statement_text:
+            return _FakeResult([])
+        if "FROM role_permission_bindings" in statement_text:
+            return _FakeResult([("kb.chunk.read", "allow")])
+        if "FROM chunks JOIN documents" in statement_text:
+            return _FakeResult(
+                [
+                    {
+                        "chunk_id": CHUNK_ID,
+                        "document_id": DOCUMENT_ID,
+                        "document_name": "Graph Evidence.md",
+                        "chunk_index": 2,
+                        "content": "Graph supporting chunk content for deterministic authorization verification.",
+                        "security_level": "internal",
+                    }
+                ]
+            )
         raise AssertionError(f"Unexpected SQL in graph verification: {statement_text}")
 
     def close(self) -> None:
@@ -73,6 +108,17 @@ def assert_graph_search_payload(payload: dict, label: str) -> None:
     assert isinstance(payload["diagnostics"]["degraded"], bool), f"{label} degraded must be boolean"
 
 
+def assert_supporting_chunks_payload(payload: dict) -> None:
+    """Check supporting chunk fields required for authorized graph evidence fallback."""
+    assert "items" in payload, "supporting chunks missing items"
+    assert "filteredCount" in payload, "supporting chunks missing filteredCount"
+    assert payload["items"], "supporting chunks should return deterministic fake items"
+    for item in payload["items"]:
+        assert "chunkId" in item, "supporting chunk missing chunkId"
+        assert "contentPreview" in item, "supporting chunk missing contentPreview"
+        assert "documentName" in item, "supporting chunk missing documentName"
+
+
 def main() -> None:
     """Run the local TestClient smoke verification for B-043 graph APIs."""
     app.dependency_overrides[get_db_session] = _override_db_session
@@ -89,6 +135,15 @@ def main() -> None:
         "communities",
     )
     assert_graph_search_payload(communities, "communities")
+
+    supporting_chunks = assert_ok(
+        client.get(
+            f"/api/v1/knowledge-bases/{KB_ID}/graph/supporting-chunks"
+            f"?graphSnapshotId={SNAPSHOT_ID}&nodeKey=missing-node"
+        ),
+        "supporting chunks",
+    )
+    assert_supporting_chunks_payload(supporting_chunks)
 
 
 if __name__ == "__main__":

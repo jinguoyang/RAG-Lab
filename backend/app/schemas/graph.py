@@ -87,9 +87,14 @@ class GraphCommunitySearchResponse(BaseModel):
 
 
 class GraphSupportingChunkDTO(BaseModel):
-    """图对象回落 Chunk 摘要；当前尚未包含 Chunk 正文真值。"""
+    """图对象回落 Chunk 摘要，正文只返回授权后的预览片段。"""
 
     chunkId: str
+    documentId: str
+    documentName: str
+    chunkIndex: int
+    contentPreview: str
+    securityLevel: str
     refType: str
     metadata: dict[str, Any]
 
