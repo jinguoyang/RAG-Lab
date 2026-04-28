@@ -39,6 +39,53 @@ class GraphEntitySearchResponse(BaseModel):
     graphSnapshotId: str | None
 
 
+class GraphQueryDiagnosticsDTO(BaseModel):
+    """图查询诊断信息，供 P11 区分真实空结果和 Provider 降级。"""
+
+    degraded: bool = False
+    degradedReason: str | None = None
+    provider: str = "graph"
+
+
+class GraphPathDTO(BaseModel):
+    """图关系路径摘要；正文证据必须继续通过 supporting chunks 回落。"""
+
+    pathKey: str
+    sourceEntity: GraphEntityDTO
+    targetEntity: GraphEntityDTO
+    relationType: str
+    hopCount: int
+    supportKeys: dict[str, str | None] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class GraphPathSearchResponse(BaseModel):
+    """关系路径查询响应。"""
+
+    items: list[GraphPathDTO]
+    graphSnapshotId: str | None
+    diagnostics: GraphQueryDiagnosticsDTO = Field(default_factory=GraphQueryDiagnosticsDTO)
+
+
+class GraphCommunityDTO(BaseModel):
+    """图社区摘要；不能直接作为最终 Evidence。"""
+
+    communityKey: str
+    title: str
+    summary: str
+    entityCount: int | None = None
+    supportKeys: dict[str, str | None] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class GraphCommunitySearchResponse(BaseModel):
+    """社区摘要查询响应。"""
+
+    items: list[GraphCommunityDTO]
+    graphSnapshotId: str | None
+    diagnostics: GraphQueryDiagnosticsDTO = Field(default_factory=GraphQueryDiagnosticsDTO)
+
+
 class GraphSupportingChunkDTO(BaseModel):
     """图对象回落 Chunk 摘要；当前尚未包含 Chunk 正文真值。"""
 

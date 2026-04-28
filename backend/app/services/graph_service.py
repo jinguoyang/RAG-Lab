@@ -6,8 +6,13 @@ from sqlalchemy.orm import Session
 from app.schemas.auth import CurrentUserResponse
 from app.schemas.common import PageResponse
 from app.schemas.graph import (
+    GraphCommunityDTO,
+    GraphCommunitySearchResponse,
     GraphEntityDTO,
     GraphEntitySearchResponse,
+    GraphPathDTO,
+    GraphPathSearchResponse,
+    GraphQueryDiagnosticsDTO,
     GraphSnapshotDTO,
     GraphSupportingChunkDTO,
     GraphSupportingChunksResponse,
@@ -111,6 +116,62 @@ def _latest_success_snapshot_id(session: Session, kb_id: UUID) -> UUID | None:
     return row[0] if row else None
 
 
+def _degraded_diagnostics(reason: str) -> GraphQueryDiagnosticsDTO:
+    """构造稳定降级响应，避免向前端泄漏底层 Provider 异常细节。"""
+    return GraphQueryDiagnosticsDTO(degraded=True, degradedReason=reason, provider="graph")
+
+
+def _to_graph_entity_dto(entity_key: object, name: object, entity_type: object) -> GraphEntityDTO:
+    """将 Neo4j 实体片段转换为页面可消费的实体摘要 DTO。"""
+    return GraphEntityDTO(
+        entityKey=str(entity_key) if entity_key else None,
+        name=str(name or ""),
+        type=str(entity_type) if entity_type else None,
+    )
+
+
+def _to_graph_path_dto(row: dict) -> GraphPathDTO:
+    """将 Provider 路径查询结果转换为 API DTO，并保留支撑键用于回落查询。"""
+    known_keys = {
+        "pathKey",
+        "sourceEntityKey",
+        "sourceName",
+        "sourceType",
+        "targetEntityKey",
+        "targetName",
+        "targetType",
+        "relationType",
+        "nodeKey",
+        "relationKey",
+    }
+    return GraphPathDTO(
+        pathKey=str(row.get("pathKey") or row.get("relationKey") or ""),
+        sourceEntity=_to_graph_entity_dto(row.get("sourceEntityKey"), row.get("sourceName"), row.get("sourceType")),
+        targetEntity=_to_graph_entity_dto(row.get("targetEntityKey"), row.get("targetName"), row.get("targetType")),
+        relationType=str(row.get("relationType") or "RELATED_TO"),
+        hopCount=1,
+        supportKeys={
+            "nodeKey": str(row.get("nodeKey")) if row.get("nodeKey") else None,
+            "relationKey": str(row.get("relationKey")) if row.get("relationKey") else None,
+        },
+        metadata={key: value for key, value in row.items() if key not in known_keys},
+    )
+
+
+def _to_graph_community_dto(row: dict) -> GraphCommunityDTO:
+    """将 Provider 社区查询结果转换为 API DTO，并保留社区键用于回落查询。"""
+    known_keys = {"communityKey", "title", "summary", "entityCount"}
+    entity_count = row.get("entityCount")
+    return GraphCommunityDTO(
+        communityKey=str(row.get("communityKey") or ""),
+        title=str(row.get("title") or row.get("communityKey") or ""),
+        summary=str(row.get("summary") or ""),
+        entityCount=int(entity_count) if entity_count is not None else None,
+        supportKeys={"communityKey": str(row.get("communityKey")) if row.get("communityKey") else None},
+        metadata={key: value for key, value in row.items() if key not in known_keys},
+    )
+
+
 def search_graph_entities(
     session: Session,
     current_user: CurrentUserResponse,
@@ -140,6 +201,56 @@ def search_graph_entities(
             if item.get("name")
         ],
         graphSnapshotId=str(snapshot_id) if snapshot_id else None,
+    )
+
+
+def search_graph_paths(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    keyword: str,
+    graph_snapshot_id: UUID | None,
+    limit: int,
+) -> GraphPathSearchResponse | None:
+    """搜索图关系路径；Provider 不可用时安全降级为空结果。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+    snapshot_id = graph_snapshot_id or _latest_success_snapshot_id(session, kb_id)
+    diagnostics = GraphQueryDiagnosticsDTO(provider="graph")
+    try:
+        rows = get_qa_run_providers().graph.search_paths(kb_id, keyword, snapshot_id, limit)
+    except ProviderError:
+        rows = []
+        diagnostics = _degraded_diagnostics("图 Provider 当前不可用，已返回空路径结果。")
+    return GraphPathSearchResponse(
+        items=[_to_graph_path_dto(row) for row in rows],
+        graphSnapshotId=str(snapshot_id) if snapshot_id else None,
+        diagnostics=diagnostics,
+    )
+
+
+def search_graph_communities(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    keyword: str | None,
+    graph_snapshot_id: UUID | None,
+    limit: int,
+) -> GraphCommunitySearchResponse | None:
+    """搜索图社区摘要；Provider 不可用时安全降级为空结果。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+    snapshot_id = graph_snapshot_id or _latest_success_snapshot_id(session, kb_id)
+    diagnostics = GraphQueryDiagnosticsDTO(provider="graph")
+    try:
+        rows = get_qa_run_providers().graph.search_communities(kb_id, keyword, snapshot_id, limit)
+    except ProviderError:
+        rows = []
+        diagnostics = _degraded_diagnostics("图 Provider 当前不可用，已返回空社区结果。")
+    return GraphCommunitySearchResponse(
+        items=[_to_graph_community_dto(row) for row in rows],
+        graphSnapshotId=str(snapshot_id) if snapshot_id else None,
+        diagnostics=diagnostics,
     )
 
 

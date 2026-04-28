@@ -9,7 +9,9 @@ from app.core.database import get_db_session
 from app.schemas.auth import CurrentUserResponse
 from app.schemas.common import PageResponse
 from app.schemas.graph import (
+    GraphCommunitySearchResponse,
     GraphEntitySearchResponse,
+    GraphPathSearchResponse,
     GraphSnapshotDTO,
     GraphSupportingChunksResponse,
 )
@@ -17,7 +19,9 @@ from app.services.graph_service import (
     get_graph_snapshot,
     list_graph_snapshots,
     list_supporting_chunks,
+    search_graph_communities,
     search_graph_entities,
+    search_graph_paths,
 )
 
 router = APIRouter(prefix="/knowledge-bases/{kb_id}", tags=["graph"])
@@ -64,6 +68,38 @@ def read_graph_entities(
 ) -> GraphEntitySearchResponse:
     """搜索图实体摘要；正文证据仍需通过 supporting chunks 回落。"""
     response = search_graph_entities(session, current_user, kb_id, keyword, graph_snapshot_id, limit)
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found.")
+    return response
+
+
+@router.get("/graph/paths", response_model=GraphPathSearchResponse)
+def read_graph_paths(
+    kb_id: UUID,
+    keyword: Annotated[str, Query(min_length=1)],
+    graph_snapshot_id: Annotated[UUID | None, Query(alias="graphSnapshotId")] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> GraphPathSearchResponse:
+    """搜索关系路径摘要；正文证据仍需通过 supporting chunks 回落。"""
+    response = search_graph_paths(session, current_user, kb_id, keyword, graph_snapshot_id, limit)
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found.")
+    return response
+
+
+@router.get("/graph/communities", response_model=GraphCommunitySearchResponse)
+def read_graph_communities(
+    kb_id: UUID,
+    keyword: Annotated[str | None, Query(min_length=1)] = None,
+    graph_snapshot_id: Annotated[UUID | None, Query(alias="graphSnapshotId")] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> GraphCommunitySearchResponse:
+    """搜索社区摘要；摘要不能直接作为最终 Evidence。"""
+    response = search_graph_communities(session, current_user, kb_id, keyword, graph_snapshot_id, limit)
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found.")
     return response
