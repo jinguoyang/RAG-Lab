@@ -12,6 +12,7 @@ from app.schemas.knowledge_base import (
     KbMemberUpdateRequest,
     KnowledgeBaseCreateRequest,
     KnowledgeBaseDTO,
+    KnowledgeBaseUpdateRequest,
     RequiredForActivationDTO,
 )
 from app.services.permission_service import has_kb_permission, kb_visibility_condition
@@ -24,6 +25,10 @@ class KnowledgeBasePermissionError(Exception):
 
 class KnowledgeBaseNotFoundError(Exception):
     """知识库不存在或当前用户不可见。"""
+
+
+class KnowledgeBaseDisabledError(Exception):
+    """知识库已停用，当前写操作不允许继续。"""
 
 
 class KbMemberBindingNotFoundError(Exception):
@@ -82,6 +87,34 @@ def _ensure_kb_visible(
         raise KnowledgeBaseNotFoundError
 
 
+def _read_visible_kb_row(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+) -> RowMapping:
+    """读取当前用户可见知识库行，供状态校验和更新复用。"""
+    row = session.execute(
+        select(knowledge_bases)
+        .where(_visible_condition(current_user), knowledge_bases.c.kb_id == kb_id)
+        .limit(1)
+    ).mappings().first()
+    if row is None:
+        raise KnowledgeBaseNotFoundError
+    return row
+
+
+def ensure_knowledge_base_writable(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+) -> RowMapping:
+    """确认知识库可见且未停用；写入口统一用它收口停用态保护。"""
+    row = _read_visible_kb_row(session, current_user, kb_id)
+    if row["status"] == "disabled":
+        raise KnowledgeBaseDisabledError
+    return row
+
+
 def _ensure_member_manage_permission(
     session: Session,
     current_user: CurrentUserResponse,
@@ -90,6 +123,17 @@ def _ensure_member_manage_permission(
     """成员变更是权限边界操作，必须先确认知识库可见并具备管理权限。"""
     _ensure_kb_visible(session, current_user, kb_id)
     if not has_kb_permission(session, current_user, kb_id, "kb.member.manage"):
+        raise KnowledgeBasePermissionError
+
+
+def _ensure_kb_manage_permission(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+) -> None:
+    """确认当前用户可管理知识库基础信息。"""
+    _ensure_kb_visible(session, current_user, kb_id)
+    if not has_kb_permission(session, current_user, kb_id, "kb.manage"):
         raise KnowledgeBasePermissionError
 
 
@@ -222,6 +266,67 @@ def get_knowledge_base(
     ).mappings().first()
     if row is None:
         return None
+    return _to_dto(row)
+
+
+def update_knowledge_base(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    request: KnowledgeBaseUpdateRequest,
+) -> KnowledgeBaseDTO:
+    """更新知识库基础信息；停用知识库只允许读，不允许继续变更。"""
+    _ensure_kb_manage_permission(session, current_user, kb_id)
+    ensure_knowledge_base_writable(session, current_user, kb_id)
+
+    update_values = {"updated_by": UUID(current_user.user.userId), "updated_at": func.now()}
+    requested_fields = request.model_fields_set
+    if "name" in requested_fields and request.name is not None:
+        update_values["name"] = request.name
+    if "description" in requested_fields:
+        update_values["description"] = request.description
+    if "ownerId" in requested_fields and request.ownerId is not None:
+        update_values["owner_id"] = request.ownerId
+    if "defaultSecurityLevel" in requested_fields and request.defaultSecurityLevel is not None:
+        update_values["default_security_level"] = request.defaultSecurityLevel
+    if "sparseIndexEnabled" in requested_fields and request.sparseIndexEnabled is not None:
+        update_values["sparse_index_enabled"] = request.sparseIndexEnabled
+    if "graphIndexEnabled" in requested_fields and request.graphIndexEnabled is not None:
+        update_values["graph_index_enabled"] = request.graphIndexEnabled
+    if request.requiredForActivation is not None:
+        update_values["sparse_required_for_activation"] = request.requiredForActivation.sparse
+        update_values["graph_required_for_activation"] = request.requiredForActivation.graph
+
+    row = session.execute(
+        update(knowledge_bases)
+        .where(knowledge_bases.c.kb_id == kb_id)
+        .values(**update_values)
+        .returning(knowledge_bases)
+    ).mappings().one()
+    session.commit()
+    return _to_dto(row)
+
+
+def disable_knowledge_base(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+) -> KnowledgeBaseDTO:
+    """停用知识库时仅更新状态，保留文档、配置和 QA 历史用于追溯。"""
+    _ensure_kb_manage_permission(session, current_user, kb_id)
+    ensure_knowledge_base_writable(session, current_user, kb_id)
+
+    row = session.execute(
+        update(knowledge_bases)
+        .where(knowledge_bases.c.kb_id == kb_id)
+        .values(
+            status="disabled",
+            updated_by=UUID(current_user.user.userId),
+            updated_at=func.now(),
+        )
+        .returning(knowledge_bases)
+    ).mappings().one()
+    session.commit()
     return _to_dto(row)
 
 
@@ -426,6 +531,7 @@ def create_kb_member(
 ) -> KbMemberBindingDTO:
     """创建知识库成员绑定；同一主体在同一知识库只允许一个有效角色。"""
     _ensure_member_manage_permission(session, current_user, kb_id)
+    ensure_knowledge_base_writable(session, current_user, kb_id)
     _ensure_subject_exists(session, request)
 
     duplicate = session.execute(
@@ -486,6 +592,7 @@ def update_kb_member_role(
 ) -> KbMemberBindingDTO:
     """修改知识库成员角色，不改变绑定主体和历史创建信息。"""
     _ensure_member_manage_permission(session, current_user, kb_id)
+    ensure_knowledge_base_writable(session, current_user, kb_id)
     result = session.execute(
         update(kb_member_bindings)
         .where(
@@ -514,6 +621,7 @@ def remove_kb_member(
 ) -> None:
     """移除成员时仅将绑定置为 inactive，保留授权变更审计线索。"""
     _ensure_member_manage_permission(session, current_user, kb_id)
+    ensure_knowledge_base_writable(session, current_user, kb_id)
     result = session.execute(
         update(kb_member_bindings)
         .where(

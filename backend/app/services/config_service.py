@@ -20,6 +20,7 @@ from app.schemas.config import (
     PipelineValidationResultDTO,
 )
 from app.tables import config_revisions, config_templates, knowledge_bases
+from app.services.knowledge_base_service import KnowledgeBaseDisabledError
 
 STAGE_ORDER = {
     "preprocess": 1,
@@ -320,8 +321,11 @@ def create_config_revision(
     request: ConfigRevisionCreateRequest,
 ) -> tuple[ConfigRevisionCreateResponse | None, PipelineValidationResultDTO]:
     """保存新的 ConfigRevision；保存前必须通过后端 Pipeline 校验。"""
-    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+    kb_row = _read_visible_knowledge_base(session, current_user, kb_id)
+    if kb_row is None:
         return None, validate_pipeline_definition(PipelineValidateRequest(pipelineDefinition=request.pipelineDefinition))
+    if kb_row["status"] == "disabled":
+        raise KnowledgeBaseDisabledError
 
     validation = validate_pipeline_definition(PipelineValidateRequest(pipelineDefinition=request.pipelineDefinition))
     if not validation.valid:
@@ -386,8 +390,11 @@ def create_revision_draft_from_revision(
     request: ConfigRevisionDraftFromRevisionRequest,
 ) -> ConfigRevisionDTO | None:
     """复制历史 Revision 为新草稿，不修改源 Revision 的状态和审计字段。"""
-    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+    kb_row = _read_visible_knowledge_base(session, current_user, kb_id)
+    if kb_row is None:
         return None
+    if kb_row["status"] == "disabled":
+        raise KnowledgeBaseDisabledError
 
     source_row = session.execute(
         select(config_revisions)
@@ -454,6 +461,8 @@ def activate_config_revision(
     kb_row = _read_visible_knowledge_base(session, current_user, kb_id)
     if kb_row is None:
         return None
+    if kb_row["status"] == "disabled":
+        raise KnowledgeBaseDisabledError
     if not confirm_impact:
         raise ValueError("confirmImpact must be true.")
 

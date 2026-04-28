@@ -28,12 +28,16 @@ interface RunSeedState {
   query?: string;
   sourceRunId?: string;
   revision?: string;
+  configRevisionId?: string;
+  overrideParams?: Record<string, unknown>;
+  suggestedMode?: "replay" | "copyAsNew";
+  replayWarnings?: string[];
   scenario?: DebugScenario;
 }
 
 interface CandidateRecord {
   id: string;
-  source: "Dense" | "Sparse" | "Graph" | "Mock";
+  source: "Dense" | "Sparse" | "Graph" | "Mock" | "Postgres";
   title: string;
   score: string;
   decision: string;
@@ -308,7 +312,7 @@ export function QADebug() {
       ? {
           variant: "info",
           title: "已从历史记录回放",
-          message: `已带入 ${seed.sourceRunId} 的 query 与运行上下文，你可以继续做本次实验覆盖。`,
+          message: `已带入 ${seed.sourceRunId} 的 query 与运行上下文。${seed.replayWarnings?.[0] ?? "你可以继续做本次实验覆盖。"}`,
         }
       : null,
   );
@@ -354,8 +358,9 @@ export function QADebug() {
       const created = await createQARun(
         kbId || "",
         query.trim(),
-        { rewriteEnabled, channels, rerankerTopN },
+        { ...(seed.overrideParams ?? {}), rewriteEnabled, channels, rerankerTopN },
         isUuid(seed.sourceRunId) ? seed.sourceRunId : undefined,
+        isUuid(seed.configRevisionId) ? seed.configRevisionId : undefined,
       );
       await waitForDetailReady(kbId || "", created.runId);
       const detail = await fetchQARunDetail(kbId || "", created.runId);
@@ -443,7 +448,7 @@ export function QADebug() {
           <div className="rounded-lg border border-border-cream bg-parchment p-3 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-near-black">运行上下文</span>
-              <Badge variant="info">{seed.revision ?? "rev_042"}</Badge>
+              <Badge variant="info">{seed.revision ?? seed.configRevisionId?.slice(0, 8) ?? "active"}</Badge>
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs">
               <button
@@ -578,7 +583,7 @@ export function QADebug() {
               </div>
 
               <div className="p-2 bg-warning-amber/10 border border-warning-amber/20 rounded text-xs text-warning-amber">
-                覆盖参数仅影响本次运行，不会修改 active revision（{seed.revision ?? "rev_042"}）。
+                覆盖参数仅影响本次运行，不会修改 active revision（{seed.revision ?? seed.configRevisionId?.slice(0, 8) ?? "active"}）。
               </div>
             </div>
           </div>

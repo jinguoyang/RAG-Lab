@@ -5,6 +5,8 @@ import type {
   KbMemberSubjectOption,
   KbMemberUpdateRequest,
   KnowledgeBase,
+  KnowledgeBaseCreateRequest,
+  KnowledgeBaseUpdateRequest,
   PageResponse,
   PermissionSummary,
   KbRole,
@@ -21,6 +23,21 @@ export async function fetchKnowledgeBases(keyword?: string): Promise<PageRespons
 
 export async function fetchKnowledgeBase(kbId: string): Promise<KnowledgeBase> {
   return apiGet<KnowledgeBase>(`/knowledge-bases/${kbId}`);
+}
+
+export async function createKnowledgeBase(request: KnowledgeBaseCreateRequest): Promise<KnowledgeBase> {
+  return apiPostJson<KnowledgeBase>("/knowledge-bases", request);
+}
+
+export async function updateKnowledgeBase(
+  kbId: string,
+  request: KnowledgeBaseUpdateRequest,
+): Promise<KnowledgeBase> {
+  return apiPatchJson<KnowledgeBase>(`/knowledge-bases/${kbId}`, request);
+}
+
+export async function disableKnowledgeBase(kbId: string): Promise<KnowledgeBase> {
+  return apiPostJson<KnowledgeBase>(`/knowledge-bases/${kbId}/disable`, {});
 }
 
 interface FetchKbMembersParams {

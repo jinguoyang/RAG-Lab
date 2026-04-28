@@ -3,12 +3,14 @@ from decimal import Decimal
 from hashlib import sha256
 from uuid import UUID, uuid4
 
-from sqlalchemy import RowMapping, func, insert, select, update
+from sqlalchemy import RowMapping, func, insert, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.schemas.auth import CurrentUserResponse
 from app.schemas.qa_run import (
+    EvaluationSampleCreateRequest,
+    EvaluationSampleDTO,
     QARunCandidateDTO,
     QARunCitationDTO,
     QARunCreateRequest,
@@ -16,12 +18,19 @@ from app.schemas.qa_run import (
     QARunDetailDTO,
     QARunEvidenceDTO,
     QARunListItemDTO,
+    QARunFeedbackResponse,
+    QARunFeedbackUpdateRequest,
+    QARunReplayContextDTO,
     QARunStatusDTO,
     QARunTraceStepDTO,
 )
 from app.schemas.common import PageResponse
+from app.schemas.config import ConfigRevisionDTO
 from app.tables import (
+    chunks,
     config_revisions,
+    document_versions,
+    evaluation_samples,
     knowledge_bases,
     qa_run_candidates,
     qa_run_citations,
@@ -31,10 +40,15 @@ from app.tables import (
 )
 from app.services.qa_providers import ProviderCandidate, ProviderError, QARunProviders, get_qa_run_providers
 from app.services.permission_service import build_chunk_access_filter_context, has_kb_permission
+from app.services.knowledge_base_service import KnowledgeBaseDisabledError
 
 
 class QARunCreateConflict(ValueError):
     """创建 QARun 时遇到业务状态冲突，例如缺少可运行 Revision。"""
+
+
+class QARunPermissionError(Exception):
+    """当前用户缺少读取历史、标注或管理评估样本的权限。"""
 
 
 RETRIEVAL_NODE_TO_OVERRIDE_KEY = {
@@ -43,6 +57,25 @@ RETRIEVAL_NODE_TO_OVERRIDE_KEY = {
     "graphRetrieval": "graph",
 }
 MOCK_EVIDENCE_CHUNK_ID = UUID("00000000-0000-0000-0000-000000000001")
+FEEDBACK_STATUS_MAP = {
+    "unrated": "unrated",
+    "correct": "correct",
+    "partiallyCorrect": "partially_correct",
+    "partially_correct": "partially_correct",
+    "wrong": "wrong",
+    "citationError": "citation_error",
+    "citation_error": "citation_error",
+    "noEvidence": "no_evidence",
+    "no_evidence": "no_evidence",
+}
+
+
+def _normalize_feedback_status(value: str) -> str:
+    """兼容前端 camelCase 和数据库 snake_case 的反馈状态。"""
+    normalized = FEEDBACK_STATUS_MAP.get(value)
+    if normalized is None:
+        raise QARunCreateConflict("Invalid feedback status.")
+    return normalized
 
 
 def _is_platform_admin(current_user: CurrentUserResponse) -> bool:
@@ -56,10 +89,16 @@ def _read_visible_knowledge_base(
     kb_id: UUID,
 ) -> RowMapping | None:
     """读取当前用户可见知识库；不可见资源不暴露存在性。"""
-    condition = (knowledge_bases.c.deleted_at.is_(None)) & (knowledge_bases.c.kb_id == kb_id)
-    if not _is_platform_admin(current_user):
-        condition = condition & (knowledge_bases.c.owner_id == UUID(current_user.user.userId))
-    return session.execute(select(knowledge_bases).where(condition).limit(1)).mappings().first()
+    row = session.execute(
+        select(knowledge_bases)
+        .where(knowledge_bases.c.deleted_at.is_(None), knowledge_bases.c.kb_id == kb_id)
+        .limit(1)
+    ).mappings().first()
+    if row is None:
+        return None
+    if not has_kb_permission(session, current_user, kb_id, "kb.view"):
+        return None
+    return row
 
 
 def _resolve_runnable_revision(
@@ -135,20 +174,64 @@ def _effective_retrieval_channels(revision_row: RowMapping, override_snapshot: d
     return enabled_channels
 
 
+def _load_postgres_chunk_candidates(session: Session, kb_id: UUID, limit: int) -> list[ProviderCandidate]:
+    """从 PostgreSQL Chunk 真值表读取 active 版本证据，供本地 Provider 降级链路回表。"""
+    rows = session.execute(
+        select(chunks)
+        .select_from(chunks.join(document_versions, chunks.c.version_id == document_versions.c.version_id))
+        .where(chunks.c.kb_id == kb_id, chunks.c.status == "active", document_versions.c.status == "active")
+        .order_by(chunks.c.created_at.desc(), chunks.c.chunk_index.asc())
+        .limit(limit)
+    ).mappings()
+    return [
+        ProviderCandidate(
+            source_type="postgres",
+            chunk_id=row["chunk_id"],
+            raw_score=0.7,
+            content=row["content"],
+            metadata={
+                "provider": "postgres",
+                "documentId": str(row["document_id"]),
+                "versionId": str(row["version_id"]),
+                "pageNo": row["page_no"],
+                "section": row["section"],
+            },
+        )
+        for row in rows
+    ]
+
+
 def _read_visible_qa_run(
     session: Session,
     current_user: CurrentUserResponse,
     kb_id: UUID,
     run_id: UUID,
 ) -> RowMapping | None:
-    """按知识库可见性读取运行记录，避免通过 runId 枚举不可见数据。"""
+    """按知识库可见性和历史权限读取运行记录，避免通过 runId 枚举不可见数据。"""
     if _read_visible_knowledge_base(session, current_user, kb_id) is None:
         return None
-    return session.execute(
+    row = session.execute(
         select(qa_runs)
         .where(qa_runs.c.kb_id == kb_id, qa_runs.c.run_id == run_id)
         .limit(1)
     ).mappings().first()
+    if row is None:
+        return None
+    user_id = UUID(current_user.user.userId)
+    if row["created_by"] == user_id or has_kb_permission(session, current_user, kb_id, "kb.qa.history.read"):
+        return row
+    return None
+
+
+def _require_permission(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    permission_code: str,
+) -> None:
+    """对历史增强接口做显式权限判断，避免页面入口替代后端授权。"""
+    if not has_kb_permission(session, current_user, kb_id, permission_code):
+        raise QARunPermissionError
 
 
 def _status_progress(row: RowMapping) -> tuple[str, int, str, bool]:
@@ -356,6 +439,22 @@ def _execute_provider_qa_run(
             )
         trace_order += 1
 
+    postgres_candidates = _load_postgres_chunk_candidates(session, kb_id, settings.provider_top_k)
+    if postgres_candidates:
+        candidates = postgres_candidates
+        _insert_trace_step(
+            session,
+            run_id,
+            trace_order,
+            "postgresChunkFallback",
+            "success",
+            {"kbId": str(kb_id)},
+            {"candidateCount": len(postgres_candidates)},
+            {"source": "chunks"},
+            started_at=started_at,
+        )
+        trace_order += 1
+
     if not candidates:
         candidates = [
             ProviderCandidate(
@@ -411,7 +510,7 @@ def _execute_provider_qa_run(
             "authorizedCandidates": len(authorized_candidates),
             "droppedCandidates": len(reranked_candidates) - len(authorized_candidates),
             "accessFilter": access_filter.to_trace_summary(),
-            "note": "Chunk truth table will be enforced in E7; current sprint enforces permission summary before provider calls.",
+            "note": "Chunk truth table is enforced by PostgreSQL fallback when Provider does not return chunk_id.",
         },
         {"latencyMs": 0},
         started_at=started_at,
@@ -572,6 +671,8 @@ def create_qa_run(
     kb_row = _read_visible_knowledge_base(session, current_user, kb_id)
     if kb_row is None:
         return None
+    if kb_row["status"] == "disabled":
+        raise KnowledgeBaseDisabledError
 
     revision_row = _resolve_runnable_revision(session, kb_row, request.configRevisionId)
     run_id = uuid4()
@@ -662,6 +763,46 @@ def _to_candidate_dto(row: RowMapping) -> QARunCandidateDTO:
     )
 
 
+def _failure_type(row: RowMapping) -> str | None:
+    """从 metrics 中读取失败归因，保持历史表结构稳定。"""
+    metrics = row["metrics"] or {}
+    value = metrics.get("failureType")
+    return str(value) if value else None
+
+
+def _to_evaluation_sample_dto(row: RowMapping) -> EvaluationSampleDTO:
+    """将评估样本行转换为接口 DTO。"""
+    return EvaluationSampleDTO(
+        sampleId=str(row["sample_id"]),
+        kbId=str(row["kb_id"]),
+        sourceRunId=str(row["source_run_id"]) if row["source_run_id"] else None,
+        query=row["query"],
+        expectedAnswer=row["expected_answer"],
+        expectedEvidence=row["expected_evidence"],
+        status=row["status"],
+        metadata=row["metadata"],
+        createdAt=row["created_at"].isoformat(),
+        updatedAt=row["updated_at"].isoformat(),
+    )
+
+
+def _to_config_revision_dto(row: RowMapping) -> ConfigRevisionDTO:
+    """将从 QARun 生成的 Revision 草稿行转换为配置 DTO。"""
+    return ConfigRevisionDTO(
+        configRevisionId=str(row["config_revision_id"]),
+        kbId=str(row["kb_id"]),
+        revisionNo=row["revision_no"],
+        sourceTemplateId=str(row["source_template_id"]) if row["source_template_id"] else None,
+        status=row["status"],
+        pipelineDefinition=row["pipeline_definition"],
+        validationSnapshot=row["validation_snapshot"],
+        remark=row["remark"],
+        activatedAt=row["activated_at"].isoformat() if row["activated_at"] else None,
+        createdAt=row["created_at"].isoformat(),
+        updatedAt=row["updated_at"].isoformat(),
+    )
+
+
 def get_qa_run_detail(
     session: Session,
     current_user: CurrentUserResponse,
@@ -724,6 +865,10 @@ def get_qa_run_detail(
         rewrittenQuery=row["rewritten_query"],
         answer=row["answer"],
         retrievalDiagnostics=row["metrics"].get("retrievalDiagnostics", {}),
+        overrideSnapshot=row["override_snapshot"],
+        feedbackStatus=row["feedback_status"],
+        feedbackNote=row["feedback_note"],
+        failureType=_failure_type(row),
         candidates=candidates,
         evidence=[
             QARunEvidenceDTO(
@@ -758,15 +903,25 @@ def list_qa_runs(
     page_no: int,
     page_size: int,
     keyword: str | None,
+    status_filter: str | None = None,
+    feedback_status: str | None = None,
 ) -> PageResponse[QARunListItemDTO] | None:
-    """分页查询 QA 历史列表，当前按知识库可见性做最小过滤。"""
+    """分页查询 QA 历史列表，支持状态、反馈和关键词筛选。"""
     if _read_visible_knowledge_base(session, current_user, kb_id) is None:
         return None
+    _require_permission(session, current_user, kb_id, "kb.qa.history.read")
 
     condition = qa_runs.c.kb_id == kb_id
     if keyword:
         keyword_pattern = f"%{keyword.strip()}%"
-        condition = condition & qa_runs.c.query.ilike(keyword_pattern)
+        condition = condition & or_(
+            qa_runs.c.query.ilike(keyword_pattern),
+            qa_runs.c.run_id.cast(sa.String).ilike(keyword_pattern),
+        )
+    if status_filter:
+        condition = condition & (qa_runs.c.status == status_filter)
+    if feedback_status:
+        condition = condition & (qa_runs.c.feedback_status == _normalize_feedback_status(feedback_status))
 
     total = session.execute(select(func.count()).select_from(qa_runs).where(condition)).scalar_one()
     rows = session.execute(
@@ -788,12 +943,231 @@ def list_qa_runs(
                 answer=row["answer"],
                 hasOverride=row["has_override"],
                 feedbackStatus=row["feedback_status"],
+                feedbackNote=row["feedback_note"],
+                failureType=_failure_type(row),
                 createdBy=str(row["created_by"]) if row["created_by"] else None,
                 createdAt=row["created_at"].isoformat(),
                 latencyMs=row["metrics"].get("latencyMs"),
             )
             for row in rows
         ],
+        pageNo=page_no,
+        pageSize=page_size,
+        total=total,
+    )
+
+
+def update_qa_run_feedback(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    run_id: UUID,
+    request: QARunFeedbackUpdateRequest,
+) -> QARunFeedbackResponse | None:
+    """更新历史运行人工反馈和失败归因。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+    _require_permission(session, current_user, kb_id, "kb.qa.history.read")
+    row = session.execute(
+        select(qa_runs).where(qa_runs.c.kb_id == kb_id, qa_runs.c.run_id == run_id).limit(1)
+    ).mappings().first()
+    if row is None:
+        return None
+
+    metrics = dict(row["metrics"] or {})
+    if request.failureType:
+        metrics["failureType"] = request.failureType
+    else:
+        metrics.pop("failureType", None)
+    updated_at = datetime.now(UTC)
+    feedback_status = _normalize_feedback_status(request.feedbackStatus)
+    updated = session.execute(
+        update(qa_runs)
+        .where(qa_runs.c.run_id == run_id)
+        .values(
+            feedback_status=feedback_status,
+            feedback_note=request.feedbackNote,
+            metrics=metrics,
+            updated_at=updated_at,
+            updated_by=UUID(current_user.user.userId),
+        )
+        .returning(qa_runs)
+    ).mappings().one()
+    session.commit()
+    return QARunFeedbackResponse(
+        runId=str(updated["run_id"]),
+        feedbackStatus=updated["feedback_status"],
+        failureType=_failure_type(updated),
+        feedbackNote=updated["feedback_note"],
+        updatedAt=updated["updated_at"].isoformat(),
+    )
+
+
+def get_qa_run_replay_context(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    run_id: UUID,
+) -> QARunReplayContextDTO | None:
+    """获取回放上下文，不直接复用旧结果。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+    _require_permission(session, current_user, kb_id, "kb.qa.run")
+    row = _read_visible_qa_run(session, current_user, kb_id, run_id)
+    if row is None:
+        return None
+
+    warnings: list[str] = []
+    revision_row = session.execute(
+        select(config_revisions)
+        .where(
+            config_revisions.c.kb_id == kb_id,
+            config_revisions.c.config_revision_id == row["config_revision_id"],
+            config_revisions.c.deleted_at.is_(None),
+        )
+        .limit(1)
+    ).mappings().first()
+    if revision_row is None:
+        warnings.append("原运行使用的配置版本已不可见，建议改用当前 active revision。")
+    elif revision_row["status"] in {"archived", "invalid"}:
+        warnings.append("原运行使用的配置版本不是当前可运行版本，回放时可复制为草稿或改用 active revision。")
+
+    return QARunReplayContextDTO(
+        sourceRunId=str(row["run_id"]),
+        query=row["query"],
+        configRevisionId=str(row["config_revision_id"]),
+        overrideParams=row["override_snapshot"],
+        suggestedMode="replay" if revision_row and revision_row["status"] in {"active", "saved"} else "copyAsNew",
+        warnings=warnings,
+    )
+
+
+def create_config_revision_draft_from_qa_run(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    run_id: UUID,
+) -> ConfigRevisionDTO | None:
+    """从 QARun 锁定的 Revision 复制 Pipeline，并附带回放来源信息生成草稿。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+    _require_permission(session, current_user, kb_id, "kb.config.manage")
+    row = _read_visible_qa_run(session, current_user, kb_id, run_id)
+    if row is None:
+        return None
+    source_revision = session.execute(
+        select(config_revisions)
+        .where(
+            config_revisions.c.kb_id == kb_id,
+            config_revisions.c.config_revision_id == row["config_revision_id"],
+            config_revisions.c.deleted_at.is_(None),
+        )
+        .limit(1)
+    ).mappings().first()
+    if source_revision is None:
+        return None
+
+    actor_id = UUID(current_user.user.userId)
+    revision_no = (
+        session.execute(select(func.coalesce(func.max(config_revisions.c.revision_no), 0)).where(config_revisions.c.kb_id == kb_id)).scalar_one()
+        + 1
+    )
+    validation_snapshot = {
+        **source_revision["validation_snapshot"],
+        "copiedFromRunId": str(run_id),
+        "copiedFromRevisionId": str(source_revision["config_revision_id"]),
+        "copiedAt": datetime.now(UTC).isoformat(),
+    }
+    draft = session.execute(
+        insert(config_revisions)
+        .values(
+            config_revision_id=uuid4(),
+            kb_id=kb_id,
+            revision_no=revision_no,
+            source_template_id=source_revision["source_template_id"],
+            status="draft",
+            pipeline_definition=source_revision["pipeline_definition"],
+            validation_snapshot=validation_snapshot,
+            remark=f"从 QA Run {str(run_id)[:8]} 生成草稿",
+            created_by=actor_id,
+            updated_by=actor_id,
+        )
+        .returning(config_revisions)
+    ).mappings().one()
+    session.commit()
+    return _to_config_revision_dto(draft)
+
+
+def create_evaluation_sample_from_run(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    run_id: UUID,
+    request: EvaluationSampleCreateRequest,
+) -> EvaluationSampleDTO | None:
+    """从历史运行沉淀评估样本，保留期望答案和关键证据快照。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+    _require_permission(session, current_user, kb_id, "kb.evaluation.manage")
+    row = _read_visible_qa_run(session, current_user, kb_id, run_id)
+    if row is None:
+        return None
+
+    evidence_rows = session.execute(
+        select(qa_run_evidence.c.chunk_id, qa_run_evidence.c.evidence_order, qa_run_evidence.c.source_snapshot)
+        .where(qa_run_evidence.c.run_id == run_id)
+        .order_by(qa_run_evidence.c.evidence_order.asc())
+    ).mappings()
+    default_evidence = {
+        "chunkIds": [str(evidence["chunk_id"]) for evidence in evidence_rows if evidence["chunk_id"]],
+        "source": "qa_run_evidence",
+    }
+    sample = session.execute(
+        insert(evaluation_samples)
+        .values(
+            sample_id=uuid4(),
+            kb_id=kb_id,
+            source_run_id=run_id,
+            query=row["query"],
+            expected_answer=request.expectedAnswer if request.expectedAnswer is not None else row["answer"],
+            expected_evidence=request.expectedEvidence or default_evidence,
+            status="active",
+            metadata=request.metadata or {"feedbackStatus": row["feedback_status"], "failureType": _failure_type(row)},
+            created_by=UUID(current_user.user.userId),
+            updated_by=UUID(current_user.user.userId),
+        )
+        .returning(evaluation_samples)
+    ).mappings().one()
+    session.commit()
+    return _to_evaluation_sample_dto(sample)
+
+
+def list_evaluation_samples(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    page_no: int,
+    page_size: int,
+) -> PageResponse[EvaluationSampleDTO] | None:
+    """分页查询评估样本，作为回归验证入口的最小管理能力。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+    _require_permission(session, current_user, kb_id, "kb.evaluation.manage")
+    condition = (
+        (evaluation_samples.c.kb_id == kb_id)
+        & (evaluation_samples.c.deleted_at.is_(None))
+        & (evaluation_samples.c.status == "active")
+    )
+    total = session.execute(select(func.count()).select_from(evaluation_samples).where(condition)).scalar_one()
+    rows = session.execute(
+        select(evaluation_samples)
+        .where(condition)
+        .order_by(evaluation_samples.c.created_at.desc())
+        .offset((page_no - 1) * page_size)
+        .limit(page_size)
+    ).mappings()
+    return PageResponse(
+        items=[_to_evaluation_sample_dto(row) for row in rows],
         pageNo=page_no,
         pageSize=page_size,
         total=total,

@@ -16,6 +16,7 @@ from app.schemas.knowledge_base import (
     KbMemberUpdateRequest,
     KnowledgeBaseCreateRequest,
     KnowledgeBaseDTO,
+    KnowledgeBaseUpdateRequest,
 )
 from app.schemas.permission import PermissionSummaryDTO
 from app.services.permission_service import get_kb_permission_summary
@@ -23,15 +24,18 @@ from app.services.knowledge_base_service import (
     KbMemberBindingConflictError,
     KbMemberBindingNotFoundError,
     KbMemberSubjectNotFoundError,
+    KnowledgeBaseDisabledError,
     KnowledgeBaseNotFoundError,
     KnowledgeBasePermissionError,
     create_knowledge_base,
     create_kb_member,
+    disable_knowledge_base,
     get_knowledge_base,
     list_knowledge_bases,
     list_kb_members,
     remove_kb_member,
     search_kb_member_subjects,
+    update_knowledge_base,
     update_kb_member_role,
 )
 
@@ -50,6 +54,11 @@ def _raise_member_error(exc: Exception) -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Current user cannot manage knowledge base members.",
         ) from exc
+    if isinstance(exc, KnowledgeBaseDisabledError):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="KB_DISABLED: knowledge base is disabled.",
+        ) from exc
     if isinstance(exc, KbMemberSubjectNotFoundError):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -59,6 +68,26 @@ def _raise_member_error(exc: Exception) -> None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Member subject already has an active binding in this knowledge base.",
+        ) from exc
+    raise exc
+
+
+def _raise_kb_management_error(exc: Exception) -> None:
+    """将知识库基础信息管理异常映射为接口错误。"""
+    if isinstance(exc, KnowledgeBaseNotFoundError):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Knowledge base not found.",
+        ) from exc
+    if isinstance(exc, KnowledgeBasePermissionError):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Current user cannot manage knowledge base.",
+        ) from exc
+    if isinstance(exc, KnowledgeBaseDisabledError):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="KB_DISABLED: knowledge base is disabled.",
         ) from exc
     raise exc
 
@@ -106,6 +135,39 @@ def read_knowledge_base(
             detail="Knowledge base not found.",
         )
     return knowledge_base
+
+
+@router.patch("/{kb_id}", response_model=KnowledgeBaseDTO)
+def update_knowledge_base_endpoint(
+    kb_id: UUID,
+    request: KnowledgeBaseUpdateRequest,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> KnowledgeBaseDTO:
+    """更新知识库基础信息；停用状态下拒绝继续写入。"""
+    try:
+        return update_knowledge_base(session, current_user, kb_id, request)
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Knowledge base conflicts with existing data.",
+        ) from exc
+    except Exception as exc:
+        _raise_kb_management_error(exc)
+
+
+@router.post("/{kb_id}/disable", response_model=KnowledgeBaseDTO)
+def disable_knowledge_base_endpoint(
+    kb_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> KnowledgeBaseDTO:
+    """停用知识库，保留历史数据但阻止后续写操作。"""
+    try:
+        return disable_knowledge_base(session, current_user, kb_id)
+    except Exception as exc:
+        _raise_kb_management_error(exc)
 
 
 @router.get("/{kb_id}/permissions/summary", response_model=PermissionSummaryDTO)
