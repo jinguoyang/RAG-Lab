@@ -28,7 +28,7 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | S10-001 | B-043 | 实现图快照列表/详情、实体搜索、关系路径和社区摘要接口 | P1 | 1d | Codex | Done |
 | S10-002 | B-044 | 实现图支撑 Chunk 回落查询、权限裁剪和 filteredCount 诊断 | P0 | 1d | Codex | Done |
-| S10-003 | B-045 | 实现图检索分析页 P11 的快照、实体路径、支撑证据和 stale 提示 | P1 | 1d |  | Todo |
+| S10-003 | B-045 | 实现图检索分析页 P11 的快照、实体路径、支撑证据和 stale 提示 | P1 | 1d | Codex | Done |
 | S10-004 | B-046 | 完善 GraphSnapshot stale 标记规则与文档、ACL 变更联动 | P1 | 0.5d | Codex | Done |
 
 ## 5. Stale 标记规则
