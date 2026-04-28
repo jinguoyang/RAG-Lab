@@ -6,6 +6,7 @@ can catch missing path and community graph APIs.
 
 import sys
 from pathlib import Path
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 
@@ -14,11 +15,14 @@ sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.core.database import get_db_session
 from app.main import app
+from app.schemas.auth import CurrentUserResponse, UserDTO
+from app.services.graph_service import mark_graph_snapshots_stale
 
 KB_ID = "11111111-1111-1111-1111-111111111111"
 SNAPSHOT_ID = "22222222-2222-2222-2222-222222222222"
 CHUNK_ID = "33333333-3333-3333-3333-333333333333"
 DOCUMENT_ID = "44444444-4444-4444-4444-444444444444"
+USER_ID = "55555555-5555-5555-5555-555555555555"
 
 
 class _FakeResult:
@@ -49,6 +53,8 @@ class _FakeSession:
 
     def execute(self, statement):
         statement_text = str(statement)
+        if "UPDATE graph_snapshots" in statement_text:
+            return _FakeResult([])
         if "FROM knowledge_bases" in statement_text:
             return _FakeResult([{"kb_id": KB_ID}])
         if "graph_snapshots.graph_snapshot_id" in statement_text:
@@ -95,6 +101,22 @@ def _override_db_session():
         session.close()
 
 
+def _fake_current_user() -> CurrentUserResponse:
+    """Build a deterministic current user for service-level graph stale verification."""
+    return CurrentUserResponse(
+        user=UserDTO(
+            userId=USER_ID,
+            username="epic9-verifier",
+            displayName="Epic 9 Verifier",
+            platformRole="platform_admin",
+            securityLevel="internal",
+            status="active",
+        ),
+        platformPermissions=[],
+        visibleKbCount=1,
+    )
+
+
 def assert_ok(response, label: str) -> dict:
     """Fail with a compact message that keeps local verification readable."""
     assert response.status_code == 200, f"{label} failed: {response.status_code} {response.text}"
@@ -121,6 +143,9 @@ def assert_supporting_chunks_payload(payload: dict) -> None:
 
 def main() -> None:
     """Run the local TestClient smoke verification for B-043 graph APIs."""
+    assert callable(mark_graph_snapshots_stale), "mark_graph_snapshots_stale must be callable"
+    mark_graph_snapshots_stale(_FakeSession(), UUID(KB_ID), "chunk_changed", _fake_current_user())
+
     app.dependency_overrides[get_db_session] = _override_db_session
     client = TestClient(app)
 

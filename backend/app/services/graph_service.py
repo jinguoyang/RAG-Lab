@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import RowMapping, func, select
+from sqlalchemy import RowMapping, func, select, update
 from sqlalchemy.orm import Session
 
 from app.schemas.auth import CurrentUserResponse
@@ -56,6 +56,26 @@ def _to_graph_snapshot_dto(row: RowMapping) -> GraphSnapshotDTO:
         errorMessage=row["error_message"],
         createdAt=row["created_at"].isoformat(),
         updatedAt=row["updated_at"].isoformat(),
+    )
+
+
+def mark_graph_snapshots_stale(
+    session: Session,
+    kb_id: UUID,
+    reason: str,
+    current_user: CurrentUserResponse,
+) -> None:
+    """将知识库当前成功图快照标记为过期，保留已过期快照的原始原因。"""
+    session.execute(
+        update(graph_snapshots)
+        .where(graph_snapshots.c.kb_id == kb_id, graph_snapshots.c.status == "success")
+        .values(
+            status="stale",
+            stale_reason=reason,
+            stale_at=func.now(),
+            updated_at=func.now(),
+            updated_by=UUID(current_user.user.userId),
+        )
     )
 
 

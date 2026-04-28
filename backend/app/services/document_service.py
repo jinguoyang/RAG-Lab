@@ -36,6 +36,7 @@ from app.tables import (
     stored_files,
 )
 from app.services.object_storage import ObjectStorageProvider, get_object_storage_provider
+from app.services.graph_service import mark_graph_snapshots_stale
 from app.services.knowledge_base_service import KnowledgeBaseDisabledError
 from app.services.permission_service import build_chunk_access_filter_context, has_kb_permission
 
@@ -400,6 +401,7 @@ def run_ingest_job(
         session.execute(delete(chunk_access_filters).where(chunk_access_filters.c.chunk_id.in_(select(chunks.c.chunk_id).where(chunks.c.version_id == version_row["version_id"]))))
         session.execute(delete(graph_chunk_refs).where(graph_chunk_refs.c.chunk_id.in_(select(chunks.c.chunk_id).where(chunks.c.version_id == version_row["version_id"]))))
         session.execute(delete(chunks).where(chunks.c.version_id == version_row["version_id"]))
+        mark_graph_snapshots_stale(session, kb_row["kb_id"], "chunk_changed", current_user)
 
         chunk_rows: list[RowMapping] = []
         for index, parsed in enumerate(parsed_chunks, start=1):
@@ -1059,11 +1061,7 @@ def activate_document_version(
         .where(documents.c.document_id == document_id)
         .values(active_version_id=version_id, updated_by=UUID(current_user.user.userId), updated_at=func.now())
     )
-    session.execute(
-        update(graph_snapshots)
-        .where(graph_snapshots.c.kb_id == kb_id, graph_snapshots.c.status == "success")
-        .values(status="stale", stale_reason="active_version_changed", stale_at=func.now(), updated_at=func.now())
-    )
+    mark_graph_snapshots_stale(session, kb_id, "active_version_changed", current_user)
     session.commit()
     return DocumentVersionActivateResponse(
         documentId=str(document_id),
