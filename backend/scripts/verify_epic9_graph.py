@@ -59,7 +59,7 @@ class _FakeSession:
                     {
                         "chunk_id": CHUNK_ID,
                         "ref_type": "entity",
-                        "metadata": {"score": 0.91},
+                        "metadata": None,
                     }
                 ]
             )

@@ -326,7 +326,7 @@ def list_supporting_chunks(
                 contentPreview=_preview(chunk_row["content"]),
                 securityLevel=chunk_row["security_level"],
                 refType=ref_row["ref_type"],
-                metadata=ref_row["metadata"],
+                metadata=ref_row["metadata"] or {},
             )
         )
 
