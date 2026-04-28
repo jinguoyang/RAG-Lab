@@ -424,6 +424,25 @@ qa_run_citations = sa.Table(
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
 )
 
+evaluation_samples = sa.Table(
+    "evaluation_samples",
+    metadata,
+    sa.Column("sample_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("kb_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("source_run_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("query", sa.Text(), nullable=False),
+    sa.Column("expected_answer", sa.Text(), nullable=True),
+    sa.Column("expected_evidence", postgresql.JSONB(), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("metadata", postgresql.JSONB(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("deleted_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
 graph_snapshots = sa.Table(
     "graph_snapshots",
     metadata,

@@ -106,6 +106,10 @@ class QARunDetailDTO(BaseModel):
     rewrittenQuery: str | None
     answer: str | None
     retrievalDiagnostics: dict[str, Any]
+    overrideSnapshot: dict[str, Any]
+    feedbackStatus: str
+    feedbackNote: str | None
+    failureType: str | None
     candidates: list[QARunCandidateDTO]
     evidence: list[QARunEvidenceDTO]
     citations: list[QARunCitationDTO]
@@ -125,6 +129,60 @@ class QARunListItemDTO(BaseModel):
     answer: str | None
     hasOverride: bool
     feedbackStatus: str
+    feedbackNote: str | None = None
+    failureType: str | None = None
     createdBy: str | None
     createdAt: str
     latencyMs: int | None = None
+
+
+class QARunFeedbackUpdateRequest(BaseModel):
+    """人工反馈更新请求，失败归因随 metrics 持久化。"""
+
+    feedbackStatus: str
+    failureType: str | None = Field(default=None, max_length=64)
+    feedbackNote: str | None = Field(default=None, max_length=1000)
+
+
+class QARunFeedbackResponse(BaseModel):
+    """人工反馈更新结果。"""
+
+    runId: str
+    feedbackStatus: str
+    failureType: str | None
+    feedbackNote: str | None
+    updatedAt: str
+
+
+class QARunReplayContextDTO(BaseModel):
+    """回放到 QA 调试页所需上下文。"""
+
+    sourceRunId: str
+    query: str
+    configRevisionId: str
+    overrideParams: dict[str, Any]
+    suggestedMode: str
+    warnings: list[str] = Field(default_factory=list)
+
+
+class EvaluationSampleCreateRequest(BaseModel):
+    """从 QARun 生成评估样本的可选补充信息。"""
+
+    expectedAnswer: str | None = None
+    expectedEvidence: dict[str, Any] | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class EvaluationSampleDTO(BaseModel):
+    """评估样本 DTO，用于回归样本最小管理。"""
+
+    sampleId: str
+    kbId: str
+    sourceRunId: str | None
+    query: str
+    expectedAnswer: str | None
+    expectedEvidence: dict[str, Any]
+    status: str
+    metadata: dict[str, Any]
+    createdAt: str
+    updatedAt: str
