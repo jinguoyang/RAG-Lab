@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 from hashlib import sha256
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import RowMapping, func, insert, or_, select, update
@@ -58,6 +59,8 @@ RETRIEVAL_NODE_TO_OVERRIDE_KEY = {
     "graphRetrieval": "graph",
 }
 MOCK_EVIDENCE_CHUNK_ID = UUID("00000000-0000-0000-0000-000000000001")
+DEFAULT_MAX_CONTEXT_TOKENS = 6000
+DEFAULT_TEMPERATURE = 0.2
 FEEDBACK_STATUS_MAP = {
     "unrated": "unrated",
     "correct": "correct",
@@ -69,6 +72,129 @@ FEEDBACK_STATUS_MAP = {
     "noEvidence": "no_evidence",
     "no_evidence": "no_evidence",
 }
+
+
+def _node_params_by_type(revision_row: RowMapping | dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """按节点类型提取 pipelineDefinition 参数，隔离 P08 展示模型和后端执行契约。"""
+    pipeline_definition = revision_row["pipeline_definition"]
+    nodes = pipeline_definition.get("nodes", []) if isinstance(pipeline_definition, dict) else []
+    params_by_type: dict[str, dict[str, Any]] = {}
+    for node in nodes if isinstance(nodes, list) else []:
+        if not isinstance(node, dict):
+            continue
+        node_type = str(node.get("type") or "")
+        params = node.get("params")
+        params_by_type[node_type] = params if isinstance(params, dict) else {}
+    return params_by_type
+
+
+def _as_positive_int(value: Any, fallback: int, minimum: int = 1, maximum: int | None = None) -> int:
+    """将配置参数收口为安全整数，避免前端或历史数据中的异常值污染执行链路。"""
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        number = fallback
+    number = max(minimum, number)
+    if maximum is not None:
+        number = min(number, maximum)
+    return number
+
+
+def _as_float(value: Any, fallback: float, minimum: float | None = None, maximum: float | None = None) -> float:
+    """将配置参数收口为安全浮点数，保留后端执行层的最终保护。"""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        number = fallback
+    if minimum is not None:
+        number = max(minimum, number)
+    if maximum is not None:
+        number = min(number, maximum)
+    return number
+
+
+def _override_params(override_snapshot: dict | None) -> dict[str, Any]:
+    """兼容 P09 旧版平铺覆盖和新版 params 覆盖，单次运行覆盖优先级最高。"""
+    if not isinstance(override_snapshot, dict):
+        return {}
+    nested_params = override_snapshot.get("params")
+    params = nested_params if isinstance(nested_params, dict) else {}
+    return {**override_snapshot, **params}
+
+
+def _build_effective_pipeline_params(
+    revision_row: RowMapping | dict[str, Any],
+    override_snapshot: dict | None,
+    default_top_k: int | None = None,
+) -> dict[str, Any]:
+    """合并 ConfigRevision 参数与单次覆盖，产出 QA 执行可观测参数快照。"""
+    base_top_k = _as_positive_int(default_top_k or get_settings().provider_top_k, 5, maximum=200)
+    node_params = _node_params_by_type(revision_row)
+    overrides = _override_params(override_snapshot)
+
+    dense_top_k = _as_positive_int(node_params.get("denseRetrieval", {}).get("topK"), base_top_k, maximum=200)
+    sparse_top_k = _as_positive_int(node_params.get("sparseRetrieval", {}).get("topK"), base_top_k, maximum=200)
+    graph_top_k = _as_positive_int(
+        node_params.get("graphRetrieval", {}).get("topK", node_params.get("graphRetrieval", {}).get("maxNodes")),
+        base_top_k,
+        maximum=200,
+    )
+    rerank_top_n = _as_positive_int(node_params.get("rerank", {}).get("topN"), base_top_k, maximum=200)
+    max_context_tokens = _as_positive_int(
+        node_params.get("contextBuilder", {}).get("maxContextTokens"),
+        DEFAULT_MAX_CONTEXT_TOKENS,
+        minimum=256,
+        maximum=128000,
+    )
+    temperature = _as_float(
+        node_params.get("generation", {}).get("temperature"),
+        DEFAULT_TEMPERATURE,
+        minimum=0,
+        maximum=2,
+    )
+
+    dense_top_k = _as_positive_int(overrides.get("denseTopK"), dense_top_k, maximum=200)
+    sparse_top_k = _as_positive_int(overrides.get("sparseTopK"), sparse_top_k, maximum=200)
+    graph_top_k = _as_positive_int(overrides.get("graphTopK"), graph_top_k, maximum=200)
+    rerank_top_n = _as_positive_int(overrides.get("rerankerTopN", overrides.get("rerankTopN")), rerank_top_n, maximum=200)
+    max_context_tokens = _as_positive_int(
+        overrides.get("maxContextTokens"),
+        max_context_tokens,
+        minimum=256,
+        maximum=128000,
+    )
+    temperature = _as_float(overrides.get("temperature"), temperature, minimum=0, maximum=2)
+
+    return {
+        "retrievalTopK": {
+            "dense": dense_top_k,
+            "sparse": sparse_top_k,
+            "graph": graph_top_k,
+        },
+        "rerankTopN": rerank_top_n,
+        "maxContextTokens": max_context_tokens,
+        "temperature": temperature,
+    }
+
+
+def _limit_candidates_by_context_tokens(
+    candidates: list[ProviderCandidate],
+    max_context_tokens: int,
+) -> list[ProviderCandidate]:
+    """按粗略 token 预算裁剪生成上下文；候选明细仍保留完整授权结果供诊断。"""
+    if not candidates:
+        return []
+    token_budget = max(1, max_context_tokens)
+    selected: list[ProviderCandidate] = []
+    used_tokens = 0
+    for candidate in candidates:
+        content = candidate.content or str(candidate.metadata)
+        estimated_tokens = max(1, len(content) // 4)
+        if selected and used_tokens + estimated_tokens > token_budget:
+            break
+        selected.append(candidate)
+        used_tokens += estimated_tokens
+    return selected
 
 
 def _normalize_feedback_status(value: str) -> str:
@@ -353,9 +479,23 @@ def _execute_provider_qa_run(
     provider_set = providers or get_qa_run_providers()
     settings = get_settings()
     enabled_channels = _effective_retrieval_channels(revision_row, override_snapshot)
+    pipeline_params = _build_effective_pipeline_params(revision_row, override_snapshot, settings.provider_top_k)
     access_filter = build_chunk_access_filter_context(session, current_user, kb_id)
     trace_order = 1
     provider_errors: list[str] = []
+
+    _insert_trace_step(
+        session,
+        run_id,
+        trace_order,
+        "pipelineParams",
+        "success",
+        {"configRevisionId": str(revision_row["config_revision_id"])},
+        pipeline_params,
+        {"source": "configRevision"},
+        started_at=started_at,
+    )
+    trace_order += 1
 
     try:
         rewritten_query = provider_set.llm.rewrite_query(query)
@@ -448,14 +588,14 @@ def _execute_provider_qa_run(
                     kb_id,
                     rewritten_query,
                     embedding,
-                    settings.provider_top_k,
+                    pipeline_params["retrievalTopK"]["dense"],
                     access_filter,
                 )
             elif channel == "sparse":
                 channel_candidates = provider_set.sparse.retrieve(
                     kb_id,
                     rewritten_query,
-                    settings.provider_top_k,
+                    pipeline_params["retrievalTopK"]["sparse"],
                     access_filter,
                 )
             else:
@@ -463,7 +603,7 @@ def _execute_provider_qa_run(
                     kb_id,
                     rewritten_query,
                     None,
-                    settings.provider_top_k,
+                    pipeline_params["retrievalTopK"]["graph"],
                     access_filter,
                 )
             candidates.extend(channel_candidates)
@@ -475,7 +615,11 @@ def _execute_provider_qa_run(
                 "success",
                 {"query": rewritten_query},
                 {"candidateCount": len(channel_candidates)},
-                {"provider": provider_name, "accessFilter": access_filter.to_trace_summary()},
+                {
+                    "provider": provider_name,
+                    "topK": pipeline_params["retrievalTopK"][channel],
+                    "accessFilter": access_filter.to_trace_summary(),
+                },
                 started_at=started_at,
             )
         except ProviderError as exc:
@@ -495,7 +639,12 @@ def _execute_provider_qa_run(
             )
         trace_order += 1
 
-    postgres_candidates = _load_postgres_chunk_candidates(session, kb_id, settings.provider_top_k)
+    fallback_top_k = (
+        max(pipeline_params["retrievalTopK"][channel] for channel in enabled_channels)
+        if enabled_channels
+        else settings.provider_top_k
+    )
+    postgres_candidates = _load_postgres_chunk_candidates(session, kb_id, fallback_top_k)
     if postgres_candidates:
         candidates = postgres_candidates
         _insert_trace_step(
@@ -524,11 +673,11 @@ def _execute_provider_qa_run(
         provider_errors.append("fallbackEvidence")
 
     try:
-        reranked_candidates = provider_set.rerank.rerank(rewritten_query, candidates, settings.provider_top_k)
+        reranked_candidates = provider_set.rerank.rerank(rewritten_query, candidates, pipeline_params["rerankTopN"])
         rerank_status = "success"
         rerank_error = None
     except ProviderError as exc:
-        reranked_candidates = candidates[: settings.provider_top_k]
+        reranked_candidates = candidates[: pipeline_params["rerankTopN"]]
         rerank_status = "partial"
         rerank_error = str(exc)
         provider_errors.append("rerank")
@@ -540,7 +689,7 @@ def _execute_provider_qa_run(
         rerank_status,
         {"inputCandidates": len(candidates)},
         {"candidateCount": len(reranked_candidates)},
-        {"provider": settings.rerank_provider},
+        {"provider": settings.rerank_provider, "topN": pipeline_params["rerankTopN"]},
         error_code="PROVIDER_ERROR" if rerank_error else None,
         error_message=rerank_error,
         started_at=started_at,
@@ -590,6 +739,7 @@ def _execute_provider_qa_run(
                         "mockCount": 0,
                         "droppedByPermission": dropped_by_permission,
                         "providerErrors": provider_errors,
+                        "pipelineParams": pipeline_params,
                     },
                 },
                 started_at=started_at,
@@ -599,8 +749,17 @@ def _execute_provider_qa_run(
         )
         return
 
+    context_candidates = _limit_candidates_by_context_tokens(
+        authorized_candidates,
+        pipeline_params["maxContextTokens"],
+    )
     try:
-        answer = provider_set.llm.generate_answer(query, authorized_candidates)
+        answer = provider_set.llm.generate_answer(
+            query,
+            context_candidates,
+            temperature=pipeline_params["temperature"],
+            max_context_tokens=pipeline_params["maxContextTokens"],
+        )
         generation_status = "success"
         generation_error = None
     except ProviderError as exc:
@@ -614,9 +773,13 @@ def _execute_provider_qa_run(
         trace_order,
         "generation",
         generation_status,
-        {"evidenceCount": len(authorized_candidates)},
+        {"evidenceCount": len(context_candidates), "authorizedEvidenceCount": len(authorized_candidates)},
         {"answerPreview": answer[:80]},
-        {"provider": settings.llm_provider},
+        {
+            "provider": settings.llm_provider,
+            "temperature": pipeline_params["temperature"],
+            "maxContextTokens": pipeline_params["maxContextTokens"],
+        },
         error_code="PROVIDER_ERROR" if generation_error else None,
         error_message=generation_error,
         started_at=started_at,
@@ -625,7 +788,7 @@ def _execute_provider_qa_run(
 
     evidence_id = uuid4()
     citation_id = uuid4()
-    top_candidate = authorized_candidates[0]
+    top_candidate = context_candidates[0]
     candidate_id = uuid4()
     content_snapshot = top_candidate.content or "Provider 候选未返回正文，当前仅保留来源摘要。"
     content_hash = sha256(content_snapshot.encode("utf-8")).hexdigest()
@@ -708,6 +871,7 @@ def _execute_provider_qa_run(
                     **channel_counts,
                     "droppedByPermission": dropped_by_permission,
                     "providerErrors": provider_errors,
+                    "pipelineParams": pipeline_params,
                 },
             },
             started_at=started_at,

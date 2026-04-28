@@ -535,7 +535,13 @@ class LlmProvider:
     def rewrite_query(self, query: str) -> str:
         raise NotImplementedError
 
-    def generate_answer(self, query: str, evidence: list[ProviderCandidate]) -> str:
+    def generate_answer(
+        self,
+        query: str,
+        evidence: list[ProviderCandidate],
+        temperature: float | None = None,
+        max_context_tokens: int | None = None,
+    ) -> str:
         raise NotImplementedError
 
 
@@ -545,7 +551,13 @@ class LocalLlmProvider(LlmProvider):
     def rewrite_query(self, query: str) -> str:
         return query if query.endswith("?") or query.endswith("？") else f"{query}?"
 
-    def generate_answer(self, query: str, evidence: list[ProviderCandidate]) -> str:
+    def generate_answer(
+        self,
+        query: str,
+        evidence: list[ProviderCandidate],
+        temperature: float | None = None,
+        max_context_tokens: int | None = None,
+    ) -> str:
         if not evidence:
             return f"未召回到可用证据，无法基于知识库回答：{query}"
         summary = "；".join((candidate.content or "无正文摘要")[:80] for candidate in evidence[:3])
@@ -571,16 +583,23 @@ class HttpLlmProvider(LlmProvider):
         )
         return content.strip() or query
 
-    def generate_answer(self, query: str, evidence: list[ProviderCandidate]) -> str:
+    def generate_answer(
+        self,
+        query: str,
+        evidence: list[ProviderCandidate],
+        temperature: float | None = None,
+        max_context_tokens: int | None = None,
+    ) -> str:
         evidence_text = "\n".join(f"[{index}] {candidate.content or candidate.metadata}" for index, candidate in enumerate(evidence, start=1))
         return self._chat(
             [
                 {"role": "system", "content": "Answer using only the provided evidence. If evidence is insufficient, say so."},
                 {"role": "user", "content": f"Question: {query}\nEvidence:\n{evidence_text}"},
-            ]
+            ],
+            temperature=temperature,
         )
 
-    def _chat(self, messages: list[dict[str, str]]) -> str:
+    def _chat(self, messages: list[dict[str, str]], temperature: float | None = None) -> str:
         import httpx
 
         headers = {"Content-Type": "application/json"}
@@ -590,7 +609,7 @@ class HttpLlmProvider(LlmProvider):
             response = httpx.post(
                 self._endpoint,
                 headers=headers,
-                json={"model": self._model, "messages": messages, "temperature": 0.2},
+                json={"model": self._model, "messages": messages, "temperature": temperature if temperature is not None else 0.2},
                 timeout=60,
             )
             response.raise_for_status()
