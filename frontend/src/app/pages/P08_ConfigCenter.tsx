@@ -65,6 +65,20 @@ interface PipelineNode {
   rule: string;
 }
 
+type NodeParamValue = string | number | boolean;
+type NodeParams = Record<string, NodeParamValue>;
+
+interface NodeParameterField {
+  key: string;
+  label: string;
+  type: "text" | "number" | "select" | "boolean";
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: { label: string; value: string }[];
+  description?: string;
+}
+
 interface PipelineStage {
   id: string;
   title: string;
@@ -98,6 +112,196 @@ const PIPELINE_STAGES: PipelineStage[] = [
     summary: "Answer、Trace、Metrics 用于调试和历史回放。",
   },
 ];
+
+const DEFAULT_NODE_PARAMS: Record<string, NodeParams> = {
+  queryRewrite: {
+    promptVersion: "v2",
+    rewriteStrategy: "hybrid",
+    preserveOriginalQuery: true,
+    expansionCount: 3,
+  },
+  dense: {
+    topK: 20,
+    minScore: 0.75,
+    hybridWeight: 0.4,
+    embeddingModel: "bge-m3",
+  },
+  sparse: {
+    topK: 15,
+    minScore: 12.5,
+    hybridWeight: 0.3,
+    matchMode: "bm25+phrase",
+  },
+  graph: {
+    hopDepth: 2,
+    maxNodes: 50,
+    hybridWeight: 0.3,
+    pathMode: "entity-path",
+    mustFallbackToChunk: true,
+  },
+  fusion: {
+    method: "rrf",
+    rrfK: 60,
+    candidateLimit: 40,
+    dedupBy: "chunkId",
+  },
+  rerank: {
+    model: "bge-reranker-v2-m3",
+    topN: 5,
+    minScore: 0,
+    keepRejectedReason: true,
+  },
+  contextBuilder: {
+    maxContextTokens: 6000,
+    packingStrategy: "citation-aware",
+    evidenceOnly: true,
+  },
+  generation: {
+    model: "claude-3-5-sonnet",
+    temperature: 0.1,
+    maxOutputTokens: 1200,
+    citationPolicy: "strict",
+  },
+  citation: {
+    minEvidence: 1,
+    citationPolicy: "strict",
+    enableGraphLinks: true,
+  },
+};
+
+const NODE_PARAMETER_FIELDS: Record<string, NodeParameterField[]> = {
+  queryRewrite: [
+    { key: "promptVersion", label: "Prompt 版本", type: "text" },
+    {
+      key: "rewriteStrategy",
+      label: "改写策略",
+      type: "select",
+      options: [
+        { label: "混合改写", value: "hybrid" },
+        { label: "多查询扩展", value: "multi-query" },
+        { label: "术语规范化", value: "term-normalization" },
+      ],
+    },
+    { key: "preserveOriginalQuery", label: "保留原问", type: "boolean" },
+    { key: "expansionCount", label: "扩展问题数", type: "number", min: 1, max: 8, step: 1 },
+  ],
+  dense: [
+    { key: "topK", label: "Top K", type: "number", min: 1, max: 200, step: 1 },
+    { key: "minScore", label: "最低相似度", type: "number", min: 0, max: 1, step: 0.01 },
+    { key: "hybridWeight", label: "混合权重", type: "number", min: 0, max: 1, step: 0.05 },
+    { key: "embeddingModel", label: "Embedding 模型", type: "text" },
+  ],
+  sparse: [
+    { key: "topK", label: "Top K", type: "number", min: 1, max: 200, step: 1 },
+    { key: "minScore", label: "最低 BM25 分", type: "number", min: 0, max: 100, step: 0.5 },
+    { key: "hybridWeight", label: "混合权重", type: "number", min: 0, max: 1, step: 0.05 },
+    {
+      key: "matchMode",
+      label: "匹配模式",
+      type: "select",
+      options: [
+        { label: "BM25 + 短语", value: "bm25+phrase" },
+        { label: "BM25", value: "bm25" },
+        { label: "关键词精确", value: "keyword-exact" },
+      ],
+    },
+  ],
+  graph: [
+    { key: "hopDepth", label: "关系跳数", type: "number", min: 1, max: 4, step: 1 },
+    { key: "maxNodes", label: "最大节点数", type: "number", min: 5, max: 200, step: 5 },
+    { key: "hybridWeight", label: "混合权重", type: "number", min: 0, max: 1, step: 0.05 },
+    {
+      key: "pathMode",
+      label: "路径策略",
+      type: "select",
+      options: [
+        { label: "实体路径", value: "entity-path" },
+        { label: "社区摘要", value: "community-summary" },
+        { label: "路径 + 社区", value: "path-and-community" },
+      ],
+    },
+    {
+      key: "mustFallbackToChunk",
+      label: "必须回落授权 Chunk",
+      type: "boolean",
+      description: "关闭后无法通过后端安全校验。",
+    },
+  ],
+  fusion: [
+    {
+      key: "method",
+      label: "融合算法",
+      type: "select",
+      options: [
+        { label: "RRF", value: "rrf" },
+        { label: "加权分数", value: "weighted-score" },
+      ],
+    },
+    { key: "rrfK", label: "RRF K", type: "number", min: 10, max: 120, step: 5 },
+    { key: "candidateLimit", label: "候选上限", type: "number", min: 5, max: 200, step: 5 },
+    {
+      key: "dedupBy",
+      label: "去重字段",
+      type: "select",
+      options: [
+        { label: "Chunk ID", value: "chunkId" },
+        { label: "Document + Section", value: "documentSection" },
+      ],
+    },
+  ],
+  rerank: [
+    { key: "model", label: "Rerank 模型", type: "text" },
+    { key: "topN", label: "Top N", type: "number", min: 1, max: 50, step: 1 },
+    { key: "minScore", label: "最低精排分", type: "number", min: 0, max: 1, step: 0.01 },
+    { key: "keepRejectedReason", label: "保留淘汰原因", type: "boolean" },
+  ],
+  contextBuilder: [
+    { key: "maxContextTokens", label: "上下文 Token 上限", type: "number", min: 512, max: 32000, step: 256 },
+    {
+      key: "packingStrategy",
+      label: "上下文组织",
+      type: "select",
+      options: [
+        { label: "引用感知", value: "citation-aware" },
+        { label: "按分数排序", value: "score-desc" },
+        { label: "按文档聚合", value: "document-grouped" },
+      ],
+    },
+    { key: "evidenceOnly", label: "仅使用 Evidence", type: "boolean" },
+  ],
+  generation: [
+    { key: "model", label: "生成模型", type: "text" },
+    { key: "temperature", label: "Temperature", type: "number", min: 0, max: 1, step: 0.05 },
+    { key: "maxOutputTokens", label: "输出 Token 上限", type: "number", min: 256, max: 8000, step: 128 },
+    {
+      key: "citationPolicy",
+      label: "引用策略",
+      type: "select",
+      options: [
+        { label: "严格引用", value: "strict" },
+        { label: "缺证据拒答", value: "abstain-without-evidence" },
+      ],
+    },
+  ],
+  citation: [
+    { key: "minEvidence", label: "最少证据数", type: "number", min: 1, max: 5, step: 1 },
+    {
+      key: "citationPolicy",
+      label: "Citation 策略",
+      type: "select",
+      options: [
+        { label: "逐句绑定", value: "strict" },
+        { label: "段落绑定", value: "paragraph" },
+      ],
+    },
+    { key: "enableGraphLinks", label: "允许图谱跳转", type: "boolean" },
+  ],
+};
+
+function formatNodeParams(nodeId: string, params: NodeParams | undefined): string[] {
+  if (!params) return [];
+  return NODE_PARAMETER_FIELDS[nodeId]?.map((field) => `${field.label}=${String(params[field.key])}`) ?? [];
+}
 
 function NodeCard({
   node,
@@ -167,6 +371,7 @@ export function ConfigCenter() {
     sparse: true,
     graph: true,
   });
+  const [nodeParams, setNodeParams] = useState<Record<string, NodeParams>>(DEFAULT_NODE_PARAMS);
 
   const activeRevision = useMemo(
     () => revisions.find((revision) => revision.active)?.revisionNo ?? "暂无生效版本",
@@ -216,7 +421,7 @@ export function ConfigCenter() {
         description: "对原始问题做改写、扩展和保留原问策略。",
         enabled: queryRewriteEnabled,
         icon: <Wand2 className="h-4 w-4" />,
-        params: ["Prompt v2", "保留原始问题", "输出 rewrittenQuery"],
+        params: formatNodeParams("queryRewrite", nodeParams.queryRewrite),
         rule: "如果启用，必须位于任何检索节点之前。",
       },
       {
@@ -227,7 +432,7 @@ export function ConfigCenter() {
         description: "向量语义召回，按知识库、版本、权限条件过滤。",
         enabled: retrievalChannels.dense,
         icon: <Zap className="h-4 w-4" />,
-        params: ["topK=20", "minScore=0.75", "weight=0.4"],
+        params: formatNodeParams("dense", nodeParams.dense),
         rule: "只能在召回阶段运行，输出必须回表 Chunk。",
       },
       {
@@ -238,7 +443,7 @@ export function ConfigCenter() {
         description: "BM25/关键词召回，补足实体名、编号和术语命中。",
         enabled: retrievalChannels.sparse,
         icon: <Search className="h-4 w-4" />,
-        params: ["topK=15", "minScore=12.5", "weight=0.3"],
+        params: formatNodeParams("sparse", nodeParams.sparse),
         rule: "只能在召回阶段运行，结果进入 Fusion 前需统一候选结构。",
       },
       {
@@ -249,7 +454,7 @@ export function ConfigCenter() {
         description: "基于 Neo4j 做实体和关系扩展，增强根因链路。",
         enabled: retrievalChannels.graph,
         icon: <Network className="h-4 w-4" />,
-        params: ["hopDepth=2", "maxNodes=50", "weight=0.3"],
+        params: formatNodeParams("graph", nodeParams.graph),
         rule: "图结果必须回落到授权 Chunk / Evidence 后才能用于生成。",
       },
       {
@@ -261,7 +466,7 @@ export function ConfigCenter() {
         locked: true,
         enabled: true,
         icon: <Split className="h-4 w-4" />,
-        params: ["RRF", "dedup by chunkId", "candidateLimit=40"],
+        params: formatNodeParams("fusion", nodeParams.fusion),
         rule: "只能接收 Retrieval 阶段输出，不允许直接接收用户输入。",
       },
       {
@@ -284,7 +489,7 @@ export function ConfigCenter() {
         description: "对融合候选做精排，并记录淘汰原因。",
         enabled: rerankEnabled,
         icon: <Target className="h-4 w-4" />,
-        params: ["bge-reranker-v2-m3", "topN=5", "保留淘汰解释"],
+        params: formatNodeParams("rerank", nodeParams.rerank),
         rule: "只能处理已融合且已标准化的候选列表。",
       },
       {
@@ -296,7 +501,7 @@ export function ConfigCenter() {
         locked: true,
         enabled: true,
         icon: <Layers className="h-4 w-4" />,
-        params: ["maxContextTokens=6000", "evidenceOnly", "preserve citation anchors"],
+        params: formatNodeParams("contextBuilder", nodeParams.contextBuilder),
         rule: "只能读取权限过滤后的候选和 Evidence。",
       },
       {
@@ -308,7 +513,7 @@ export function ConfigCenter() {
         locked: true,
         enabled: true,
         icon: <BrainCircuit className="h-4 w-4" />,
-        params: ["model=claude-3-5-sonnet", "temperature=0.1", "strict citation"],
+        params: formatNodeParams("generation", nodeParams.generation),
         rule: "只能读取权限过滤后的上下文。",
       },
       {
@@ -320,7 +525,7 @@ export function ConfigCenter() {
         locked: true,
         enabled: true,
         icon: <FileCheck2 className="h-4 w-4" />,
-        params: ["minEvidence=1", "click to document", "click to graph"],
+        params: formatNodeParams("citation", nodeParams.citation),
         rule: "Citation 必须来自授权 Evidence，不能引用被裁剪内容。",
       },
       {
@@ -336,7 +541,7 @@ export function ConfigCenter() {
         rule: "诊断输出必须绑定本次 ConfigRevision 和 QARun。",
       },
     ],
-    [queryRewriteEnabled, rerankEnabled, retrievalChannels],
+    [queryRewriteEnabled, rerankEnabled, retrievalChannels, nodeParams],
   );
 
   const selectedNode = useMemo(
@@ -346,6 +551,8 @@ export function ConfigCenter() {
 
   const hasRetrievalChannel =
     retrievalChannels.dense || retrievalChannels.sparse || retrievalChannels.graph;
+  const graphFallbackValid = !retrievalChannels.graph || nodeParams.graph?.mustFallbackToChunk !== false;
+  const selectedParamFields = NODE_PARAMETER_FIELDS[selectedNode.id] ?? [];
 
   const validationRules = [
     {
@@ -366,7 +573,7 @@ export function ConfigCenter() {
     },
     {
       label: "Graph Retrieval 输出必须回落到 Chunk / Evidence。",
-      valid: true,
+      valid: graphFallbackValid,
     },
     {
       label: "Citation 必须来自授权 Evidence。",
@@ -389,7 +596,7 @@ export function ConfigCenter() {
         stage: node.stageId,
         enabled: node.enabled,
         locked: Boolean(node.locked),
-        params: Object.fromEntries(node.params.map((param, index) => [`param${index + 1}`, param])),
+        params: nodeParams[node.id] ?? {},
       })),
     };
   }
@@ -541,6 +748,17 @@ export function ConfigCenter() {
     if (nodeId === "graph") {
       setRetrievalChannels((current) => ({ ...current, graph: enabled }));
     }
+    setHasUnsavedChanges(true);
+  }
+
+  function handleNodeParamChange(nodeId: string, key: string, value: NodeParamValue) {
+    setNodeParams((current) => ({
+      ...current,
+      [nodeId]: {
+        ...(current[nodeId] ?? {}),
+        [key]: value,
+      },
+    }));
     setHasUnsavedChanges(true);
   }
 
@@ -758,11 +976,78 @@ export function ConfigCenter() {
 
               <div className="space-y-2">
                 <p className="text-xs font-medium text-stone-gray">核心参数</p>
-                {selectedNode.params.map((param) => (
-                  <div key={param} className="rounded-md border border-border-cream bg-parchment px-3 py-2 text-xs text-near-black">
-                    {param}
+                {selectedParamFields.length > 0 ? (
+                  <div className="space-y-3">
+                    {selectedNode.locked && (
+                      <div className="rounded-md border border-border-cream bg-parchment px-3 py-2 text-xs leading-relaxed text-stone-gray">
+                        锁定仅限制拓扑和启用状态，核心参数仍会随 Revision 保存。
+                      </div>
+                    )}
+                    {selectedParamFields.map((field) => {
+                      const value = nodeParams[selectedNode.id]?.[field.key];
+
+                      return (
+                        <label key={field.key} className="block rounded-lg border border-border-cream bg-parchment p-3">
+                          <span className="mb-2 block text-xs font-medium text-near-black">{field.label}</span>
+                          {field.type === "boolean" ? (
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-xs text-stone-gray">{value ? "已开启" : "已关闭"}</span>
+                              <input
+                                type="checkbox"
+                                className="rounded text-terracotta"
+                                checked={Boolean(value)}
+                                onChange={(event) =>
+                                  handleNodeParamChange(selectedNode.id, field.key, event.target.checked)
+                                }
+                              />
+                            </div>
+                          ) : field.type === "select" ? (
+                            <select
+                              className="h-9 w-full rounded-md border border-border-cream bg-ivory px-2 text-xs text-near-black outline-none focus:border-terracotta"
+                              value={String(value ?? "")}
+                              onChange={(event) =>
+                                handleNodeParamChange(selectedNode.id, field.key, event.target.value)
+                              }
+                            >
+                              {field.options?.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              type={field.type === "number" ? "number" : "text"}
+                              className="h-9 w-full rounded-md border border-border-cream bg-ivory px-2 text-xs text-near-black outline-none focus:border-terracotta"
+                              value={String(value ?? "")}
+                              min={field.min}
+                              max={field.max}
+                              step={field.step}
+                              onChange={(event) =>
+                                handleNodeParamChange(
+                                  selectedNode.id,
+                                  field.key,
+                                  field.type === "number" ? Number(event.target.value) : event.target.value,
+                                )
+                              }
+                            />
+                          )}
+                          {field.description && (
+                            <span className="mt-2 block text-xs leading-relaxed text-stone-gray">
+                              {field.description}
+                            </span>
+                          )}
+                        </label>
+                      );
+                    })}
                   </div>
-                ))}
+                ) : (
+                  selectedNode.params.map((param) => (
+                    <div key={param} className="rounded-md border border-border-cream bg-parchment px-3 py-2 text-xs text-near-black">
+                      {param}
+                    </div>
+                  ))
+                )}
               </div>
 
               <div className="space-y-2">
