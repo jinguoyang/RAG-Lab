@@ -12,6 +12,7 @@ from app.schemas.config import (
     ConfigRevisionActivationResponse,
     ConfigRevisionCreateRequest,
     ConfigRevisionCreateResponse,
+    ConfigRevisionDraftFromRevisionRequest,
     ConfigRevisionDTO,
     ConfigTemplateDTO,
     PipelineValidateRequest,
@@ -19,6 +20,7 @@ from app.schemas.config import (
     PipelineValidationResultDTO,
 )
 from app.tables import config_revisions, config_templates, knowledge_bases
+from app.services.knowledge_base_service import KnowledgeBaseDisabledError
 
 STAGE_ORDER = {
     "preprocess": 1,
@@ -319,8 +321,11 @@ def create_config_revision(
     request: ConfigRevisionCreateRequest,
 ) -> tuple[ConfigRevisionCreateResponse | None, PipelineValidationResultDTO]:
     """保存新的 ConfigRevision；保存前必须通过后端 Pipeline 校验。"""
-    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+    kb_row = _read_visible_knowledge_base(session, current_user, kb_id)
+    if kb_row is None:
         return None, validate_pipeline_definition(PipelineValidateRequest(pipelineDefinition=request.pipelineDefinition))
+    if kb_row["status"] == "disabled":
+        raise KnowledgeBaseDisabledError
 
     validation = validate_pipeline_definition(PipelineValidateRequest(pipelineDefinition=request.pipelineDefinition))
     if not validation.valid:
@@ -378,6 +383,73 @@ def create_config_revision(
     )
 
 
+def create_revision_draft_from_revision(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    request: ConfigRevisionDraftFromRevisionRequest,
+) -> ConfigRevisionDTO | None:
+    """复制历史 Revision 为新草稿，不修改源 Revision 的状态和审计字段。"""
+    kb_row = _read_visible_knowledge_base(session, current_user, kb_id)
+    if kb_row is None:
+        return None
+    if kb_row["status"] == "disabled":
+        raise KnowledgeBaseDisabledError
+
+    source_row = session.execute(
+        select(config_revisions)
+        .where(
+            config_revisions.c.kb_id == kb_id,
+            config_revisions.c.config_revision_id == request.sourceRevisionId,
+            config_revisions.c.deleted_at.is_(None),
+        )
+        .limit(1)
+    ).mappings().first()
+    if source_row is None:
+        return None
+
+    actor_id = UUID(current_user.user.userId)
+    revision_no = (
+        session.execute(
+            select(func.coalesce(func.max(config_revisions.c.revision_no), 0)).where(
+                config_revisions.c.kb_id == kb_id
+            )
+        ).scalar_one()
+        + 1
+    )
+    copied_at = _now()
+    validation_snapshot = {
+        **source_row["validation_snapshot"],
+        "copiedFromRevisionId": str(request.sourceRevisionId),
+        "copiedAt": copied_at.isoformat(),
+    }
+    remark = request.remark or f"从 rev_{source_row['revision_no']:03d} 复制为草稿"
+
+    try:
+        row = session.execute(
+            insert(config_revisions)
+            .values(
+                config_revision_id=uuid4(),
+                kb_id=kb_id,
+                revision_no=revision_no,
+                source_template_id=source_row["source_template_id"],
+                status="draft",
+                pipeline_definition=source_row["pipeline_definition"],
+                validation_snapshot=validation_snapshot,
+                remark=remark,
+                created_by=actor_id,
+                updated_by=actor_id,
+            )
+            .returning(config_revisions)
+        ).mappings().one()
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+
+    return _to_revision_dto(row)
+
+
 def activate_config_revision(
     session: Session,
     current_user: CurrentUserResponse,
@@ -389,6 +461,8 @@ def activate_config_revision(
     kb_row = _read_visible_knowledge_base(session, current_user, kb_id)
     if kb_row is None:
         return None
+    if kb_row["status"] == "disabled":
+        raise KnowledgeBaseDisabledError
     if not confirm_impact:
         raise ValueError("confirmImpact must be true.")
 

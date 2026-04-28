@@ -3,6 +3,52 @@ from sqlalchemy.dialects import postgresql
 
 metadata = sa.MetaData()
 
+users = sa.Table(
+    "users",
+    metadata,
+    sa.Column("user_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("username", sa.String(length=64), nullable=False),
+    sa.Column("display_name", sa.String(length=128), nullable=False),
+    sa.Column("email", sa.String(length=255), nullable=True),
+    sa.Column("platform_role", sa.String(length=32), nullable=False),
+    sa.Column("security_level", sa.String(length=32), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("last_login_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("deleted_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
+user_groups = sa.Table(
+    "user_groups",
+    metadata,
+    sa.Column("group_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("name", sa.String(length=128), nullable=False),
+    sa.Column("description", sa.Text(), nullable=True),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("deleted_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
+user_group_members = sa.Table(
+    "user_group_members",
+    metadata,
+    sa.Column("group_member_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("group_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("user_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("joined_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("left_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
 knowledge_bases = sa.Table(
     "knowledge_bases",
     metadata,
@@ -24,6 +70,99 @@ knowledge_bases = sa.Table(
     sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
     sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
     sa.Column("deleted_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
+kb_member_bindings = sa.Table(
+    "kb_member_bindings",
+    metadata,
+    sa.Column("binding_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("kb_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("subject_type", sa.String(length=16), nullable=False),
+    sa.Column("subject_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("kb_role", sa.String(length=32), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
+permissions = sa.Table(
+    "permissions",
+    metadata,
+    sa.Column("permission_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("permission_code", sa.String(length=64), nullable=False),
+    sa.Column("scope", sa.String(length=16), nullable=False),
+    sa.Column("name", sa.String(length=128), nullable=False),
+    sa.Column("description", sa.Text(), nullable=True),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
+role_permission_bindings = sa.Table(
+    "role_permission_bindings",
+    metadata,
+    sa.Column("role_permission_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("role_scope", sa.String(length=16), nullable=False),
+    sa.Column("role_code", sa.String(length=32), nullable=False),
+    sa.Column("permission_code", sa.String(length=64), nullable=False),
+    sa.Column("effect", sa.String(length=16), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
+acl_rules = sa.Table(
+    "acl_rules",
+    metadata,
+    sa.Column("acl_rule_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("resource_type", sa.String(length=32), nullable=False),
+    sa.Column("resource_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("subject_type", sa.String(length=16), nullable=False),
+    sa.Column("subject_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("effect", sa.String(length=16), nullable=False),
+    sa.Column("permission_code", sa.String(length=64), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
+chunk_access_filters = sa.Table(
+    "chunk_access_filters",
+    metadata,
+    sa.Column("access_filter_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("chunk_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("kb_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("permission_code", sa.String(length=64), nullable=False),
+    sa.Column("allow_subject_keys", postgresql.JSONB(), nullable=False),
+    sa.Column("deny_subject_keys", postgresql.JSONB(), nullable=False),
+    sa.Column("security_level", sa.String(length=32), nullable=False),
+    sa.Column("document_status", sa.String(length=16), nullable=False),
+    sa.Column("version_status", sa.String(length=16), nullable=False),
+    sa.Column("chunk_status", sa.String(length=16), nullable=False),
+    sa.Column("filter_hash", sa.String(length=128), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+)
+
+audit_logs = sa.Table(
+    "audit_logs",
+    metadata,
+    sa.Column("audit_log_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("actor_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("action", sa.String(length=64), nullable=False),
+    sa.Column("resource_type", sa.String(length=32), nullable=False),
+    sa.Column("resource_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("kb_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("document_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("detail", postgresql.JSONB(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
 )
 
 stored_files = sa.Table(
@@ -106,6 +245,57 @@ ingest_jobs = sa.Table(
     sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
+chunks = sa.Table(
+    "chunks",
+    metadata,
+    sa.Column("chunk_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("version_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("document_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("kb_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("chunk_index", sa.Integer(), nullable=False),
+    sa.Column("page_no", sa.Integer(), nullable=True),
+    sa.Column("section", sa.String(length=255), nullable=True),
+    sa.Column("content", sa.Text(), nullable=False),
+    sa.Column("content_hash", sa.String(length=128), nullable=True),
+    sa.Column("token_count", sa.Integer(), nullable=True),
+    sa.Column("security_level", sa.String(length=32), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("metadata", postgresql.JSONB(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+)
+
+index_sync_jobs = sa.Table(
+    "index_sync_jobs",
+    metadata,
+    sa.Column("sync_job_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("kb_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("target_store", sa.String(length=32), nullable=False),
+    sa.Column("sync_type", sa.String(length=32), nullable=False),
+    sa.Column("scope", postgresql.JSONB(), nullable=False),
+    sa.Column("required_for_activation", sa.Boolean(), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("error_message", sa.Text(), nullable=True),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
+)
+
+index_sync_records = sa.Table(
+    "index_sync_records",
+    metadata,
+    sa.Column("sync_record_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("sync_job_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("target_store", sa.String(length=32), nullable=False),
+    sa.Column("resource_type", sa.String(length=32), nullable=False),
+    sa.Column("resource_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("operation", sa.String(length=16), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("provider_payload", postgresql.JSONB(), nullable=True),
+    sa.Column("error_message", sa.Text(), nullable=True),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
 )
 
 config_templates = sa.Table(
@@ -231,5 +421,59 @@ qa_run_citations = sa.Table(
     sa.Column("citation_order", sa.Integer(), nullable=False),
     sa.Column("label", sa.String(length=64), nullable=True),
     sa.Column("location_snapshot", postgresql.JSONB(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+)
+
+evaluation_samples = sa.Table(
+    "evaluation_samples",
+    metadata,
+    sa.Column("sample_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("kb_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("source_run_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("query", sa.Text(), nullable=False),
+    sa.Column("expected_answer", sa.Text(), nullable=True),
+    sa.Column("expected_evidence", postgresql.JSONB(), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("metadata", postgresql.JSONB(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("deleted_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
+graph_snapshots = sa.Table(
+    "graph_snapshots",
+    metadata,
+    sa.Column("graph_snapshot_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("kb_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("source_scope", postgresql.JSONB(), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("neo4j_graph_key", sa.String(length=128), nullable=True),
+    sa.Column("stale_reason", sa.String(length=64), nullable=True),
+    sa.Column("stale_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("entity_count", sa.Integer(), nullable=True),
+    sa.Column("relation_count", sa.Integer(), nullable=True),
+    sa.Column("community_count", sa.Integer(), nullable=True),
+    sa.Column("job_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("error_message", sa.Text(), nullable=True),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
+graph_chunk_refs = sa.Table(
+    "graph_chunk_refs",
+    metadata,
+    sa.Column("graph_chunk_ref_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("graph_snapshot_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("chunk_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("neo4j_node_key", sa.String(length=128), nullable=True),
+    sa.Column("neo4j_relation_key", sa.String(length=128), nullable=True),
+    sa.Column("community_key", sa.String(length=128), nullable=True),
+    sa.Column("ref_type", sa.String(length=32), nullable=False),
+    sa.Column("metadata", postgresql.JSONB(), nullable=False),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
 )

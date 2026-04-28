@@ -20,6 +20,7 @@ import {
   ArrowRight,
   BrainCircuit,
   CheckCircle2,
+  Copy,
   Database,
   FileCheck2,
   History,
@@ -40,6 +41,7 @@ import * as Tabs from "@radix-ui/react-tabs";
 import { toRevisionRecord } from "../adapters/configAdapter";
 import {
   activateConfigRevision,
+  copyConfigRevisionToDraft,
   fetchConfigRevisions,
   saveConfigRevision,
   validatePipeline,
@@ -156,6 +158,7 @@ export function ConfigCenter() {
   const [loadingRevisions, setLoadingRevisions] = useState(false);
   const [savingRevision, setSavingRevision] = useState(false);
   const [activatingRevision, setActivatingRevision] = useState(false);
+  const [copyingRevision, setCopyingRevision] = useState<string | null>(null);
   const [serverValidation, setServerValidation] = useState<PipelineValidationResultDTO | null>(null);
   const [queryRewriteEnabled, setQueryRewriteEnabled] = useState(true);
   const [rerankEnabled, setRerankEnabled] = useState(true);
@@ -489,6 +492,30 @@ export function ConfigCenter() {
       });
     } finally {
       setActivatingRevision(false);
+    }
+  }
+
+  async function handleCopyRevisionToDraft(revisionId: string) {
+    if (!kbId) return;
+
+    setCopyingRevision(revisionId);
+    try {
+      const draft = await copyConfigRevisionToDraft(kbId, revisionId);
+      await loadRevisions();
+      setFeedback({
+        variant: "success",
+        title: "已复制为草稿",
+        message: `rev_${String(draft.revisionNo).padStart(3, "0")} 已生成，源 Revision 未被修改。草稿保存为正式版本前仍需后端校验。`,
+      });
+      setIsRevisionDrawerOpen(true);
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "复制草稿失败",
+        message: error instanceof Error ? error.message : "请确认源 Revision 仍可见。",
+      });
+    } finally {
+      setCopyingRevision(null);
     }
   }
 
@@ -852,6 +879,15 @@ export function ConfigCenter() {
                 </div>
                 <p className="text-sm text-stone-gray">{revision.note}</p>
                 <div className="flex justify-end gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void handleCopyRevisionToDraft(revision.id)}
+                    disabled={copyingRevision === revision.id}
+                  >
+                    <Copy className="mr-1 h-3 w-3" />
+                    {copyingRevision === revision.id ? "复制中..." : "复制为草稿"}
+                  </Button>
                   {revision.canActivate && (
                     <Button
                       variant="ghost"

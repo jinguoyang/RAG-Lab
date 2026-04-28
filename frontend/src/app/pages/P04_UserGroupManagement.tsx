@@ -1,61 +1,556 @@
+import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
 import { Input } from "../components/rag/Input";
-import { Search, Plus } from "lucide-react";
+import { Alert } from "../components/rag/Alert";
+import { Badge } from "../components/rag/Badge";
+import { useConfirmDialog } from "../components/rag/ConfirmDialog";
+import { ChevronLeft, ChevronRight, Pencil, Plus, Power, RefreshCw, Save, Search, Trash2, Users, X } from "lucide-react";
+import {
+  addUsersToGroup,
+  createUserGroup,
+  fetchUserGroup,
+  fetchUserGroups,
+  fetchUsers,
+  removeUserFromGroup,
+  updateUserGroup,
+} from "../services/userGroupService";
+import type { GroupMember, GroupStatus, UserGroupDetail, UserGroupSummary, UserSummary } from "../types/userGroup";
+
+const PAGE_SIZE = 10;
+
+function formatDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
 
 export function UserGroupManagement() {
-  const groups = [
-    { id: "grp-001", name: "财务团队", members: 12, created: "2026-01-15" },
-    { id: "grp-002", name: "人力资源部", members: 8, created: "2026-02-20" },
-    { id: "grp-003", name: "前端工程组", members: 24, created: "2026-03-05" },
-  ];
+  const confirmDialog = useConfirmDialog();
+  const [groups, setGroups] = useState<UserGroupSummary[]>([]);
+  const [selectedGroup, setSelectedGroup] = useState<UserGroupDetail | null>(null);
+  const [keyword, setKeyword] = useState("");
+  const [queryKeyword, setQueryKeyword] = useState("");
+  const [pageNo, setPageNo] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [newGroup, setNewGroup] = useState({ name: "", description: "" });
+  const [editingGroup, setEditingGroup] = useState<UserGroupSummary | UserGroupDetail | null>(null);
+  const [groupEditForm, setGroupEditForm] = useState({ name: "", description: "" });
+  const [memberSearch, setMemberSearch] = useState("");
+  const [candidateUsers, setCandidateUsers] = useState<UserSummary[]>([]);
+  const [selectedUser, setSelectedUser] = useState<UserSummary | null>(null);
+  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [feedback, setFeedback] = useState<{ variant: "success" | "error"; title: string; message: string } | null>(null);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const isSelectedGroupActive = selectedGroup?.status === "active";
+
+  const loadGroups = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const page = await fetchUserGroups({ keyword: queryKeyword, pageNo, pageSize: PAGE_SIZE });
+      setGroups(page.items);
+      setTotal(page.total);
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "用户组加载失败",
+        message: error instanceof Error ? error.message : "请检查后端服务状态。",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [pageNo, queryKeyword]);
+
+  useEffect(() => {
+    void loadGroups();
+  }, [loadGroups]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      fetchUsers({ keyword: memberSearch, pageNo: 1, pageSize: 8 })
+        .then((page) => setCandidateUsers(page.items.filter((user) => user.status === "active")))
+        .catch(() => setCandidateUsers([]));
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [memberSearch]);
+
+  const handleSearch = () => {
+    const nextKeyword = keyword.trim();
+    setPageNo(1);
+    setQueryKeyword(nextKeyword);
+    if (pageNo === 1 && queryKeyword === nextKeyword) {
+      void loadGroups();
+    }
+  };
+
+  const handleCreateGroup = async () => {
+    if (!newGroup.name.trim()) {
+      setFeedback({ variant: "error", title: "用户组信息不完整", message: "用户组名称不能为空。" });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const group = await createUserGroup({
+        name: newGroup.name.trim(),
+        description: newGroup.description.trim() || null,
+      });
+      setNewGroup({ name: "", description: "" });
+      setPageNo(1);
+      setQueryKeyword("");
+      setKeyword("");
+      setSelectedGroup(await fetchUserGroup(group.groupId));
+      setFeedback({ variant: "success", title: "用户组已创建", message: "可以继续在右侧添加组成员。" });
+      if (pageNo === 1 && !queryKeyword) {
+        await loadGroups();
+      }
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "用户组创建失败",
+        message: error instanceof Error ? error.message : "请检查组名是否重复。",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSelectGroup = async (group: UserGroupSummary) => {
+    setIsSaving(true);
+    try {
+      setSelectedGroup(await fetchUserGroup(group.groupId));
+      setSelectedUser(null);
+      setMemberSearch("");
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "用户组详情加载失败",
+        message: error instanceof Error ? error.message : "请刷新后重试。",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const startEditGroup = (group: UserGroupSummary | UserGroupDetail) => {
+    setEditingGroup(group);
+    setGroupEditForm({
+      name: group.name,
+      description: group.description ?? "",
+    });
+    setFeedback(null);
+  };
+
+  const handleSaveGroup = async () => {
+    if (!editingGroup) return;
+    if (!groupEditForm.name.trim()) {
+      setFeedback({ variant: "error", title: "用户组信息不完整", message: "用户组名称不能为空。" });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const updated = await updateUserGroup(editingGroup.groupId, {
+        name: groupEditForm.name.trim(),
+        description: groupEditForm.description.trim() || null,
+      });
+      if (selectedGroup?.groupId === updated.groupId) {
+        setSelectedGroup(await fetchUserGroup(updated.groupId));
+      }
+      await loadGroups();
+      setEditingGroup(null);
+      setFeedback({ variant: "success", title: "用户组已更新", message: `${updated.name} 的名称和描述已保存。` });
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "用户组更新失败",
+        message: error instanceof Error ? error.message : "请检查组名是否重复。",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateGroupStatus = async (group: UserGroupSummary | UserGroupDetail, status: GroupStatus) => {
+    const isDisabling = status === "disabled";
+    const confirmed = await confirmDialog({
+      title: isDisabling ? "确认停用用户组" : "确认恢复用户组",
+      description: isDisabling
+        ? "停用后，该用户组不再作为 active 权限主体参与后续授权计算，历史成员关系和审计记录会保留。"
+        : "恢复后，该用户组会重新作为 active 主体参与后续授权计算。",
+      detail: (
+        <>
+          用户组：{group.name}
+          <br />
+          当前成员数：{group.memberCount} 人
+        </>
+      ),
+      confirmText: isDisabling ? "确认停用" : "确认恢复",
+      variant: isDisabling ? "destructive" : "default",
+    });
+
+    if (!confirmed) return;
+
+    setIsSaving(true);
+    try {
+      const updated = await updateUserGroup(group.groupId, { status });
+      if (selectedGroup?.groupId === updated.groupId) {
+        setSelectedGroup(await fetchUserGroup(updated.groupId));
+      }
+      await loadGroups();
+      setFeedback({
+        variant: "success",
+        title: isDisabling ? "用户组已停用" : "用户组已恢复",
+        message: `${updated.name} 已${isDisabling ? "停用" : "恢复启用"}。`,
+      });
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: isDisabling ? "停用用户组失败" : "恢复用户组失败",
+        message: error instanceof Error ? error.message : "请刷新后重试。",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleAddMember = async () => {
+    if (!selectedGroup || !selectedUser) {
+      setFeedback({ variant: "error", title: "未选择成员", message: "请先选择用户组和要加入的用户。" });
+      return;
+    }
+    if (!isSelectedGroupActive) {
+      setFeedback({ variant: "error", title: "用户组已停用", message: "请先恢复启用用户组，再添加新成员。" });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const detail = await addUsersToGroup(selectedGroup.groupId, [selectedUser.userId]);
+      setSelectedGroup(detail);
+      setSelectedUser(null);
+      setMemberSearch("");
+      await loadGroups();
+      setFeedback({ variant: "success", title: "成员已添加", message: `${selectedUser.displayName} 已加入 ${detail.name}。` });
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "添加成员失败",
+        message: error instanceof Error ? error.message : "请确认用户仍处于启用状态且未重复加入。",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleRemoveMember = async (user: GroupMember) => {
+    if (!selectedGroup) return;
+
+    const confirmed = await confirmDialog({
+      title: "确认移除成员",
+      description: "移除后，该用户将不再继承当前用户组的权限。",
+      detail: (
+        <>
+          用户组：{selectedGroup.name}
+          <br />
+          成员：{user.displayName}
+        </>
+      ),
+      confirmText: "确认移除",
+      variant: "destructive",
+    });
+
+    if (!confirmed) return;
+
+    setIsSaving(true);
+    try {
+      await removeUserFromGroup(selectedGroup.groupId, user.userId);
+      setSelectedGroup(await fetchUserGroup(selectedGroup.groupId));
+      await loadGroups();
+      setFeedback({ variant: "success", title: "成员已移除", message: `${user.displayName} 已不再属于该用户组。` });
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "移除成员失败",
+        message: error instanceof Error ? error.message : "请刷新后重试。",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const selectedMemberIds = new Set(selectedGroup?.members.map((member) => member.userId) ?? []);
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-8">
+    <div className="p-8 max-w-7xl mx-auto space-y-6">
       <PageHeader
         title="用户组"
         description="管理用户分组，便于批量分配权限。"
         actions={
-          <Button variant="primary">
-            <Plus className="w-4 h-4 mr-2" />
-            新建用户组
+          <Button variant="outline" onClick={() => void loadGroups()} disabled={isLoading}>
+            <RefreshCw className="w-4 h-4 mr-2" /> 刷新
           </Button>
         }
       />
 
-      <div className="flex items-center gap-4">
-        <div className="relative w-80">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-gray" />
-          <Input placeholder="搜索用户组..." className="pl-9" />
-        </div>
+      {feedback && (
+        <Alert variant={feedback.variant} title={feedback.title} onClose={() => setFeedback(null)}>
+          {feedback.message}
+        </Alert>
+      )}
+
+      <div className="grid grid-cols-1 xl:grid-cols-[240px_minmax(260px,1fr)_auto] gap-3 rounded-lg border border-border-cream bg-ivory p-4">
+        <Input
+          value={newGroup.name}
+          onChange={(event) => setNewGroup((current) => ({ ...current, name: event.target.value }))}
+          placeholder="用户组名称"
+          className="bg-white"
+        />
+        <Input
+          value={newGroup.description}
+          onChange={(event) => setNewGroup((current) => ({ ...current, description: event.target.value }))}
+          placeholder="描述"
+          className="bg-white"
+        />
+        <Button variant="primary" onClick={handleCreateGroup} disabled={isSaving}>
+          <Plus className="w-4 h-4 mr-2" /> 新建
+        </Button>
       </div>
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>组名</TableHead>
-            <TableHead>成员数</TableHead>
-            <TableHead>创建日期</TableHead>
-            <TableHead>操作</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {groups.map((group) => (
-            <TableRow key={group.id}>
-              <TableCell>
-                <div className="font-medium text-near-black">{group.name}</div>
-                <div className="text-xs text-stone-gray font-mono">{group.id}</div>
-              </TableCell>
-              <TableCell>{group.members} 人</TableCell>
-              <TableCell>{group.created}</TableCell>
-              <TableCell>
-                <Button variant="ghost" size="sm">管理成员</Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      {editingGroup && (
+        <div className="rounded-lg border border-border-warm bg-ivory p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs text-stone-gray">编辑用户组</p>
+              <h2 className="font-serif text-xl text-near-black">{editingGroup.name}</h2>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setEditingGroup(null)} disabled={isSaving}>
+              <X className="w-4 h-4 mr-1" /> 取消
+            </Button>
+          </div>
+          <div className="grid grid-cols-1 xl:grid-cols-[240px_minmax(260px,1fr)_auto] gap-3">
+            <Input
+              value={groupEditForm.name}
+              onChange={(event) => setGroupEditForm((current) => ({ ...current, name: event.target.value }))}
+              placeholder="用户组名称"
+              className="bg-white"
+            />
+            <Input
+              value={groupEditForm.description}
+              onChange={(event) => setGroupEditForm((current) => ({ ...current, description: event.target.value }))}
+              placeholder="描述"
+              className="bg-white"
+            />
+            <Button variant="primary" onClick={() => void handleSaveGroup()} disabled={isSaving}>
+              <Save className="w-4 h-4 mr-2" /> 保存
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-6">
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="relative w-80 max-w-full">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-gray" />
+              <Input
+                value={keyword}
+                onChange={(event) => setKeyword(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") handleSearch();
+                }}
+                placeholder="搜索用户组..."
+                className="pl-9"
+              />
+            </div>
+            <Button variant="outline" onClick={handleSearch} disabled={isLoading}>
+              <Search className="w-4 h-4 mr-2" /> 查询
+            </Button>
+          </div>
+
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>组名</TableHead>
+                <TableHead>成员数</TableHead>
+                <TableHead>状态</TableHead>
+                <TableHead>创建日期</TableHead>
+                <TableHead>操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading && (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-stone-gray">加载中...</TableCell>
+                </TableRow>
+              )}
+              {!isLoading && groups.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-stone-gray">暂无用户组</TableCell>
+                </TableRow>
+              )}
+              {!isLoading && groups.map((group) => (
+                <TableRow key={group.groupId} className={selectedGroup?.groupId === group.groupId ? "bg-parchment" : ""}>
+                  <TableCell>
+                    <div className="font-medium text-near-black">{group.name}</div>
+                    <div className="text-xs text-stone-gray">{group.description || group.groupId}</div>
+                  </TableCell>
+                  <TableCell>{group.memberCount} 人</TableCell>
+                  <TableCell>
+                    <Badge variant={group.status === "active" ? "success" : "inactive"}>
+                      {group.status === "active" ? "启用" : "停用"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{formatDate(group.createdAt)}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="ghost" size="sm" onClick={() => void handleSelectGroup(group)} disabled={isSaving}>
+                        管理成员
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => startEditGroup(group)} disabled={isSaving}>
+                        <Pencil className="w-3 h-3 mr-1" /> 编辑
+                      </Button>
+                      {group.status === "active" ? (
+                        <Button variant="ghost" size="sm" onClick={() => void handleUpdateGroupStatus(group, "disabled")} disabled={isSaving}>
+                          <Power className="w-3 h-3 mr-1" /> 停用
+                        </Button>
+                      ) : (
+                        <Button variant="ghost" size="sm" onClick={() => void handleUpdateGroupStatus(group, "active")} disabled={isSaving}>
+                          <Power className="w-3 h-3 mr-1" /> 恢复启用
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-stone-gray">
+            <span>共 {total} 个用户组</span>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" disabled={isLoading || pageNo <= 1} onClick={() => setPageNo((current) => current - 1)}>
+                <ChevronLeft className="w-4 h-4 mr-1" /> 上一页
+              </Button>
+              <span className="min-w-20 text-center text-near-black">{pageNo} / {totalPages}</span>
+              <Button variant="outline" size="sm" disabled={isLoading || pageNo >= totalPages} onClick={() => setPageNo((current) => current + 1)}>
+                下一页 <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        <aside className="rounded-xl border border-border-cream bg-ivory p-4 space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs text-stone-gray">成员管理</p>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <h2 className="font-serif text-xl text-near-black">{selectedGroup?.name || "请选择用户组"}</h2>
+                {selectedGroup && (
+                  <Badge variant={selectedGroup.status === "active" ? "success" : "inactive"}>
+                    {selectedGroup.status === "active" ? "启用" : "停用"}
+                  </Badge>
+                )}
+              </div>
+            </div>
+            <Users className="w-5 h-5 text-terracotta" />
+          </div>
+
+          {selectedGroup ? (
+            <>
+              {!isSelectedGroupActive && (
+                <div className="rounded-lg border border-border-warm bg-parchment p-3 text-sm text-stone-gray">
+                  该用户组已停用，不再参与 active 权限计算；仍可移除成员以整理历史关系。
+                </div>
+              )}
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-5 -translate-y-1/2 text-stone-gray z-10" />
+                <Input
+                  value={memberSearch}
+                  onChange={(event) => {
+                    setMemberSearch(event.target.value);
+                    setSelectedUser(null);
+                    setIsUserDropdownOpen(true);
+                  }}
+                  onFocus={() => setIsUserDropdownOpen(true)}
+                  onBlur={() => window.setTimeout(() => setIsUserDropdownOpen(false), 120)}
+                  placeholder="搜索用户加入当前组"
+                  className="pl-9 bg-white"
+                  disabled={!isSelectedGroupActive}
+                />
+                {isUserDropdownOpen && (
+                  <div className="absolute left-0 right-0 top-12 z-20 max-h-64 overflow-auto rounded-lg border border-border-cream bg-white shadow-lg">
+                    {candidateUsers.length === 0 && (
+                      <div className="px-3 py-2 text-sm text-stone-gray">没有可选用户</div>
+                    )}
+                    {candidateUsers.map((user) => (
+                      <button
+                        key={user.userId}
+                        type="button"
+                        disabled={selectedMemberIds.has(user.userId)}
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          if (selectedMemberIds.has(user.userId)) return;
+                          setSelectedUser(user);
+                          setMemberSearch(user.displayName);
+                          setIsUserDropdownOpen(false);
+                        }}
+                        className="w-full px-3 py-2 text-left hover:bg-parchment disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-sm font-medium text-near-black">{user.displayName}</span>
+                          {selectedMemberIds.has(user.userId) && <span className="text-xs text-stone-gray">已在组内</span>}
+                        </div>
+                        <div className="text-xs text-stone-gray">@{user.username} · {user.email || "无邮箱"}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <Button variant="primary" className="w-full" onClick={handleAddMember} disabled={isSaving || !selectedUser || !isSelectedGroupActive}>
+                <Plus className="w-4 h-4 mr-2" /> 添加成员
+              </Button>
+
+              <div className="space-y-2">
+                {selectedGroup.members.length === 0 && (
+                  <div className="rounded-lg border border-dashed border-border-warm bg-parchment p-3 text-sm text-stone-gray">
+                    当前用户组暂无成员。
+                  </div>
+                )}
+                {selectedGroup.members.map((member) => (
+                  <div key={member.groupMemberId} className="flex items-center justify-between gap-3 rounded-lg border border-border-cream bg-parchment p-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-near-black">{member.displayName}</p>
+                      <p className="truncate text-xs text-stone-gray">@{member.username} · {member.email || "无邮箱"}</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-terracotta hover:bg-terracotta/10"
+                      disabled={isSaving}
+                      onClick={() => void handleRemoveMember(member)}
+                    >
+                      <Trash2 className="w-3 h-3 mr-1" /> 移除
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="rounded-lg border border-dashed border-border-warm bg-parchment p-4 text-sm text-stone-gray">
+              从左侧选择一个用户组后，可以查看、添加或移除组成员。
+            </div>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }

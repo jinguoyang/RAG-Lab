@@ -13,6 +13,7 @@ from app.schemas.config import (
     ConfigRevisionActivationResponse,
     ConfigRevisionCreateRequest,
     ConfigRevisionCreateResponse,
+    ConfigRevisionDraftFromRevisionRequest,
     ConfigRevisionDTO,
     ConfigTemplateDTO,
     PipelineValidateRequest,
@@ -21,11 +22,13 @@ from app.schemas.config import (
 from app.services.config_service import (
     activate_config_revision,
     create_config_revision,
+    create_revision_draft_from_revision,
     get_config_revision,
     list_config_revisions,
     list_config_templates,
     validate_pipeline_for_knowledge_base,
 )
+from app.services.knowledge_base_service import KnowledgeBaseDisabledError
 
 template_router = APIRouter(prefix="/config-templates", tags=["config-templates"])
 revision_router = APIRouter(
@@ -66,7 +69,13 @@ def save_config_revision(
     session: Session = Depends(get_db_session),
 ) -> ConfigRevisionCreateResponse:
     """保存新的 ConfigRevision；校验不通过时返回 400。"""
-    response, validation = create_config_revision(session, current_user, kb_id, request)
+    try:
+        response, validation = create_config_revision(session, current_user, kb_id, request)
+    except KnowledgeBaseDisabledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="KB_DISABLED: knowledge base is disabled.",
+        ) from exc
     if response is None and validation.valid:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found.")
     if response is None:
@@ -89,6 +98,26 @@ def read_config_revisions(
     response = list_config_revisions(session, current_user, kb_id, page_no, page_size)
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found.")
+    return response
+
+
+@revision_router.post("/drafts/from-revision", response_model=ConfigRevisionDTO, status_code=status.HTTP_201_CREATED)
+def create_draft_from_revision(
+    kb_id: UUID,
+    request: ConfigRevisionDraftFromRevisionRequest,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> ConfigRevisionDTO:
+    """从历史 Revision 复制 pipelineDefinition，生成新的 draft。"""
+    try:
+        response = create_revision_draft_from_revision(session, current_user, kb_id, request)
+    except KnowledgeBaseDisabledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="KB_DISABLED: knowledge base is disabled.",
+        ) from exc
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Config revision not found.")
     return response
 
 
@@ -123,6 +152,11 @@ def activate_revision(
             revision_id=revision_id,
             confirm_impact=request.confirmImpact,
         )
+    except KnowledgeBaseDisabledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="KB_DISABLED: knowledge base is disabled.",
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if response is None:

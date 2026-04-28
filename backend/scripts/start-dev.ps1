@@ -32,4 +32,4 @@ function Get-CondaExecutable {
 $CondaExe = Get-CondaExecutable
 
 # Start with the project-specific Conda env to avoid using base by mistake.
-& $CondaExe run -n $EnvName python -m uvicorn app.main:app --reload --host 127.0.0.1 --port $Port
+& $CondaExe run --no-capture-output -n $EnvName python -m uvicorn app.main:app --reload --host 127.0.0.1 --port $Port

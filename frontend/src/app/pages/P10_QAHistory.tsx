@@ -1,121 +1,70 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router";
+import { BookmarkPlus, Copy, Eye, GitCompare, PlayCircle, Search, ThumbsDown, ThumbsUp } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "../components/rag/Table";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
 import { Input } from "../components/rag/Input";
 import { Alert } from "../components/rag/Alert";
 import { StatusBadge, Badge } from "../components/rag/Badge";
 import { Drawer, DrawerSection } from "../components/rag/Drawer";
+import { ratingToFeedbackStatus, toQAHistoryRecord, type QAHistoryRecordViewModel } from "../adapters/qaRunAdapter";
 import {
-  Search,
-  Download,
-  PlayCircle,
-  ThumbsUp,
-  ThumbsDown,
-  Eye,
-  GitCompare,
-  BookmarkPlus,
-} from "lucide-react";
-import { useNavigate, useParams } from "react-router";
-import { toQAHistoryRecord, type QAHistoryRecordViewModel } from "../adapters/qaRunAdapter";
-import { fetchQARuns } from "../services/qaRunService";
+  createConfigDraftFromQARun,
+  createEvaluationSampleFromRun,
+  fetchEvaluationSamples,
+  fetchQARunDetail,
+  fetchQARunReplayContext,
+  fetchQARuns,
+  updateQARunFeedback,
+} from "../services/qaRunService";
+import type { QARunDetailDTO } from "../types/qaRun";
 
-type RunStatus = "success" | "partial" | "failed";
 type RatingStatus = "up" | "down" | "none";
-
 type HistoryRecord = QAHistoryRecordViewModel;
 
-const INITIAL_HISTORY: HistoryRecord[] = [
-  {
-    id: "run-88f9",
-    query: "Q3 延期的主要风险是什么？",
-    status: "success",
-    user: "admin",
-    time: "10 分钟前",
-    rev: "rev_042",
-    rating: "up",
-    hasOverrides: false,
-    failureType: "无",
-    answer: "Aurora 延期可能带来 1200 万美元收入缺口，并造成 Q4 供应链连锁风险。",
-  },
-  {
-    id: "run-88fa",
-    query: "给我看远程办公的员工手册。",
-    status: "success",
-    user: "jdoe",
-    time: "1 小时前",
-    rev: "rev_042",
-    rating: "down",
-    hasOverrides: true,
-    failureType: "引用不完整",
-    answer: "返回了远程办公摘要，但缺少 HR handbook 的直接引用。",
-  },
-  {
-    id: "run-88fb",
-    query: "Q3 延期的主要风险是什么？",
-    status: "partial",
-    user: "asmith",
-    time: "3 小时前",
-    rev: "rev_041",
-    rating: "none",
-    hasOverrides: true,
-    failureType: "Graph 超时降级",
-    answer: "文档侧给出了收入风险，但图检索链路失败。",
-  },
-  {
-    id: "run-88fc",
-    query: "解释一下 API v2 的限流规则。",
-    status: "failed",
-    user: "system",
-    time: "1 天前",
-    rev: "rev_041",
-    rating: "none",
-    hasOverrides: false,
-    failureType: "未召回到正确文档",
-    answer: "运行失败，未返回有效答案。",
-  },
-];
-
 /**
- * QA 历史页原型。
- * 原型阶段必须能看见：详情、人工标注、失败归因、同 query 对比、回放到调试页。
+ * QA 历史页接入 E8 历史详情、人工标注、回放和评估样本接口。
+ * 页面不自行推断最终权限，详情和动作结果以后端返回为准。
  */
 export function QAHistory() {
   const navigate = useNavigate();
-  const { kbId } = useParams();
+  const { kbId = "" } = useParams();
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [revisionFilter, setRevisionFilter] = useState("");
   const [feedbackFilter, setFeedbackFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [selectedRun, setSelectedRun] = useState<HistoryRecord | null>(null);
+  const [selectedDetail, setSelectedDetail] = useState<QARunDetailDTO | null>(null);
+  const [evaluationCount, setEvaluationCount] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{
-    variant: "success" | "info";
+    variant: "success" | "info" | "warning" | "error";
     title: string;
     message: string;
   } | null>(null);
-  const [regressionSet, setRegressionSet] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
 
   async function loadHistory(keyword = searchTerm) {
     if (!kbId) return;
     setLoading(true);
     try {
-      const page = await fetchQARuns(kbId, keyword);
+      const page = await fetchQARuns(kbId, keyword, {
+        status: statusFilter || undefined,
+        feedbackStatus: feedbackFilter || undefined,
+      });
       setHistory(page.items.map(toQAHistoryRecord));
+      try {
+        const samples = await fetchEvaluationSamples(kbId);
+        setEvaluationCount(samples.total);
+      } catch {
+        setEvaluationCount(0);
+      }
     } catch (error) {
-      setHistory(INITIAL_HISTORY);
       setFeedback({
-        variant: "info",
-        title: "已切换到原型数据",
-        message: error instanceof Error ? error.message : "后端 QA 历史接口暂不可用。",
+        variant: "error",
+        title: "QA 历史加载失败",
+        message: error instanceof Error ? error.message : "请检查后端服务和历史权限。",
       });
     } finally {
       setLoading(false);
@@ -126,85 +75,104 @@ export function QAHistory() {
     void loadHistory("");
   }, [kbId]);
 
-  const filteredRuns = useMemo(() => {
-    return history.filter((run) => {
-      const matchesSearch =
-        run.query.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        run.id.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesRevision = !revisionFilter || run.rev === revisionFilter;
-      const matchesFeedback = !feedbackFilter || run.rating === feedbackFilter;
-      const matchesStatus = !statusFilter || run.status === statusFilter;
-      return matchesSearch && matchesRevision && matchesFeedback && matchesStatus;
-    });
-  }, [feedbackFilter, history, revisionFilter, searchTerm, statusFilter]);
-
   const sameQueryRuns = useMemo(() => {
     if (!selectedRun) return [];
-    return history.filter(
-      (run) => run.query === selectedRun.query && run.id !== selectedRun.id,
-    );
+    return history.filter((run) => run.query === selectedRun.query && run.id !== selectedRun.id);
   }, [history, selectedRun]);
 
-  function updateRating(runId: string, rating: RatingStatus) {
-    setHistory((current) =>
-      current.map((run) => (run.id === runId ? { ...run, rating } : run)),
-    );
-    setFeedback({
-      variant: "success",
-      title: "人工标注已更新",
-      message: "原型阶段重点是把“可标注、可归因”的能力露出来。",
-    });
+  async function openRun(run: HistoryRecord) {
+    setSelectedRun(run);
+    setSelectedDetail(null);
+    try {
+      setSelectedDetail(await fetchQARunDetail(kbId, run.id));
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "运行详情加载失败",
+        message: error instanceof Error ? error.message : "请检查该运行记录是否仍可见。",
+      });
+    }
   }
 
-  function addToRegression(runId: string) {
-    setRegressionSet((current) =>
-      current.includes(runId) ? current : [...current, runId],
-    );
-    setFeedback({
-      variant: "info",
-      title: "已加入回归样本集",
-      message: `${runId} 已标记为后续版本验证样本。`,
-    });
+  async function updateRating(runId: string, rating: RatingStatus) {
+    setActionLoading(`feedback-${runId}`);
+    try {
+      const response = await updateQARunFeedback(
+        kbId,
+        runId,
+        ratingToFeedbackStatus(rating),
+        rating === "down" ? "manual_review_required" : undefined,
+        rating === "up" ? "人工标注：正确" : rating === "down" ? "人工标注：错误或不满意" : undefined,
+      );
+      setHistory((current) => current.map((run) => (run.id === runId ? { ...run, rating, failureType: response.failureType || run.failureType } : run)));
+      if (selectedDetail?.runId === runId) {
+        setSelectedDetail({ ...selectedDetail, feedbackStatus: response.feedbackStatus, feedbackNote: response.feedbackNote, failureType: response.failureType });
+      }
+      setFeedback({ variant: "success", title: "人工标注已更新", message: "反馈状态和失败归因已保存到 QARun。" });
+    } catch (error) {
+      setFeedback({ variant: "error", title: "人工标注失败", message: error instanceof Error ? error.message : "请稍后重试。" });
+    } finally {
+      setActionLoading(null);
+    }
   }
 
-  /**
-   * 把历史记录带回 QA 调试页。
-   * 原型阶段不需要接真实 run 快照接口，但必须把回放入口和带参跳转串起来。
-   */
-  function replayRun(run: HistoryRecord) {
-    navigate(`/kb/${kbId}/qa`, {
-      state: {
-        query: run.query,
-        sourceRunId: run.id,
-        revision: run.rev,
-        scenario:
-          run.status === "partial"
-            ? "partial"
-            : run.failureType.includes("权限")
-              ? "permission"
-              : "success",
-      },
-    });
+  async function addToRegression(run: HistoryRecord) {
+    setActionLoading(`sample-${run.id}`);
+    try {
+      await createEvaluationSampleFromRun(kbId, run.id, selectedDetail?.answer ?? run.answer);
+      const samples = await fetchEvaluationSamples(kbId);
+      setEvaluationCount(samples.total);
+      setFeedback({ variant: "success", title: "已加入评估样本", message: `${run.id} 已沉淀为后续回归验证样本。` });
+    } catch (error) {
+      setFeedback({ variant: "error", title: "加入评估样本失败", message: error instanceof Error ? error.message : "请检查评估样本管理权限。" });
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function createDraft(run: HistoryRecord) {
+    setActionLoading(`draft-${run.id}`);
+    try {
+      await createConfigDraftFromQARun(kbId, run.id);
+      setFeedback({ variant: "success", title: "Revision 草稿已生成", message: "可到配置中心继续编辑并保存。" });
+    } catch (error) {
+      setFeedback({ variant: "error", title: "生成草稿失败", message: error instanceof Error ? error.message : "请检查配置管理权限。" });
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function replayRun(run: HistoryRecord) {
+    setActionLoading(`replay-${run.id}`);
+    try {
+      const context = await fetchQARunReplayContext(kbId, run.id);
+      navigate(`/kb/${kbId}/qa`, {
+        state: {
+          query: context.query,
+          sourceRunId: context.sourceRunId,
+          configRevisionId: context.configRevisionId,
+          overrideParams: context.overrideParams,
+          suggestedMode: context.suggestedMode,
+          replayWarnings: context.warnings,
+        },
+      });
+    } catch (error) {
+      setFeedback({ variant: "error", title: "回放上下文获取失败", message: error instanceof Error ? error.message : "请检查 QA 运行权限。" });
+    } finally {
+      setActionLoading(null);
+    }
   }
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6 flex flex-col h-full overflow-hidden">
       <PageHeader
         title="QA 历史与监控"
-        description="查看历史运行、人工反馈、失败归因与同 query 回放。"
-        actions={
-          <Button variant="outline">
-            <Download className="w-4 h-4 mr-2" /> 导出快照
-          </Button>
-        }
+        description="查看历史运行、人工反馈、失败归因、回放上下文与评估样本。"
+        actions={<Badge variant="info">评估样本：{evaluationCount}</Badge>}
       />
 
       {feedback && (
-        <Alert
-          variant={feedback.variant}
-          title={feedback.title}
-          onClose={() => setFeedback(null)}
-        >
+        <Alert variant={feedback.variant} title={feedback.title} onClose={() => setFeedback(null)}>
           {feedback.message}
         </Alert>
       )}
@@ -222,27 +190,17 @@ export function QAHistory() {
             }}
           />
         </div>
-        <Button variant="outline" onClick={() => void loadHistory(searchTerm)}>
-          {loading ? "加载中..." : "搜索"}
-        </Button>
-        <select
-          className="px-3 py-2 bg-ivory border border-border-cream rounded-md text-sm text-near-black focus:outline-none"
-          value={revisionFilter}
-          onChange={(e) => setRevisionFilter(e.target.value)}
-        >
-          <option value="">全部版本</option>
-          <option value="rev_042">rev_042（当前生效）</option>
-          <option value="rev_041">rev_041</option>
-        </select>
         <select
           className="px-3 py-2 bg-ivory border border-border-cream rounded-md text-sm text-near-black focus:outline-none"
           value={feedbackFilter}
           onChange={(e) => setFeedbackFilter(e.target.value)}
         >
           <option value="">全部反馈</option>
-          <option value="up">正向</option>
-          <option value="down">负向</option>
-          <option value="none">未标注</option>
+          <option value="correct">正确</option>
+          <option value="wrong">错误</option>
+          <option value="citation_error">引用错误</option>
+          <option value="no_evidence">无证据</option>
+          <option value="unrated">未标注</option>
         </select>
         <select
           className="px-3 py-2 bg-ivory border border-border-cream rounded-md text-sm text-near-black focus:outline-none"
@@ -253,7 +211,11 @@ export function QAHistory() {
           <option value="success">成功</option>
           <option value="partial">部分成功</option>
           <option value="failed">失败</option>
+          <option value="cancelled">已取消</option>
         </select>
+        <Button variant="outline" onClick={() => void loadHistory(searchTerm)}>
+          {loading ? "加载中..." : "搜索"}
+        </Button>
       </div>
 
       <div className="flex-1 overflow-auto border border-border-cream rounded-xl">
@@ -271,21 +233,17 @@ export function QAHistory() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredRuns.map((run) => (
+            {history.map((run) => (
               <TableRow key={run.id}>
                 <TableCell mono>{run.id}</TableCell>
                 <TableCell className="font-medium text-near-black max-w-[260px] truncate" title={run.query}>
                   {run.query}
                 </TableCell>
-                <TableCell>
-                  <StatusBadge status={run.status} />
-                </TableCell>
+                <TableCell><StatusBadge status={run.status} /></TableCell>
                 <TableCell>{run.user}</TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
-                    <Badge variant={run.rev === "rev_042" ? "success" : "default"}>
-                      {run.rev}
-                    </Badge>
+                    <Badge variant="default">{run.rev}</Badge>
                     {run.hasOverrides && <Badge variant="warning">存在覆盖参数</Badge>}
                   </div>
                 </TableCell>
@@ -299,20 +257,10 @@ export function QAHistory() {
                 <TableCell className="text-stone-gray">{run.failureType}</TableCell>
                 <TableCell>
                   <div className="flex gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setSelectedRun(run)}
-                      title="查看详情"
-                    >
+                    <Button variant="ghost" size="sm" onClick={() => void openRun(run)} title="查看详情">
                       <Eye className="w-4 h-4 text-terracotta" />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => replayRun(run)}
-                      title="回放到调试器"
-                    >
+                    <Button variant="ghost" size="sm" onClick={() => void replayRun(run)} title="回放到调试器">
                       <PlayCircle className="w-4 h-4 text-terracotta" />
                     </Button>
                   </div>
@@ -325,7 +273,10 @@ export function QAHistory() {
 
       <Drawer
         isOpen={selectedRun !== null}
-        onClose={() => setSelectedRun(null)}
+        onClose={() => {
+          setSelectedRun(null);
+          setSelectedDetail(null);
+        }}
         title={selectedRun ? `运行详情 · ${selectedRun.id}` : "运行详情"}
         width="640px"
       >
@@ -335,14 +286,12 @@ export function QAHistory() {
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <StatusBadge status={selectedRun.status} />
-                  <Badge variant={selectedRun.rev === "rev_042" ? "success" : "default"}>
-                    {selectedRun.rev}
-                  </Badge>
+                  <Badge variant="default">{selectedRun.rev}</Badge>
                   {selectedRun.hasOverrides && <Badge variant="warning">存在覆盖参数</Badge>}
                 </div>
                 <div className="text-sm text-near-black">
                   <div className="font-medium">{selectedRun.query}</div>
-                  <p className="mt-2 text-stone-gray">{selectedRun.answer}</p>
+                  <p className="mt-2 text-stone-gray">{selectedDetail?.answer || selectedRun.answer}</p>
                 </div>
               </div>
             </DrawerSection>
@@ -353,21 +302,42 @@ export function QAHistory() {
                   <Button
                     variant={selectedRun.rating === "up" ? "primary" : "outline"}
                     size="sm"
-                    onClick={() => updateRating(selectedRun.id, "up")}
+                    disabled={actionLoading === `feedback-${selectedRun.id}`}
+                    onClick={() => void updateRating(selectedRun.id, "up")}
                   >
                     <ThumbsUp className="w-4 h-4 mr-2" /> 正确
                   </Button>
                   <Button
                     variant={selectedRun.rating === "down" ? "destructive" : "outline"}
                     size="sm"
-                    onClick={() => updateRating(selectedRun.id, "down")}
+                    disabled={actionLoading === `feedback-${selectedRun.id}`}
+                    onClick={() => void updateRating(selectedRun.id, "down")}
                   >
                     <ThumbsDown className="w-4 h-4 mr-2" /> 错误 / 不满意
                   </Button>
                 </div>
                 <div className="rounded-lg border border-border-cream bg-parchment p-3 text-sm text-stone-gray">
-                  失败类型：{selectedRun.failureType}
+                  失败类型：{selectedDetail?.failureType || selectedRun.failureType}
                 </div>
+                {selectedDetail?.feedbackNote && (
+                  <div className="rounded-lg border border-border-cream bg-parchment p-3 text-sm text-stone-gray">
+                    备注：{selectedDetail.feedbackNote}
+                  </div>
+                )}
+              </div>
+            </DrawerSection>
+
+            <DrawerSection title="Trace 与 Evidence">
+              <div className="space-y-3">
+                <div className="rounded-lg border border-border-cream bg-parchment p-3 text-sm text-stone-gray">
+                  Trace 步骤：{selectedDetail?.trace.length ?? "-"} · Evidence：{selectedDetail?.evidence.length ?? "-"} · Candidate：{selectedDetail?.candidates.length ?? "-"}
+                </div>
+                {selectedDetail?.evidence.slice(0, 3).map((evidence) => (
+                  <div key={evidence.evidenceId} className="rounded-lg border border-border-cream bg-parchment p-3 text-sm">
+                    <div className="font-mono text-xs text-stone-gray">{evidence.chunkId}</div>
+                    <p className="mt-2 text-near-black">{evidence.contentSnapshot || "当前证据策略未返回正文快照。"}</p>
+                  </div>
+                ))}
               </div>
             </DrawerSection>
 
@@ -377,17 +347,12 @@ export function QAHistory() {
               ) : (
                 <div className="space-y-3">
                   {sameQueryRuns.map((run) => (
-                    <div
-                      key={run.id}
-                      className="rounded-lg border border-border-cream bg-parchment p-3"
-                    >
+                    <div key={run.id} className="rounded-lg border border-border-cream bg-parchment p-3">
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="font-medium text-near-black">{run.id}</span>
-                            <Badge variant={run.rev === "rev_042" ? "success" : "default"}>
-                              {run.rev}
-                            </Badge>
+                            <Badge variant="default">{run.rev}</Badge>
                           </div>
                           <p className="mt-1 text-sm text-stone-gray">{run.answer}</p>
                         </div>
@@ -401,12 +366,14 @@ export function QAHistory() {
 
             <DrawerSection title="后续动作">
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={() => replayRun(selectedRun)}>
+                <Button variant="outline" disabled={actionLoading === `replay-${selectedRun.id}`} onClick={() => void replayRun(selectedRun)}>
                   <PlayCircle className="w-4 h-4 mr-2" /> 回放到 QA 调试
                 </Button>
-                <Button variant="ghost" onClick={() => addToRegression(selectedRun.id)}>
-                  <BookmarkPlus className="w-4 h-4 mr-2" />
-                  {regressionSet.includes(selectedRun.id) ? "已加入回归集" : "加入回归集"}
+                <Button variant="ghost" disabled={actionLoading === `sample-${selectedRun.id}`} onClick={() => void addToRegression(selectedRun)}>
+                  <BookmarkPlus className="w-4 h-4 mr-2" /> 加入评估集
+                </Button>
+                <Button variant="ghost" disabled={actionLoading === `draft-${selectedRun.id}`} onClick={() => void createDraft(selectedRun)}>
+                  <Copy className="w-4 h-4 mr-2" /> 生成 Revision 草稿
                 </Button>
               </div>
             </DrawerSection>

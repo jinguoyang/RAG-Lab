@@ -10,7 +10,7 @@ export interface QADebugResultViewModel {
   retrievalCards: { channel: string; summary: string }[];
   candidates: {
     id: string;
-    source: "Dense" | "Sparse" | "Graph" | "Mock";
+    source: "Dense" | "Sparse" | "Graph" | "Mock" | "Postgres";
     title: string;
     score: string;
     decision: string;
@@ -56,6 +56,12 @@ function feedbackToRating(feedbackStatus: string): "up" | "down" | "none" {
   return "none";
 }
 
+export function ratingToFeedbackStatus(rating: "up" | "down" | "none"): string {
+  if (rating === "up") return "correct";
+  if (rating === "down") return "wrong";
+  return "unrated";
+}
+
 function readNumber(source: Record<string, unknown>, key: string): number {
   const value = source[key];
   return typeof value === "number" ? value : 0;
@@ -77,7 +83,16 @@ export function toQADebugResult(detail: QARunDetailDTO): QADebugResultViewModel 
     ],
     candidates: detail.candidates.map((candidate) => ({
       id: candidate.candidateId,
-      source: candidate.sourceType === "mock" ? "Mock" : candidate.sourceType === "sparse" ? "Sparse" : candidate.sourceType === "graph" ? "Graph" : "Dense",
+      source:
+        candidate.sourceType === "mock"
+          ? "Mock"
+          : candidate.sourceType === "sparse"
+            ? "Sparse"
+            : candidate.sourceType === "graph"
+              ? "Graph"
+              : candidate.sourceType === "postgres"
+                ? "Postgres"
+                : "Dense",
       title: String(candidate.metadata.documentName ?? candidate.chunkId ?? candidate.candidateId),
       score: String(candidate.rerankScore ?? candidate.rawScore ?? "-"),
       decision: candidate.isAuthorized ? "保留，已进入候选诊断" : candidate.dropReason || "权限裁剪",
@@ -112,7 +127,7 @@ export function toQAHistoryRecord(run: QARunListItemDTO): QAHistoryRecordViewMod
     rev: `rev ${run.configRevisionId.slice(0, 8)}`,
     rating: feedbackToRating(run.feedbackStatus),
     hasOverrides: run.hasOverride,
-    failureType: run.status === "failed" ? "运行失败" : run.status === "partial" ? "部分降级" : "无",
+    failureType: run.failureType || (run.status === "failed" ? "运行失败" : run.status === "partial" ? "部分降级" : "无"),
     answer: run.answer || "暂无回答。",
   };
 }

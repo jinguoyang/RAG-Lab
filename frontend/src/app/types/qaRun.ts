@@ -71,6 +71,10 @@ export interface QARunDetailDTO {
   rewrittenQuery: string | null;
   answer: string | null;
   retrievalDiagnostics: Record<string, unknown>;
+  overrideSnapshot: Record<string, unknown>;
+  feedbackStatus: string;
+  feedbackNote: string | null;
+  failureType: string | null;
   candidates: QARunCandidateDTO[];
   evidence: QARunEvidenceDTO[];
   citations: QARunCitationDTO[];
@@ -88,9 +92,42 @@ export interface QARunListItemDTO {
   answer: string | null;
   hasOverride: boolean;
   feedbackStatus: string;
+  feedbackNote: string | null;
+  failureType: string | null;
   createdBy: string | null;
   createdAt: string;
   latencyMs: number | null;
 }
 
+export interface QARunFeedbackResponse {
+  runId: string;
+  feedbackStatus: string;
+  failureType: string | null;
+  feedbackNote: string | null;
+  updatedAt: string;
+}
+
+export interface QARunReplayContextDTO {
+  sourceRunId: string;
+  query: string;
+  configRevisionId: string;
+  overrideParams: Record<string, unknown>;
+  suggestedMode: "replay" | "copyAsNew";
+  warnings: string[];
+}
+
+export interface EvaluationSampleDTO {
+  sampleId: string;
+  kbId: string;
+  sourceRunId: string | null;
+  query: string;
+  expectedAnswer: string | null;
+  expectedEvidence: Record<string, unknown>;
+  status: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type QARunPage = PageResponse<QARunListItemDTO>;
+export type EvaluationSamplePage = PageResponse<EvaluationSampleDTO>;

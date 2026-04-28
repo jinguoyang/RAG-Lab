@@ -4,7 +4,7 @@
 
 `backend/` 是 RAG-Lab 的 FastAPI 后端工程入口。
 
-当前阶段已搭建最小应用骨架，并开始接入 PostgreSQL 迁移基础；Redis、MinIO、Milvus、OpenSearch、Neo4j 或模型服务仍按后续 Sprint 逐步接入。
+当前阶段已搭建最小应用骨架，并开始接入 PostgreSQL 迁移基础；文档上传链路已预留 MinIO 原始文件存储 Provider，QA Run 已通过 Provider 抽象接入 Embedding、Milvus、OpenSearch、Neo4j、LLM 和 Rerank 的最小编排链路。
 
 ## 本地运行
 
@@ -138,6 +138,27 @@ Copy-Item .env.example .env
 | `RAG_LAB_DEV_AUTH_ENABLED` | `true` | 是否启用开发期认证占位 |
 | `RAG_LAB_DEV_DEFAULT_USERNAME` | `admin` | 默认开发用户 |
 | `RAG_LAB_DEV_DEFAULT_SECURITY_LEVEL` | `public` | 默认开发密级，保持开放以便联调 |
+| `RAG_LAB_STORAGE_BACKEND` | `metadata` | 对象存储后端，`metadata` 仅记录引用，`minio` 写入 MinIO |
+| `RAG_LAB_STORAGE_BUCKET` | `rag-lab-source` | 原始文件对象存储 bucket |
+| `RAG_LAB_STORAGE_OBJECT_PREFIX` | `dev` | 原始文件对象 key 前缀 |
+| `RAG_LAB_MINIO_ENDPOINT` | 空 | MinIO 服务地址，例如 `127.0.0.1:9000` |
+| `RAG_LAB_MINIO_ACCESS_KEY` | 空 | MinIO Access Key |
+| `RAG_LAB_MINIO_SECRET_KEY` | 空 | MinIO Secret Key |
+| `RAG_LAB_MINIO_SECURE` | `false` | 是否使用 HTTPS 连接 MinIO |
+| `RAG_LAB_EMBEDDING_PROVIDER` | `local` | Embedding Provider，`local` 或 `http` |
+| `RAG_LAB_EMBEDDING_ENDPOINT` | 空 | OpenAI-compatible Embedding 接口地址 |
+| `RAG_LAB_DENSE_RETRIEVAL_PROVIDER` | `local` | Dense Provider，`local` 或 `milvus` |
+| `RAG_LAB_MILVUS_URI` | 空 | Milvus 连接地址 |
+| `RAG_LAB_MILVUS_COLLECTION` | `rag_chunk_embeddings` | Milvus Collection 名称 |
+| `RAG_LAB_SPARSE_RETRIEVAL_PROVIDER` | `local` | Sparse Provider，`local` 或 `opensearch` |
+| `RAG_LAB_OPENSEARCH_HOSTS` | 空 | OpenSearch hosts，多个地址用英文逗号分隔 |
+| `RAG_LAB_OPENSEARCH_INDEX` | `rag_chunks` | OpenSearch Index 名称 |
+| `RAG_LAB_GRAPH_RETRIEVAL_PROVIDER` | `local` | Graph Provider，`local` 或 `neo4j` |
+| `RAG_LAB_NEO4J_URI` | 空 | Neo4j 连接地址 |
+| `RAG_LAB_LLM_PROVIDER` | `local` | LLM Provider，`local` 或 `http` |
+| `RAG_LAB_LLM_ENDPOINT` | 空 | OpenAI-compatible Chat Completion 接口地址 |
+| `RAG_LAB_RERANK_PROVIDER` | `identity` | Rerank Provider，`identity` 或 `http` |
+| `RAG_LAB_PROVIDER_TOP_K` | `5` | 单路检索和重排返回数量 |
 
 ## 开发期认证
 

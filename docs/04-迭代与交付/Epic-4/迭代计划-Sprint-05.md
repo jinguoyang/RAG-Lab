@@ -28,7 +28,7 @@
 | S5-001 | B-017 | 实现 QARun、Trace、Candidate、Evidence、Citation 基础表与迁移 | P0 | 1d | Codex | Done |
 | S5-002 | B-018 | 实现 QARun 创建、状态轮询、详情查询接口 | P0 | 2d | Codex | Done |
 | S5-003 | B-019 | 实现 mock Provider，跑通 Query -> Trace -> Evidence -> Answer 最小链路 | P0 | 1d | Codex | Done |
-| S5-004 | B-020 | 接入 QA 调试页和 QA 历史页最小链路 | P0 | 2d | Codex | Todo |
+| S5-004 | B-020 | 接入 QA 调试页和 QA 历史页最小链路 | P0 | 2d | Codex | Done |
 
 ## 5. 建议实现顺序
 
