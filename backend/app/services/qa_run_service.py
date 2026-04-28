@@ -202,6 +202,61 @@ def _load_postgres_chunk_candidates(session: Session, kb_id: UUID, limit: int) -
     ]
 
 
+def _authorize_provider_candidates(
+    session: Session,
+    kb_id: UUID,
+    candidates: list[ProviderCandidate],
+    access_filter,
+) -> tuple[list[ProviderCandidate], int]:
+    """Provider 候选进入生成前必须回表 PostgreSQL，确认真值状态和最终权限。"""
+    if not access_filter.allowed:
+        return [], len(candidates)
+
+    chunk_ids = [candidate.chunk_id for candidate in candidates if candidate.chunk_id is not None]
+    if not chunk_ids:
+        return [], len(candidates)
+
+    rows = session.execute(
+        select(chunks)
+        .select_from(chunks.join(document_versions, chunks.c.version_id == document_versions.c.version_id))
+        .where(
+            chunks.c.chunk_id.in_(chunk_ids),
+            chunks.c.kb_id == kb_id,
+            chunks.c.status == "active",
+            document_versions.c.status == "active",
+        )
+    ).mappings()
+    chunks_by_id = {row["chunk_id"]: row for row in rows}
+
+    authorized: list[ProviderCandidate] = []
+    dropped_count = 0
+    for candidate in candidates:
+        chunk_id = candidate.chunk_id
+        chunk_row = chunks_by_id.get(chunk_id) if chunk_id is not None else None
+        if chunk_row is None:
+            dropped_count += 1
+            continue
+        authorized.append(
+            ProviderCandidate(
+                source_type=candidate.source_type,
+                chunk_id=chunk_row["chunk_id"],
+                raw_score=candidate.raw_score,
+                content=chunk_row["content"],
+                metadata={
+                    **candidate.metadata,
+                    "documentId": str(chunk_row["document_id"]),
+                    "versionId": str(chunk_row["version_id"]),
+                    "chunkIndex": chunk_row["chunk_index"],
+                    "pageNo": chunk_row["page_no"],
+                    "section": chunk_row["section"],
+                    "securityLevel": chunk_row["security_level"],
+                    "truthSource": "postgres_chunks",
+                },
+            )
+        )
+    return authorized, dropped_count
+
+
 def _read_visible_qa_run(
     session: Session,
     current_user: CurrentUserResponse,
@@ -492,26 +547,26 @@ def _execute_provider_qa_run(
     )
     trace_order += 1
 
-    # 当前仓库尚未落地 Chunk 真值表；这里先用过滤摘要阻止无 Chunk 读取权的候选进入生成。
-    authorized_candidates = reranked_candidates
-    if not access_filter.allowed:
-        authorized_candidates = []
-        provider_errors.append("chunkPermissionDenied")
-    permission_filter_pending = any(candidate.chunk_id is None for candidate in authorized_candidates)
-    if permission_filter_pending:
-        provider_errors.append("permissionFilterPending")
+    authorized_candidates, dropped_by_permission = _authorize_provider_candidates(
+        session,
+        kb_id,
+        reranked_candidates,
+        access_filter,
+    )
+    if dropped_by_permission:
+        provider_errors.append("permissionFiltered")
     _insert_trace_step(
         session,
         run_id,
         trace_order,
         "permissionFilter",
-        "partial" if permission_filter_pending else "success",
+        "success",
         {"inputCandidates": len(reranked_candidates)},
         {
             "authorizedCandidates": len(authorized_candidates),
-            "droppedCandidates": len(reranked_candidates) - len(authorized_candidates),
+            "droppedCandidates": dropped_by_permission,
             "accessFilter": access_filter.to_trace_summary(),
-            "note": "Chunk truth table is enforced by PostgreSQL fallback when Provider does not return chunk_id.",
+            "note": "Provider candidates are authorized by PostgreSQL chunks before evidence generation.",
         },
         {"latencyMs": 0},
         started_at=started_at,
@@ -533,7 +588,7 @@ def _execute_provider_qa_run(
                         "sparseCount": 0,
                         "graphCount": 0,
                         "mockCount": 0,
-                        "droppedByPermission": len(reranked_candidates),
+                        "droppedByPermission": dropped_by_permission,
                         "providerErrors": provider_errors,
                     },
                 },
@@ -651,7 +706,7 @@ def _execute_provider_qa_run(
                 "latencyMs": int((datetime.now(UTC) - started_at).total_seconds() * 1000),
                 "retrievalDiagnostics": {
                     **channel_counts,
-                    "droppedByPermission": 0,
+                    "droppedByPermission": dropped_by_permission,
                     "providerErrors": provider_errors,
                 },
             },

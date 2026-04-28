@@ -318,6 +318,7 @@ def _write_chunk_access_filters(
     current_user: CurrentUserResponse,
     kb_id: UUID,
     chunk_rows: list[RowMapping],
+    version_status: str,
 ) -> None:
     """为新 Chunk 写入访问过滤摘要，供检索副本同步和 QA 前置过滤复用。"""
     access_filter = build_chunk_access_filter_context(session, current_user, kb_id)
@@ -332,7 +333,7 @@ def _write_chunk_access_filters(
                 deny_subject_keys=access_filter.deny_subject_keys,
                 security_level=row["security_level"],
                 document_status="active",
-                version_status="active" if row["status"] == "active" else "inactive",
+                version_status=version_status,
                 chunk_status=row["status"],
                 filter_hash=access_filter.filter_hash,
             )
@@ -383,6 +384,8 @@ def run_ingest_job(
         ).mappings().first()
 
     file_name = file_row["file_name"] if file_row else document_row["name"]
+    if source_bytes is None:
+        raise DocumentConflictError("Source file content is unavailable.")
     session.execute(
         update(ingest_jobs)
         .where(ingest_jobs.c.job_id == job_id)
@@ -426,7 +429,8 @@ def run_ingest_job(
             chunk_rows.append(row)
 
         chunk_ids = [row["chunk_id"] for row in chunk_rows]
-        _write_chunk_access_filters(session, current_user, kb_row["kb_id"], chunk_rows)
+        new_version_status = "active" if document_row["active_version_id"] == version_row["version_id"] else "inactive"
+        _write_chunk_access_filters(session, current_user, kb_row["kb_id"], chunk_rows, new_version_status)
         _create_index_sync_job(session, kb_row, current_user, "milvus", version_row["version_id"], chunk_ids, True)
         sparse_status = "not_required"
         graph_status = "not_required"
@@ -475,7 +479,6 @@ def run_ingest_job(
         if kb_row["graph_required_for_activation"] and graph_status != "success":
             retrieval_ready = False
 
-        new_version_status = "active" if document_row["active_version_id"] == version_row["version_id"] else "inactive"
         total_tokens = sum(row["token_count"] or 0 for row in chunk_rows)
         session.execute(
             update(document_versions)

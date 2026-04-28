@@ -13,7 +13,8 @@ from app.schemas.graph import (
     GraphSupportingChunksResponse,
 )
 from app.services.qa_providers import ProviderError, get_qa_run_providers
-from app.tables import graph_chunk_refs, graph_snapshots, knowledge_bases
+from app.services.permission_service import has_kb_permission
+from app.tables import chunks, document_versions, graph_chunk_refs, graph_snapshots, knowledge_bases
 
 
 def _is_platform_admin(current_user: CurrentUserResponse) -> bool:
@@ -27,10 +28,16 @@ def _read_visible_knowledge_base(
     kb_id: UUID,
 ) -> RowMapping | None:
     """读取当前用户可见知识库；图接口不可泄漏不可见知识库存在性。"""
-    condition = (knowledge_bases.c.deleted_at.is_(None)) & (knowledge_bases.c.kb_id == kb_id)
-    if not _is_platform_admin(current_user):
-        condition = condition & (knowledge_bases.c.owner_id == UUID(current_user.user.userId))
-    return session.execute(select(knowledge_bases).where(condition).limit(1)).mappings().first()
+    row = session.execute(
+        select(knowledge_bases)
+        .where(knowledge_bases.c.deleted_at.is_(None), knowledge_bases.c.kb_id == kb_id)
+        .limit(1)
+    ).mappings().first()
+    if row is None:
+        return None
+    if _is_platform_admin(current_user) or has_kb_permission(session, current_user, kb_id, "kb.view"):
+        return row
+    return None
 
 
 def _to_graph_snapshot_dto(row: RowMapping) -> GraphSnapshotDTO:
@@ -152,8 +159,17 @@ def list_supporting_chunks(
     relation_key: str | None,
     community_key: str | None,
 ) -> GraphSupportingChunksResponse | None:
-    """查询图对象支撑 Chunk 引用；正文权限裁剪待 Chunk 真值表落地后补齐。"""
+    """查询图对象支撑 Chunk，并按快照归属和正文读取权限裁剪。"""
     if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+
+    snapshot_row = session.execute(
+        select(graph_snapshots.c.graph_snapshot_id).where(
+            graph_snapshots.c.graph_snapshot_id == graph_snapshot_id,
+            graph_snapshots.c.kb_id == kb_id,
+        )
+    ).mappings().first()
+    if snapshot_row is None:
         return None
 
     condition = graph_chunk_refs.c.graph_snapshot_id == graph_snapshot_id
@@ -164,15 +180,48 @@ def list_supporting_chunks(
     if community_key:
         condition = condition & (graph_chunk_refs.c.community_key == community_key)
 
-    rows = session.execute(select(graph_chunk_refs).where(condition).limit(100)).mappings()
-    return GraphSupportingChunksResponse(
-        items=[
+    ref_rows = list(session.execute(select(graph_chunk_refs).where(condition).limit(100)).mappings())
+    if not has_kb_permission(session, current_user, kb_id, "kb.chunk.read"):
+        return GraphSupportingChunksResponse(items=[], filteredCount=len(ref_rows))
+
+    chunk_ids = [row["chunk_id"] for row in ref_rows]
+    if not chunk_ids:
+        return GraphSupportingChunksResponse(items=[], filteredCount=0)
+
+    chunk_rows = session.execute(
+        select(chunks)
+        .select_from(chunks.join(document_versions, chunks.c.version_id == document_versions.c.version_id))
+        .where(
+            chunks.c.chunk_id.in_(chunk_ids),
+            chunks.c.kb_id == kb_id,
+            chunks.c.status == "active",
+            document_versions.c.status == "active",
+        )
+    ).mappings()
+    chunks_by_id = {row["chunk_id"]: row for row in chunk_rows}
+
+    items: list[GraphSupportingChunkDTO] = []
+    for row in ref_rows:
+        chunk_row = chunks_by_id.get(row["chunk_id"])
+        if chunk_row is None:
+            continue
+        metadata = {
+            **(row["metadata"] or {}),
+            "documentId": str(chunk_row["document_id"]),
+            "versionId": str(chunk_row["version_id"]),
+            "chunkIndex": chunk_row["chunk_index"],
+            "securityLevel": chunk_row["security_level"],
+            "contentPreview": chunk_row["content"][:240],
+        }
+        items.append(
             GraphSupportingChunkDTO(
                 chunkId=str(row["chunk_id"]),
                 refType=row["ref_type"],
-                metadata=row["metadata"],
+                metadata=metadata,
             )
-            for row in rows
-        ],
-        filteredCount=0,
+        )
+    filtered_count = len(ref_rows) - len(items)
+    return GraphSupportingChunksResponse(
+        items=items,
+        filteredCount=filtered_count,
     )
