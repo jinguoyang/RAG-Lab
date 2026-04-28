@@ -34,5 +34,7 @@ venv/
 env/
 .conda/
 
-# superpower
+# Superpowers local runtime
 .superpower/
+.superpowers/
+.worktrees/
