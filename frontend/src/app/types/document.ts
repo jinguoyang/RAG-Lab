@@ -33,6 +33,12 @@ export interface DocumentVersionDTO {
   updatedAt: string;
 }
 
+export interface IndexStageViewModel {
+  key: "parse" | "embedding" | "milvus" | "opensearch" | "neo4j";
+  label: string;
+  status: "not_required" | "pending" | "running" | "success" | "failed";
+}
+
 export interface IngestJobDTO {
   jobId: string;
   kbId: string;
@@ -120,6 +126,7 @@ export interface VersionRowViewModel {
   retrievalReadyLabel: string;
   createdAtLabel: string;
   active: boolean;
+  indexStages: IndexStageViewModel[];
 }
 
 export interface IngestJobViewModel {
@@ -131,6 +138,7 @@ export interface IngestJobViewModel {
   progress: number;
   createdAtLabel: string;
   errorMessage: string;
+  indexStages: IndexStageViewModel[];
 }
 
 export interface ChunkViewModel {

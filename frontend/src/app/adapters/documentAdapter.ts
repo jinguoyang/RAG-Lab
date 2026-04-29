@@ -6,6 +6,7 @@ import type {
   DocumentVersionDTO,
   IngestJobDTO,
   IngestJobViewModel,
+  IndexStageViewModel,
   JobStatus,
   VersionRowViewModel,
   VersionStatus,
@@ -35,6 +36,30 @@ export function versionStatusToBadgeStatus(status: VersionStatus): JobStatus {
   return "success";
 }
 
+function jobStatusToIndexStatus(status: JobStatus, stage: string | null): IndexStageViewModel["status"] {
+  if (status === "failed") {
+    return "failed";
+  }
+  if (status === "success") {
+    return "success";
+  }
+  if (stage === "parse" || stage === "embedding" || stage === "index_sync") {
+    return "running";
+  }
+  return "pending";
+}
+
+function toJobIndexStages(job: IngestJobDTO): IndexStageViewModel[] {
+  const derivedStatus = jobStatusToIndexStatus(job.status, job.stage);
+  return [
+    { key: "parse", label: "parse", status: job.stage === "queued" ? "pending" : derivedStatus },
+    { key: "embedding", label: "embedding", status: job.stage === "parse" ? "pending" : derivedStatus },
+    { key: "milvus", label: "milvus", status: job.stage === "index_sync" ? derivedStatus : job.status === "success" ? "success" : "pending" },
+    { key: "opensearch", label: "opensearch", status: job.stage === "index_sync" ? derivedStatus : job.status === "success" ? "success" : "pending" },
+    { key: "neo4j", label: "neo4j", status: job.stage === "index_sync" ? derivedStatus : job.status === "success" ? "success" : "pending" },
+  ];
+}
+
 export function toDocumentRow(document: DocumentDTO): DocumentRowViewModel {
   return {
     id: document.documentId,
@@ -58,6 +83,13 @@ export function toVersionRow(
     retrievalReadyLabel: version.retrievalReady ? "已就绪" : "未就绪",
     createdAtLabel: formatDateTime(version.createdAt),
     active: version.versionId === activeVersionId,
+    indexStages: [
+      { key: "parse", label: "parse", status: version.parseStatus },
+      { key: "embedding", label: "embedding", status: version.denseIndexStatus === "success" ? "success" : version.denseIndexStatus },
+      { key: "milvus", label: "milvus", status: version.denseIndexStatus },
+      { key: "opensearch", label: "opensearch", status: version.sparseIndexStatus },
+      { key: "neo4j", label: "neo4j", status: version.graphIndexStatus },
+    ],
   };
 }
 
@@ -71,6 +103,7 @@ export function toIngestJobView(job: IngestJobDTO): IngestJobViewModel {
     progress: job.progress,
     createdAtLabel: formatDateTime(job.createdAt),
     errorMessage: job.errorMessage || "-",
+    indexStages: toJobIndexStages(job),
   };
 }
 

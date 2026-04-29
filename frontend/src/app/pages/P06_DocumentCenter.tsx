@@ -10,9 +10,17 @@ import { Badge, StatusBadge } from "../components/rag/Badge";
 import { Drawer, DrawerSection } from "../components/rag/Drawer";
 import { toDocumentRow, toIngestJobView } from "../adapters/documentAdapter";
 import { fetchDocuments, fetchIngestJobs, uploadDocument } from "../services/documentService";
-import type { DocumentDTO, IngestJobDTO, JobStatus } from "../types/document";
+import type { DocumentDTO, IndexStageViewModel, IngestJobDTO, JobStatus } from "../types/document";
 
 const DOCUMENT_PAGE_SIZE = 10;
+
+function indexStageVariant(status: IndexStageViewModel["status"]) {
+  if (status === "success") return "success";
+  if (status === "failed") return "error";
+  if (status === "running") return "running";
+  if (status === "not_required") return "inactive";
+  return "queued";
+}
 
 /**
  * 文档中心真实接口接入页。
@@ -278,6 +286,13 @@ export function DocumentCenter() {
                   <div className="text-sm text-stone-gray">
                     <div>进度：{job.progress}%</div>
                     <div className="mt-1">触发时间：{job.createdAtLabel}</div>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {job.indexStages.map((stage) => (
+                      <Badge key={stage.key} variant={indexStageVariant(stage.status)}>
+                        {stage.label}: {stage.status}
+                      </Badge>
+                    ))}
                   </div>
                 </div>
               ))

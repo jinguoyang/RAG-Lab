@@ -21,7 +21,15 @@ import {
   reparseDocument,
   retryIngestJob,
 } from "../services/documentService";
-import type { ChunkDTO, DocumentDetailDTO, DocumentVersionDTO, IngestJobDTO } from "../types/document";
+import type { ChunkDTO, DocumentDetailDTO, DocumentVersionDTO, IndexStageViewModel, IngestJobDTO } from "../types/document";
+
+function indexStageVariant(status: IndexStageViewModel["status"]) {
+  if (status === "success") return "success";
+  if (status === "failed") return "error";
+  if (status === "running") return "running";
+  if (status === "not_required") return "inactive";
+  return "queued";
+}
 
 /**
  * 文档详情页接入 E7 文档生命周期接口。
@@ -255,6 +263,7 @@ export function DocumentDetail() {
                 <TableHead>版本</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead>解析状态</TableHead>
+                <TableHead>索引阶段</TableHead>
                 <TableHead>Chunk 数</TableHead>
                 <TableHead>检索就绪</TableHead>
                 <TableHead>创建时间</TableHead>
@@ -269,6 +278,15 @@ export function DocumentDetail() {
                     <TableCell mono>{row.versionNo}</TableCell>
                     <TableCell><StatusBadge status={row.status} /></TableCell>
                     <TableCell>{row.parseStatusLabel}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1.5">
+                        {row.indexStages.map((stage) => (
+                          <Badge key={stage.key} variant={indexStageVariant(stage.status)}>
+                            {stage.label}: {stage.status}
+                          </Badge>
+                        ))}
+                      </div>
+                    </TableCell>
                     <TableCell>{row.chunkCount}</TableCell>
                     <TableCell>{row.retrievalReadyLabel}</TableCell>
                     <TableCell>{row.createdAtLabel}</TableCell>
@@ -352,6 +370,7 @@ export function DocumentDetail() {
                 <TableHead>作业 ID</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead>阶段</TableHead>
+                <TableHead>索引阶段</TableHead>
                 <TableHead>进度</TableHead>
                 <TableHead>创建时间</TableHead>
                 <TableHead>错误信息</TableHead>
@@ -366,6 +385,15 @@ export function DocumentDetail() {
                     <TableCell mono>{row.id}</TableCell>
                     <TableCell><StatusBadge status={row.status} /></TableCell>
                     <TableCell>{row.stage}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1.5">
+                        {row.indexStages.map((stage) => (
+                          <Badge key={stage.key} variant={indexStageVariant(stage.status)}>
+                            {stage.label}: {stage.status}
+                          </Badge>
+                        ))}
+                      </div>
+                    </TableCell>
                     <TableCell>{row.progress}%</TableCell>
                     <TableCell>{row.createdAtLabel}</TableCell>
                     <TableCell className="max-w-xs text-stone-gray">{row.errorMessage}</TableCell>

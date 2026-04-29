@@ -195,6 +195,19 @@ export function KBOverview() {
                 </p>
               </div>
               <div>
+                <p className="text-xs text-stone-gray mb-1">索引阶段</p>
+                <div className="flex flex-wrap gap-2">
+                  <StatusBadge status="success" />
+                  <span className="text-sm text-stone-gray">Milvus 必写</span>
+                  <span className="text-sm text-stone-gray">
+                    OpenSearch {knowledgeBase?.sparseIndexEnabled ? "启用" : "未启用"}
+                  </span>
+                  <span className="text-sm text-stone-gray">
+                    Neo4j {knowledgeBase?.graphIndexEnabled ? "启用" : "未启用"}
+                  </span>
+                </div>
+              </div>
+              <div>
                 <p className="text-xs text-stone-gray mb-1">默认安全级别</p>
                 <p className="text-near-black">{knowledgeBase?.defaultSecurityLevel || "public"}</p>
               </div>
