@@ -103,6 +103,31 @@ class DocumentVersionActivateResponse(BaseModel):
     auditLogId: str
 
 
+class DocumentQualityIssueDTO(BaseModel):
+    """文档质量问题摘要，用于治理入口聚合展示。"""
+
+    issueType: str
+    severity: str
+    documentId: str | None = None
+    versionId: str | None = None
+    chunkId: str | None = None
+    count: int
+    message: str
+
+
+class DocumentQualitySummaryDTO(BaseModel):
+    """知识库文档质量检查汇总。"""
+
+    kbId: str
+    documentCount: int
+    activeChunkCount: int
+    failedVersionCount: int
+    emptyChunkCount: int
+    duplicateChunkGroupCount: int
+    permissionAnomalyCount: int
+    issues: list[DocumentQualityIssueDTO] = Field(default_factory=list)
+
+
 class IndexSyncJobDTO(BaseModel):
     """索引副本同步作业 DTO，用于 P07 和运维入口观察重建状态。"""
 

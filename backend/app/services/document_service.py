@@ -14,6 +14,8 @@ from app.schemas.document import (
     DocumentDetailDTO,
     DocumentDTO,
     DocumentVersionActivateResponse,
+    DocumentQualityIssueDTO,
+    DocumentQualitySummaryDTO,
     DocumentUploadResponse,
     DocumentVersionDTO,
     IndexSyncJobDTO,
@@ -772,6 +774,100 @@ def get_document_detail(
     return DocumentDetailDTO(
         document=_to_document_dto(document_row),
         activeVersion=_to_version_dto(active_version) if active_version else None,
+    )
+
+
+def get_document_quality_summary(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+) -> DocumentQualitySummaryDTO | None:
+    """汇总文档解析、Chunk 和权限过滤摘要质量问题，作为治理入口数据源。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+
+    document_count = session.execute(
+        select(func.count()).select_from(documents).where(documents.c.kb_id == kb_id, documents.c.deleted_at.is_(None))
+    ).scalar_one()
+    active_chunk_count = session.execute(
+        select(func.count()).select_from(chunks).where(chunks.c.kb_id == kb_id, chunks.c.status == "active")
+    ).scalar_one()
+    failed_versions = session.execute(
+        select(document_versions.c.document_id, document_versions.c.version_id, document_versions.c.error_message)
+        .select_from(document_versions.join(documents, document_versions.c.document_id == documents.c.document_id))
+        .where(documents.c.kb_id == kb_id, document_versions.c.parse_status == "failed")
+    ).mappings().all()
+    empty_chunks = session.execute(
+        select(chunks.c.document_id, chunks.c.version_id, chunks.c.chunk_id)
+        .where(chunks.c.kb_id == kb_id, chunks.c.status == "active", func.length(func.trim(chunks.c.content)) == 0)
+    ).mappings().all()
+    duplicate_groups = session.execute(
+        select(chunks.c.content_hash, func.count().label("chunk_count"))
+        .where(chunks.c.kb_id == kb_id, chunks.c.status == "active", chunks.c.content_hash.is_not(None))
+        .group_by(chunks.c.content_hash)
+        .having(func.count() > 1)
+    ).mappings().all()
+    permission_anomalies = session.execute(
+        select(chunks.c.document_id, chunks.c.version_id, chunks.c.chunk_id)
+        .select_from(chunks.outerjoin(chunk_access_filters, chunks.c.chunk_id == chunk_access_filters.c.chunk_id))
+        .where(chunks.c.kb_id == kb_id, chunks.c.status == "active", chunk_access_filters.c.chunk_id.is_(None))
+    ).mappings().all()
+
+    issues: list[DocumentQualityIssueDTO] = []
+    for row in failed_versions[:20]:
+        issues.append(
+            DocumentQualityIssueDTO(
+                issueType="parse_failed",
+                severity="high",
+                documentId=str(row["document_id"]),
+                versionId=str(row["version_id"]),
+                count=1,
+                message=row["error_message"] or "文档版本解析失败。",
+            )
+        )
+    for row in empty_chunks[:20]:
+        issues.append(
+            DocumentQualityIssueDTO(
+                issueType="empty_chunk",
+                severity="medium",
+                documentId=str(row["document_id"]),
+                versionId=str(row["version_id"]),
+                chunkId=str(row["chunk_id"]),
+                count=1,
+                message="Chunk 正文为空，建议重解析或排除。",
+            )
+        )
+    for row in duplicate_groups[:20]:
+        issues.append(
+            DocumentQualityIssueDTO(
+                issueType="duplicate_chunk",
+                severity="low",
+                count=row["chunk_count"],
+                message=f"存在 {row['chunk_count']} 个重复正文 Chunk，contentHash={row['content_hash']}。",
+            )
+        )
+    for row in permission_anomalies[:20]:
+        issues.append(
+            DocumentQualityIssueDTO(
+                issueType="permission_filter_missing",
+                severity="high",
+                documentId=str(row["document_id"]),
+                versionId=str(row["version_id"]),
+                chunkId=str(row["chunk_id"]),
+                count=1,
+                message="Chunk 缺少访问过滤摘要，检索副本同步前应重建。",
+            )
+        )
+
+    return DocumentQualitySummaryDTO(
+        kbId=str(kb_id),
+        documentCount=document_count,
+        activeChunkCount=active_chunk_count,
+        failedVersionCount=len(failed_versions),
+        emptyChunkCount=len(empty_chunks),
+        duplicateChunkGroupCount=len(duplicate_groups),
+        permissionAnomalyCount=len(permission_anomalies),
+        issues=issues,
     )
 
 

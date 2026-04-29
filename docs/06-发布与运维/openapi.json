@@ -2068,6 +2068,66 @@
         }
       }
     },
+    "/api/v1/knowledge-bases/{kb_id}/documents/quality-summary": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Read Document Quality Summary",
+        "description": "返回知识库文档质量和异常 Chunk 诊断摘要。",
+        "operationId": "read_document_quality_summary_api_v1_knowledge_bases__kb_id__documents_quality_summary_get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentQualitySummaryDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/knowledge-bases/{kb_id}/documents/{document_id}/reparse": {
       "post": {
         "tags": [
@@ -6212,6 +6272,119 @@
         ],
         "title": "DocumentDetailDTO",
         "description": "文档详情响应，包含当前 active version 摘要。"
+      },
+      "DocumentQualityIssueDTO": {
+        "properties": {
+          "issueType": {
+            "type": "string",
+            "title": "Issuetype"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity"
+          },
+          "documentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Documentid"
+          },
+          "versionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Versionid"
+          },
+          "chunkId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunkid"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "issueType",
+          "severity",
+          "count",
+          "message"
+        ],
+        "title": "DocumentQualityIssueDTO",
+        "description": "文档质量问题摘要，用于治理入口聚合展示。"
+      },
+      "DocumentQualitySummaryDTO": {
+        "properties": {
+          "kbId": {
+            "type": "string",
+            "title": "Kbid"
+          },
+          "documentCount": {
+            "type": "integer",
+            "title": "Documentcount"
+          },
+          "activeChunkCount": {
+            "type": "integer",
+            "title": "Activechunkcount"
+          },
+          "failedVersionCount": {
+            "type": "integer",
+            "title": "Failedversioncount"
+          },
+          "emptyChunkCount": {
+            "type": "integer",
+            "title": "Emptychunkcount"
+          },
+          "duplicateChunkGroupCount": {
+            "type": "integer",
+            "title": "Duplicatechunkgroupcount"
+          },
+          "permissionAnomalyCount": {
+            "type": "integer",
+            "title": "Permissionanomalycount"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentQualityIssueDTO"
+            },
+            "type": "array",
+            "title": "Issues"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kbId",
+          "documentCount",
+          "activeChunkCount",
+          "failedVersionCount",
+          "emptyChunkCount",
+          "duplicateChunkGroupCount",
+          "permissionAnomalyCount"
+        ],
+        "title": "DocumentQualitySummaryDTO",
+        "description": "知识库文档质量检查汇总。"
       },
       "DocumentReparseRequest": {
         "properties": {

@@ -12,6 +12,7 @@ from app.schemas.document import (
     ChunkDTO,
     DocumentDTO,
     DocumentDetailDTO,
+    DocumentQualitySummaryDTO,
     DocumentReparseRequest,
     DocumentUploadResponse,
     DocumentVersionActivateRequest,
@@ -29,6 +30,7 @@ from app.services.document_service import (
     create_document_upload,
     get_chunk,
     get_document_detail,
+    get_document_quality_summary,
     get_ingest_job,
     list_chunks,
     list_document_versions,
@@ -110,6 +112,19 @@ async def upload_document(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="STORAGE_WRITE_FAILED: object storage write failed.",
         ) from exc
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found.")
+    return response
+
+
+@router.get("/quality-summary", response_model=DocumentQualitySummaryDTO)
+def read_document_quality_summary(
+    kb_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> DocumentQualitySummaryDTO:
+    """返回知识库文档质量和异常 Chunk 诊断摘要。"""
+    response = get_document_quality_summary(session, current_user, kb_id)
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found.")
     return response
