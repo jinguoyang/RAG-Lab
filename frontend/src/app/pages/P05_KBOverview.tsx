@@ -5,23 +5,26 @@ import { Card, CardHeader, CardTitle, CardContent } from "../components/rag/Card
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
 import { Button } from "../components/rag/Button";
 import { StatusBadge } from "../components/rag/Badge";
-import { Upload, Settings, RefreshCw } from "lucide-react";
+import { AlertTriangle, FileWarning, ShieldCheck, Upload, Settings, RefreshCw } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
 import { fetchKnowledgeBase } from "../services/knowledgeBaseService";
 import type { KnowledgeBase } from "../types/knowledgeBase";
+import { fetchDocumentQualitySummary } from "../services/documentService";
+import type { DocumentQualitySummaryDTO } from "../types/document";
 
 export function KBOverview() {
   const navigate = useNavigate();
   const { kbId } = useParams();
   const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBase | null>(null);
+  const [qualitySummary, setQualitySummary] = useState<DocumentQualitySummaryDTO | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const recentJobs = [
-    { id: "job-1092", type: "文档入库", status: "success", time: "10 分钟前" },
-    { id: "job-1091", type: "图谱构建", status: "running", time: "1 小时前" },
-    { id: "job-1090", type: "文档入库", status: "failed", time: "2 小时前" },
-  ];
+  const governanceTodoCount = qualitySummary
+    ? qualitySummary.failedVersionCount
+      + qualitySummary.emptyChunkCount
+      + qualitySummary.duplicateChunkGroupCount
+      + qualitySummary.permissionAnomalyCount
+    : 0;
 
   useEffect(() => {
     if (!kbId) {
@@ -33,15 +36,16 @@ export function KBOverview() {
     let ignore = false;
     setIsLoading(true);
     setErrorMessage(null);
-    fetchKnowledgeBase(kbId)
-      .then((data) => {
+    Promise.all([fetchKnowledgeBase(kbId), fetchDocumentQualitySummary(kbId)])
+      .then(([kb, quality]) => {
         if (!ignore) {
-          setKnowledgeBase(data);
+          setKnowledgeBase(kb);
+          setQualitySummary(quality);
         }
       })
       .catch(() => {
         if (!ignore) {
-          setErrorMessage("知识库详情读取失败，请确认该知识库仍可访问。");
+          setErrorMessage("知识库治理概览读取失败，请确认该知识库仍可访问。");
         }
       })
       .finally(() => {
@@ -93,8 +97,8 @@ export function KBOverview() {
             <CardTitle>文档总数</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-serif text-near-black">142</div>
-            <p className="text-sm text-stone-gray mt-1">12 份待索引</p>
+            <div className="text-3xl font-serif text-near-black">{qualitySummary?.documentCount ?? "-"}</div>
+            <p className="text-sm text-stone-gray mt-1">来自文档质量检查接口</p>
           </CardContent>
         </Card>
         <Card>
@@ -102,63 +106,74 @@ export function KBOverview() {
             <CardTitle>有效 Chunk</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-serif text-near-black">15.2K</div>
-            <p className="text-sm text-stone-gray mt-1">平均每篇约 107 个 chunk</p>
+            <div className="text-3xl font-serif text-near-black">{qualitySummary?.activeChunkCount ?? "-"}</div>
+            <p className="text-sm text-stone-gray mt-1">排除治理标记前的 active 真值</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>QA 会话（30 天）</CardTitle>
+            <CardTitle>治理待办</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-serif text-near-black">1,894</div>
-            <p className="text-sm text-stone-gray mt-1">准确率提升 24%</p>
+            <div className="text-3xl font-serif text-near-black">{qualitySummary ? governanceTodoCount : "-"}</div>
+            <p className="text-sm text-stone-gray mt-1">解析、Chunk、权限摘要异常</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>系统健康度</CardTitle>
+            <CardTitle>质量状态</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-success-green"></span>
-              <span className="text-lg font-medium text-near-black">健康</span>
+              {governanceTodoCount > 0 ? (
+                <AlertTriangle className="w-5 h-5 text-warning-amber" />
+              ) : (
+                <ShieldCheck className="w-5 h-5 text-success-green" />
+              )}
+              <span className="text-lg font-medium text-near-black">{governanceTodoCount > 0 ? "需治理" : "健康"}</span>
             </div>
-            <p className="text-sm text-stone-gray mt-2">向量与图谱同步正常</p>
+            <p className="text-sm text-stone-gray mt-2">
+              {qualitySummary ? `${qualitySummary.issues.length} 条诊断样例` : "等待诊断结果"}
+            </p>
           </CardContent>
         </Card>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="col-span-2">
-          <h2 className="font-serif text-xl mb-4">最近作业</h2>
+          <h2 className="font-serif text-xl mb-4">治理待办</h2>
           <Card>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>作业 ID</TableHead>
                   <TableHead>类型</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>时间</TableHead>
+                  <TableHead>级别</TableHead>
+                  <TableHead>数量</TableHead>
+                  <TableHead>说明</TableHead>
                   <TableHead>操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {recentJobs.map((job) => (
-                  <TableRow key={job.id}>
-                    <TableCell mono>{job.id}</TableCell>
-                    <TableCell>{job.type}</TableCell>
-                    <TableCell><StatusBadge status={job.status as any} /></TableCell>
-                    <TableCell>{job.time}</TableCell>
+                {(qualitySummary?.issues ?? []).slice(0, 6).map((issue, index) => (
+                  <TableRow key={`${issue.issueType}-${issue.chunkId ?? issue.versionId ?? index}`}>
+                    <TableCell>{issue.issueType}</TableCell>
                     <TableCell>
-                      {job.status === 'failed' && (
-                        <Button variant="ghost" size="sm" className="text-terracotta">
-                          <RefreshCw className="w-3 h-3 mr-1" /> 重试
-                        </Button>
-                      )}
+                      <StatusBadge status={issue.severity === "high" ? "failed" : issue.severity === "medium" ? "running" : "success"} />
+                    </TableCell>
+                    <TableCell>{issue.count}</TableCell>
+                    <TableCell>{issue.message}</TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="sm" className="text-terracotta" onClick={() => navigate(`/kb/${kbId}/docs`)}>
+                        <FileWarning className="w-3 h-3 mr-1" /> 查看
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
+                {qualitySummary?.issues.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5}>暂无治理待办。</TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </Card>
@@ -189,6 +204,9 @@ export function KBOverview() {
               </div>
               <Button variant="outline" className="w-full mt-4" onClick={() => navigate(`/kb/${kbId}/qa`)}>
                 测试配置
+              </Button>
+              <Button variant="outline" className="w-full" onClick={() => navigate(`/kb/${kbId}/docs`)}>
+                <RefreshCw className="w-4 h-4 mr-2" /> 文档治理
               </Button>
             </CardContent>
            </Card>

@@ -76,11 +76,22 @@ def verify_chunk_governance_contract() -> None:
     _assert("governance.get(\"excluded\") is True" in graph_source, "图支撑 Chunk 未过滤治理排除标记")
 
 
+def verify_p05_governance_entry() -> None:
+    """校验 P05 已接入质量摘要和治理待办入口。"""
+    page = (ROOT_DIR / "frontend/src/app/pages/P05_KBOverview.tsx").read_text(encoding="utf-8")
+    service = (ROOT_DIR / "frontend/src/app/services/documentService.ts").read_text(encoding="utf-8")
+    _assert("fetchDocumentQualitySummary" in service, "前端缺少文档质量摘要 service")
+    _assert("治理待办" in page, "P05 未展示治理待办")
+    _assert("qualitySummary" in page, "P05 未消费质量摘要数据")
+    _assert("文档治理" in page, "P05 缺少治理入口")
+
+
 def main() -> None:
     """执行 Sprint 16 当前已落地范围的验收检查。"""
     verify_document_quality_contract()
     verify_bulk_governance_contract()
     verify_chunk_governance_contract()
+    verify_p05_governance_entry()
     print("Sprint 16 KB governance verification passed.")
 
 

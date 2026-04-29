@@ -64,6 +64,27 @@ export interface ChunkDTO {
   createdAt: string;
 }
 
+export interface DocumentQualityIssueDTO {
+  issueType: string;
+  severity: "high" | "medium" | "low";
+  documentId: string | null;
+  versionId: string | null;
+  chunkId: string | null;
+  count: number;
+  message: string;
+}
+
+export interface DocumentQualitySummaryDTO {
+  kbId: string;
+  documentCount: number;
+  activeChunkCount: number;
+  failedVersionCount: number;
+  emptyChunkCount: number;
+  duplicateChunkGroupCount: number;
+  permissionAnomalyCount: number;
+  issues: DocumentQualityIssueDTO[];
+}
+
 export interface DocumentVersionActivateResponse {
   documentId: string;
   activeVersionId: string;

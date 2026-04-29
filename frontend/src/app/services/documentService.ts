@@ -4,6 +4,7 @@ import type {
   ChunkDTO,
   DocumentDetailDTO,
   DocumentPage,
+  DocumentQualitySummaryDTO,
   DocumentUploadResponse,
   DocumentVersionActivateResponse,
   DocumentVersionDTO,
@@ -50,6 +51,10 @@ export async function fetchDocumentDetail(
   documentId: string,
 ): Promise<DocumentDetailDTO> {
   return apiGet<DocumentDetailDTO>(`/knowledge-bases/${kbId}/documents/${documentId}`);
+}
+
+export async function fetchDocumentQualitySummary(kbId: string): Promise<DocumentQualitySummaryDTO> {
+  return apiGet<DocumentQualitySummaryDTO>(`/knowledge-bases/${kbId}/documents/quality-summary`);
 }
 
 export async function fetchDocumentVersions(
