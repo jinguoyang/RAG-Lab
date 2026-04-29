@@ -165,6 +165,40 @@ class QARunReplayContextDTO(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class QARunCommentDTO(BaseModel):
+    """QA Run 协作评论。"""
+
+    commentId: str
+    authorId: str
+    content: str
+    createdAt: str
+
+
+class QARunCollaborationDTO(BaseModel):
+    """QA Run 协作状态，覆盖分享、责任人、处理状态和评论。"""
+
+    runId: str
+    sharedWithSubjectKeys: list[str]
+    ownerId: str | None
+    handlingStatus: str
+    comments: list[QARunCommentDTO]
+    updatedAt: str | None = None
+
+
+class QARunCollaborationUpdateRequest(BaseModel):
+    """更新 QA Run 协作信息请求。"""
+
+    sharedWithSubjectKeys: list[str] | None = None
+    ownerId: UUID | None = None
+    handlingStatus: str | None = Field(default=None, max_length=32)
+
+
+class QARunCommentCreateRequest(BaseModel):
+    """新增 QA Run 评论请求。"""
+
+    content: str = Field(min_length=1, max_length=1000)
+
+
 class EvaluationSampleCreateRequest(BaseModel):
     """从 QARun 生成评估样本的可选补充信息。"""
 

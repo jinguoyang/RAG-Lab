@@ -6,13 +6,20 @@ from uuid import UUID
 from sqlalchemy import RowMapping, and_, exists, or_, select
 from sqlalchemy.orm import Session
 
-from app.schemas.auth import CurrentUserResponse
-from app.schemas.permission import PermissionSummaryDTO
+from app.schemas.auth import CurrentUserResponse, UserDTO
+from app.schemas.permission import (
+    EffectivePermissionSimulationRequest,
+    EffectivePermissionSimulationResponse,
+    PermissionSourceDTO,
+    PermissionSummaryDTO,
+)
 from app.tables import (
     kb_member_bindings,
     knowledge_bases,
     role_permission_bindings,
+    user_groups,
     user_group_members,
+    users,
 )
 
 
@@ -237,6 +244,191 @@ def get_kb_permission_summary(
         roles=sorted(evaluation.kb_roles),
         subjectKeys=sorted(evaluation.subject_keys),
         inheritedFromPlatformRole=evaluation.inherited_from_platform_role,
+    )
+
+
+def _current_user_from_user_row(row: RowMapping) -> CurrentUserResponse:
+    """把用户行转换为权限解析所需的 CurrentUserResponse。"""
+    return CurrentUserResponse(
+        user=UserDTO(
+            userId=str(row["user_id"]),
+            username=row["username"],
+            displayName=row["display_name"],
+            email=row["email"],
+            platformRole=row["platform_role"],
+            securityLevel=row["security_level"],
+            status=row["status"],
+        ),
+        platformPermissions=[],
+        visibleKbCount=0,
+    )
+
+
+def _permission_sources_for_role(
+    session: Session,
+    role_scope: str,
+    role_code: str,
+    source_type: str,
+    source_id: str,
+    source_name: str | None,
+) -> list[PermissionSourceDTO]:
+    """展开单个角色的权限绑定，供权限模拟解释来源。"""
+    rows = session.execute(
+        select(role_permission_bindings).where(
+            role_permission_bindings.c.role_scope == role_scope,
+            role_permission_bindings.c.role_code == role_code,
+            role_permission_bindings.c.status == "active",
+        )
+    ).mappings()
+    return [
+        PermissionSourceDTO(
+            sourceType=source_type,
+            sourceId=source_id,
+            sourceName=source_name,
+            roleCode=role_code,
+            permissionCode=row["permission_code"],
+            effect=row["effect"],
+        )
+        for row in rows
+    ]
+
+
+def _simulation_sources(session: Session, kb_id: UUID, target_user: CurrentUserResponse) -> list[PermissionSourceDTO]:
+    """收集平台角色、直接知识库角色和用户组继承角色的权限来源。"""
+    user_id = UUID(target_user.user.userId)
+    sources = _permission_sources_for_role(
+        session,
+        "platform",
+        target_user.user.platformRole,
+        "platformRole",
+        target_user.user.platformRole,
+        "平台角色",
+    )
+
+    direct_bindings = session.execute(
+        select(kb_member_bindings)
+        .where(
+            kb_member_bindings.c.kb_id == kb_id,
+            kb_member_bindings.c.subject_type == "user",
+            kb_member_bindings.c.subject_id == user_id,
+            kb_member_bindings.c.status == "active",
+        )
+    ).mappings()
+    for binding in direct_bindings:
+        sources.extend(
+            _permission_sources_for_role(
+                session,
+                "kb",
+                binding["kb_role"],
+                "directKbRole",
+                str(binding["binding_id"]),
+                "用户直接绑定",
+            )
+        )
+
+    group_rows = session.execute(
+        select(user_group_members.c.group_id, user_groups.c.name)
+        .select_from(user_group_members.join(user_groups, user_group_members.c.group_id == user_groups.c.group_id))
+        .where(
+            user_group_members.c.user_id == user_id,
+            user_group_members.c.status == "active",
+            user_groups.c.status == "active",
+            user_groups.c.deleted_at.is_(None),
+        )
+    )
+    group_names = {group_id: name for group_id, name in group_rows}
+    if group_names:
+        group_bindings = session.execute(
+            select(kb_member_bindings)
+            .where(
+                kb_member_bindings.c.kb_id == kb_id,
+                kb_member_bindings.c.subject_type == "group",
+                kb_member_bindings.c.subject_id.in_(set(group_names.keys())),
+                kb_member_bindings.c.status == "active",
+            )
+        ).mappings()
+        for binding in group_bindings:
+            sources.extend(
+                _permission_sources_for_role(
+                    session,
+                    "kb",
+                    binding["kb_role"],
+                    "groupKbRole",
+                    str(binding["subject_id"]),
+                    group_names.get(binding["subject_id"]),
+                )
+            )
+    return sources
+
+
+def simulate_effective_permission(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    request: EffectivePermissionSimulationRequest,
+) -> EffectivePermissionSimulationResponse | None:
+    """模拟指定用户在知识库下的有效权限，并解释权限来源。"""
+    kb_row: RowMapping | None = session.execute(
+        select(knowledge_bases.c.kb_id).where(
+            knowledge_bases.c.kb_id == kb_id,
+            knowledge_bases.c.deleted_at.is_(None),
+        )
+    ).mappings().first()
+    if kb_row is None:
+        return None
+    if request.resourceId is not None and request.resourceId != kb_id:
+        raise ValueError("resourceId must match kbId.")
+    if current_user.user.platformRole != "platform_admin" and not has_kb_permission(
+        session,
+        current_user,
+        kb_id,
+        "kb.member.manage",
+    ):
+        raise PermissionError("Current user cannot simulate effective permissions.")
+
+    target_row = session.execute(
+        select(users)
+        .where(
+            users.c.user_id == request.userId,
+            users.c.status == "active",
+            users.c.deleted_at.is_(None),
+        )
+        .limit(1)
+    ).mappings().first()
+    if target_row is None:
+        return None
+
+    target_user = _current_user_from_user_row(target_row)
+    evaluation = evaluate_kb_permissions(session, target_user, kb_id)
+    allowed = (
+        request.permissionCode in evaluation.permissions
+        if request.permissionCode
+        else bool(evaluation.permissions)
+    )
+    sources = _simulation_sources(session, kb_id, target_user)
+    if request.permissionCode:
+        sources = [source for source in sources if source.permissionCode == request.permissionCode]
+
+    denied_reasons = [
+        f"权限 {permission_code} 被显式拒绝，deny 优先。"
+        for permission_code in sorted(evaluation.denied_permissions)
+    ]
+    if request.permissionCode and not allowed:
+        denied_reasons.append(f"没有有效 allow 来源授予 {request.permissionCode}。")
+    if not evaluation.kb_roles and not evaluation.inherited_from_platform_role:
+        denied_reasons.append("目标用户没有有效知识库角色。")
+
+    return EffectivePermissionSimulationResponse(
+        userId=target_user.user.userId,
+        kbId=str(kb_id),
+        requestedPermissionCode=request.permissionCode,
+        allowed=allowed,
+        permissions=sorted(evaluation.permissions),
+        deniedPermissions=sorted(evaluation.denied_permissions),
+        roles=sorted(evaluation.kb_roles),
+        subjectKeys=sorted(evaluation.subject_keys),
+        sources=sources,
+        deniedReasons=denied_reasons,
     )
 
 

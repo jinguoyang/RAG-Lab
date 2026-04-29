@@ -122,6 +122,382 @@
         }
       }
     },
+    "/api/v1/audit-logs/report": {
+      "get": {
+        "tags": [
+          "audit-logs"
+        ],
+        "summary": "Read Audit Report",
+        "description": "返回审计报表聚合结果。",
+        "operationId": "read_audit_report_api_v1_audit_logs_report_get",
+        "parameters": [
+          {
+            "name": "kbId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kbid"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
+            }
+          },
+          {
+            "name": "resourceType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resourcetype"
+            }
+          },
+          {
+            "name": "resourceId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resourceid"
+            }
+          },
+          {
+            "name": "actorId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actorid"
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Keyword"
+            }
+          },
+          {
+            "name": "createdFrom",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Createdfrom"
+            }
+          },
+          {
+            "name": "createdTo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Createdto"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditReportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audit-logs/export": {
+      "get": {
+        "tags": [
+          "audit-logs"
+        ],
+        "summary": "Export Audit Report",
+        "description": "导出审计日志文本内容。",
+        "operationId": "export_audit_report_api_v1_audit_logs_export_get",
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "csv",
+              "title": "Format"
+            }
+          },
+          {
+            "name": "kbId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kbid"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
+            }
+          },
+          {
+            "name": "resourceType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resourcetype"
+            }
+          },
+          {
+            "name": "resourceId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resourceid"
+            }
+          },
+          {
+            "name": "actorId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actorid"
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Keyword"
+            }
+          },
+          {
+            "name": "createdFrom",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Createdfrom"
+            }
+          },
+          {
+            "name": "createdTo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Createdto"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditExportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/audit-logs": {
       "get": {
         "tags": [
@@ -1466,6 +1842,76 @@
         }
       }
     },
+    "/api/v1/knowledge-bases/{kb_id}/permissions/effective-simulations": {
+      "post": {
+        "tags": [
+          "knowledge-bases"
+        ],
+        "summary": "Simulate Kb Effective Permission",
+        "description": "模拟目标用户的有效权限，并解释权限来源和拒绝原因。",
+        "operationId": "simulate_kb_effective_permission_api_v1_knowledge_bases__kb_id__permissions_effective_simulations_post",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EffectivePermissionSimulationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EffectivePermissionSimulationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/knowledge-bases/{kb_id}/members": {
       "get": {
         "tags": [
@@ -1887,6 +2333,459 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/observability/metrics": {
+      "get": {
+        "tags": [
+          "observability"
+        ],
+        "summary": "Read Runtime Metrics",
+        "description": "查询 QARun、IngestJob 和 Provider Trace 的关键运行指标。",
+        "operationId": "read_runtime_metrics_api_v1_knowledge_bases__kb_id__observability_metrics_get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeMetricsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/observability/slow-links": {
+      "get": {
+        "tags": [
+          "observability"
+        ],
+        "summary": "Read Slow Links",
+        "description": "查询慢链路诊断，定位检索、rerank、生成、权限裁剪或文档处理阶段。",
+        "operationId": "read_slow_links_api_v1_knowledge_bases__kb_id__observability_slow_links_get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "thresholdMs",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1500,
+              "title": "Thresholdms"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlowLinkDiagnosticsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/observability/error-summary": {
+      "get": {
+        "tags": [
+          "observability"
+        ],
+        "summary": "Read Error Summary",
+        "description": "查询 QARun、Provider Trace、IngestJob 和副本同步错误摘要。",
+        "operationId": "read_error_summary_api_v1_knowledge_bases__kb_id__observability_error_summary_get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSummaryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/observability/health-panel": {
+      "get": {
+        "tags": [
+          "observability"
+        ],
+        "summary": "Read Health Panel",
+        "description": "返回组合健康面板，供运维或知识库负责人快速排障。",
+        "operationId": "read_health_panel_api_v1_knowledge_bases__kb_id__observability_health_panel_get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthPanelResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/backup-drills": {
+      "get": {
+        "tags": [
+          "observability"
+        ],
+        "summary": "Read Backup Drills",
+        "description": "列出备份恢复演练记录。",
+        "operationId": "read_backup_drills_api_v1_knowledge_bases__kb_id__backup_drills_get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BackupDrillDTO"
+                  },
+                  "title": "Response Read Backup Drills Api V1 Knowledge Bases  Kb Id  Backup Drills Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "observability"
+        ],
+        "summary": "Create Backup Drill Endpoint",
+        "description": "回填一次备份恢复演练结果。",
+        "operationId": "create_backup_drill_endpoint_api_v1_knowledge_bases__kb_id__backup_drills_post",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackupDrillCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupDrillDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/backup-drills/{drill_id}": {
+      "get": {
+        "tags": [
+          "observability"
+        ],
+        "summary": "Read Backup Drill",
+        "description": "读取单次备份恢复演练详情。",
+        "operationId": "read_backup_drill_api_v1_knowledge_bases__kb_id__backup_drills__drill_id__get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "drill_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Drill Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupDrillDTO"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -3596,6 +4495,230 @@
         }
       }
     },
+    "/api/v1/knowledge-bases/{kb_id}/config-revisions/release-records": {
+      "get": {
+        "tags": [
+          "config-revisions"
+        ],
+        "summary": "Read Config Release Records",
+        "description": "返回配置发布记录，供 P08 展示变更说明和回滚确认历史。",
+        "operationId": "read_config_release_records_api_v1_knowledge_bases__kb_id__config_revisions_release_records_get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConfigReleaseRecordDTO"
+                  },
+                  "title": "Response Read Config Release Records Api V1 Knowledge Bases  Kb Id  Config Revisions Release Records Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/config-revisions/{revision_id}/release-records": {
+      "post": {
+        "tags": [
+          "config-revisions"
+        ],
+        "summary": "Create Release Record",
+        "description": "创建配置发布记录；不替代正式 activate 操作。",
+        "operationId": "create_release_record_api_v1_knowledge_bases__kb_id__config_revisions__revision_id__release_records_post",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "revision_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Revision Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigReleaseRecordCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigReleaseRecordDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/config-revisions/{revision_id}/rollback-confirmation": {
+      "post": {
+        "tags": [
+          "config-revisions"
+        ],
+        "summary": "Confirm Rollback",
+        "description": "记录回滚确认入口，实际切换仍走激活接口。",
+        "operationId": "confirm_rollback_api_v1_knowledge_bases__kb_id__config_revisions__revision_id__rollback_confirmation_post",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "revision_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Revision Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigRollbackConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigReleaseRecordDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/knowledge-bases/{kb_id}/config-revisions/{revision_id}": {
       "get": {
         "tags": [
@@ -4081,6 +5204,234 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/QARunStatusDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/qa-runs/{run_id}/collaboration": {
+      "get": {
+        "tags": [
+          "qa-runs"
+        ],
+        "summary": "Read Qa Run Collaboration",
+        "description": "读取 QA Run 分享、责任人、处理状态和评论。",
+        "operationId": "read_qa_run_collaboration_api_v1_knowledge_bases__kb_id__qa_runs__run_id__collaboration_get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QARunCollaborationDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "qa-runs"
+        ],
+        "summary": "Update Collaboration",
+        "description": "更新 QA Run 协作处理状态。",
+        "operationId": "update_collaboration_api_v1_knowledge_bases__kb_id__qa_runs__run_id__collaboration_patch",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QARunCollaborationUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QARunCollaborationDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/qa-runs/{run_id}/collaboration/comments": {
+      "post": {
+        "tags": [
+          "qa-runs"
+        ],
+        "summary": "Add Collaboration Comment",
+        "description": "追加 QA Run 协作评论。",
+        "operationId": "add_collaboration_comment_api_v1_knowledge_bases__kb_id__qa_runs__run_id__collaboration_comments_post",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QARunCommentCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QARunCollaborationDTO"
                 }
               }
             }
@@ -5663,6 +7014,35 @@
   },
   "components": {
     "schemas": {
+      "AuditExportResponse": {
+        "properties": {
+          "format": {
+            "type": "string",
+            "title": "Format"
+          },
+          "fileName": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "format",
+          "fileName",
+          "content",
+          "total"
+        ],
+        "title": "AuditExportResponse",
+        "description": "审计导出响应，当前返回可复制内容，不直接写文件。"
+      },
       "AuditLogDTO": {
         "properties": {
           "auditLogId": {
@@ -5737,6 +7117,194 @@
         ],
         "title": "AuditLogDTO",
         "description": "审计日志 DTO，提供排障所需的操作者、资源和上下文字段。"
+      },
+      "AuditReportBucketDTO": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "count"
+        ],
+        "title": "AuditReportBucketDTO",
+        "description": "审计报表聚合桶。"
+      },
+      "AuditReportResponse": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "groupByAction": {
+            "items": {
+              "$ref": "#/components/schemas/AuditReportBucketDTO"
+            },
+            "type": "array",
+            "title": "Groupbyaction"
+          },
+          "groupByResourceType": {
+            "items": {
+              "$ref": "#/components/schemas/AuditReportBucketDTO"
+            },
+            "type": "array",
+            "title": "Groupbyresourcetype"
+          },
+          "groupByActor": {
+            "items": {
+              "$ref": "#/components/schemas/AuditReportBucketDTO"
+            },
+            "type": "array",
+            "title": "Groupbyactor"
+          },
+          "retentionPolicy": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Retentionpolicy"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "groupByAction",
+          "groupByResourceType",
+          "groupByActor"
+        ],
+        "title": "AuditReportResponse",
+        "description": "审计报表响应，支持按操作、资源和操作者聚合。"
+      },
+      "BackupDrillCreateRequest": {
+        "properties": {
+          "result": {
+            "type": "string",
+            "pattern": "^(success|partial|failed)$",
+            "title": "Result"
+          },
+          "restoredObjects": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Restoredobjects"
+          },
+          "residualRisks": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Residualrisks"
+          },
+          "evidence": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Evidence"
+          },
+          "remark": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remark"
+          }
+        },
+        "type": "object",
+        "required": [
+          "result"
+        ],
+        "title": "BackupDrillCreateRequest",
+        "description": "备份恢复演练结果回填请求。"
+      },
+      "BackupDrillDTO": {
+        "properties": {
+          "drillId": {
+            "type": "string",
+            "title": "Drillid"
+          },
+          "kbId": {
+            "type": "string",
+            "title": "Kbid"
+          },
+          "result": {
+            "type": "string",
+            "title": "Result"
+          },
+          "restoredObjects": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Restoredobjects"
+          },
+          "residualRisks": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Residualrisks"
+          },
+          "evidence": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Evidence"
+          },
+          "remark": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remark"
+          },
+          "actorId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actorid"
+          },
+          "auditLogId": {
+            "type": "string",
+            "title": "Auditlogid"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "drillId",
+          "kbId",
+          "result",
+          "restoredObjects",
+          "residualRisks",
+          "evidence",
+          "remark",
+          "actorId",
+          "auditLogId",
+          "createdAt"
+        ],
+        "title": "BackupDrillDTO",
+        "description": "备份恢复演练记录。"
       },
       "Body_upload_document_api_v1_knowledge_bases__kb_id__documents_post": {
         "properties": {
@@ -6032,6 +7600,169 @@
         "title": "ChunkGovernanceResponse",
         "description": "Chunk 治理标记结果，包含权限继承说明。"
       },
+      "CompensationStatusDTO": {
+        "properties": {
+          "sourceType": {
+            "type": "string",
+            "title": "Sourcetype"
+          },
+          "resourceId": {
+            "type": "string",
+            "title": "Resourceid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "compensationStatus": {
+            "type": "string",
+            "title": "Compensationstatus"
+          },
+          "detail": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sourceType",
+          "resourceId",
+          "status",
+          "compensationStatus"
+        ],
+        "title": "CompensationStatusDTO",
+        "description": "补偿任务状态摘要，帮助识别重复执行和遗留失败。"
+      },
+      "ConfigReleaseRecordCreateRequest": {
+        "properties": {
+          "changeSummary": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Changesummary"
+          },
+          "linkedEvaluationRunId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linkedevaluationrunid"
+          },
+          "rollbackPlan": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rollbackplan"
+          }
+        },
+        "type": "object",
+        "required": [
+          "changeSummary"
+        ],
+        "title": "ConfigReleaseRecordCreateRequest",
+        "description": "配置发布记录创建请求，用于复核变更说明和关联评估结果。"
+      },
+      "ConfigReleaseRecordDTO": {
+        "properties": {
+          "releaseRecordId": {
+            "type": "string",
+            "title": "Releaserecordid"
+          },
+          "configRevisionId": {
+            "type": "string",
+            "title": "Configrevisionid"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "changeSummary": {
+            "type": "string",
+            "title": "Changesummary"
+          },
+          "linkedEvaluationRunId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linkedevaluationrunid"
+          },
+          "rollbackPlan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rollbackplan"
+          },
+          "rollbackConfirmed": {
+            "type": "boolean",
+            "title": "Rollbackconfirmed"
+          },
+          "rollbackTargetRevisionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rollbacktargetrevisionid"
+          },
+          "actorId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actorid"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "detail": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "releaseRecordId",
+          "configRevisionId",
+          "action",
+          "changeSummary",
+          "rollbackConfirmed",
+          "actorId",
+          "createdAt"
+        ],
+        "title": "ConfigReleaseRecordDTO",
+        "description": "配置发布与回滚记录 DTO。"
+      },
       "ConfigRevisionActivateRequest": {
         "properties": {
           "confirmImpact": {
@@ -6304,6 +8035,39 @@
         ],
         "title": "ConfigRevisionDraftFromRevisionRequest",
         "description": "从历史 Revision 复制为草稿的请求。"
+      },
+      "ConfigRollbackConfirmRequest": {
+        "properties": {
+          "confirmImpact": {
+            "type": "boolean",
+            "title": "Confirmimpact"
+          },
+          "targetRevisionId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetrevisionid"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "confirmImpact",
+          "reason"
+        ],
+        "title": "ConfigRollbackConfirmRequest",
+        "description": "配置回滚确认请求；只记录确认事实，不绕过正式激活流程。"
       },
       "ConfigTemplateDTO": {
         "properties": {
@@ -6876,6 +8640,204 @@
         ],
         "title": "DocumentVersionDTO",
         "description": "文档版本 DTO，承载解析和索引副本的最小状态。"
+      },
+      "EffectivePermissionSimulationRequest": {
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Userid"
+          },
+          "permissionCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Permissioncode"
+          },
+          "resourceType": {
+            "type": "string",
+            "title": "Resourcetype",
+            "default": "knowledge_base"
+          },
+          "resourceId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resourceid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "userId"
+        ],
+        "title": "EffectivePermissionSimulationRequest",
+        "description": "有效权限模拟请求，用于解释某用户对某权限的来源。"
+      },
+      "EffectivePermissionSimulationResponse": {
+        "properties": {
+          "userId": {
+            "type": "string",
+            "title": "Userid"
+          },
+          "kbId": {
+            "type": "string",
+            "title": "Kbid"
+          },
+          "requestedPermissionCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requestedpermissioncode"
+          },
+          "allowed": {
+            "type": "boolean",
+            "title": "Allowed"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Permissions"
+          },
+          "deniedPermissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Deniedpermissions"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Roles"
+          },
+          "subjectKeys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Subjectkeys"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/PermissionSourceDTO"
+            },
+            "type": "array",
+            "title": "Sources"
+          },
+          "deniedReasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Deniedreasons"
+          }
+        },
+        "type": "object",
+        "required": [
+          "userId",
+          "kbId",
+          "requestedPermissionCode",
+          "allowed",
+          "permissions",
+          "deniedPermissions",
+          "roles",
+          "subjectKeys",
+          "sources",
+          "deniedReasons"
+        ],
+        "title": "EffectivePermissionSimulationResponse",
+        "description": "有效权限模拟结果，说明允许/拒绝及其来源。"
+      },
+      "ErrorSummaryItemDTO": {
+        "properties": {
+          "sourceType": {
+            "type": "string",
+            "title": "Sourcetype"
+          },
+          "errorCode": {
+            "type": "string",
+            "title": "Errorcode"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "latestAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latestat"
+          },
+          "resourceIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Resourceids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sourceType",
+          "errorCode",
+          "message",
+          "count",
+          "latestAt",
+          "resourceIds"
+        ],
+        "title": "ErrorSummaryItemDTO",
+        "description": "错误摘要项，按来源、错误码和阶段聚合。"
+      },
+      "ErrorSummaryResponse": {
+        "properties": {
+          "kbId": {
+            "type": "string",
+            "title": "Kbid"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ErrorSummaryItemDTO"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kbId",
+          "items"
+        ],
+        "title": "ErrorSummaryResponse",
+        "description": "QARun、IngestJob 和 Provider Trace 的错误摘要。"
       },
       "EvaluationOptimizationDraftResponse": {
         "properties": {
@@ -7972,6 +9934,58 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "HealthPanelResponse": {
+        "properties": {
+          "kbId": {
+            "type": "string",
+            "title": "Kbid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "generatedAt": {
+            "type": "string",
+            "title": "Generatedat"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/RuntimeMetricsResponse"
+          },
+          "slowLinks": {
+            "items": {
+              "$ref": "#/components/schemas/SlowLinkDTO"
+            },
+            "type": "array",
+            "title": "Slowlinks"
+          },
+          "errorSummary": {
+            "items": {
+              "$ref": "#/components/schemas/ErrorSummaryItemDTO"
+            },
+            "type": "array",
+            "title": "Errorsummary"
+          },
+          "compensationStatus": {
+            "items": {
+              "$ref": "#/components/schemas/CompensationStatusDTO"
+            },
+            "type": "array",
+            "title": "Compensationstatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kbId",
+          "status",
+          "generatedAt",
+          "metrics",
+          "slowLinks",
+          "errorSummary",
+          "compensationStatus"
+        ],
+        "title": "HealthPanelResponse",
+        "description": "健康面板接口，组合指标、错误、慢链路和补偿状态。"
+      },
       "HealthResponse": {
         "properties": {
           "status": {
@@ -9063,6 +11077,57 @@
         ],
         "title": "PageResponse[UserSummaryDTO]"
       },
+      "PermissionSourceDTO": {
+        "properties": {
+          "sourceType": {
+            "type": "string",
+            "title": "Sourcetype"
+          },
+          "sourceId": {
+            "type": "string",
+            "title": "Sourceid"
+          },
+          "sourceName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcename"
+          },
+          "roleCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rolecode"
+          },
+          "permissionCode": {
+            "type": "string",
+            "title": "Permissioncode"
+          },
+          "effect": {
+            "type": "string",
+            "title": "Effect"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sourceType",
+          "sourceId",
+          "permissionCode",
+          "effect"
+        ],
+        "title": "PermissionSourceDTO",
+        "description": "单条权限来源解释。"
+      },
       "PermissionSummaryDTO": {
         "properties": {
           "resourceType": {
@@ -9210,6 +11275,49 @@
         ],
         "title": "PipelineValidationResultDTO",
         "description": "Pipeline 校验结果；保存接口会复用 normalizedPipelineDefinition。"
+      },
+      "ProviderCallMetricDTO": {
+        "properties": {
+          "stepKey": {
+            "type": "string",
+            "title": "Stepkey"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "statusCounts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Statuscounts"
+          },
+          "avgLatencyMs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avglatencyms"
+          },
+          "errorCount": {
+            "type": "integer",
+            "title": "Errorcount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stepKey",
+          "total",
+          "statusCounts",
+          "errorCount"
+        ],
+        "title": "ProviderCallMetricDTO",
+        "description": "Provider 调用阶段指标，来自 QARun Trace。"
       },
       "ProviderDiagnosticDTO": {
         "properties": {
@@ -9405,6 +11513,154 @@
         ],
         "title": "QARunCitationDTO",
         "description": "Citation 引用摘要，只能指向已授权 Evidence。"
+      },
+      "QARunCollaborationDTO": {
+        "properties": {
+          "runId": {
+            "type": "string",
+            "title": "Runid"
+          },
+          "sharedWithSubjectKeys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sharedwithsubjectkeys"
+          },
+          "ownerId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ownerid"
+          },
+          "handlingStatus": {
+            "type": "string",
+            "title": "Handlingstatus"
+          },
+          "comments": {
+            "items": {
+              "$ref": "#/components/schemas/QARunCommentDTO"
+            },
+            "type": "array",
+            "title": "Comments"
+          },
+          "updatedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updatedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "runId",
+          "sharedWithSubjectKeys",
+          "ownerId",
+          "handlingStatus",
+          "comments"
+        ],
+        "title": "QARunCollaborationDTO",
+        "description": "QA Run 协作状态，覆盖分享、责任人、处理状态和评论。"
+      },
+      "QARunCollaborationUpdateRequest": {
+        "properties": {
+          "sharedWithSubjectKeys": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sharedwithsubjectkeys"
+          },
+          "ownerId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ownerid"
+          },
+          "handlingStatus": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handlingstatus"
+          }
+        },
+        "type": "object",
+        "title": "QARunCollaborationUpdateRequest",
+        "description": "更新 QA Run 协作信息请求。"
+      },
+      "QARunCommentCreateRequest": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "title": "QARunCommentCreateRequest",
+        "description": "新增 QA Run 评论请求。"
+      },
+      "QARunCommentDTO": {
+        "properties": {
+          "commentId": {
+            "type": "string",
+            "title": "Commentid"
+          },
+          "authorId": {
+            "type": "string",
+            "title": "Authorid"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "commentId",
+          "authorId",
+          "content",
+          "createdAt"
+        ],
+        "title": "QARunCommentDTO",
+        "description": "QA Run 协作评论。"
       },
       "QARunCreateRequest": {
         "properties": {
@@ -10094,6 +12350,166 @@
         ],
         "title": "RequiredForActivationDTO",
         "description": "文档版本激活门槛摘要，当前 E1 只落 Sparse 与 Graph 开关。"
+      },
+      "RuntimeMetricBucketDTO": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "statusCounts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Statuscounts"
+          },
+          "avgLatencyMs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avglatencyms"
+          },
+          "p95LatencyMs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P95Latencyms"
+          },
+          "errorCount": {
+            "type": "integer",
+            "title": "Errorcount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "total",
+          "statusCounts",
+          "errorCount"
+        ],
+        "title": "RuntimeMetricBucketDTO",
+        "description": "单类运行对象的指标汇总，用于健康面板和发布排障。"
+      },
+      "RuntimeMetricsResponse": {
+        "properties": {
+          "kbId": {
+            "type": "string",
+            "title": "Kbid"
+          },
+          "generatedAt": {
+            "type": "string",
+            "title": "Generatedat"
+          },
+          "qaRun": {
+            "$ref": "#/components/schemas/RuntimeMetricBucketDTO"
+          },
+          "ingestJob": {
+            "$ref": "#/components/schemas/RuntimeMetricBucketDTO"
+          },
+          "providerCalls": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderCallMetricDTO"
+            },
+            "type": "array",
+            "title": "Providercalls"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kbId",
+          "generatedAt",
+          "qaRun",
+          "ingestJob",
+          "providerCalls"
+        ],
+        "title": "RuntimeMetricsResponse",
+        "description": "QARun、IngestJob 和 Provider 调用的核心运行指标。"
+      },
+      "SlowLinkDTO": {
+        "properties": {
+          "sourceType": {
+            "type": "string",
+            "title": "Sourcetype"
+          },
+          "resourceId": {
+            "type": "string",
+            "title": "Resourceid"
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "latencyMs": {
+            "type": "integer",
+            "title": "Latencyms"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sourceType",
+          "resourceId",
+          "stage",
+          "status",
+          "latencyMs",
+          "reason",
+          "createdAt"
+        ],
+        "title": "SlowLinkDTO",
+        "description": "慢链路诊断项，定位慢在检索、rerank、生成或文档处理阶段。"
+      },
+      "SlowLinkDiagnosticsResponse": {
+        "properties": {
+          "kbId": {
+            "type": "string",
+            "title": "Kbid"
+          },
+          "thresholdMs": {
+            "type": "integer",
+            "title": "Thresholdms"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SlowLinkDTO"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kbId",
+          "thresholdMs",
+          "items"
+        ],
+        "title": "SlowLinkDiagnosticsResponse",
+        "description": "慢链路诊断响应。"
       },
       "StoredFileDTO": {
         "properties": {

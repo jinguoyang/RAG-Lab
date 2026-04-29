@@ -4,6 +4,7 @@ import type {
   ConfigRevisionCreateResponse,
   ConfigRevisionDTO,
   ConfigRevisionPage,
+  ConfigReleaseRecordDTO,
   PipelineDefinition,
   PipelineValidationResultDTO,
 } from "../types/config";
@@ -52,5 +53,33 @@ export async function copyConfigRevisionToDraft(
   return apiPostJson<ConfigRevisionDTO>(
     `/knowledge-bases/${kbId}/config-revisions/drafts/from-revision`,
     { sourceRevisionId, remark: "P08 从历史 Revision 复制为草稿" },
+  );
+}
+
+export async function fetchConfigReleaseRecords(kbId: string): Promise<ConfigReleaseRecordDTO[]> {
+  return apiGet<ConfigReleaseRecordDTO[]>(`/knowledge-bases/${kbId}/config-revisions/release-records`);
+}
+
+export async function createConfigReleaseRecord(
+  kbId: string,
+  revisionId: string,
+  changeSummary: string,
+  rollbackPlan?: string,
+): Promise<ConfigReleaseRecordDTO> {
+  return apiPostJson<ConfigReleaseRecordDTO>(
+    `/knowledge-bases/${kbId}/config-revisions/${revisionId}/release-records`,
+    { changeSummary, rollbackPlan },
+  );
+}
+
+export async function confirmConfigRollback(
+  kbId: string,
+  revisionId: string,
+  reason: string,
+  targetRevisionId?: string,
+): Promise<ConfigReleaseRecordDTO> {
+  return apiPostJson<ConfigReleaseRecordDTO>(
+    `/knowledge-bases/${kbId}/config-revisions/${revisionId}/rollback-confirmation`,
+    { confirmImpact: true, reason, targetRevisionId },
   );
 }

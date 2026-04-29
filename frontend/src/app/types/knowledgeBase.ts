@@ -93,3 +93,25 @@ export interface PermissionSummary {
   subjectKeys: string[];
   inheritedFromPlatformRole: boolean;
 }
+
+export interface PermissionSource {
+  sourceType: string;
+  sourceId: string;
+  sourceName: string | null;
+  roleCode: string | null;
+  permissionCode: string;
+  effect: string;
+}
+
+export interface EffectivePermissionSimulationResponse {
+  userId: string;
+  kbId: string;
+  requestedPermissionCode: string | null;
+  allowed: boolean;
+  permissions: string[];
+  deniedPermissions: string[];
+  roles: string[];
+  subjectKeys: string[];
+  sources: PermissionSource[];
+  deniedReasons: string[];
+}

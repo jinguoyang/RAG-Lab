@@ -1362,7 +1362,7 @@ def retry_ingest_job(
     kb_id: UUID,
     job_id: UUID,
 ) -> IngestJobDTO | None:
-    """重试失败或取消的 IngestJob；重试必须创建新作业记录。"""
+    """重试失败或取消的 IngestJob；同一失败作业的并发重试按已有补偿作业幂等返回。"""
     kb_row = _read_visible_knowledge_base(session, current_user, kb_id)
     if kb_row is None:
         return None
@@ -1378,6 +1378,20 @@ def retry_ingest_job(
     if old_job["status"] not in {"failed", "cancelled"}:
         raise DocumentConflictError("Ingest job is not retryable.")
 
+    # idempotency: 同一个失败/取消作业已有补偿作业时直接返回，避免重复执行生成不可解释副本。
+    existing_retry = session.execute(
+        select(ingest_jobs)
+        .where(
+            ingest_jobs.c.kb_id == kb_id,
+            ingest_jobs.c.retry_of_job_id == old_job["job_id"],
+            ingest_jobs.c.status.in_(["queued", "running", "success"]),
+        )
+        .order_by(ingest_jobs.c.created_at.desc())
+        .limit(1)
+    ).mappings().first()
+    if existing_retry is not None:
+        return _to_ingest_job_dto(existing_retry)
+
     new_job_id = uuid4()
     job_row = session.execute(
         insert(ingest_jobs)
@@ -1391,7 +1405,11 @@ def retry_ingest_job(
             stage="queued",
             progress=0,
             retry_of_job_id=old_job["job_id"],
-            result_summary={"retryOfJobId": str(old_job["job_id"])},
+            result_summary={
+                "retryOfJobId": str(old_job["job_id"]),
+                "idempotency": "retry_of_job_id",
+                "compensationStatus": "created",
+            },
             created_by=UUID(current_user.user.userId),
         )
         .returning(ingest_jobs)

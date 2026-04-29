@@ -8,6 +8,7 @@ import type {
   EvaluationRunDTO,
   EvaluationRunExportResponse,
   EvaluationRunPage,
+  QARunCollaborationDTO,
   QARunCreateResponse,
   QARunDetailDTO,
   QARunFeedbackResponse,
@@ -77,6 +78,31 @@ export async function fetchQARunReplayContext(
   runId: string,
 ): Promise<QARunReplayContextDTO> {
   return apiGet<QARunReplayContextDTO>(`/knowledge-bases/${kbId}/qa-runs/${runId}/replay-context`);
+}
+
+export async function fetchQARunCollaboration(
+  kbId: string,
+  runId: string,
+): Promise<QARunCollaborationDTO> {
+  return apiGet<QARunCollaborationDTO>(`/knowledge-bases/${kbId}/qa-runs/${runId}/collaboration`);
+}
+
+export async function updateQARunCollaboration(
+  kbId: string,
+  runId: string,
+  payload: { sharedWithSubjectKeys?: string[]; ownerId?: string; handlingStatus?: string },
+): Promise<QARunCollaborationDTO> {
+  return apiPatchJson<QARunCollaborationDTO>(`/knowledge-bases/${kbId}/qa-runs/${runId}/collaboration`, payload);
+}
+
+export async function addQARunComment(
+  kbId: string,
+  runId: string,
+  content: string,
+): Promise<QARunCollaborationDTO> {
+  return apiPostJson<QARunCollaborationDTO>(`/knowledge-bases/${kbId}/qa-runs/${runId}/collaboration/comments`, {
+    content,
+  });
 }
 
 export async function createConfigDraftFromQARun(kbId: string, runId: string): Promise<unknown> {

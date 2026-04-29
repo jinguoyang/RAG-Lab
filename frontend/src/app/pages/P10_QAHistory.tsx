@@ -10,6 +10,7 @@ import { StatusBadge, Badge } from "../components/rag/Badge";
 import { Drawer, DrawerSection } from "../components/rag/Drawer";
 import { ratingToFeedbackStatus, toQAHistoryRecord, type QAHistoryRecordViewModel } from "../adapters/qaRunAdapter";
 import {
+  addQARunComment,
   createConfigDraftFromQARun,
   createEvaluationRun,
   createOptimizationDraftFromEvaluationRun,
@@ -19,12 +20,14 @@ import {
   fetchEvaluationRuns,
   createEvaluationSampleFromRun,
   fetchEvaluationSamples,
+  fetchQARunCollaboration,
   fetchQARunDetail,
   fetchQARunReplayContext,
   fetchQARuns,
+  updateQARunCollaboration,
   updateQARunFeedback,
 } from "../services/qaRunService";
-import type { EvaluationRunDetailDTO, QARunDetailDTO } from "../types/qaRun";
+import type { EvaluationRunDetailDTO, QARunCollaborationDTO, QARunDetailDTO } from "../types/qaRun";
 
 type RatingStatus = "up" | "down" | "none";
 type HistoryRecord = QAHistoryRecordViewModel;
@@ -42,6 +45,8 @@ export function QAHistory() {
   const [statusFilter, setStatusFilter] = useState("");
   const [selectedRun, setSelectedRun] = useState<HistoryRecord | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<QARunDetailDTO | null>(null);
+  const [selectedCollaboration, setSelectedCollaboration] = useState<QARunCollaborationDTO | null>(null);
+  const [commentInput, setCommentInput] = useState("");
   const [evaluationRuns, setEvaluationRuns] = useState<EvaluationRunDetailDTO["run"][]>([]);
   const [selectedEvaluationRun, setSelectedEvaluationRun] = useState<EvaluationRunDetailDTO | null>(null);
   const [selectedDiff, setSelectedDiff] = useState<{ path: string; before: unknown; after: unknown }[]>([]);
@@ -168,14 +173,50 @@ export function QAHistory() {
   async function openRun(run: HistoryRecord) {
     setSelectedRun(run);
     setSelectedDetail(null);
+    setSelectedCollaboration(null);
+    setCommentInput("");
     try {
-      setSelectedDetail(await fetchQARunDetail(kbId, run.id));
+      const [detail, collaboration] = await Promise.all([
+        fetchQARunDetail(kbId, run.id),
+        fetchQARunCollaboration(kbId, run.id),
+      ]);
+      setSelectedDetail(detail);
+      setSelectedCollaboration(collaboration);
     } catch (error) {
       setFeedback({
         variant: "error",
         title: "运行详情加载失败",
         message: error instanceof Error ? error.message : "请检查该运行记录是否仍可见。",
       });
+    }
+  }
+
+  async function changeHandlingStatus(status: string) {
+    if (!selectedRun) return;
+    setActionLoading(`collaboration-${selectedRun.id}`);
+    try {
+      const response = await updateQARunCollaboration(kbId, selectedRun.id, { handlingStatus: status });
+      setSelectedCollaboration(response);
+      setFeedback({ variant: "success", title: "协作处理已更新", message: "责任人和处理状态以服务端记录为准。" });
+    } catch (error) {
+      setFeedback({ variant: "error", title: "协作处理更新失败", message: error instanceof Error ? error.message : "请稍后重试。" });
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function submitCollaborationComment() {
+    if (!selectedRun || !commentInput.trim()) return;
+    setActionLoading(`comment-${selectedRun.id}`);
+    try {
+      const response = await addQARunComment(kbId, selectedRun.id, commentInput.trim());
+      setSelectedCollaboration(response);
+      setCommentInput("");
+      setFeedback({ variant: "success", title: "评论已添加", message: "QA Run 协作评论已保存。" });
+    } catch (error) {
+      setFeedback({ variant: "error", title: "评论添加失败", message: error instanceof Error ? error.message : "请稍后重试。" });
+    } finally {
+      setActionLoading(null);
     }
   }
 
@@ -412,6 +453,8 @@ export function QAHistory() {
         onClose={() => {
           setSelectedRun(null);
           setSelectedDetail(null);
+          setSelectedCollaboration(null);
+          setCommentInput("");
         }}
         title={selectedRun ? `运行详情 · ${selectedRun.id}` : "运行详情"}
         width="640px"
@@ -460,6 +503,56 @@ export function QAHistory() {
                     备注：{selectedDetail.feedbackNote}
                   </div>
                 )}
+              </div>
+            </DrawerSection>
+
+            <DrawerSection title="协作处理">
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3 rounded-lg border border-border-cream bg-parchment p-3 text-sm">
+                  <div>
+                    <div className="text-xs text-stone-gray">责任人</div>
+                    <div className="mt-1 text-near-black">{selectedCollaboration?.ownerId || "未分配"}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-stone-gray">处理状态</div>
+                    <select
+                      className="mt-1 w-full rounded-md border border-border-cream bg-white px-2 py-1 text-sm text-near-black"
+                      value={selectedCollaboration?.handlingStatus || "open"}
+                      disabled={actionLoading === `collaboration-${selectedRun.id}`}
+                      onChange={(event) => void changeHandlingStatus(event.target.value)}
+                    >
+                      <option value="open">待处理</option>
+                      <option value="in_progress">处理中</option>
+                      <option value="resolved">已处理</option>
+                      <option value="wont_fix">无需处理</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {(selectedCollaboration?.comments || []).slice(-3).map((comment) => (
+                    <div key={comment.commentId} className="rounded-lg border border-border-cream bg-parchment p-3 text-sm">
+                      <div className="text-xs text-stone-gray">{comment.authorId} · {comment.createdAt}</div>
+                      <div className="mt-1 text-near-black">{comment.content}</div>
+                    </div>
+                  ))}
+                  {(selectedCollaboration?.comments || []).length === 0 && (
+                    <p className="text-sm text-stone-gray">暂无协作评论。</p>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    value={commentInput}
+                    onChange={(event) => setCommentInput(event.target.value)}
+                    placeholder="添加处理备注..."
+                  />
+                  <Button
+                    variant="outline"
+                    disabled={!commentInput.trim() || actionLoading === `comment-${selectedRun.id}`}
+                    onClick={() => void submitCollaborationComment()}
+                  >
+                    评论
+                  </Button>
+                </div>
               </div>
             </DrawerSection>
 
