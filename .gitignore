@@ -38,3 +38,6 @@ env/
 .superpower/
 .superpowers/
 .worktrees/
+
+# examples doc
+docs/examples/
