@@ -62,6 +62,20 @@ export interface ConfigRevisionActivationResponse {
   auditLogId: string | null;
 }
 
+export interface ConfigReleaseRecordDTO {
+  releaseRecordId: string;
+  configRevisionId: string;
+  action: string;
+  changeSummary: string;
+  linkedEvaluationRunId: string | null;
+  rollbackPlan: string | null;
+  rollbackConfirmed: boolean;
+  rollbackTargetRevisionId: string | null;
+  actorId: string | null;
+  createdAt: string;
+  detail: Record<string, unknown>;
+}
+
 export interface RevisionRecordViewModel {
   id: string;
   revisionNo: string;

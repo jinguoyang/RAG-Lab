@@ -13,9 +13,11 @@ import {
   fetchKbMembers,
   fetchKbPermissionSummary,
   searchKbMemberSubjects,
+  simulateEffectivePermission,
   updateKbMemberRole,
 } from "../services/knowledgeBaseService";
 import type {
+  EffectivePermissionSimulationResponse,
   KbMemberBinding,
   KbMemberSubjectOption,
   KbMemberSubjectType,
@@ -66,6 +68,9 @@ export function MembersAndPermissions() {
   const [subjectSearch, setSubjectSearch] = useState("");
   const [subjectOptions, setSubjectOptions] = useState<KbMemberSubjectOption[]>([]);
   const [selectedSubject, setSelectedSubject] = useState<KbMemberSubjectOption | null>(null);
+  const [simulationUserId, setSimulationUserId] = useState("");
+  const [simulationPermissionCode, setSimulationPermissionCode] = useState("kb.view");
+  const [simulationResult, setSimulationResult] = useState<EffectivePermissionSimulationResponse | null>(null);
   const [isSubjectDropdownOpen, setIsSubjectDropdownOpen] = useState(false);
   const [isSearchingSubjects, setIsSearchingSubjects] = useState(false);
   const [kbRole, setKbRole] = useState<KbRole>("kb_viewer");
@@ -183,6 +188,26 @@ export function MembersAndPermissions() {
     }
   };
 
+  const handleSimulatePermission = async () => {
+    if (!kbId || !simulationUserId.trim()) {
+      setErrorMessage("请先输入要模拟的用户 ID。");
+      return;
+    }
+
+    setIsSaving(true);
+    setErrorMessage(null);
+    try {
+      setSimulationResult(
+        await simulateEffectivePermission(kbId, simulationUserId.trim(), simulationPermissionCode.trim() || "kb.view"),
+      );
+    } catch {
+      setSimulationResult(null);
+      setErrorMessage("权限解释模拟失败，请确认用户 ID 有效且当前账号可管理成员。");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleRoleChange = async (member: KbMemberBinding, nextRole: KbRole) => {
     if (!kbId || nextRole === member.kbRole) {
       return;
@@ -281,6 +306,48 @@ export function MembersAndPermissions() {
           <p className="text-sm text-near-black truncate">{summary?.permissions.join("、") || "暂无权限"}</p>
         </div>
       </div>
+
+      {canManageMembers && (
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(240px,1fr)_220px_auto_minmax(300px,1.4fr)] gap-3 shrink-0 bg-ivory border border-border-cream rounded-lg p-4 items-start">
+          <div>
+            <p className="text-sm font-medium text-near-black mb-2">权限解释</p>
+            <Input
+              value={simulationUserId}
+              onChange={(event) => setSimulationUserId(event.target.value)}
+              placeholder="输入用户 ID"
+              className="bg-white"
+            />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-near-black mb-2">权限码</p>
+            <Input
+              value={simulationPermissionCode}
+              onChange={(event) => setSimulationPermissionCode(event.target.value)}
+              className="bg-white"
+            />
+          </div>
+          <Button variant="outline" onClick={() => void handleSimulatePermission()} disabled={isSaving} className="mt-7 h-10">
+            模拟
+          </Button>
+          <div className="rounded-lg border border-border-cream bg-parchment p-3 text-sm">
+            {simulationResult ? (
+              <>
+                <div className="font-medium text-near-black">
+                  {simulationResult.allowed ? "允许" : "拒绝"} · {simulationResult.requestedPermissionCode || "全部权限"}
+                </div>
+                <div className="mt-2 text-stone-gray">
+                  来源：{simulationResult.sources.map((source) => `${source.sourceName || source.sourceType}:${source.effect}`).join("、") || "无"}
+                </div>
+                <div className="mt-1 text-stone-gray">
+                  拒绝原因：{simulationResult.deniedReasons.join("、") || "无显式拒绝"}
+                </div>
+              </>
+            ) : (
+              <p className="text-stone-gray">输入用户 ID 后可查看有效权限来源和拒绝原因。</p>
+            )}
+          </div>
+        </div>
+      )}
 
       {canManageMembers && (
         <div className="grid grid-cols-1 xl:grid-cols-[140px_minmax(280px,1fr)_220px_auto] gap-3 shrink-0 bg-ivory border border-border-cream rounded-lg p-4 items-start">

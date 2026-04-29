@@ -19,6 +19,11 @@ from app.schemas.config import (
     PipelineValidateRequest,
     PipelineValidationResultDTO,
 )
+from app.schemas.governance import (
+    ConfigReleaseRecordCreateRequest,
+    ConfigReleaseRecordDTO,
+    ConfigRollbackConfirmRequest,
+)
 from app.services.config_service import (
     activate_config_revision,
     create_config_revision,
@@ -27,6 +32,13 @@ from app.services.config_service import (
     list_config_revisions,
     list_config_templates,
     validate_pipeline_for_knowledge_base,
+)
+from app.services.governance_service import (
+    GovernanceConflictError,
+    GovernancePermissionError,
+    confirm_config_rollback,
+    create_config_release_record,
+    list_config_release_records,
 )
 from app.services.knowledge_base_service import KnowledgeBaseDisabledError
 
@@ -116,6 +128,64 @@ def create_draft_from_revision(
             status_code=status.HTTP_409_CONFLICT,
             detail="KB_DISABLED: knowledge base is disabled.",
         ) from exc
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Config revision not found.")
+    return response
+
+
+@revision_router.get("/release-records", response_model=list[ConfigReleaseRecordDTO])
+def read_config_release_records(
+    kb_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> list[ConfigReleaseRecordDTO]:
+    """返回配置发布记录，供 P08 展示变更说明和回滚确认历史。"""
+    try:
+        response = list_config_release_records(session, current_user, kb_id)
+    except GovernancePermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PERMISSION_DENIED") from exc
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found.")
+    return response
+
+
+@revision_router.post(
+    "/{revision_id}/release-records",
+    response_model=ConfigReleaseRecordDTO,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_release_record(
+    kb_id: UUID,
+    revision_id: UUID,
+    request: ConfigReleaseRecordCreateRequest,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> ConfigReleaseRecordDTO:
+    """创建配置发布记录；不替代正式 activate 操作。"""
+    try:
+        response = create_config_release_record(session, current_user, kb_id, revision_id, request)
+    except GovernancePermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PERMISSION_DENIED") from exc
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Config revision not found.")
+    return response
+
+
+@revision_router.post("/{revision_id}/rollback-confirmation", response_model=ConfigReleaseRecordDTO)
+def confirm_rollback(
+    kb_id: UUID,
+    revision_id: UUID,
+    request: ConfigRollbackConfirmRequest,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> ConfigReleaseRecordDTO:
+    """记录回滚确认入口，实际切换仍走激活接口。"""
+    try:
+        response = confirm_config_rollback(session, current_user, kb_id, revision_id, request)
+    except GovernancePermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PERMISSION_DENIED") from exc
+    except GovernanceConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Config revision not found.")
     return response

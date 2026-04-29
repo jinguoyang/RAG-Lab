@@ -18,8 +18,12 @@ from app.schemas.knowledge_base import (
     KnowledgeBaseDTO,
     KnowledgeBaseUpdateRequest,
 )
-from app.schemas.permission import PermissionSummaryDTO
-from app.services.permission_service import get_kb_permission_summary
+from app.schemas.permission import (
+    EffectivePermissionSimulationRequest,
+    EffectivePermissionSimulationResponse,
+    PermissionSummaryDTO,
+)
+from app.services.permission_service import get_kb_permission_summary, simulate_effective_permission
 from app.services.knowledge_base_service import (
     KbMemberBindingConflictError,
     KbMemberBindingNotFoundError,
@@ -184,6 +188,28 @@ def read_kb_permission_summary(
             detail="Knowledge base not found.",
         )
     return summary
+
+
+@router.post("/{kb_id}/permissions/effective-simulations", response_model=EffectivePermissionSimulationResponse)
+def simulate_kb_effective_permission(
+    kb_id: UUID,
+    request: EffectivePermissionSimulationRequest,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> EffectivePermissionSimulationResponse:
+    """模拟目标用户的有效权限，并解释权限来源和拒绝原因。"""
+    try:
+        response = simulate_effective_permission(session, current_user, kb_id, request)
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    if response is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Knowledge base or user not found.",
+        )
+    return response
 
 
 @router.get("/{kb_id}/members", response_model=PageResponse[KbMemberBindingDTO])

@@ -9,6 +9,7 @@ import type {
   KnowledgeBaseUpdateRequest,
   PageResponse,
   PermissionSummary,
+  EffectivePermissionSimulationResponse,
   KbRole,
 } from "../types/knowledgeBase";
 
@@ -77,6 +78,17 @@ export async function searchKbMemberSubjects(
 
 export async function fetchKbPermissionSummary(kbId: string): Promise<PermissionSummary> {
   return apiGet<PermissionSummary>(`/knowledge-bases/${kbId}/permissions/summary`);
+}
+
+export async function simulateEffectivePermission(
+  kbId: string,
+  userId: string,
+  permissionCode: string,
+): Promise<EffectivePermissionSimulationResponse> {
+  return apiPostJson<EffectivePermissionSimulationResponse>(
+    `/knowledge-bases/${kbId}/permissions/effective-simulations`,
+    { userId, permissionCode, resourceType: "knowledge_base", resourceId: kbId },
+  );
 }
 
 export async function createKbMember(kbId: string, request: KbMemberCreateRequest): Promise<KbMemberBinding> {

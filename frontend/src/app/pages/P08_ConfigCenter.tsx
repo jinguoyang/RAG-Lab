@@ -41,12 +41,16 @@ import * as Tabs from "@radix-ui/react-tabs";
 import { toRevisionRecord } from "../adapters/configAdapter";
 import {
   activateConfigRevision,
+  confirmConfigRollback,
   copyConfigRevisionToDraft,
+  createConfigReleaseRecord,
+  fetchConfigReleaseRecords,
   fetchConfigRevisions,
   saveConfigRevision,
   validatePipeline,
 } from "../services/configService";
 import type {
+  ConfigReleaseRecordDTO,
   PipelineDefinition,
   PipelineValidationResultDTO,
   RevisionRecordViewModel,
@@ -348,6 +352,7 @@ export function ConfigCenter() {
   const { kbId = "" } = useParams();
   const [activeTab, setActiveTab] = useState("designer");
   const [revisions, setRevisions] = useState<RevisionRecordViewModel[]>([]);
+  const [releaseRecords, setReleaseRecords] = useState<ConfigReleaseRecordDTO[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState("标准混合（默认）");
   const [selectedNodeId, setSelectedNodeId] = useState("queryRewrite");
   const [isRevisionDrawerOpen, setIsRevisionDrawerOpen] = useState(false);
@@ -363,6 +368,7 @@ export function ConfigCenter() {
   const [savingRevision, setSavingRevision] = useState(false);
   const [activatingRevision, setActivatingRevision] = useState(false);
   const [copyingRevision, setCopyingRevision] = useState<string | null>(null);
+  const [releaseActionRevision, setReleaseActionRevision] = useState<string | null>(null);
   const [serverValidation, setServerValidation] = useState<PipelineValidationResultDTO | null>(null);
   const [queryRewriteEnabled, setQueryRewriteEnabled] = useState(true);
   const [rerankEnabled, setRerankEnabled] = useState(true);
@@ -382,8 +388,12 @@ export function ConfigCenter() {
     if (!kbId) return;
     setLoadingRevisions(true);
     try {
-      const page = await fetchConfigRevisions(kbId);
+      const [page, records] = await Promise.all([
+        fetchConfigRevisions(kbId),
+        fetchConfigReleaseRecords(kbId),
+      ]);
       setRevisions(page.items.map(toRevisionRecord));
+      setReleaseRecords(records);
     } catch (error) {
       setFeedback({
         variant: "error",
@@ -723,6 +733,61 @@ export function ConfigCenter() {
       });
     } finally {
       setCopyingRevision(null);
+    }
+  }
+
+  async function handleCreateReleaseRecord(revision: RevisionRecordViewModel) {
+    if (!kbId) return;
+
+    setReleaseActionRevision(revision.id);
+    try {
+      await createConfigReleaseRecord(
+        kbId,
+        revision.id,
+        `变更说明：${revision.revisionNo} 已完成发布复核。`,
+        "回滚前确认评估结果、影响范围和最近一个稳定版本。",
+      );
+      await loadRevisions();
+      setFeedback({
+        variant: "success",
+        title: "发布记录已创建",
+        message: "变更说明和回滚计划已写入审计记录。",
+      });
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "创建发布记录失败",
+        message: error instanceof Error ? error.message : "请确认当前账号具备配置管理权限。",
+      });
+    } finally {
+      setReleaseActionRevision(null);
+    }
+  }
+
+  async function handleRollbackConfirmation(revision: RevisionRecordViewModel) {
+    if (!kbId) return;
+
+    setReleaseActionRevision(revision.id);
+    try {
+      await confirmConfigRollback(
+        kbId,
+        revision.id,
+        `回滚确认：${revision.revisionNo} 已完成影响确认。`,
+      );
+      await loadRevisions();
+      setFeedback({
+        variant: "warning",
+        title: "回滚确认已记录",
+        message: "该入口只记录确认事实，实际切换仍需通过版本激活完成。",
+      });
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "回滚确认失败",
+        message: error instanceof Error ? error.message : "请确认目标版本仍可见。",
+      });
+    } finally {
+      setReleaseActionRevision(null);
     }
   }
 
@@ -1173,6 +1238,22 @@ export function ConfigCenter() {
                     <Copy className="mr-1 h-3 w-3" />
                     {copyingRevision === revision.id ? "复制中..." : "复制为草稿"}
                   </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void handleCreateReleaseRecord(revision)}
+                    disabled={releaseActionRevision === revision.id}
+                  >
+                    发布记录
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void handleRollbackConfirmation(revision)}
+                    disabled={releaseActionRevision === revision.id}
+                  >
+                    回滚确认
+                  </Button>
                   {revision.canActivate && (
                     <Button
                       variant="ghost"
@@ -1186,6 +1267,32 @@ export function ConfigCenter() {
                 </div>
               </div>
             ))}
+          </div>
+        </DrawerSection>
+        <DrawerSection title="发布记录">
+          <div className="space-y-3">
+            {releaseRecords.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border-warm bg-parchment p-4 text-sm text-stone-gray">
+                暂无发布记录。保存并复核 Revision 后，可在版本卡片中写入变更说明或回滚确认。
+              </div>
+            ) : (
+              releaseRecords.slice(0, 8).map((record) => (
+                <div key={record.releaseRecordId} className="rounded-xl border border-border-cream bg-parchment p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-near-black">{record.changeSummary}</p>
+                      <p className="mt-1 text-xs text-stone-gray">
+                        {record.action} · {record.createdAt} · {record.actorId || "system"}
+                      </p>
+                    </div>
+                    {record.rollbackConfirmed && <Badge variant="warning">回滚确认</Badge>}
+                  </div>
+                  {record.rollbackPlan && (
+                    <p className="mt-2 text-sm text-stone-gray">回滚计划：{record.rollbackPlan}</p>
+                  )}
+                </div>
+              ))
+            )}
           </div>
         </DrawerSection>
       </Drawer>

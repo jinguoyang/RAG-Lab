@@ -116,6 +116,22 @@ export interface QARunReplayContextDTO {
   warnings: string[];
 }
 
+export interface QARunCommentDTO {
+  commentId: string;
+  authorId: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface QARunCollaborationDTO {
+  runId: string;
+  sharedWithSubjectKeys: string[];
+  ownerId: string | null;
+  handlingStatus: string;
+  comments: QARunCommentDTO[];
+  updatedAt: string | null;
+}
+
 export interface EvaluationSampleDTO {
   sampleId: string;
   kbId: string;

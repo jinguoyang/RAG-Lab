@@ -22,6 +22,9 @@ from app.schemas.qa_run import (
     EvaluationSampleDTO,
     QARunCreateRequest,
     QARunCreateResponse,
+    QARunCollaborationDTO,
+    QARunCollaborationUpdateRequest,
+    QARunCommentCreateRequest,
     QARunDetailDTO,
     QARunFeedbackResponse,
     QARunFeedbackUpdateRequest,
@@ -49,6 +52,12 @@ from app.services.qa_run_service import (
     list_qa_runs,
     retry_evaluation_run,
     update_qa_run_feedback,
+)
+from app.services.governance_service import (
+    GovernancePermissionError,
+    add_qa_run_comment,
+    get_qa_run_collaboration,
+    update_qa_run_collaboration,
 )
 from app.services.knowledge_base_service import KnowledgeBaseDisabledError
 
@@ -136,6 +145,53 @@ def read_qa_run_status(
 ) -> QARunStatusDTO:
     """返回 QARun 轮询状态；不可见资源按不存在处理。"""
     response = get_qa_run_status(session, current_user, kb_id, run_id)
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="QA run not found.")
+    return response
+
+
+@router.get("/{run_id}/collaboration", response_model=QARunCollaborationDTO)
+def read_qa_run_collaboration(
+    kb_id: UUID,
+    run_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> QARunCollaborationDTO:
+    """读取 QA Run 分享、责任人、处理状态和评论。"""
+    response = get_qa_run_collaboration(session, current_user, kb_id, run_id)
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="QA run not found.")
+    return response
+
+
+@router.patch("/{run_id}/collaboration", response_model=QARunCollaborationDTO)
+def update_collaboration(
+    kb_id: UUID,
+    run_id: UUID,
+    request: QARunCollaborationUpdateRequest,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> QARunCollaborationDTO:
+    """更新 QA Run 协作处理状态。"""
+    try:
+        response = update_qa_run_collaboration(session, current_user, kb_id, run_id, request)
+    except GovernancePermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PERMISSION_DENIED") from exc
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="QA run not found.")
+    return response
+
+
+@router.post("/{run_id}/collaboration/comments", response_model=QARunCollaborationDTO, status_code=status.HTTP_201_CREATED)
+def add_collaboration_comment(
+    kb_id: UUID,
+    run_id: UUID,
+    request: QARunCommentCreateRequest,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> QARunCollaborationDTO:
+    """追加 QA Run 协作评论。"""
+    response = add_qa_run_comment(session, current_user, kb_id, run_id, request)
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="QA run not found.")
     return response
