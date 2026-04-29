@@ -66,6 +66,8 @@ def verify_replay_compare_api() -> None:
 
     _assert_contains(route_source, "/{run_id}/compare/{target_run_id}", "缺少 QARun 对比 API 路由")
     _assert_contains(service_source, "def compare_qa_runs(", "缺少 QARun 对比服务函数")
+    _assert_contains(service_source, "qa_run_trace_steps.c.started_at", "Trace 对比未读取步骤开始时间")
+    _assert_contains(service_source, "qa_run_trace_steps.c.ended_at", "Trace 对比未读取步骤结束时间")
     for field in ["answerChanged", "evidenceDelta", "citationDelta", "traceDelta", "configDiff"]:
         _assert_contains(service_source, field, f"对比结果缺少字段: {field}")
 

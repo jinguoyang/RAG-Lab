@@ -1558,27 +1558,56 @@ def _compare_set_values(source_values: set[str], target_values: set[str]) -> QAR
     )
 
 
-def _compare_trace_steps(
-    source_trace: list[QARunTraceStepDTO],
-    target_trace: list[QARunTraceStepDTO],
+def _trace_latency_ms(trace_row: RowMapping) -> int | None:
+    """根据 Trace 记录时间计算耗时，缺少时间时保持为空。"""
+    started_at = trace_row["started_at"]
+    ended_at = trace_row["ended_at"]
+    if started_at is None or ended_at is None:
+        return None
+    return max(0, int((ended_at - started_at).total_seconds() * 1000))
+
+
+def _compare_trace_rows(
+    session: Session,
+    source_run_id: UUID,
+    target_run_id: UUID,
 ) -> list[QARunCompareTraceDeltaDTO]:
-    """按 stepKey 对齐 Trace 状态和耗时，突出复跑阶段差异。"""
-    source_by_key = {step.stepKey: step for step in source_trace}
-    target_by_key = {step.stepKey: step for step in target_trace}
+    """按 stepKey 对齐 Trace 状态和表内时间，突出复跑阶段差异。"""
+    rows = session.execute(
+        select(
+            qa_run_trace_steps.c.run_id,
+            qa_run_trace_steps.c.step_key,
+            qa_run_trace_steps.c.status,
+            qa_run_trace_steps.c.started_at,
+            qa_run_trace_steps.c.ended_at,
+        )
+        .where(qa_run_trace_steps.c.run_id.in_([source_run_id, target_run_id]))
+        .order_by(qa_run_trace_steps.c.step_order.asc())
+    ).mappings()
+    source_by_key: dict[str, RowMapping] = {}
+    target_by_key: dict[str, RowMapping] = {}
+    for row in rows:
+        if row["run_id"] == source_run_id:
+            source_by_key[row["step_key"]] = row
+        elif row["run_id"] == target_run_id:
+            target_by_key[row["step_key"]] = row
+
     deltas: list[QARunCompareTraceDeltaDTO] = []
     for step_key in sorted(set(source_by_key.keys()) | set(target_by_key.keys())):
-        source_step = source_by_key.get(step_key)
-        target_step = target_by_key.get(step_key)
-        source_latency = source_step.metrics.get("latencyMs") if source_step else None
-        target_latency = target_step.metrics.get("latencyMs") if target_step else None
-        if source_step is None or target_step is None or source_step.status != target_step.status or source_latency != target_latency:
+        source_step_row = source_by_key.get(step_key)
+        target_step_row = target_by_key.get(step_key)
+        source_latency = _trace_latency_ms(source_step_row) if source_step_row else None
+        target_latency = _trace_latency_ms(target_step_row) if target_step_row else None
+        source_status = source_step_row["status"] if source_step_row else None
+        target_status = target_step_row["status"] if target_step_row else None
+        if source_step_row is None or target_step_row is None or source_status != target_status or source_latency != target_latency:
             deltas.append(
                 QARunCompareTraceDeltaDTO(
                     stepKey=step_key,
-                    sourceStatus=source_step.status if source_step else None,
-                    targetStatus=target_step.status if target_step else None,
-                    sourceLatencyMs=source_latency if isinstance(source_latency, int) else None,
-                    targetLatencyMs=target_latency if isinstance(target_latency, int) else None,
+                    sourceStatus=source_status,
+                    targetStatus=target_status,
+                    sourceLatencyMs=source_latency,
+                    targetLatencyMs=target_latency,
                 )
             )
     return deltas[:100]
@@ -1667,7 +1696,7 @@ def compare_qa_runs(
         answerChanged=(source_detail.answer or "") != (target_detail.answer or ""),
         evidenceDelta=_compare_set_values(source_evidence, target_evidence),
         citationDelta=_compare_set_values(source_citations, target_citations),
-        traceDelta=_compare_trace_steps(source_detail.trace, target_detail.trace),
+        traceDelta=_compare_trace_rows(session, run_id, target_run_id),
         configDiff=_compare_config_snapshots(session, source_row, target_row),
         warnings=warnings,
     )
