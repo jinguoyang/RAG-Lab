@@ -99,11 +99,26 @@ def verify_index_rebuild_contract() -> None:
     _assert("No active chunks found for rebuild scope." in source, "副本重建空范围未记录失败原因")
 
 
+def verify_provider_retest_template() -> None:
+    """校验发布环境 Provider 复测报告模板覆盖 V1.2 复测口径。"""
+    template = (ROOT_DIR / "docs/06-发布与运维/V1.2-Provider复测报告模板.md").read_text(encoding="utf-8")
+    for keyword in [
+        "Provider 复测报告模板",
+        "/api/v1/health/provider-diagnostics",
+        "/api/v1/knowledge-bases/{kbId}/index-sync-jobs/rebuild",
+        "connectivityStatus",
+        "rateLimitStatus",
+        "errorMessage",
+    ]:
+        _assert(keyword in template, f"Provider 复测报告模板缺少关键字: {keyword}")
+
+
 def main() -> None:
     """执行 Sprint 15 当前已落地范围的验收检查。"""
     verify_provider_config_masking()
     verify_provider_diagnostics_contract()
     verify_index_rebuild_contract()
+    verify_provider_retest_template()
     print("Sprint 15 provider readiness verification passed.")
 
 

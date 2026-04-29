@@ -30,7 +30,7 @@
 | S15-001 | B-065 | 实现真实 Provider 凭据配置、脱敏展示和本地校验 | P1 | 1d | Codex | Done |
 | S15-002 | B-066 | 补齐 LLM、Embedding、Rerank Provider 连通性和限流诊断 | P1 | 1d | Codex | Done |
 | S15-003 | B-067 | 补齐 Dense、Sparse、Graph 检索副本重建和失败恢复脚本 | P1 | 1.5d | Codex | Done |
-| S15-004 | B-068 | 形成发布环境 Provider 复测报告模板和执行脚本 | P2 | 0.5d | Codex | Todo |
+| S15-004 | B-068 | 形成发布环境 Provider 复测报告模板和执行脚本 | P2 | 0.5d | Codex | Done |
 
 ## 5. 验收标准
 
