@@ -9,6 +9,8 @@ from app.core.database import get_db_session
 from app.schemas.auth import CurrentUserResponse
 from app.schemas.common import PageResponse
 from app.schemas.document import (
+    BulkDocumentGovernanceRequest,
+    BulkDocumentGovernanceResponse,
     ChunkDTO,
     DocumentDTO,
     DocumentDetailDTO,
@@ -39,6 +41,7 @@ from app.services.document_service import (
     list_index_sync_jobs,
     rebuild_index_sync,
     reparse_document,
+    run_bulk_document_governance,
     retry_ingest_job,
 )
 from app.services.knowledge_base_service import KnowledgeBaseDisabledError
@@ -125,6 +128,32 @@ def read_document_quality_summary(
 ) -> DocumentQualitySummaryDTO:
     """返回知识库文档质量和异常 Chunk 诊断摘要。"""
     response = get_document_quality_summary(session, current_user, kb_id)
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found.")
+    return response
+
+
+@router.post("/batch-governance", response_model=BulkDocumentGovernanceResponse)
+def run_bulk_document_governance_endpoint(
+    kb_id: UUID,
+    request: BulkDocumentGovernanceRequest,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> BulkDocumentGovernanceResponse:
+    """执行文档批量重解析、索引重建或停用治理动作。"""
+    try:
+        response = run_bulk_document_governance(
+            session=session,
+            current_user=current_user,
+            kb_id=kb_id,
+            operation=request.operation,
+            document_ids=[UUID(item) for item in request.documentIds],
+            confirm_impact=request.confirmImpact,
+            reason=request.reason,
+            target_store=request.targetStore,
+        )
+    except (KnowledgeBaseDisabledError, DocumentPermissionError, DocumentConflictError, ValueError) as exc:
+        _raise_document_error(exc if not isinstance(exc, ValueError) else DocumentConflictError("Invalid documentId."))
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found.")
     return response

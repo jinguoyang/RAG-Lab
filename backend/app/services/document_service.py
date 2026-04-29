@@ -11,6 +11,7 @@ from app.core.config import get_settings
 from app.schemas.auth import CurrentUserResponse
 from app.schemas.document import (
     ChunkDTO,
+    BulkDocumentGovernanceResponse,
     DocumentDetailDTO,
     DocumentDTO,
     DocumentVersionActivateResponse,
@@ -869,6 +870,133 @@ def get_document_quality_summary(
         permissionAnomalyCount=len(permission_anomalies),
         issues=issues,
     )
+
+
+def run_bulk_document_governance(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    operation: str,
+    document_ids: list[UUID],
+    confirm_impact: bool,
+    reason: str | None,
+    target_store: str | None,
+) -> BulkDocumentGovernanceResponse | None:
+    """执行批量文档治理动作；所有高影响动作必须带二次确认。"""
+    kb_row = _read_visible_knowledge_base(session, current_user, kb_id)
+    if kb_row is None:
+        return None
+    if kb_row["status"] == "disabled":
+        raise KnowledgeBaseDisabledError
+    _ensure_permission(session, current_user, kb_id, "kb.document.upload")
+    if not confirm_impact:
+        raise DocumentConflictError("confirmImpact must be true.")
+
+    if operation == "reparse":
+        affected: list[str] = []
+        errors: list[str] = []
+        for document_id in document_ids:
+            try:
+                response = reparse_document(session, current_user, kb_id, document_id, reason)
+                if response is None:
+                    errors.append(f"{document_id}: document not found")
+                else:
+                    affected.append(str(document_id))
+            except Exception as exc:
+                errors.append(f"{document_id}: {exc}")
+        return BulkDocumentGovernanceResponse(
+            operation=operation,
+            requestedCount=len(document_ids),
+            successCount=len(affected),
+            failedCount=len(errors),
+            affectedIds=affected,
+            errors=errors,
+        )
+
+    if operation == "disable":
+        result = session.execute(
+            update(documents)
+            .where(documents.c.kb_id == kb_id, documents.c.document_id.in_(document_ids), documents.c.deleted_at.is_(None))
+            .values(status="disabled", updated_by=UUID(current_user.user.userId), updated_at=func.now())
+            .returning(documents.c.document_id)
+        )
+        affected_ids = [str(row[0]) for row in result]
+        for document_id in affected_ids:
+            _insert_audit_log(
+                session,
+                current_user,
+                "document.batch_disable",
+                "document",
+                UUID(document_id),
+                kb_id,
+                UUID(document_id),
+                {"reason": reason},
+            )
+        session.commit()
+        return BulkDocumentGovernanceResponse(
+            operation=operation,
+            requestedCount=len(document_ids),
+            successCount=len(affected_ids),
+            failedCount=len(document_ids) - len(affected_ids),
+            affectedIds=affected_ids,
+            errors=[],
+        )
+
+    if operation == "rebuild_index":
+        if not target_store:
+            raise DocumentConflictError("targetStore is required for rebuild_index.")
+        if target_store not in {"milvus", "opensearch", "neo4j"}:
+            raise DocumentConflictError("Unsupported target store.")
+        condition = (
+            (chunks.c.kb_id == kb_id)
+            & (chunks.c.status == "active")
+            & (document_versions.c.status == "active")
+        )
+        if document_ids:
+            condition = condition & chunks.c.document_id.in_(document_ids)
+        chunk_ids = [
+            row[0]
+            for row in session.execute(
+                select(chunks.c.chunk_id)
+                .select_from(chunks.join(document_versions, chunks.c.version_id == document_versions.c.version_id))
+                .where(condition)
+            )
+        ]
+        status = "success" if chunk_ids else "failed"
+        error_message = None if chunk_ids else "No active chunks found for rebuild scope."
+        sync_job_id = _create_index_sync_job(
+            session,
+            kb_row,
+            current_user,
+            target_store,
+            None,
+            chunk_ids,
+            target_store == "milvus",
+            sync_type="rebuild",
+            status=status,
+            error_message=error_message,
+        )
+        _insert_audit_log(
+            session,
+            current_user,
+            "document.batch_rebuild_index",
+            "index_sync_job",
+            sync_job_id,
+            kb_id,
+            None,
+            {"targetStore": target_store, "documentIds": [str(item) for item in document_ids], "status": status},
+        )
+        session.commit()
+        return BulkDocumentGovernanceResponse(
+            operation=operation,
+            requestedCount=len(document_ids),
+            successCount=1 if status == "success" else 0,
+            failedCount=0 if status == "success" else 1,
+            affectedIds=[str(sync_job_id)],
+            errors=[] if error_message is None else [error_message],
+        )
+
+    raise DocumentConflictError("Unsupported batch governance operation.")
 
 
 def list_document_versions(

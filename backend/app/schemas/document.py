@@ -152,6 +152,27 @@ class IndexSyncRebuildRequest(BaseModel):
     versionId: str | None = None
 
 
+class BulkDocumentGovernanceRequest(BaseModel):
+    """文档批量治理请求；高影响动作必须由前端二次确认。"""
+
+    operation: str
+    documentIds: list[str] = Field(default_factory=list)
+    confirmImpact: bool
+    reason: str | None = None
+    targetStore: str | None = None
+
+
+class BulkDocumentGovernanceResponse(BaseModel):
+    """文档批量治理结果摘要。"""
+
+    operation: str
+    requestedCount: int
+    successCount: int
+    failedCount: int
+    affectedIds: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+
+
 class DocumentUploadResponse(BaseModel):
     """上传成功后一次性返回文档、首版本和 queued 作业。"""
 

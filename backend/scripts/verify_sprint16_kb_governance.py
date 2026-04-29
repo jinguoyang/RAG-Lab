@@ -40,9 +40,26 @@ def verify_document_quality_contract() -> None:
         _assert(keyword in source, f"文档质量诊断缺少类型: {keyword}")
 
 
+def verify_bulk_governance_contract() -> None:
+    """校验批量治理入口覆盖重解析、重建索引和停用动作。"""
+    schema = TestClient(create_app()).get("/openapi.json").json()
+    paths = schema.get("paths", {})
+    _assert(
+        "/api/v1/knowledge-bases/{kb_id}/documents/batch-governance" in paths,
+        "OpenAPI 缺少文档批量治理接口",
+    )
+    schemas = schema.get("components", {}).get("schemas", {})
+    _assert("BulkDocumentGovernanceRequest" in schemas, "OpenAPI 缺少 BulkDocumentGovernanceRequest")
+
+    source = _read_backend("app/services/document_service.py")
+    for keyword in ["confirmImpact must be true.", "reparse", "rebuild_index", "document.batch_disable"]:
+        _assert(keyword in source, f"批量治理实现缺少关键逻辑: {keyword}")
+
+
 def main() -> None:
     """执行 Sprint 16 当前已落地范围的验收检查。"""
     verify_document_quality_contract()
+    verify_bulk_governance_contract()
     print("Sprint 16 KB governance verification passed.")
 
 

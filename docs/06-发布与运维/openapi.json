@@ -2128,6 +2128,76 @@
         }
       }
     },
+    "/api/v1/knowledge-bases/{kb_id}/documents/batch-governance": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Run Bulk Document Governance Endpoint",
+        "description": "执行文档批量重解析、索引重建或停用治理动作。",
+        "operationId": "run_bulk_document_governance_endpoint_api_v1_knowledge_bases__kb_id__documents_batch_governance_post",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkDocumentGovernanceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkDocumentGovernanceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/knowledge-bases/{kb_id}/documents/{document_id}/reparse": {
       "post": {
         "tags": [
@@ -5623,6 +5693,97 @@
           "file"
         ],
         "title": "Body_upload_document_api_v1_knowledge_bases__kb_id__documents_post"
+      },
+      "BulkDocumentGovernanceRequest": {
+        "properties": {
+          "operation": {
+            "type": "string",
+            "title": "Operation"
+          },
+          "documentIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Documentids"
+          },
+          "confirmImpact": {
+            "type": "boolean",
+            "title": "Confirmimpact"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "targetStore": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetstore"
+          }
+        },
+        "type": "object",
+        "required": [
+          "operation",
+          "confirmImpact"
+        ],
+        "title": "BulkDocumentGovernanceRequest",
+        "description": "文档批量治理请求；高影响动作必须由前端二次确认。"
+      },
+      "BulkDocumentGovernanceResponse": {
+        "properties": {
+          "operation": {
+            "type": "string",
+            "title": "Operation"
+          },
+          "requestedCount": {
+            "type": "integer",
+            "title": "Requestedcount"
+          },
+          "successCount": {
+            "type": "integer",
+            "title": "Successcount"
+          },
+          "failedCount": {
+            "type": "integer",
+            "title": "Failedcount"
+          },
+          "affectedIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Affectedids"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "operation",
+          "requestedCount",
+          "successCount",
+          "failedCount"
+        ],
+        "title": "BulkDocumentGovernanceResponse",
+        "description": "文档批量治理结果摘要。"
       },
       "ChunkDTO": {
         "properties": {
