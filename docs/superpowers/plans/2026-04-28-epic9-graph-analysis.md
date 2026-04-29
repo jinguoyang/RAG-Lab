@@ -22,7 +22,7 @@
 - Create: `frontend/src/app/services/graphService.ts` for Graph API calls.
 - Create: `frontend/src/app/adapters/graphAdapter.ts` for DTO-to-P11 ViewModel mapping.
 - Modify: `frontend/src/app/pages/P11_GraphSearchAnalysis.tsx` to replace static prototype data with real API state.
-- Create: `docs/04-迭代与交付/Epic-9/迭代计划-Sprint-10.md`.
+- Create: `docs/04-迭代与交付/sprints/Sprint-10.md`.
 - Modify: `docs/04-迭代与交付/产品待办清单.md` after each backlog is completed.
 
 ## Task 1: B-043 Graph Path And Community API
@@ -544,7 +544,7 @@ git commit -m "feat: add E9 graph supporting chunk filtering"
 **Files:**
 - Modify: `backend/app/services/graph_service.py`
 - Modify: `backend/app/services/document_service.py`
-- Create: `docs/04-迭代与交付/Epic-9/迭代计划-Sprint-10.md`
+- Create: `docs/04-迭代与交付/sprints/Sprint-10.md`
 - Modify: `docs/04-迭代与交付/产品待办清单.md`
 
 - [ ] **Step 1: Add failing stale verification**
@@ -618,7 +618,7 @@ In `activate_document_version`, replace the direct `update(graph_snapshots)` blo
 
 - [ ] **Step 4: Document ACL change handling**
 
-In `docs/04-迭代与交付/Epic-9/迭代计划-Sprint-10.md`, create:
+In `docs/04-迭代与交付/sprints/Sprint-10.md`, create:
 
 ```markdown
 # 迭代计划 - Sprint 10
@@ -677,7 +677,7 @@ In `docs/04-迭代与交付/产品待办清单.md`, change `B-046` status from `
 Run:
 
 ```powershell
-git add backend/app/services/graph_service.py backend/app/services/document_service.py backend/scripts/verify_epic9_graph.py docs/04-迭代与交付/Epic-9/迭代计划-Sprint-10.md docs/04-迭代与交付/产品待办清单.md
+git add backend/app/services/graph_service.py backend/app/services/document_service.py backend/scripts/verify_epic9_graph.py docs/04-迭代与交付/sprints/Sprint-10.md docs/04-迭代与交付/产品待办清单.md
 git commit -m "feat: document E9 graph stale diagnostics"
 ```
 
@@ -688,7 +688,7 @@ git commit -m "feat: document E9 graph stale diagnostics"
 - Create: `frontend/src/app/services/graphService.ts`
 - Create: `frontend/src/app/adapters/graphAdapter.ts`
 - Modify: `frontend/src/app/pages/P11_GraphSearchAnalysis.tsx`
-- Modify: `docs/04-迭代与交付/Epic-9/迭代计划-Sprint-10.md`
+- Modify: `docs/04-迭代与交付/sprints/Sprint-10.md`
 - Modify: `docs/04-迭代与交付/产品待办清单.md`
 
 - [ ] **Step 1: Add Graph types**
@@ -960,12 +960,12 @@ Check:
 
 In `docs/04-迭代与交付/产品待办清单.md`, change `B-045` status from `Todo` to `Done` and owner to `Codex`.
 
-In `docs/04-迭代与交付/Epic-9/迭代计划-Sprint-10.md`, change `S10-003` status from `Todo` to `Done`.
+In `docs/04-迭代与交付/sprints/Sprint-10.md`, change `S10-003` status from `Todo` to `Done`.
 
 Run:
 
 ```powershell
-git add frontend/src/app/types/graph.ts frontend/src/app/services/graphService.ts frontend/src/app/adapters/graphAdapter.ts frontend/src/app/pages/P11_GraphSearchAnalysis.tsx docs/04-迭代与交付/Epic-9/迭代计划-Sprint-10.md docs/04-迭代与交付/产品待办清单.md
+git add frontend/src/app/types/graph.ts frontend/src/app/services/graphService.ts frontend/src/app/adapters/graphAdapter.ts frontend/src/app/pages/P11_GraphSearchAnalysis.tsx docs/04-迭代与交付/sprints/Sprint-10.md docs/04-迭代与交付/产品待办清单.md
 git commit -m "feat: connect E9 graph analysis page"
 ```
 

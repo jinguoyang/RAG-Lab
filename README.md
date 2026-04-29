@@ -33,10 +33,10 @@ rag-lab/
 
 说明：
 
-- 当前仓库已落地的是文档、设计原型和正式前端工程入口。
-- `frontend/` 从 `screanshot/prototype/` 复制而来，作为正式前端开发入口。
+- 当前仓库已落地文档、设计原型、正式前端工程和 FastAPI 后端工程。
+- `frontend/` 从 `screanshot/prototype/` 演进而来，作为正式前端开发入口。
+- `backend/` 承载后端 API、服务层、数据库迁移和本地验证脚本。
 - `screanshot/prototype/` 作为设计原型归档保留，不直接承载正式开发。
-- 后端服务、数据库迁移、Worker、部署脚本等目录尚未创建，后续应按系统设计和编码规范小步补齐。
 
 ## 文档入口
 
@@ -50,6 +50,9 @@ rag-lab/
 - [数据模型设计](./docs/03-系统设计/数据模型设计.md)
 - [数据库设计](./docs/03-系统设计/数据库设计.md)
 - [编码规范](./docs/04-迭代与交付/编码规范.md)
+- [Epic 总览](./docs/04-迭代与交付/epics/README.md)
+- [Sprint 总览](./docs/04-迭代与交付/sprints/README.md)
+- [Release 总览](./docs/04-迭代与交付/releases/README.md)
 
 ## 本地运行方式
 
@@ -168,9 +171,9 @@ conda run -n rag-lab python scripts/verify_epic10_release_ops.py
 
 后端依赖版本以 `backend/environment.yml` 和 `backend/requirements.txt` 为准。
 
-### 设计确定但尚未落代码的依赖
+### 外部依赖落地状态
 
-系统设计建议后续实现采用：
+系统设计建议采用以下外部组件；当前代码已通过 Provider 抽象和本地验证脚本形成可替换链路，真实网络级连通性仍需按环境逐项复测：
 
 - 后端：Python FastAPI
 - 任务框架：Celery + Redis
@@ -181,7 +184,7 @@ conda run -n rag-lab python scripts/verify_epic10_release_ops.py
 - 图数据库：Neo4j
 - 模型服务：统一封装 LLM / Embedding / Rerank Provider
 
-这些依赖当前还没有对应工程目录、配置或迁移脚本。实现时应先参考 `docs/03-系统设计/` 下的设计文档，再新增最小必要代码。
+真实外部 Provider 的网络级连通性、凭据和服务 SLA 不作为本地 mock 验收的前置条件；进入测试或发布环境前，应按 `docs/04-迭代与交付/releases/` 和 `docs/06-发布与运维/` 的要求补充复测记录。
 
 ## 推荐开发前阅读顺序
 
