@@ -40,6 +40,7 @@ from app.tables import (
     stored_files,
 )
 from app.services.object_storage import ObjectStorageProvider, get_object_storage_provider
+from app.services.graph_service import mark_graph_snapshots_stale
 from app.services.knowledge_base_service import KnowledgeBaseDisabledError
 from app.services.permission_service import build_chunk_access_filter_context, has_kb_permission
 from app.services.graph_service import mark_graph_snapshots_stale
@@ -414,6 +415,7 @@ def run_ingest_job(
         session.execute(delete(chunk_access_filters).where(chunk_access_filters.c.chunk_id.in_(select(chunks.c.chunk_id).where(chunks.c.version_id == version_row["version_id"]))))
         session.execute(delete(graph_chunk_refs).where(graph_chunk_refs.c.chunk_id.in_(select(chunks.c.chunk_id).where(chunks.c.version_id == version_row["version_id"]))))
         session.execute(delete(chunks).where(chunks.c.version_id == version_row["version_id"]))
+        mark_graph_snapshots_stale(session, kb_row["kb_id"], "chunk_changed", current_user)
 
         chunk_rows: list[RowMapping] = []
         for index, parsed in enumerate(parsed_chunks, start=1):

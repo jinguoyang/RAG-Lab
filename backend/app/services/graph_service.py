@@ -151,6 +151,14 @@ def _to_graph_community_dto(item: dict) -> GraphCommunityDTO:
     )
 
 
+def _preview(content: str, limit: int = 180) -> str:
+    """生成支撑 Chunk 的安全预览，避免图诊断接口直接返回整段正文。"""
+    compact = " ".join(content.split())
+    if len(compact) <= limit:
+        return compact
+    return f"{compact[:limit].rstrip()}..."
+
+
 def list_graph_snapshots(
     session: Session,
     current_user: CurrentUserResponse,
@@ -377,7 +385,7 @@ def list_supporting_chunks(
                 documentId=str(chunk_row["document_id"]),
                 documentName=chunk_row["document_name"],
                 chunkIndex=chunk_row["chunk_index"],
-                contentPreview=chunk_row["content"][:240],
+                contentPreview=_preview(chunk_row["content"]),
                 securityLevel=chunk_row["security_level"],
                 refType=row["ref_type"],
                 metadata=metadata,
