@@ -5982,6 +5982,42 @@
         "title": "CurrentUserResponse",
         "description": "当前用户响应，供前端初始化登录态和能力摘要。"
       },
+      "DependencyConfigItemDTO": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "displayValue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Displayvalue"
+          },
+          "sensitive": {
+            "type": "boolean",
+            "title": "Sensitive"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "status",
+          "displayValue",
+          "sensitive"
+        ],
+        "title": "DependencyConfigItemDTO",
+        "description": "依赖配置项摘要，只展示脱敏后的值和本地校验状态。"
+      },
       "DependencyHealthDTO": {
         "properties": {
           "name": {
@@ -5995,6 +6031,24 @@
           "detail": {
             "type": "string",
             "title": "Detail"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "config": {
+            "items": {
+              "$ref": "#/components/schemas/DependencyConfigItemDTO"
+            },
+            "type": "array",
+            "title": "Config"
           }
         },
         "type": "object",
