@@ -67,9 +67,25 @@ def verify_provider_config_masking() -> None:
     )
 
 
+def verify_provider_diagnostics_contract() -> None:
+    """校验 LLM、Embedding、Rerank 诊断接口覆盖连通性和限流摘要。"""
+    get_settings.cache_clear()
+    client = TestClient(create_app())
+    response = client.get("/api/v1/health/provider-diagnostics")
+    _assert(response.status_code == 200, "Provider 诊断接口不可用")
+    payload = response.json()
+    names = {item["name"] for item in payload["diagnostics"]}
+    _assert({"llm", "embedding", "rerank"}.issubset(names), "Provider 诊断缺少 LLM/Embedding/Rerank")
+    for item in payload["diagnostics"]:
+        _assert("connectivityStatus" in item, f"{item['name']} 缺少连通性诊断状态")
+        _assert("rateLimitStatus" in item, f"{item['name']} 缺少限流诊断状态")
+        _assert("config" in item, f"{item['name']} 缺少脱敏配置摘要")
+
+
 def main() -> None:
     """执行 Sprint 15 当前已落地范围的验收检查。"""
     verify_provider_config_masking()
+    verify_provider_diagnostics_contract()
     print("Sprint 15 provider readiness verification passed.")
 
 

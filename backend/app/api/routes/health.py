@@ -1,7 +1,14 @@
 from fastapi import APIRouter
 
 from app.core.config import get_settings
-from app.schemas.health import DependencyConfigItemDTO, DependencyHealthDTO, DependencyHealthResponse, HealthResponse
+from app.schemas.health import (
+    DependencyConfigItemDTO,
+    DependencyHealthDTO,
+    DependencyHealthResponse,
+    HealthResponse,
+    ProviderDiagnosticDTO,
+    ProviderDiagnosticsResponse,
+)
 
 router = APIRouter(tags=["health"])
 
@@ -68,6 +75,37 @@ def _dependency(
         provider=provider,
         status="configured",
         detail=f"provider={provider} 已完成本地配置校验",
+        config=config,
+    )
+
+
+def _provider_diagnostic(
+    name: str,
+    provider: str,
+    config: list[DependencyConfigItemDTO],
+    local_providers: set[str],
+) -> ProviderDiagnosticDTO:
+    """生成模型类 Provider 诊断，默认不发起外部请求以保证本地验收稳定。"""
+    dependency = _dependency(name, provider, config, local_providers)
+    if dependency.status == "local":
+        connectivity_status = "local"
+        rate_limit_status = "not_required"
+        detail = f"{name} 使用本地降级 Provider，无需网络级连通性探测。"
+    elif dependency.status == "missing":
+        connectivity_status = "blocked"
+        rate_limit_status = "unknown"
+        detail = f"{name} 缺少配置，暂不能执行连通性或限流诊断。"
+    else:
+        connectivity_status = "ready_for_probe"
+        rate_limit_status = "configured" if name in {"llm", "embedding"} else "not_configured"
+        detail = f"{name} 配置完整，可在测试环境执行真实网络级复测。"
+    return ProviderDiagnosticDTO(
+        name=name,
+        provider=provider,
+        status=dependency.status,
+        connectivityStatus=connectivity_status,
+        rateLimitStatus=rate_limit_status,
+        detail=detail,
         config=config,
     )
 
@@ -159,3 +197,44 @@ def read_dependency_health() -> DependencyHealthResponse:
     ]
     status = "degraded" if any(item.status == "missing" for item in dependencies) else "ok"
     return DependencyHealthResponse(status=status, dependencies=dependencies)
+
+
+@router.get("/health/provider-diagnostics", response_model=ProviderDiagnosticsResponse)
+def read_provider_diagnostics() -> ProviderDiagnosticsResponse:
+    """返回 LLM、Embedding、Rerank 的连通性和限流诊断摘要。"""
+    settings = get_settings()
+    diagnostics = [
+        _provider_diagnostic(
+            "llm",
+            settings.llm_provider,
+            [
+                _config_item("RAG_LAB_LLM_ENDPOINT", settings.llm_endpoint),
+                _config_item("RAG_LAB_LLM_API_KEY", settings.llm_api_key, sensitive=True),
+                _config_item("RAG_LAB_LLM_MODEL", settings.llm_model),
+                _config_item("RAG_LAB_PROVIDER_TOP_K", str(settings.provider_top_k), required=False),
+            ],
+            {"local"},
+        ),
+        _provider_diagnostic(
+            "embedding",
+            settings.embedding_provider,
+            [
+                _config_item("RAG_LAB_EMBEDDING_ENDPOINT", settings.embedding_endpoint),
+                _config_item("RAG_LAB_EMBEDDING_API_KEY", settings.embedding_api_key, sensitive=True),
+                _config_item("RAG_LAB_EMBEDDING_MODEL", settings.embedding_model),
+                _config_item("RAG_LAB_PROVIDER_TOP_K", str(settings.provider_top_k), required=False),
+            ],
+            {"local"},
+        ),
+        _provider_diagnostic(
+            "rerank",
+            settings.rerank_provider,
+            [
+                _config_item("RAG_LAB_RERANK_ENDPOINT", settings.rerank_endpoint),
+                _config_item("RAG_LAB_RERANK_API_KEY", settings.rerank_api_key, sensitive=True),
+            ],
+            {"identity"},
+        ),
+    ]
+    status = "degraded" if any(item.status == "missing" for item in diagnostics) else "ok"
+    return ProviderDiagnosticsResponse(status=status, diagnostics=diagnostics)

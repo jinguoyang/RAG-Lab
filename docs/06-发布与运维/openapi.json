@@ -100,6 +100,28 @@
         }
       }
     },
+    "/api/v1/health/provider-diagnostics": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Read Provider Diagnostics",
+        "description": "返回 LLM、Embedding、Rerank 的连通性和限流诊断摘要。",
+        "operationId": "read_provider_diagnostics_api_v1_health_provider_diagnostics_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderDiagnosticsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/audit-logs": {
       "get": {
         "tags": [
@@ -8654,6 +8676,74 @@
         ],
         "title": "PipelineValidationResultDTO",
         "description": "Pipeline 校验结果；保存接口会复用 normalizedPipelineDefinition。"
+      },
+      "ProviderDiagnosticDTO": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "connectivityStatus": {
+            "type": "string",
+            "title": "Connectivitystatus"
+          },
+          "rateLimitStatus": {
+            "type": "string",
+            "title": "Ratelimitstatus"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "config": {
+            "items": {
+              "$ref": "#/components/schemas/DependencyConfigItemDTO"
+            },
+            "type": "array",
+            "title": "Config"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "provider",
+          "status",
+          "connectivityStatus",
+          "rateLimitStatus",
+          "detail"
+        ],
+        "title": "ProviderDiagnosticDTO",
+        "description": "模型类 Provider 诊断结果，默认只做本地配置和限流配置检查。"
+      },
+      "ProviderDiagnosticsResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderDiagnosticDTO"
+            },
+            "type": "array",
+            "title": "Diagnostics"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "diagnostics"
+        ],
+        "title": "ProviderDiagnosticsResponse",
+        "description": "LLM、Embedding、Rerank Provider 的生产化诊断摘要。"
       },
       "QARunCandidateDTO": {
         "properties": {

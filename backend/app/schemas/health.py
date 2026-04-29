@@ -34,3 +34,22 @@ class DependencyHealthResponse(BaseModel):
 
     status: str
     dependencies: list[DependencyHealthDTO]
+
+
+class ProviderDiagnosticDTO(BaseModel):
+    """模型类 Provider 诊断结果，默认只做本地配置和限流配置检查。"""
+
+    name: str
+    provider: str
+    status: str
+    connectivityStatus: str
+    rateLimitStatus: str
+    detail: str
+    config: list[DependencyConfigItemDTO] = Field(default_factory=list)
+
+
+class ProviderDiagnosticsResponse(BaseModel):
+    """LLM、Embedding、Rerank Provider 的生产化诊断摘要。"""
+
+    status: str
+    diagnostics: list[ProviderDiagnosticDTO]
