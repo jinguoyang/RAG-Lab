@@ -8,6 +8,7 @@ import type {
   EvaluationRunDTO,
   EvaluationRunExportResponse,
   EvaluationRunPage,
+  QARunCompareDTO,
   QARunCollaborationDTO,
   QARunCreateResponse,
   QARunDetailDTO,
@@ -78,6 +79,14 @@ export async function fetchQARunReplayContext(
   runId: string,
 ): Promise<QARunReplayContextDTO> {
   return apiGet<QARunReplayContextDTO>(`/knowledge-bases/${kbId}/qa-runs/${runId}/replay-context`);
+}
+
+export async function fetchQARunCompare(
+  kbId: string,
+  sourceRunId: string,
+  targetRunId: string,
+): Promise<QARunCompareDTO> {
+  return apiGet<QARunCompareDTO>(`/knowledge-bases/${kbId}/qa-runs/${sourceRunId}/compare/${targetRunId}`);
 }
 
 export async function fetchQARunCollaboration(

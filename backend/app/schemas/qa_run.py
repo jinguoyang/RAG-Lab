@@ -99,6 +99,7 @@ class QARunDetailDTO(BaseModel):
     """QARun 详情响应，覆盖 P09 结果区和 P10 历史详情的最小字段。"""
 
     runId: str
+    sourceRunId: str | None
     status: str
     kbId: str
     configRevisionId: str
@@ -122,6 +123,7 @@ class QARunListItemDTO(BaseModel):
     """QA 历史列表项，避免 P10 为列表读取完整 Trace 和 Evidence。"""
 
     runId: str
+    sourceRunId: str | None = None
     kbId: str
     configRevisionId: str
     query: str
@@ -161,7 +163,65 @@ class QARunReplayContextDTO(BaseModel):
     query: str
     configRevisionId: str
     overrideParams: dict[str, Any]
+    retrievalChannels: list[str]
+    retrievalTopK: dict[str, int]
+    temperature: float
+    maxContextTokens: int
+    graphSnapshotId: str | None = None
+    providerDiagnostics: dict[str, Any]
     suggestedMode: str
+    warnings: list[str] = Field(default_factory=list)
+
+
+class QARunCompareSummaryDTO(BaseModel):
+    """对比视图中的单次运行摘要。"""
+
+    runId: str
+    status: str
+    configRevisionId: str
+    answer: str | None
+    evidenceCount: int
+    citationCount: int
+    latencyMs: int | None
+    createdAt: str
+
+
+class QARunCompareEvidenceDeltaDTO(BaseModel):
+    """Evidence 或 Citation 集合差异摘要。"""
+
+    added: list[str]
+    removed: list[str]
+    shared: list[str]
+
+
+class QARunCompareTraceDeltaDTO(BaseModel):
+    """同一 Trace 阶段在来源运行和复跑运行间的状态与耗时差异。"""
+
+    stepKey: str
+    sourceStatus: str | None
+    targetStatus: str | None
+    sourceLatencyMs: int | None
+    targetLatencyMs: int | None
+
+
+class ConfigRevisionDiffItemDTO(BaseModel):
+    """配置差异项摘要。"""
+
+    path: str
+    before: Any
+    after: Any
+
+
+class QARunCompareDTO(BaseModel):
+    """来源 QARun 与复跑 QARun 的轻量对比结果。"""
+
+    source: QARunCompareSummaryDTO
+    target: QARunCompareSummaryDTO
+    answerChanged: bool
+    evidenceDelta: QARunCompareEvidenceDeltaDTO
+    citationDelta: QARunCompareEvidenceDeltaDTO
+    traceDelta: list[QARunCompareTraceDeltaDTO]
+    configDiff: list[ConfigRevisionDiffItemDTO]
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -290,14 +350,6 @@ class EvaluationRunExportResponse(BaseModel):
     format: str
     fileName: str
     content: str
-
-
-class ConfigRevisionDiffItemDTO(BaseModel):
-    """配置差异项摘要。"""
-
-    path: str
-    before: Any
-    after: Any
 
 
 class EvaluationRunConfigDiffDTO(BaseModel):

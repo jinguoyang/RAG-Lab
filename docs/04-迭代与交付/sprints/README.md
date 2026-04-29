@@ -29,7 +29,7 @@ Sprint 是时间盒，用于承接一轮可验证交付。Sprint 不隶属于某
 | Sprint 19 | 真实解析与 Chunk 入库 | E18 | Todo | [Sprint-19](./Sprint-19.md) |
 | Sprint 20 | 真实多副本写入与入库状态 | E18 | Done | [Sprint-20](./Sprint-20.md) |
 | Sprint 21 | 真实检索与生成链路 | E19 | Done | [Sprint-21](./Sprint-21.md) |
-| Sprint 22 | 真实回放、复跑与对比 | E19 | Todo | [Sprint-22](./Sprint-22.md) |
+| Sprint 22 | 真实回放、复跑与对比 | E19 | Done | [Sprint-22](./Sprint-22.md) |
 
 ## 3. Sprint 文档约定
 

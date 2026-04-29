@@ -64,6 +64,7 @@ export interface QARunCitationDTO {
 
 export interface QARunDetailDTO {
   runId: string;
+  sourceRunId: string | null;
   status: QARunStatus;
   kbId: string;
   configRevisionId: string;
@@ -85,6 +86,7 @@ export interface QARunDetailDTO {
 
 export interface QARunListItemDTO {
   runId: string;
+  sourceRunId: string | null;
   kbId: string;
   configRevisionId: string;
   query: string;
@@ -112,7 +114,49 @@ export interface QARunReplayContextDTO {
   query: string;
   configRevisionId: string;
   overrideParams: Record<string, unknown>;
+  retrievalChannels: string[];
+  retrievalTopK: Record<string, number>;
+  temperature: number;
+  maxContextTokens: number;
+  graphSnapshotId: string | null;
+  providerDiagnostics: Record<string, unknown>;
   suggestedMode: "replay" | "copyAsNew";
+  warnings: string[];
+}
+
+export interface QARunCompareSummaryDTO {
+  runId: string;
+  status: QARunStatus;
+  configRevisionId: string;
+  answer: string | null;
+  evidenceCount: number;
+  citationCount: number;
+  latencyMs: number | null;
+  createdAt: string;
+}
+
+export interface QARunCompareEvidenceDeltaDTO {
+  added: string[];
+  removed: string[];
+  shared: string[];
+}
+
+export interface QARunCompareTraceDeltaDTO {
+  stepKey: string;
+  sourceStatus: string | null;
+  targetStatus: string | null;
+  sourceLatencyMs: number | null;
+  targetLatencyMs: number | null;
+}
+
+export interface QARunCompareDTO {
+  source: QARunCompareSummaryDTO;
+  target: QARunCompareSummaryDTO;
+  answerChanged: boolean;
+  evidenceDelta: QARunCompareEvidenceDeltaDTO;
+  citationDelta: QARunCompareEvidenceDeltaDTO;
+  traceDelta: QARunCompareTraceDeltaDTO[];
+  configDiff: ConfigRevisionDiffItemDTO[];
   warnings: string[];
 }
 

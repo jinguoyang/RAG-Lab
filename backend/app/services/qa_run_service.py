@@ -25,6 +25,10 @@ from app.schemas.qa_run import (
     EvaluationRunExportResponse,
     QARunCandidateDTO,
     QARunCitationDTO,
+    QARunCompareDTO,
+    QARunCompareEvidenceDeltaDTO,
+    QARunCompareSummaryDTO,
+    QARunCompareTraceDeltaDTO,
     QARunCreateRequest,
     QARunCreateResponse,
     QARunDetailDTO,
@@ -624,6 +628,24 @@ def _resolve_graph_snapshot_id(session: Session, kb_id: UUID) -> UUID | None:
     return row["graph_snapshot_id"] if row else None
 
 
+def _graph_snapshot_id_from_trace(session: Session, run_id: UUID) -> str | None:
+    """从历史 Trace 中读取 Graph Retrieval 实际使用的快照 ID，供回放诊断展示。"""
+    row = session.execute(
+        select(qa_run_trace_steps.c.output_summary)
+        .where(
+            qa_run_trace_steps.c.run_id == run_id,
+            qa_run_trace_steps.c.step_key == "graphRetrieval",
+        )
+        .order_by(qa_run_trace_steps.c.step_order.desc())
+        .limit(1)
+    ).mappings().first()
+    if row is None:
+        return None
+    output_summary = row["output_summary"] or {}
+    graph_snapshot_id = output_summary.get("graphSnapshotId") if isinstance(output_summary, dict) else None
+    return str(graph_snapshot_id) if graph_snapshot_id else None
+
+
 def _retrieval_channel_counts(candidates: list[ProviderCandidate]) -> dict[str, int]:
     """统计真实 Provider 召回来源，Fusion 后仍能展示各通道贡献。"""
     counts = {"denseCount": 0, "sparseCount": 0, "graphCount": 0}
@@ -1204,16 +1226,28 @@ def get_qa_run_detail(
         ).mappings()
         candidates = [_to_candidate_dto(candidate_row) for candidate_row in candidate_rows]
 
-    evidence_rows = session.execute(
+    evidence_rows = list(session.execute(
         select(qa_run_evidence)
         .where(qa_run_evidence.c.run_id == run_id)
         .order_by(qa_run_evidence.c.evidence_order.asc())
-    ).mappings()
+    ).mappings())
     citation_rows = session.execute(
         select(qa_run_citations)
         .where(qa_run_citations.c.run_id == run_id)
         .order_by(qa_run_citations.c.citation_order.asc())
     ).mappings()
+    access_filter = build_chunk_access_filter_context(session, current_user, kb_id)
+    evidence_chunk_ids = [evidence_row["chunk_id"] for evidence_row in evidence_rows]
+    filter_rows = []
+    if evidence_chunk_ids:
+        filter_rows = session.execute(
+            select(chunk_access_filters).where(
+                chunk_access_filters.c.kb_id == kb_id,
+                chunk_access_filters.c.chunk_id.in_(evidence_chunk_ids),
+                chunk_access_filters.c.permission_code == access_filter.permission_code,
+            )
+        ).mappings()
+    filters_by_chunk_id = {filter_row["chunk_id"]: filter_row for filter_row in filter_rows}
 
     trace = []
     if include_trace:
@@ -1235,8 +1269,32 @@ def get_qa_run_detail(
             for trace_row in trace_rows
         ]
 
+    def _to_authorized_evidence_dto(evidence_row: RowMapping) -> QARunEvidenceDTO:
+        """历史 Evidence 读取仍按当前 Chunk 权限二次裁剪，避免回放泄露旧授权正文。"""
+        drop_reason = _chunk_access_filter_drop_reason(filters_by_chunk_id.get(evidence_row["chunk_id"]), access_filter)
+        if drop_reason is not None:
+            redacted_snapshot = dict(evidence_row["source_snapshot"] or {})
+            redacted_snapshot["redactionReason"] = drop_reason
+            return QARunEvidenceDTO(
+                evidenceId=str(evidence_row["evidence_id"]),
+                chunkId=str(evidence_row["chunk_id"]),
+                candidateId=str(evidence_row["candidate_id"]) if evidence_row["candidate_id"] else None,
+                contentSnapshot=None,
+                sourceSnapshot=redacted_snapshot,
+                redactionStatus="redacted",
+            )
+        return QARunEvidenceDTO(
+            evidenceId=str(evidence_row["evidence_id"]),
+            chunkId=str(evidence_row["chunk_id"]),
+            candidateId=str(evidence_row["candidate_id"]) if evidence_row["candidate_id"] else None,
+            contentSnapshot=evidence_row["content_snapshot"],
+            sourceSnapshot=evidence_row["source_snapshot"],
+            redactionStatus=evidence_row["redaction_status"],
+        )
+
     return QARunDetailDTO(
         runId=str(row["run_id"]),
+        sourceRunId=str(row["source_run_id"]) if row["source_run_id"] else None,
         status=row["status"],
         kbId=str(row["kb_id"]),
         configRevisionId=str(row["config_revision_id"]),
@@ -1249,17 +1307,7 @@ def get_qa_run_detail(
         feedbackNote=row["feedback_note"],
         failureType=_failure_type(row),
         candidates=candidates,
-        evidence=[
-            QARunEvidenceDTO(
-                evidenceId=str(evidence_row["evidence_id"]),
-                chunkId=str(evidence_row["chunk_id"]),
-                candidateId=str(evidence_row["candidate_id"]) if evidence_row["candidate_id"] else None,
-                contentSnapshot=evidence_row["content_snapshot"],
-                sourceSnapshot=evidence_row["source_snapshot"],
-                redactionStatus=evidence_row["redaction_status"],
-            )
-            for evidence_row in evidence_rows
-        ],
+        evidence=[_to_authorized_evidence_dto(evidence_row) for evidence_row in evidence_rows],
         citations=[
             QARunCitationDTO(
                 citationId=str(citation_row["citation_id"]),
@@ -1315,6 +1363,7 @@ def list_qa_runs(
         items=[
             QARunListItemDTO(
                 runId=str(row["run_id"]),
+                sourceRunId=str(row["source_run_id"]) if row["source_run_id"] else None,
                 kbId=str(row["kb_id"]),
                 configRevisionId=str(row["config_revision_id"]),
                 query=row["query"],
@@ -1394,6 +1443,66 @@ def update_qa_run_feedback(
     )
 
 
+def _build_replay_context_snapshot(
+    session: Session,
+    kb_id: UUID,
+    run_row: RowMapping,
+    revision_row: RowMapping | None,
+) -> dict[str, Any]:
+    """从历史 QARun 中还原复跑所需上下文；只复用配置快照，不复用历史授权结果。"""
+    metrics = run_row["metrics"] or {}
+    retrieval_diagnostics = metrics.get("retrievalDiagnostics", {})
+    if not isinstance(retrieval_diagnostics, dict):
+        retrieval_diagnostics = {}
+
+    pipeline_params = retrieval_diagnostics.get("pipelineParams")
+    if not isinstance(pipeline_params, dict):
+        pipeline_params = (
+            _build_effective_pipeline_params(revision_row, run_row["override_snapshot"])
+            if revision_row is not None
+            else {
+                "retrievalTopK": {},
+                "temperature": DEFAULT_TEMPERATURE,
+                "maxContextTokens": DEFAULT_MAX_CONTEXT_TOKENS,
+            }
+        )
+
+    if revision_row is not None:
+        retrieval_channels = sorted(_effective_retrieval_channels(revision_row, run_row["override_snapshot"]))
+    else:
+        retrieval_channels = [
+            channel
+            for channel, count_key in [("dense", "denseCount"), ("sparse", "sparseCount"), ("graph", "graphCount")]
+            if retrieval_diagnostics.get(count_key, 0)
+        ]
+
+    retrieval_top_k = pipeline_params.get("retrievalTopK", {})
+    if not isinstance(retrieval_top_k, dict):
+        retrieval_top_k = {}
+
+    return {
+        "retrievalChannels": retrieval_channels,
+        "retrievalTopK": {
+            key: _as_positive_int(value, get_settings().provider_top_k, maximum=200)
+            for key, value in retrieval_top_k.items()
+        },
+        "temperature": _as_float(pipeline_params.get("temperature"), DEFAULT_TEMPERATURE, minimum=0, maximum=2),
+        "maxContextTokens": _as_positive_int(
+            pipeline_params.get("maxContextTokens"),
+            DEFAULT_MAX_CONTEXT_TOKENS,
+            minimum=256,
+            maximum=128000,
+        ),
+        "graphSnapshotId": _graph_snapshot_id_from_trace(session, run_row["run_id"]),
+        "providerDiagnostics": {
+            "providerErrors": retrieval_diagnostics.get("providerErrors", []),
+            "droppedByPermission": retrieval_diagnostics.get("droppedByPermission", 0),
+            "latencyMs": metrics.get("latencyMs"),
+            "status": run_row["status"],
+        },
+    }
+
+
 def get_qa_run_replay_context(
     session: Session,
     current_user: CurrentUserResponse,
@@ -1423,12 +1532,143 @@ def get_qa_run_replay_context(
     elif revision_row["status"] in {"archived", "invalid"}:
         warnings.append("原运行使用的配置版本不是当前可运行版本，回放时可复制为草稿或改用 active revision。")
 
+    snapshot = _build_replay_context_snapshot(session, kb_id, row, revision_row)
     return QARunReplayContextDTO(
         sourceRunId=str(row["run_id"]),
         query=row["query"],
         configRevisionId=str(row["config_revision_id"]),
         overrideParams=row["override_snapshot"],
+        retrievalChannels=snapshot["retrievalChannels"],
+        retrievalTopK=snapshot["retrievalTopK"],
+        temperature=snapshot["temperature"],
+        maxContextTokens=snapshot["maxContextTokens"],
+        graphSnapshotId=snapshot["graphSnapshotId"],
+        providerDiagnostics=snapshot["providerDiagnostics"],
         suggestedMode="replay" if revision_row and revision_row["status"] in {"active", "saved"} else "copyAsNew",
+        warnings=warnings,
+    )
+
+
+def _compare_set_values(source_values: set[str], target_values: set[str]) -> QARunCompareEvidenceDeltaDTO:
+    """比较两个字符串集合，输出稳定排序，便于前端直接展示。"""
+    return QARunCompareEvidenceDeltaDTO(
+        added=sorted(target_values - source_values),
+        removed=sorted(source_values - target_values),
+        shared=sorted(source_values & target_values),
+    )
+
+
+def _compare_trace_steps(
+    source_trace: list[QARunTraceStepDTO],
+    target_trace: list[QARunTraceStepDTO],
+) -> list[QARunCompareTraceDeltaDTO]:
+    """按 stepKey 对齐 Trace 状态和耗时，突出复跑阶段差异。"""
+    source_by_key = {step.stepKey: step for step in source_trace}
+    target_by_key = {step.stepKey: step for step in target_trace}
+    deltas: list[QARunCompareTraceDeltaDTO] = []
+    for step_key in sorted(set(source_by_key.keys()) | set(target_by_key.keys())):
+        source_step = source_by_key.get(step_key)
+        target_step = target_by_key.get(step_key)
+        source_latency = source_step.metrics.get("latencyMs") if source_step else None
+        target_latency = target_step.metrics.get("latencyMs") if target_step else None
+        if source_step is None or target_step is None or source_step.status != target_step.status or source_latency != target_latency:
+            deltas.append(
+                QARunCompareTraceDeltaDTO(
+                    stepKey=step_key,
+                    sourceStatus=source_step.status if source_step else None,
+                    targetStatus=target_step.status if target_step else None,
+                    sourceLatencyMs=source_latency if isinstance(source_latency, int) else None,
+                    targetLatencyMs=target_latency if isinstance(target_latency, int) else None,
+                )
+            )
+    return deltas[:100]
+
+
+def _qa_run_config_snapshot(session: Session, run_row: RowMapping) -> dict[str, Any]:
+    """汇总运行时配置版本和覆盖参数，作为配置差异对比输入。"""
+    revision_row = session.execute(
+        select(config_revisions)
+        .where(config_revisions.c.config_revision_id == run_row["config_revision_id"])
+        .limit(1)
+    ).mappings().first()
+    return {
+        "configRevisionId": str(run_row["config_revision_id"]),
+        "pipelineDefinition": revision_row["pipeline_definition"] if revision_row else {},
+        "overrideSnapshot": run_row["override_snapshot"],
+    }
+
+
+def _compare_config_snapshots(
+    session: Session,
+    source_row: RowMapping,
+    target_row: RowMapping,
+) -> list[ConfigRevisionDiffItemDTO]:
+    """比较来源运行与复跑运行的配置版本和临时覆盖差异。"""
+    before_values = _flatten_json(_qa_run_config_snapshot(session, source_row))
+    after_values = _flatten_json(_qa_run_config_snapshot(session, target_row))
+    diff_items: list[ConfigRevisionDiffItemDTO] = []
+    for path in sorted(set(before_values.keys()) | set(after_values.keys())):
+        before = before_values.get(path)
+        after = after_values.get(path)
+        if before != after:
+            diff_items.append(ConfigRevisionDiffItemDTO(path=path, before=before, after=after))
+    return diff_items[:200]
+
+
+def _to_compare_summary(detail: QARunDetailDTO) -> QARunCompareSummaryDTO:
+    """将 QARun 详情压缩为对比摘要，避免 P10 重复解释完整 DTO。"""
+    latency_ms = detail.metrics.get("latencyMs")
+    return QARunCompareSummaryDTO(
+        runId=detail.runId,
+        status=detail.status,
+        configRevisionId=detail.configRevisionId,
+        answer=detail.answer,
+        evidenceCount=len(detail.evidence),
+        citationCount=len(detail.citations),
+        latencyMs=latency_ms if isinstance(latency_ms, int) else None,
+        createdAt=detail.createdAt,
+    )
+
+
+def compare_qa_runs(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    run_id: UUID,
+    target_run_id: UUID,
+) -> QARunCompareDTO | None:
+    """比较来源运行和复跑运行；两侧详情读取都复用当前用户权限校验。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+    _require_permission(session, current_user, kb_id, "kb.qa.history.read")
+
+    source_row = _read_visible_qa_run(session, current_user, kb_id, run_id)
+    target_row = _read_visible_qa_run(session, current_user, kb_id, target_run_id)
+    if source_row is None or target_row is None:
+        return None
+
+    source_detail = get_qa_run_detail(session, current_user, kb_id, run_id, True, True)
+    target_detail = get_qa_run_detail(session, current_user, kb_id, target_run_id, True, True)
+    if source_detail is None or target_detail is None:
+        return None
+
+    source_evidence = {item.chunkId for item in source_detail.evidence if item.redactionStatus != "redacted"}
+    target_evidence = {item.chunkId for item in target_detail.evidence if item.redactionStatus != "redacted"}
+    source_citations = {item.label or item.citationId for item in source_detail.citations}
+    target_citations = {item.label or item.citationId for item in target_detail.citations}
+
+    warnings: list[str] = []
+    if target_row["source_run_id"] != source_row["run_id"]:
+        warnings.append("目标运行未直接声明该来源 run，当前结果按手动选择进行对比。")
+
+    return QARunCompareDTO(
+        source=_to_compare_summary(source_detail),
+        target=_to_compare_summary(target_detail),
+        answerChanged=(source_detail.answer or "") != (target_detail.answer or ""),
+        evidenceDelta=_compare_set_values(source_evidence, target_evidence),
+        citationDelta=_compare_set_values(source_citations, target_citations),
+        traceDelta=_compare_trace_steps(source_detail.trace, target_detail.trace),
+        configDiff=_compare_config_snapshots(session, source_row, target_row),
         warnings=warnings,
     )
 

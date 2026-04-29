@@ -33,6 +33,7 @@ export interface QADebugResultViewModel {
 
 export interface QAHistoryRecordViewModel {
   id: string;
+  sourceRunId: string | null;
   query: string;
   status: "success" | "partial" | "failed";
   user: string;
@@ -120,6 +121,7 @@ export function toQADebugResult(detail: QARunDetailDTO): QADebugResultViewModel 
 export function toQAHistoryRecord(run: QARunListItemDTO): QAHistoryRecordViewModel {
   return {
     id: run.runId,
+    sourceRunId: run.sourceRunId,
     query: run.query,
     status: statusToViewStatus(run.status),
     user: run.createdBy || "dev-user",

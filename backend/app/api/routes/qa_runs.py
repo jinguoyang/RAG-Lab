@@ -22,6 +22,7 @@ from app.schemas.qa_run import (
     EvaluationSampleDTO,
     QARunCreateRequest,
     QARunCreateResponse,
+    QARunCompareDTO,
     QARunCollaborationDTO,
     QARunCollaborationUpdateRequest,
     QARunCommentCreateRequest,
@@ -36,6 +37,7 @@ from app.services.qa_run_service import (
     QARunCreateConflict,
     QARunPermissionError,
     cancel_evaluation_run,
+    compare_qa_runs,
     create_evaluation_run,
     create_optimization_draft_from_evaluation_run,
     create_qa_run,
@@ -250,6 +252,24 @@ def read_replay_context(
     """返回带上下文的回放参数，供 P09 创建新实验。"""
     try:
         response = get_qa_run_replay_context(session, current_user, kb_id, run_id)
+    except QARunPermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PERMISSION_DENIED") from exc
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="QA run not found.")
+    return response
+
+
+@router.get("/{run_id}/compare/{target_run_id}", response_model=QARunCompareDTO)
+def read_qa_run_compare(
+    kb_id: UUID,
+    run_id: UUID,
+    target_run_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> QARunCompareDTO:
+    """对比来源运行和复跑运行，供 P10 展示结果、Trace 和配置差异。"""
+    try:
+        response = compare_qa_runs(session, current_user, kb_id, run_id, target_run_id)
     except QARunPermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PERMISSION_DENIED") from exc
     if response is None:

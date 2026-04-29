@@ -30,6 +30,12 @@ interface RunSeedState {
   revision?: string;
   configRevisionId?: string;
   overrideParams?: Record<string, unknown>;
+  retrievalChannels?: string[];
+  retrievalTopK?: Record<string, number>;
+  temperature?: number;
+  maxContextTokens?: number;
+  graphSnapshotId?: string | null;
+  providerDiagnostics?: Record<string, unknown>;
   suggestedMode?: "replay" | "copyAsNew";
   replayWarnings?: string[];
   scenario?: DebugScenario;
@@ -268,6 +274,29 @@ function isUuid(value: string | undefined): value is string {
   return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value));
 }
 
+function readBoolean(source: Record<string, unknown> | undefined, key: string, fallback: boolean): boolean {
+  const value = source?.[key];
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function readNestedChannels(source: Record<string, unknown> | undefined) {
+  const channels = source?.channels;
+  if (!channels || typeof channels !== "object" || Array.isArray(channels)) {
+    return { dense: true, sparse: true, graph: true };
+  }
+  const typedChannels = channels as Record<string, unknown>;
+  return {
+    dense: readBoolean(typedChannels, "dense", true),
+    sparse: readBoolean(typedChannels, "sparse", true),
+    graph: readBoolean(typedChannels, "graph", true),
+  };
+}
+
+function readStringNumber(source: Record<string, unknown> | undefined, key: string, fallback: string): string {
+  const value = source?.[key];
+  return typeof value === "number" || typeof value === "string" ? String(value) : fallback;
+}
+
 async function waitForDetailReady(kbId: string, runId: string) {
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const status = await fetchQARunStatus(kbId, runId);
@@ -296,13 +325,9 @@ export function QADebug() {
   const [scenario, setScenario] = useState<DebugScenario>(seed.scenario ?? "success");
   const [runResult, setRunResult] = useState<ScenarioPayload | null>(null);
   const [overrideMode, setOverrideMode] = useState(Boolean(seed.sourceRunId));
-  const [rewriteEnabled, setRewriteEnabled] = useState(true);
-  const [channels, setChannels] = useState({
-    dense: true,
-    sparse: true,
-    graph: true,
-  });
-  const [rerankerTopN, setRerankerTopN] = useState("5");
+  const [rewriteEnabled, setRewriteEnabled] = useState(readBoolean(seed.overrideParams, "rewriteEnabled", true));
+  const [channels, setChannels] = useState(readNestedChannels(seed.overrideParams));
+  const [rerankerTopN, setRerankerTopN] = useState(readStringNumber(seed.overrideParams, "rerankerTopN", "5"));
   const [feedback, setFeedback] = useState<{
     variant: "success" | "info" | "warning" | "error";
     title: string;
@@ -355,12 +380,15 @@ export function QADebug() {
     setRunResult(null);
 
     try {
+      const effectiveOverrideParams = overrideMode
+        ? { ...(seed.overrideParams ?? {}), rewriteEnabled, channels, rerankerTopN }
+        : undefined;
       const created = await createQARun(
         kbId || "",
         query.trim(),
-        { ...(seed.overrideParams ?? {}), rewriteEnabled, channels, rerankerTopN },
+        effectiveOverrideParams,
         isUuid(seed.sourceRunId) ? seed.sourceRunId : undefined,
-        isUuid(seed.configRevisionId) ? seed.configRevisionId : undefined,
+        overrideMode && isUuid(seed.configRevisionId) ? seed.configRevisionId : undefined,
       );
       await waitForDetailReady(kbId || "", created.runId);
       const detail = await fetchQARunDetail(kbId || "", created.runId);
@@ -472,6 +500,23 @@ export function QADebug() {
                 使用本次覆盖参数
               </button>
             </div>
+            {seed.sourceRunId && (
+              <div className="rounded-md border border-border-cream bg-ivory p-3 text-xs text-stone-gray space-y-1">
+                <div>来源 Run：<span className="font-mono text-near-black">{seed.sourceRunId}</span></div>
+                <div>检索通道：{seed.retrievalChannels?.join(" / ") || "按原运行上下文"}</div>
+                <div>
+                  TopK：{seed.retrievalTopK ? Object.entries(seed.retrievalTopK).map(([key, value]) => `${key} ${value}`).join(" · ") : "-"}
+                </div>
+                <div>生成参数：temperature {seed.temperature ?? "-"} · maxContextTokens {seed.maxContextTokens ?? "-"}</div>
+                <div>Graph Snapshot：<span className="font-mono">{seed.graphSnapshotId ?? "-"}</span></div>
+                <div>
+                  providerDiagnostics：
+                  {seed.providerDiagnostics
+                    ? ` dropped=${String(seed.providerDiagnostics.droppedByPermission ?? 0)} errors=${JSON.stringify(seed.providerDiagnostics.providerErrors ?? [])}`
+                    : "-"}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="space-y-3">

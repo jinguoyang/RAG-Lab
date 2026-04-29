@@ -21,13 +21,14 @@ import {
   createEvaluationSampleFromRun,
   fetchEvaluationSamples,
   fetchQARunCollaboration,
+  fetchQARunCompare,
   fetchQARunDetail,
   fetchQARunReplayContext,
   fetchQARuns,
   updateQARunCollaboration,
   updateQARunFeedback,
 } from "../services/qaRunService";
-import type { EvaluationRunDetailDTO, QARunCollaborationDTO, QARunDetailDTO } from "../types/qaRun";
+import type { EvaluationRunDetailDTO, QARunCollaborationDTO, QARunCompareDTO, QARunDetailDTO } from "../types/qaRun";
 
 type RatingStatus = "up" | "down" | "none";
 type HistoryRecord = QAHistoryRecordViewModel;
@@ -46,6 +47,7 @@ export function QAHistory() {
   const [selectedRun, setSelectedRun] = useState<HistoryRecord | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<QARunDetailDTO | null>(null);
   const [selectedCollaboration, setSelectedCollaboration] = useState<QARunCollaborationDTO | null>(null);
+  const [selectedCompare, setSelectedCompare] = useState<QARunCompareDTO | null>(null);
   const [commentInput, setCommentInput] = useState("");
   const [evaluationRuns, setEvaluationRuns] = useState<EvaluationRunDetailDTO["run"][]>([]);
   const [selectedEvaluationRun, setSelectedEvaluationRun] = useState<EvaluationRunDetailDTO | null>(null);
@@ -174,6 +176,7 @@ export function QAHistory() {
     setSelectedRun(run);
     setSelectedDetail(null);
     setSelectedCollaboration(null);
+    setSelectedCompare(null);
     setCommentInput("");
     try {
       const [detail, collaboration] = await Promise.all([
@@ -182,6 +185,13 @@ export function QAHistory() {
       ]);
       setSelectedDetail(detail);
       setSelectedCollaboration(collaboration);
+      if (detail.sourceRunId) {
+        try {
+          setSelectedCompare(await fetchQARunCompare(kbId, detail.sourceRunId, detail.runId));
+        } catch {
+          setSelectedCompare(null);
+        }
+      }
     } catch (error) {
       setFeedback({
         variant: "error",
@@ -278,6 +288,12 @@ export function QAHistory() {
           sourceRunId: context.sourceRunId,
           configRevisionId: context.configRevisionId,
           overrideParams: context.overrideParams,
+          retrievalChannels: context.retrievalChannels,
+          retrievalTopK: context.retrievalTopK,
+          temperature: context.temperature,
+          maxContextTokens: context.maxContextTokens,
+          graphSnapshotId: context.graphSnapshotId,
+          providerDiagnostics: context.providerDiagnostics,
           suggestedMode: context.suggestedMode,
           replayWarnings: context.warnings,
         },
@@ -374,6 +390,7 @@ export function QAHistory() {
                   <div className="flex items-center gap-2">
                     <Badge variant="default">{run.rev}</Badge>
                     {run.hasOverrides && <Badge variant="warning">存在覆盖参数</Badge>}
+                    {run.sourceRunId && <Badge variant="info">复跑</Badge>}
                   </div>
                 </TableCell>
                 <TableCell>
@@ -454,6 +471,7 @@ export function QAHistory() {
           setSelectedRun(null);
           setSelectedDetail(null);
           setSelectedCollaboration(null);
+          setSelectedCompare(null);
           setCommentInput("");
         }}
         title={selectedRun ? `运行详情 · ${selectedRun.id}` : "运行详情"}
@@ -568,6 +586,47 @@ export function QAHistory() {
                   </div>
                 ))}
               </div>
+            </DrawerSection>
+
+            <DrawerSection title="回放对比">
+              {selectedCompare ? (
+                <div className="space-y-3">
+                  {selectedCompare.warnings.map((warning) => (
+                    <Alert key={warning} variant="warning" title="对比提示">
+                      {warning}
+                    </Alert>
+                  ))}
+                  <div className="grid grid-cols-2 gap-3 rounded-lg border border-border-cream bg-parchment p-3 text-sm">
+                    <div>
+                      <div className="text-xs text-stone-gray">原运行</div>
+                      <div className="mt-1 font-mono text-near-black">{selectedCompare.source.runId.slice(0, 8)}</div>
+                      <div className="text-xs text-stone-gray">
+                        {selectedCompare.source.status} · {selectedCompare.source.latencyMs ?? "-"} ms
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-stone-gray">复跑</div>
+                      <div className="mt-1 font-mono text-near-black">{selectedCompare.target.runId.slice(0, 8)}</div>
+                      <div className="text-xs text-stone-gray">
+                        {selectedCompare.target.status} · {selectedCompare.target.latencyMs ?? "-"} ms
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border-cream bg-parchment p-3 text-sm text-stone-gray">
+                    答案差异：{selectedCompare.answerChanged ? "有变化" : "无明显变化"} · Evidence 新增 {selectedCompare.evidenceDelta.added.length} / 移除 {selectedCompare.evidenceDelta.removed.length} · Citation 新增 {selectedCompare.citationDelta.added.length} / 移除 {selectedCompare.citationDelta.removed.length}
+                  </div>
+                  <div className="rounded-lg border border-border-cream bg-parchment p-3 text-xs text-stone-gray">
+                    Trace 差异：{selectedCompare.traceDelta.length === 0 ? "阶段状态和耗时无显著差异" : selectedCompare.traceDelta.slice(0, 4).map((item) => `${item.stepKey}: ${item.sourceStatus ?? "-"} -> ${item.targetStatus ?? "-"}`).join("；")}
+                  </div>
+                  <div className="rounded-lg border border-border-cream bg-parchment p-3 text-xs text-stone-gray">
+                    配置差异：{selectedCompare.configDiff.length === 0 ? "无配置差异" : `${selectedCompare.configDiff.length} 项，首项 ${selectedCompare.configDiff[0].path}`}
+                  </div>
+                </div>
+              ) : selectedDetail?.sourceRunId ? (
+                <p className="text-sm text-stone-gray">该复跑存在来源记录，但当前用户无权读取完整对比或来源记录已不可见。</p>
+              ) : (
+                <p className="text-sm text-stone-gray">当前运行不是复跑结果。复跑完成后，这里会展示答案、Evidence、Citation、Trace 和配置差异。</p>
+              )}
             </DrawerSection>
 
             <DrawerSection title="同 Query 对比">
