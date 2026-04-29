@@ -1,6 +1,5 @@
 from hashlib import sha256
 from pathlib import PurePath
-import re
 from uuid import UUID, uuid4
 
 import sqlalchemy as sa
@@ -39,11 +38,13 @@ from app.tables import (
     knowledge_bases,
     stored_files,
 )
+from app.services.chunk_payload import build_chunk_index_payload
+from app.services.document_parsing import DocumentParseError, parse_document
 from app.services.object_storage import ObjectStorageProvider, get_object_storage_provider
 from app.services.graph_service import mark_graph_snapshots_stale
 from app.services.knowledge_base_service import KnowledgeBaseDisabledError
 from app.services.permission_service import build_chunk_access_filter_context, has_kb_permission
-from app.services.graph_service import mark_graph_snapshots_stale
+from app.services.qa_providers import ProviderError, get_qa_run_providers
 
 
 class DocumentPermissionError(Exception):
@@ -195,45 +196,6 @@ def _safe_file_name(file_name: str) -> str:
     return name or "uploaded-document"
 
 
-def _decode_source_text(file_bytes: bytes, fallback_name: str) -> str:
-    """从上传文件中提取可切块文本；不支持的二进制文件保留可追踪占位摘要。"""
-    for encoding in ("utf-8-sig", "utf-8", "gb18030"):
-        try:
-            text = file_bytes.decode(encoding)
-            if text.strip():
-                return text
-        except UnicodeDecodeError:
-            continue
-    return f"{fallback_name}\n\n当前文件无法按文本解析，已生成占位 Chunk 以保留入库链路。"
-
-
-def _split_text_to_chunks(text: str, max_chars: int = 900) -> list[dict]:
-    """按段落和长度生成稳定 Chunk，返回 Worker 可直接写库的结构。"""
-    normalized = re.sub(r"\r\n?", "\n", text).strip()
-    paragraphs = [part.strip() for part in re.split(r"\n\s*\n", normalized) if part.strip()]
-    if not paragraphs and normalized:
-        paragraphs = [normalized]
-    if not paragraphs:
-        paragraphs = ["空文档占位 Chunk。"]
-
-    result: list[dict] = []
-    for paragraph in paragraphs:
-        cursor = 0
-        while cursor < len(paragraph):
-            content = paragraph[cursor : cursor + max_chars].strip()
-            cursor += max_chars
-            if content:
-                result.append(
-                    {
-                        "content": content,
-                        "token_count": max(1, len(content) // 4),
-                        "section": f"Section {len(result) + 1}",
-                        "page_no": None,
-                    }
-                )
-    return result
-
-
 def _insert_audit_log(
     session: Session,
     current_user: CurrentUserResponse,
@@ -288,6 +250,7 @@ def _create_index_sync_job(
     sync_type: str = "upsert",
     status: str = "success",
     error_message: str | None = None,
+    provider_payloads: dict[UUID, dict] | None = None,
 ) -> UUID:
     """记录本地副本同步结果；外部 Provider 可由后续 Worker 替换同一表契约。"""
     sync_job_id = uuid4()
@@ -319,7 +282,10 @@ def _create_index_sync_job(
                 resource_id=chunk_id,
                 operation="upsert" if sync_type != "delete" else "delete",
                 status="success",
-                provider_payload={"provider": "local", "versionId": str(version_id)},
+                provider_payload=(provider_payloads or {}).get(
+                    chunk_id,
+                    {"provider": "local", "versionId": str(version_id)},
+                ),
             )
         )
     return sync_job_id
@@ -331,7 +297,7 @@ def _write_chunk_access_filters(
     kb_id: UUID,
     chunk_rows: list[RowMapping],
     version_status: str,
-) -> None:
+) -> dict:
     """为新 Chunk 写入访问过滤摘要，供检索副本同步和 QA 前置过滤复用。"""
     access_filter = build_chunk_access_filter_context(session, current_user, kb_id)
     for row in chunk_rows:
@@ -350,6 +316,7 @@ def _write_chunk_access_filters(
                 filter_hash=access_filter.filter_hash,
             )
         )
+    return access_filter.to_trace_summary()
 
 
 def run_ingest_job(
@@ -410,16 +377,19 @@ def run_ingest_job(
     )
 
     try:
-        text = _decode_source_text(source_bytes or b"", file_name)
-        parsed_chunks = _split_text_to_chunks(text)
+        parsed_document = parse_document(file_name, file_row["mime_type"] if file_row else None, source_bytes or b"")
+        parsed_chunks = parsed_document.chunks
         session.execute(delete(chunk_access_filters).where(chunk_access_filters.c.chunk_id.in_(select(chunks.c.chunk_id).where(chunks.c.version_id == version_row["version_id"]))))
         session.execute(delete(graph_chunk_refs).where(graph_chunk_refs.c.chunk_id.in_(select(chunks.c.chunk_id).where(chunks.c.version_id == version_row["version_id"]))))
         session.execute(delete(chunks).where(chunks.c.version_id == version_row["version_id"]))
         mark_graph_snapshots_stale(session, kb_row["kb_id"], "chunk_changed", current_user)
 
         chunk_rows: list[RowMapping] = []
+        embedding_by_chunk_id: dict[UUID, list[float]] = {}
+        embedding_provider = get_qa_run_providers().embedding
         for index, parsed in enumerate(parsed_chunks, start=1):
-            content = parsed["content"]
+            content = parsed.content
+            embedding = embedding_provider.embed_query(content)
             row = session.execute(
                 insert(chunks)
                 .values(
@@ -428,23 +398,49 @@ def run_ingest_job(
                     document_id=document_row["document_id"],
                     kb_id=kb_row["kb_id"],
                     chunk_index=index,
-                    page_no=parsed["page_no"],
-                    section=parsed["section"],
+                    page_no=parsed.page_no,
+                    section=parsed.section,
                     content=content,
                     content_hash=sha256(content.encode("utf-8")).hexdigest(),
-                    token_count=parsed["token_count"],
+                    token_count=parsed.token_count,
                     security_level=document_row["security_level"],
                     status="active",
-                    metadata={"parser": "local_text", "sourceFileName": file_name},
+                    metadata={
+                        **parsed.metadata,
+                        "sourceFileName": file_name,
+                        "embeddingProvider": get_settings().embedding_provider,
+                        "embeddingModel": get_settings().embedding_model,
+                        "embeddingDimension": len(embedding),
+                    },
                 )
                 .returning(chunks)
             ).mappings().one()
             chunk_rows.append(row)
+            embedding_by_chunk_id[row["chunk_id"]] = embedding
 
         chunk_ids = [row["chunk_id"] for row in chunk_rows]
         new_version_status = "active" if document_row["active_version_id"] == version_row["version_id"] else "inactive"
-        _write_chunk_access_filters(session, current_user, kb_row["kb_id"], chunk_rows, new_version_status)
-        _create_index_sync_job(session, kb_row, current_user, "milvus", version_row["version_id"], chunk_ids, True)
+        access_filter = _write_chunk_access_filters(session, current_user, kb_row["kb_id"], chunk_rows, new_version_status)
+        dense_payloads = {
+            row["chunk_id"]: build_chunk_index_payload(
+                row,
+                document_status=document_row["status"],
+                version_status=new_version_status,
+                access_filter=access_filter,
+                embedding=embedding_by_chunk_id[row["chunk_id"]],
+            )
+            for row in chunk_rows
+        }
+        _create_index_sync_job(
+            session,
+            kb_row,
+            current_user,
+            "milvus",
+            version_row["version_id"],
+            chunk_ids,
+            True,
+            provider_payloads=dense_payloads,
+        )
         sparse_status = "not_required"
         graph_status = "not_required"
         if kb_row["sparse_index_enabled"]:
@@ -509,7 +505,13 @@ def run_ingest_job(
                 token_count=total_tokens,
                 error_code=None,
                 error_message=None,
-                metadata={"parser": "local_text", "sourceFileName": file_name},
+                metadata={
+                    "parserName": parsed_document.parser_name,
+                    "parserVersion": parsed_document.parser_version,
+                    "sourceFileName": file_name,
+                    "embeddingProvider": get_settings().embedding_provider,
+                    "embeddingModel": get_settings().embedding_model,
+                },
                 updated_by=UUID(current_user.user.userId),
                 updated_at=func.now(),
             )
@@ -523,7 +525,45 @@ def run_ingest_job(
                 progress=100,
                 error_code=None,
                 error_message=None,
-                result_summary={"chunkCount": len(chunk_rows), "tokenCount": total_tokens},
+                result_summary={
+                    "chunkCount": len(chunk_rows),
+                    "tokenCount": total_tokens,
+                    "parserName": parsed_document.parser_name,
+                    "parserVersion": parsed_document.parser_version,
+                    "embeddingProvider": get_settings().embedding_provider,
+                    "embeddingModel": get_settings().embedding_model,
+                },
+                finished_at=func.now(),
+            )
+            .returning(ingest_jobs)
+        ).mappings().one()
+    except (DocumentParseError, ProviderError) as exc:
+        error_code = exc.error_code if isinstance(exc, DocumentParseError) else "INGEST_EMBEDDING_FAILED"
+        session.execute(
+            update(document_versions)
+            .where(document_versions.c.version_id == version_row["version_id"])
+            .values(
+                status="failed",
+                parse_status="failed",
+                dense_index_status="failed",
+                sparse_index_status="failed" if kb_row["sparse_index_enabled"] else "not_required",
+                graph_index_status="failed" if kb_row["graph_index_enabled"] else "not_required",
+                retrieval_ready=False,
+                error_code=error_code,
+                error_message=str(exc),
+                updated_by=UUID(current_user.user.userId),
+                updated_at=func.now(),
+            )
+        )
+        job_row = session.execute(
+            update(ingest_jobs)
+            .where(ingest_jobs.c.job_id == job_id)
+            .values(
+                status="failed",
+                stage="failed",
+                progress=100,
+                error_code=error_code,
+                error_message=str(exc),
                 finished_at=func.now(),
             )
             .returning(ingest_jobs)

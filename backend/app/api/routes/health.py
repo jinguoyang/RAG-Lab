@@ -159,8 +159,13 @@ def read_dependency_health() -> DependencyHealthResponse:
             local_providers={"local"},
             config=[
                 _config_item("RAG_LAB_OPENSEARCH_HOSTS", settings.opensearch_hosts),
-                _config_item("RAG_LAB_OPENSEARCH_USERNAME", settings.opensearch_username),
-                _config_item("RAG_LAB_OPENSEARCH_PASSWORD", settings.opensearch_password, sensitive=True),
+                _config_item("RAG_LAB_OPENSEARCH_USERNAME", settings.opensearch_username, required=False),
+                _config_item(
+                    "RAG_LAB_OPENSEARCH_PASSWORD",
+                    settings.opensearch_password,
+                    sensitive=True,
+                    required=False,
+                ),
                 _config_item("RAG_LAB_OPENSEARCH_INDEX", settings.opensearch_index),
             ],
         ),

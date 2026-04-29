@@ -82,6 +82,23 @@ def verify_provider_diagnostics_contract() -> None:
         _assert("config" in item, f"{item['name']} 缺少脱敏配置摘要")
 
 
+def verify_anonymous_opensearch_config_optional() -> None:
+    """校验 OpenSearch 匿名访问场景下账号密码为空仍可通过配置健康检查。"""
+    os.environ["RAG_LAB_SPARSE_RETRIEVAL_PROVIDER"] = "opensearch"
+    os.environ["RAG_LAB_OPENSEARCH_HOSTS"] = "http://opensearch.example.test:9200"
+    os.environ["RAG_LAB_OPENSEARCH_USERNAME"] = ""
+    os.environ["RAG_LAB_OPENSEARCH_PASSWORD"] = ""
+    os.environ["RAG_LAB_OPENSEARCH_INDEX"] = "rag-chunks"
+    get_settings.cache_clear()
+
+    client = TestClient(create_app())
+    response = client.get("/api/v1/health/dependencies")
+    _assert(response.status_code == 200, "Provider 配置健康检查接口不可用")
+
+    sparse = _dependency_by_name(response.json(), "sparse_retrieval")
+    _assert(sparse["status"] == "configured", "OpenSearch 匿名访问不应要求 username/password")
+
+
 def verify_index_rebuild_contract() -> None:
     """校验副本重建支持范围收窄和失败原因记录。"""
     schema = TestClient(create_app()).get("/openapi.json").json()
@@ -117,6 +134,7 @@ def main() -> None:
     """执行 Sprint 15 当前已落地范围的验收检查。"""
     verify_provider_config_masking()
     verify_provider_diagnostics_contract()
+    verify_anonymous_opensearch_config_optional()
     verify_index_rebuild_contract()
     verify_provider_retest_template()
     print("Sprint 15 provider readiness verification passed.")

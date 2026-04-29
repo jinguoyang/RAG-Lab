@@ -27,10 +27,10 @@
 
 | 编号 | Backlog | 标题 | 优先级 | 预估 | 负责人 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| S19-001 | B-081 | 引入真实文档解析器并替换占位 Chunk | P0 | 2d | Codex | Todo |
-| S19-002 | B-082 | 升级 Chunk 切分策略和结构化元数据 | P0 | 1.5d | Codex | Todo |
-| S19-003 | B-083 | 接入真实 LLM API 和 Embedding API 契约 | P0 | 1.5d | Codex | Todo |
-| S19-004 | B-084 | 为 Chunk 生成真实 Embedding 并标准化向量 Payload | P0 | 1.5d | Codex | Todo |
+| S19-001 | B-081 | 引入真实文档解析器并替换占位 Chunk | P0 | 2d | Codex | Done |
+| S19-002 | B-082 | 升级 Chunk 切分策略和结构化元数据 | P0 | 1.5d | Codex | Done |
+| S19-003 | B-083 | 接入真实 LLM API 和 Embedding API 契约 | P0 | 1.5d | Codex | Done |
+| S19-004 | B-084 | 为 Chunk 生成真实 Embedding 并标准化向量 Payload | P0 | 1.5d | Codex | Done |
 
 ## 5. 验收标准
 
