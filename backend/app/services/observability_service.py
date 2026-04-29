@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import RowMapping, select
+from sqlalchemy import RowMapping, inspect, select
 from sqlalchemy.orm import Session
 
 from app.schemas.auth import CurrentUserResponse
@@ -43,6 +43,11 @@ class ObservabilityPermissionError(Exception):
 def _now() -> datetime:
     """统一生成带时区时间，保证接口响应可比对。"""
     return datetime.now(UTC)
+
+
+def _table_exists(session: Session, table_name: str) -> bool:
+    """兼容未完整迁移的本地库，可选观测维度缺表时降级为空数据。"""
+    return inspect(session.get_bind()).has_table(table_name)
 
 
 def _read_visible_knowledge_base(
@@ -294,8 +299,9 @@ def get_error_summary(
     for row in session.execute(select(ingest_jobs).where(ingest_jobs.c.kb_id == kb_id, ingest_jobs.c.status == "failed")).mappings():
         add_error("ingest_job", row["error_code"] or "INGEST_FAILED", row["error_message"] or "Ingest job failed", row["job_id"], row["created_at"])
 
-    for row in session.execute(select(index_sync_jobs).where(index_sync_jobs.c.kb_id == kb_id, index_sync_jobs.c.status == "failed")).mappings():
-        add_error("index_sync_job", "INDEX_SYNC_FAILED", row["error_message"] or "Index sync failed", row["sync_job_id"], row["created_at"])
+    if _table_exists(session, "index_sync_jobs"):
+        for row in session.execute(select(index_sync_jobs).where(index_sync_jobs.c.kb_id == kb_id, index_sync_jobs.c.status == "failed")).mappings():
+            add_error("index_sync_job", "INDEX_SYNC_FAILED", row["error_message"] or "Index sync failed", row["sync_job_id"], row["created_at"])
 
     items = [
         ErrorSummaryItemDTO(
@@ -344,16 +350,17 @@ def _compensation_status(session: Session, kb_id: UUID) -> list[CompensationStat
             )
         )
 
-    for job in session.execute(select(index_sync_jobs).where(index_sync_jobs.c.kb_id == kb_id, index_sync_jobs.c.status == "failed")).mappings():
-        items.append(
-            CompensationStatusDTO(
-                sourceType="index_sync_job",
-                resourceId=str(job["sync_job_id"]),
-                status=job["status"],
-                compensationStatus="rebuild_required",
-                detail={"targetStore": job["target_store"], "errorMessage": job["error_message"]},
+    if _table_exists(session, "index_sync_jobs"):
+        for job in session.execute(select(index_sync_jobs).where(index_sync_jobs.c.kb_id == kb_id, index_sync_jobs.c.status == "failed")).mappings():
+            items.append(
+                CompensationStatusDTO(
+                    sourceType="index_sync_job",
+                    resourceId=str(job["sync_job_id"]),
+                    status=job["status"],
+                    compensationStatus="rebuild_required",
+                    detail={"targetStore": job["target_store"], "errorMessage": job["error_message"]},
+                )
             )
-        )
     return items[:50]
 
 
