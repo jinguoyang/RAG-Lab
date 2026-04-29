@@ -202,7 +202,10 @@ def verify_ingest_worker_uses_real_parser_contract() -> None:
     source = (BACKEND_DIR / "app/services/document_service.py").read_text(encoding="utf-8")
     _assert("parse_document(" in source, "入库 Worker 未调用真实文档解析器")
     _assert("build_chunk_index_payload(" in source, "入库 Worker 未构造标准 Chunk payload")
-    _assert("get_qa_run_providers().embedding" in source, "入库 Worker 未接入 Embedding Provider 契约")
+    _assert(
+        "get_qa_run_providers().embedding" in source or "provider_set.embedding" in source,
+        "入库 Worker 未接入 Embedding Provider 契约",
+    )
     _assert("占位 Chunk" not in source, "入库 Worker 仍包含占位 Chunk 成功路径")
 
 

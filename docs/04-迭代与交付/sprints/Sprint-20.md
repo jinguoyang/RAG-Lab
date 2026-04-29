@@ -27,12 +27,12 @@
 
 | 编号 | Backlog | 标题 | 优先级 | 预估 | 负责人 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| S20-001 | B-085 | 将 Chunk 向量真实写入 Milvus 并支持删除同步 | P0 | 2d | Codex | Todo |
-| S20-002 | B-086 | 将 Chunk 文本和过滤字段真实写入 OpenSearch | P0 | 2d | Codex | Todo |
-| S20-003 | B-087 | 基于真实 LLM 抽取实体关系并写入 Neo4j | P0 | 2d | Codex | Todo |
-| S20-004 | B-088 | 将 Index Sync 从记录型改为真实执行型 Worker | P0 | 1.5d | Codex | Todo |
-| S20-005 | B-089 | 完善 P05/P06/P07 入库阶段状态和失败原因展示 | P1 | 1d | Codex | Todo |
-| S20-006 | B-090 | 建立 V1.4 真实入库验收脚本和样例数据 | P0 | 1d | Codex | Todo |
+| S20-001 | B-085 | 将 Chunk 向量真实写入 Milvus 并支持删除同步 | P0 | 2d | Codex | Done |
+| S20-002 | B-086 | 将 Chunk 文本和过滤字段真实写入 OpenSearch | P0 | 2d | Codex | Done |
+| S20-003 | B-087 | 基于真实 LLM 抽取实体关系并写入 Neo4j | P0 | 2d | Codex | Done |
+| S20-004 | B-088 | 将 Index Sync 从记录型改为真实执行型 Worker | P0 | 1.5d | Codex | Done |
+| S20-005 | B-089 | 完善 P05/P06/P07 入库阶段状态和失败原因展示 | P1 | 1d | Codex | Done |
+| S20-006 | B-090 | 建立 V1.4 真实入库验收脚本和样例数据 | P0 | 1d | Codex | Done |
 
 ## 5. 验收标准
 
