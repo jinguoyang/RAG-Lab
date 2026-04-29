@@ -22,8 +22,8 @@ Sprint 是时间盒，用于承接一轮可验证交付。Sprint 不隶属于某
 | Sprint 12 | V1.0 验收硬化与参数生效闭环 | E3、E4、E6、E7、E8、E11、E12 | Done | [Sprint-12](./Sprint-12.md) |
 | Sprint 13 | RAG 质量回归与发布观测 | E5、E8、E11、E12 | Done | [Sprint-13](./Sprint-13.md) |
 | Sprint 14 | 评估结果驱动配置优化 | E12、E13 | Done | [Sprint-14](./Sprint-14.md) |
-| Sprint 15 | 真实 Provider 生产化接入 | E14 | Todo | [Sprint-15](./Sprint-15.md) |
-| Sprint 16 | 知识库治理与文档质量 | E15 | Todo | [Sprint-16](./Sprint-16.md) |
+| Sprint 15 | 真实 Provider 生产化接入 | E14 | Done | [Sprint-15](./Sprint-15.md) |
+| Sprint 16 | 知识库治理与文档质量 | E15 | Done | [Sprint-16](./Sprint-16.md) |
 | Sprint 17 | 稳定性与观测 | E16 | Todo | [Sprint-17](./Sprint-17.md) |
 | Sprint 18 | 协作与治理增强 | E17 | Todo | [Sprint-18](./Sprint-18.md) |
 
