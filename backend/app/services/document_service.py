@@ -277,22 +277,28 @@ def _create_index_sync_job(
     kb_row: RowMapping,
     current_user: CurrentUserResponse,
     target_store: str,
-    version_id: UUID,
+    version_id: UUID | None,
     chunk_ids: list[UUID],
     required_for_activation: bool,
     sync_type: str = "upsert",
+    status: str = "success",
+    error_message: str | None = None,
 ) -> UUID:
     """记录本地副本同步结果；外部 Provider 可由后续 Worker 替换同一表契约。"""
     sync_job_id = uuid4()
+    scope = {"chunkIds": [str(chunk_id) for chunk_id in chunk_ids]}
+    if version_id:
+        scope["versionIds"] = [str(version_id)]
     session.execute(
         insert(index_sync_jobs).values(
             sync_job_id=sync_job_id,
             kb_id=kb_row["kb_id"],
             target_store=target_store,
             sync_type=sync_type,
-            scope={"versionIds": [str(version_id)], "chunkIds": [str(chunk_id) for chunk_id in chunk_ids]},
+            scope=scope,
             required_for_activation=required_for_activation,
-            status="success",
+            status=status,
+            error_message=error_message,
             created_by=UUID(current_user.user.userId),
             started_at=func.now(),
             finished_at=func.now(),
@@ -1204,8 +1210,10 @@ def rebuild_index_sync(
     current_user: CurrentUserResponse,
     kb_id: UUID,
     target_store: str,
+    document_id: UUID | None = None,
+    version_id: UUID | None = None,
 ) -> IndexSyncJobDTO | None:
-    """基于当前 active Chunk 创建本地副本重建作业。"""
+    """基于 PostgreSQL Chunk 真值创建副本重建作业，并记录空范围失败原因。"""
     kb_row = _read_visible_knowledge_base(session, current_user, kb_id)
     if kb_row is None:
         return None
@@ -1213,23 +1221,37 @@ def rebuild_index_sync(
         raise DocumentConflictError("Unsupported target store.")
     _ensure_permission(session, current_user, kb_id, "kb.document.upload")
 
+    condition = (
+        (chunks.c.kb_id == kb_id)
+        & (chunks.c.status == "active")
+        & (document_versions.c.status == "active")
+    )
+    if document_id is not None:
+        condition = condition & (chunks.c.document_id == document_id)
+    if version_id is not None:
+        condition = condition & (chunks.c.version_id == version_id)
+
     chunk_ids = [
         row[0]
         for row in session.execute(
             select(chunks.c.chunk_id)
             .select_from(chunks.join(document_versions, chunks.c.version_id == document_versions.c.version_id))
-            .where(chunks.c.kb_id == kb_id, chunks.c.status == "active", document_versions.c.status == "active")
+            .where(condition)
         )
     ]
+    status = "success" if chunk_ids else "failed"
+    error_message = None if chunk_ids else "No active chunks found for rebuild scope."
     sync_job_id = _create_index_sync_job(
         session,
         kb_row,
         current_user,
         target_store,
-        uuid4(),
+        version_id,
         chunk_ids,
         target_store == "milvus",
         sync_type="rebuild",
+        status=status,
+        error_message=error_message,
     )
     _insert_audit_log(
         session,
@@ -1238,8 +1260,15 @@ def rebuild_index_sync(
         "index_sync_job",
         sync_job_id,
         kb_id,
-        None,
-        {"targetStore": target_store, "chunkCount": len(chunk_ids)},
+        document_id,
+        {
+            "targetStore": target_store,
+            "documentId": str(document_id) if document_id else None,
+            "versionId": str(version_id) if version_id else None,
+            "chunkCount": len(chunk_ids),
+            "status": status,
+            "errorMessage": error_message,
+        },
     )
     row = session.execute(select(index_sync_jobs).where(index_sync_jobs.c.sync_job_id == sync_job_id)).mappings().one()
     session.commit()

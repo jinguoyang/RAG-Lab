@@ -2970,9 +2970,16 @@
           {
             "name": "targetStore",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Targetstore"
             }
           },
@@ -2993,6 +3000,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/IndexSyncRebuildRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": "Successful Response",
@@ -7588,6 +7612,42 @@
         ],
         "title": "IndexSyncJobDTO",
         "description": "索引副本同步作业 DTO，用于 P07 和运维入口观察重建状态。"
+      },
+      "IndexSyncRebuildRequest": {
+        "properties": {
+          "targetStore": {
+            "type": "string",
+            "title": "Targetstore"
+          },
+          "documentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Documentid"
+          },
+          "versionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Versionid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "targetStore"
+        ],
+        "title": "IndexSyncRebuildRequest",
+        "description": "副本重建请求，可按知识库、文档或版本收窄范围。"
       },
       "IngestJobDTO": {
         "properties": {

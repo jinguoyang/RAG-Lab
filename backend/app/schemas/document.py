@@ -119,6 +119,14 @@ class IndexSyncJobDTO(BaseModel):
     finishedAt: str | None
 
 
+class IndexSyncRebuildRequest(BaseModel):
+    """副本重建请求，可按知识库、文档或版本收窄范围。"""
+
+    targetStore: str
+    documentId: str | None = None
+    versionId: str | None = None
+
+
 class DocumentUploadResponse(BaseModel):
     """上传成功后一次性返回文档、首版本和 queued 作业。"""
 

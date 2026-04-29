@@ -82,10 +82,28 @@ def verify_provider_diagnostics_contract() -> None:
         _assert("config" in item, f"{item['name']} 缺少脱敏配置摘要")
 
 
+def verify_index_rebuild_contract() -> None:
+    """校验副本重建支持范围收窄和失败原因记录。"""
+    schema = TestClient(create_app()).get("/openapi.json").json()
+    paths = schema.get("paths", {})
+    _assert(
+        "/api/v1/knowledge-bases/{kb_id}/index-sync-jobs/rebuild" in paths,
+        "OpenAPI 缺少副本重建入口",
+    )
+    schemas = schema.get("components", {}).get("schemas", {})
+    _assert("IndexSyncRebuildRequest" in schemas, "OpenAPI 缺少 IndexSyncRebuildRequest")
+
+    source = (BACKEND_DIR / "app/services/document_service.py").read_text(encoding="utf-8")
+    _assert("document_id: UUID | None = None" in source, "副本重建未支持按文档收窄范围")
+    _assert("version_id: UUID | None = None" in source, "副本重建未支持按版本收窄范围")
+    _assert("No active chunks found for rebuild scope." in source, "副本重建空范围未记录失败原因")
+
+
 def main() -> None:
     """执行 Sprint 15 当前已落地范围的验收检查。"""
     verify_provider_config_masking()
     verify_provider_diagnostics_contract()
+    verify_index_rebuild_contract()
     print("Sprint 15 provider readiness verification passed.")
 
 

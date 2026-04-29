@@ -18,6 +18,7 @@ from app.schemas.document import (
     DocumentVersionActivateResponse,
     DocumentVersionDTO,
     IndexSyncJobDTO,
+    IndexSyncRebuildRequest,
     IngestJobDTO,
 )
 from app.services.document_service import (
@@ -306,13 +307,24 @@ def read_index_sync_jobs(
 @index_sync_router.post("/rebuild", response_model=IndexSyncJobDTO, status_code=status.HTTP_201_CREATED)
 def rebuild_index_sync_endpoint(
     kb_id: UUID,
-    target_store: Annotated[str, Query(alias="targetStore")],
+    request: IndexSyncRebuildRequest | None = None,
+    target_store: Annotated[str | None, Query(alias="targetStore")] = None,
     current_user: CurrentUserResponse = Depends(get_current_user),
     session: Session = Depends(get_db_session),
 ) -> IndexSyncJobDTO:
     """基于 PostgreSQL Chunk 真值创建本地副本重建作业。"""
     try:
-        response = rebuild_index_sync(session, current_user, kb_id, target_store)
+        resolved_target_store = request.targetStore if request else target_store
+        if resolved_target_store is None:
+            raise DocumentConflictError("targetStore is required.")
+        response = rebuild_index_sync(
+            session,
+            current_user,
+            kb_id,
+            resolved_target_store,
+            UUID(request.documentId) if request and request.documentId else None,
+            UUID(request.versionId) if request and request.versionId else None,
+        )
     except (DocumentPermissionError, DocumentConflictError) as exc:
         _raise_document_error(exc)
     if response is None:
