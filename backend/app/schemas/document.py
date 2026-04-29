@@ -81,6 +81,22 @@ class ChunkDTO(BaseModel):
     createdAt: str
 
 
+class ChunkGovernanceRequest(BaseModel):
+    """Chunk 治理标记请求；只影响后续检索，不删除正文真值。"""
+
+    excluded: bool
+    note: str | None = None
+
+
+class ChunkGovernanceResponse(BaseModel):
+    """Chunk 治理标记结果，包含权限继承说明。"""
+
+    chunk: ChunkDTO
+    excluded: bool
+    governanceNote: str | None
+    permissionInheritance: str
+
+
 class DocumentReparseRequest(BaseModel):
     """文档重解析请求；reason 进入作业摘要和审计日志。"""
 

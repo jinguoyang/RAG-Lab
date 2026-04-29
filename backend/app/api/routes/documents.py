@@ -12,6 +12,8 @@ from app.schemas.document import (
     BulkDocumentGovernanceRequest,
     BulkDocumentGovernanceResponse,
     ChunkDTO,
+    ChunkGovernanceRequest,
+    ChunkGovernanceResponse,
     DocumentDTO,
     DocumentDetailDTO,
     DocumentQualitySummaryDTO,
@@ -42,6 +44,7 @@ from app.services.document_service import (
     rebuild_index_sync,
     reparse_document,
     run_bulk_document_governance,
+    update_chunk_governance,
     retry_ingest_job,
 )
 from app.services.knowledge_base_service import KnowledgeBaseDisabledError
@@ -292,6 +295,24 @@ def read_chunk(
     """返回单个 Chunk 正文和元数据。"""
     try:
         response = get_chunk(session, current_user, kb_id, chunk_id)
+    except DocumentPermissionError as exc:
+        _raise_document_error(exc)
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chunk not found.")
+    return response
+
+
+@chunk_router.patch("/{chunk_id}/governance", response_model=ChunkGovernanceResponse)
+def update_chunk_governance_endpoint(
+    kb_id: UUID,
+    chunk_id: UUID,
+    request: ChunkGovernanceRequest,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> ChunkGovernanceResponse:
+    """更新 Chunk 排除标记和治理备注。"""
+    try:
+        response = update_chunk_governance(session, current_user, kb_id, chunk_id, request.excluded, request.note)
     except DocumentPermissionError as exc:
         _raise_document_error(exc)
     if response is None:

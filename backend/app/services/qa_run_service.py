@@ -337,7 +337,15 @@ def _load_postgres_chunk_candidates(session: Session, kb_id: UUID, limit: int) -
             },
         )
         for row in rows
+        if not _chunk_is_governance_excluded(row)
     ]
+
+
+def _chunk_is_governance_excluded(row) -> bool:
+    """判断 Chunk 是否被治理排除；排除 Chunk 不进入后续 QA 证据。"""
+    metadata = row["metadata"] or {}
+    governance = metadata.get("governance") if isinstance(metadata, dict) else None
+    return isinstance(governance, dict) and governance.get("excluded") is True
 
 
 def _authorize_provider_candidates(
@@ -371,7 +379,7 @@ def _authorize_provider_candidates(
     for candidate in candidates:
         chunk_id = candidate.chunk_id
         chunk_row = chunks_by_id.get(chunk_id) if chunk_id is not None else None
-        if chunk_row is None:
+        if chunk_row is None or _chunk_is_governance_excluded(chunk_row):
             dropped_count += 1
             continue
         authorized.append(

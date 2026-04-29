@@ -2995,6 +2995,86 @@
         }
       }
     },
+    "/api/v1/knowledge-bases/{kb_id}/chunks/{chunk_id}/governance": {
+      "patch": {
+        "tags": [
+          "chunks"
+        ],
+        "summary": "Update Chunk Governance Endpoint",
+        "description": "更新 Chunk 排除标记和治理备注。",
+        "operationId": "update_chunk_governance_endpoint_api_v1_knowledge_bases__kb_id__chunks__chunk_id__governance_patch",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "chunk_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Chunk Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChunkGovernanceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChunkGovernanceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/knowledge-bases/{kb_id}/index-sync-jobs": {
       "get": {
         "tags": [
@@ -5891,6 +5971,66 @@
         ],
         "title": "ChunkDTO",
         "description": "Chunk 正文真值 DTO；正文读取必须由后端权限控制后返回。"
+      },
+      "ChunkGovernanceRequest": {
+        "properties": {
+          "excluded": {
+            "type": "boolean",
+            "title": "Excluded"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "excluded"
+        ],
+        "title": "ChunkGovernanceRequest",
+        "description": "Chunk 治理标记请求；只影响后续检索，不删除正文真值。"
+      },
+      "ChunkGovernanceResponse": {
+        "properties": {
+          "chunk": {
+            "$ref": "#/components/schemas/ChunkDTO"
+          },
+          "excluded": {
+            "type": "boolean",
+            "title": "Excluded"
+          },
+          "governanceNote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Governancenote"
+          },
+          "permissionInheritance": {
+            "type": "string",
+            "title": "Permissioninheritance"
+          }
+        },
+        "type": "object",
+        "required": [
+          "chunk",
+          "excluded",
+          "governanceNote",
+          "permissionInheritance"
+        ],
+        "title": "ChunkGovernanceResponse",
+        "description": "Chunk 治理标记结果，包含权限继承说明。"
       },
       "ConfigRevisionActivateRequest": {
         "properties": {

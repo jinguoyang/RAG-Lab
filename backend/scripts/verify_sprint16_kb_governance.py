@@ -56,10 +56,31 @@ def verify_bulk_governance_contract() -> None:
         _assert(keyword in source, f"批量治理实现缺少关键逻辑: {keyword}")
 
 
+def verify_chunk_governance_contract() -> None:
+    """校验 Chunk 排除标记、治理备注和权限继承说明。"""
+    schema = TestClient(create_app()).get("/openapi.json").json()
+    paths = schema.get("paths", {})
+    _assert(
+        "/api/v1/knowledge-bases/{kb_id}/chunks/{chunk_id}/governance" in paths,
+        "OpenAPI 缺少 Chunk 治理接口",
+    )
+    schemas = schema.get("components", {}).get("schemas", {})
+    _assert("ChunkGovernanceResponse" in schemas, "OpenAPI 缺少 ChunkGovernanceResponse")
+
+    document_source = _read_backend("app/services/document_service.py")
+    qa_source = _read_backend("app/services/qa_run_service.py")
+    graph_source = _read_backend("app/services/graph_service.py")
+    _assert("permissionInheritance" in document_source, "Chunk 治理响应缺少权限继承说明")
+    _assert("chunk.governance_update" in document_source, "Chunk 治理缺少审计动作")
+    _assert("_chunk_is_governance_excluded" in qa_source, "QA 链路未过滤治理排除 Chunk")
+    _assert("governance.get(\"excluded\") is True" in graph_source, "图支撑 Chunk 未过滤治理排除标记")
+
+
 def main() -> None:
     """执行 Sprint 16 当前已落地范围的验收检查。"""
     verify_document_quality_contract()
     verify_bulk_governance_contract()
+    verify_chunk_governance_contract()
     print("Sprint 16 KB governance verification passed.")
 
 

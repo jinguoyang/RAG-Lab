@@ -13,6 +13,7 @@ from app.schemas.document import (
     ChunkDTO,
     BulkDocumentGovernanceResponse,
     DocumentDetailDTO,
+    ChunkGovernanceResponse,
     DocumentDTO,
     DocumentVersionActivateResponse,
     DocumentQualityIssueDTO,
@@ -1120,6 +1121,56 @@ def get_chunk(
         .limit(1)
     ).mappings().first()
     return _to_chunk_dto(row) if row else None
+
+
+def update_chunk_governance(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    chunk_id: UUID,
+    excluded: bool,
+    note: str | None,
+) -> ChunkGovernanceResponse | None:
+    """更新 Chunk 治理标记；排除只影响检索上下文，不删除 PostgreSQL 正文。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+    _ensure_permission(session, current_user, kb_id, "kb.document.upload")
+
+    row = session.execute(
+        select(chunks).where(chunks.c.kb_id == kb_id, chunks.c.chunk_id == chunk_id, chunks.c.status == "active").limit(1)
+    ).mappings().first()
+    if row is None:
+        return None
+
+    metadata = dict(row["metadata"] or {})
+    governance = dict(metadata.get("governance") or {})
+    governance["excluded"] = excluded
+    governance["note"] = note
+    governance["updatedBy"] = current_user.user.userId
+    metadata["governance"] = governance
+    updated_row = session.execute(
+        update(chunks)
+        .where(chunks.c.chunk_id == chunk_id)
+        .values(metadata=metadata)
+        .returning(chunks)
+    ).mappings().one()
+    _insert_audit_log(
+        session,
+        current_user,
+        "chunk.governance_update",
+        "chunk",
+        chunk_id,
+        kb_id,
+        row["document_id"],
+        {"excluded": excluded, "note": note},
+    )
+    session.commit()
+    return ChunkGovernanceResponse(
+        chunk=_to_chunk_dto(updated_row),
+        excluded=excluded,
+        governanceNote=note,
+        permissionInheritance="Chunk 继承文档密级、文档状态和知识库成员权限；治理排除只影响后续检索上下文。",
+    )
 
 
 def reparse_document(

@@ -363,7 +363,9 @@ def list_supporting_chunks(
     items: list[GraphSupportingChunkDTO] = []
     for row in ref_rows:
         chunk_row = chunks_by_id.get(row["chunk_id"])
-        if chunk_row is None:
+        chunk_metadata = chunk_row["metadata"] if chunk_row else None
+        governance = chunk_metadata.get("governance") if isinstance(chunk_metadata, dict) else None
+        if chunk_row is None or (isinstance(governance, dict) and governance.get("excluded") is True):
             continue
         metadata = {
             **(row["metadata"] or {}),
