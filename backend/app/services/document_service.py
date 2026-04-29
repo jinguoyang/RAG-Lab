@@ -44,7 +44,7 @@ from app.services.object_storage import ObjectStorageProvider, get_object_storag
 from app.services.graph_service import mark_graph_snapshots_stale
 from app.services.knowledge_base_service import KnowledgeBaseDisabledError
 from app.services.permission_service import build_chunk_access_filter_context, has_kb_permission
-from app.services.qa_providers import ProviderError, get_qa_run_providers
+from app.services.qa_providers import ChunkGraphExtraction, ProviderError, QARunProviders, get_qa_run_providers
 
 
 class DocumentPermissionError(Exception):
@@ -248,11 +248,13 @@ def _create_index_sync_job(
     chunk_ids: list[UUID],
     required_for_activation: bool,
     sync_type: str = "upsert",
-    status: str = "success",
+    status: str = "queued",
     error_message: str | None = None,
     provider_payloads: dict[UUID, dict] | None = None,
-) -> UUID:
-    """记录本地副本同步结果；外部 Provider 可由后续 Worker 替换同一表契约。"""
+    provider_set: QARunProviders | None = None,
+    graph_items: list[ChunkGraphExtraction] | None = None,
+) -> tuple[UUID, str, str | None]:
+    """创建并执行 IndexSyncJob，真实 Provider 成功后才标记 success。"""
     sync_job_id = uuid4()
     scope = {"chunkIds": [str(chunk_id) for chunk_id in chunk_ids]}
     if version_id:
@@ -265,12 +267,44 @@ def _create_index_sync_job(
             sync_type=sync_type,
             scope=scope,
             required_for_activation=required_for_activation,
-            status=status,
-            error_message=error_message,
+            status="running",
+            error_message=None,
             created_by=UUID(current_user.user.userId),
             started_at=func.now(),
-            finished_at=func.now(),
         )
+    )
+    if status == "failed" and not chunk_ids:
+        provider_summary = {
+            "targetStore": target_store,
+            "errorCode": "INDEX_SYNC_FAILED",
+            "errorMessage": error_message,
+        }
+        final_status = "failed"
+        final_error_message = error_message
+    else:
+        try:
+            provider_summary = _run_index_sync_job(
+                provider_set or get_qa_run_providers(),
+                target_store,
+                sync_type,
+                list((provider_payloads or {}).values()),
+                chunk_ids,
+                graph_items or [],
+            )
+            final_status = status if status != "queued" else "success"
+            final_error_message = error_message
+        except ProviderError as exc:
+            provider_summary = {
+                "targetStore": target_store,
+                "errorCode": "INDEX_SYNC_FAILED",
+                "errorMessage": str(exc),
+            }
+            final_status = "failed"
+            final_error_message = f"{target_store}: {exc}"
+    session.execute(
+        update(index_sync_jobs)
+        .where(index_sync_jobs.c.sync_job_id == sync_job_id)
+        .values(status=final_status, error_message=final_error_message, finished_at=func.now())
     )
     for chunk_id in chunk_ids:
         session.execute(
@@ -281,14 +315,41 @@ def _create_index_sync_job(
                 resource_type="chunk",
                 resource_id=chunk_id,
                 operation="upsert" if sync_type != "delete" else "delete",
-                status="success",
-                provider_payload=(provider_payloads or {}).get(
-                    chunk_id,
-                    {"provider": "local", "versionId": str(version_id)},
-                ),
+                status=final_status,
+                error_message=final_error_message,
+                provider_payload={
+                    **provider_summary,
+                    "versionId": str(version_id) if version_id else None,
+                    "chunkId": str(chunk_id),
+                    "payload": (provider_payloads or {}).get(chunk_id),
+                },
             )
         )
-    return sync_job_id
+    return sync_job_id, final_status, final_error_message
+
+
+def _run_index_sync_job(
+    provider_set: QARunProviders,
+    target_store: str,
+    sync_type: str,
+    chunk_payloads: list[dict],
+    chunk_ids: list[UUID],
+    graph_items: list[ChunkGraphExtraction],
+) -> dict:
+    """按 targetStore 调用真实副本 Provider，失败交由调用方记录状态。"""
+    if target_store == "milvus":
+        if sync_type == "delete":
+            return provider_set.dense.delete_chunks(chunk_ids)
+        return provider_set.dense.upsert_chunks(chunk_payloads)
+    if target_store == "opensearch":
+        if sync_type == "delete":
+            return provider_set.sparse.delete_chunks(chunk_ids)
+        return provider_set.sparse.upsert_chunks(chunk_payloads)
+    if target_store == "neo4j":
+        if sync_type == "delete":
+            return provider_set.graph.delete_chunks(chunk_ids)
+        return provider_set.graph.upsert_chunks(chunk_payloads, graph_items)
+    raise ProviderError(f"Unsupported target store: {target_store}")
 
 
 def _write_chunk_access_filters(
@@ -379,6 +440,33 @@ def run_ingest_job(
     try:
         parsed_document = parse_document(file_name, file_row["mime_type"] if file_row else None, source_bytes or b"")
         parsed_chunks = parsed_document.chunks
+        old_chunk_ids = [
+            row[0]
+            for row in session.execute(
+                select(chunks.c.chunk_id).where(chunks.c.version_id == version_row["version_id"])
+            )
+        ]
+        provider_set = get_qa_run_providers()
+        if old_chunk_ids:
+            delete_targets = ["milvus"]
+            if kb_row["sparse_index_enabled"]:
+                delete_targets.append("opensearch")
+            if kb_row["graph_index_enabled"]:
+                delete_targets.append("neo4j")
+            for target_store in delete_targets:
+                _, delete_status, delete_error = _create_index_sync_job(
+                    session,
+                    kb_row,
+                    current_user,
+                    target_store,
+                    version_row["version_id"],
+                    old_chunk_ids,
+                    target_store == "milvus",
+                    sync_type="delete",
+                    provider_set=provider_set,
+                )
+                if delete_status != "success":
+                    raise ProviderError(delete_error or f"{target_store} delete sync failed.")
         session.execute(delete(chunk_access_filters).where(chunk_access_filters.c.chunk_id.in_(select(chunks.c.chunk_id).where(chunks.c.version_id == version_row["version_id"]))))
         session.execute(delete(graph_chunk_refs).where(graph_chunk_refs.c.chunk_id.in_(select(chunks.c.chunk_id).where(chunks.c.version_id == version_row["version_id"]))))
         session.execute(delete(chunks).where(chunks.c.version_id == version_row["version_id"]))
@@ -386,7 +474,7 @@ def run_ingest_job(
 
         chunk_rows: list[RowMapping] = []
         embedding_by_chunk_id: dict[UUID, list[float]] = {}
-        embedding_provider = get_qa_run_providers().embedding
+        embedding_provider = provider_set.embedding
         for index, parsed in enumerate(parsed_chunks, start=1):
             content = parsed.content
             embedding = embedding_provider.embed_query(content)
@@ -431,7 +519,7 @@ def run_ingest_job(
             )
             for row in chunk_rows
         }
-        _create_index_sync_job(
+        _, dense_status, dense_error = _create_index_sync_job(
             session,
             kb_row,
             current_user,
@@ -440,11 +528,14 @@ def run_ingest_job(
             chunk_ids,
             True,
             provider_payloads=dense_payloads,
+            provider_set=provider_set,
         )
         sparse_status = "not_required"
+        sparse_error = None
         graph_status = "not_required"
+        graph_error = None
         if kb_row["sparse_index_enabled"]:
-            _create_index_sync_job(
+            _, sparse_status, sparse_error = _create_index_sync_job(
                 session,
                 kb_row,
                 current_user,
@@ -452,59 +543,110 @@ def run_ingest_job(
                 version_row["version_id"],
                 chunk_ids,
                 kb_row["sparse_required_for_activation"],
+                provider_payloads=dense_payloads,
+                provider_set=provider_set,
             )
-            sparse_status = "success"
         if kb_row["graph_index_enabled"]:
             if new_version_status == "active":
                 mark_graph_snapshots_stale(session, kb_row["kb_id"], "chunk_changed", current_user)
             graph_snapshot_id = uuid4()
+            graph_payloads = {
+                chunk_id: {**payload, "graphSnapshotId": str(graph_snapshot_id)}
+                for chunk_id, payload in dense_payloads.items()
+            }
+            try:
+                graph_items = provider_set.llm.extract_graph(list(graph_payloads.values()))
+            except ProviderError as exc:
+                graph_items = []
+                graph_error = str(exc)
+            entity_count = sum(len(item.entities) for item in graph_items)
+            relation_count = sum(len(item.relations) for item in graph_items)
             session.execute(
                 insert(graph_snapshots).values(
                     graph_snapshot_id=graph_snapshot_id,
                     kb_id=kb_row["kb_id"],
                     source_scope={"versionIds": [str(version_row["version_id"])]},
-                    status="success",
-                    neo4j_graph_key=f"local:{graph_snapshot_id}",
-                    entity_count=0,
-                    relation_count=0,
+                    status="running",
+                    neo4j_graph_key=f"neo4j:{graph_snapshot_id}",
+                    entity_count=entity_count,
+                    relation_count=relation_count,
                     community_count=0,
                     job_id=job_id,
                     created_by=UUID(current_user.user.userId),
                     updated_by=UUID(current_user.user.userId),
                 )
             )
-            _create_index_sync_job(
-                session,
-                kb_row,
-                current_user,
-                "neo4j",
-                version_row["version_id"],
-                chunk_ids,
-                kb_row["graph_required_for_activation"],
+            if graph_error is None:
+                _, graph_status, graph_error = _create_index_sync_job(
+                    session,
+                    kb_row,
+                    current_user,
+                    "neo4j",
+                    version_row["version_id"],
+                    chunk_ids,
+                    kb_row["graph_required_for_activation"],
+                    provider_payloads=graph_payloads,
+                    provider_set=provider_set,
+                    graph_items=graph_items,
+                )
+            else:
+                graph_status = "failed"
+                _create_index_sync_job(
+                    session,
+                    kb_row,
+                    current_user,
+                    "neo4j",
+                    version_row["version_id"],
+                    chunk_ids,
+                    kb_row["graph_required_for_activation"],
+                    status="failed",
+                    error_message=graph_error,
+                    provider_payloads=graph_payloads,
+                    provider_set=provider_set,
+                    graph_items=[],
+                )
+            session.execute(
+                update(graph_snapshots)
+                .where(graph_snapshots.c.graph_snapshot_id == graph_snapshot_id)
+                .values(
+                    status="success" if graph_status == "success" else "failed",
+                    stale_reason=graph_error,
+                    updated_by=UUID(current_user.user.userId),
+                    updated_at=func.now(),
+                )
             )
-            graph_status = "success"
 
-        retrieval_ready = True
+        retrieval_ready = dense_status == "success"
         if kb_row["sparse_required_for_activation"] and sparse_status != "success":
             retrieval_ready = False
         if kb_row["graph_required_for_activation"] and graph_status != "success":
             retrieval_ready = False
+        index_errors = [
+            {"targetStore": "milvus", "errorMessage": dense_error} if dense_status != "success" else None,
+            {"targetStore": "opensearch", "errorMessage": sparse_error} if sparse_status == "failed" else None,
+            {"targetStore": "neo4j", "errorMessage": graph_error} if graph_status == "failed" else None,
+        ]
+        index_errors = [item for item in index_errors if item]
+        version_final_status = new_version_status if not index_errors else "failed"
+        ingest_final_status = "success" if not index_errors else "failed"
 
         total_tokens = sum(row["token_count"] or 0 for row in chunk_rows)
         session.execute(
             update(document_versions)
             .where(document_versions.c.version_id == version_row["version_id"])
             .values(
-                status=new_version_status,
+                status=version_final_status,
                 parse_status="success",
-                dense_index_status="success",
+                dense_index_status=dense_status,
                 sparse_index_status=sparse_status,
                 graph_index_status=graph_status,
                 retrieval_ready=retrieval_ready,
                 chunk_count=len(chunk_rows),
                 token_count=total_tokens,
-                error_code=None,
-                error_message=None,
+                error_code="INDEX_SYNC_FAILED" if index_errors else None,
+                error_message="; ".join(
+                    f"{item['targetStore']}: {item['errorMessage']}" for item in index_errors
+                ) if index_errors else None,
                 metadata={
                     "parserName": parsed_document.parser_name,
                     "parserVersion": parsed_document.parser_version,
@@ -520,11 +662,13 @@ def run_ingest_job(
             update(ingest_jobs)
             .where(ingest_jobs.c.job_id == job_id)
             .values(
-                status="success",
-                stage="completed",
+                status=ingest_final_status,
+                stage="completed" if not index_errors else "index_sync",
                 progress=100,
-                error_code=None,
-                error_message=None,
+                error_code="INDEX_SYNC_FAILED" if index_errors else None,
+                error_message="; ".join(
+                    f"{item['targetStore']}: {item['errorMessage']}" for item in index_errors
+                ) if index_errors else None,
                 result_summary={
                     "chunkCount": len(chunk_rows),
                     "tokenCount": total_tokens,
@@ -532,6 +676,7 @@ def run_ingest_job(
                     "parserVersion": parsed_document.parser_version,
                     "embeddingProvider": get_settings().embedding_provider,
                     "embeddingModel": get_settings().embedding_model,
+                    "indexErrors": index_errors,
                 },
                 finished_at=func.now(),
             )
@@ -1566,17 +1711,34 @@ def rebuild_index_sync(
     if version_id is not None:
         condition = condition & (chunks.c.version_id == version_id)
 
-    chunk_ids = [
-        row[0]
-        for row in session.execute(
-            select(chunks.c.chunk_id)
-            .select_from(chunks.join(document_versions, chunks.c.version_id == document_versions.c.version_id))
+    rows = list(
+        session.execute(
+            select(chunks, documents.c.status.label("document_status"), document_versions.c.status.label("version_status"))
+            .select_from(
+                chunks.join(document_versions, chunks.c.version_id == document_versions.c.version_id).join(
+                    documents, chunks.c.document_id == documents.c.document_id
+                )
+            )
             .where(condition)
-        )
-    ]
-    status = "success" if chunk_ids else "failed"
+        ).mappings()
+    )
+    chunk_ids = [row["chunk_id"] for row in rows]
+    status = "queued" if chunk_ids else "failed"
     error_message = None if chunk_ids else "No active chunks found for rebuild scope."
-    sync_job_id = _create_index_sync_job(
+    provider_set = get_qa_run_providers()
+    access_filter = build_chunk_access_filter_context(session, current_user, kb_id).to_trace_summary()
+    provider_payloads = {
+        row["chunk_id"]: build_chunk_index_payload(
+            row,
+            document_status=row["document_status"],
+            version_status=row["version_status"],
+            access_filter=access_filter,
+            embedding=provider_set.embedding.embed_query(row["content"]) if row["content"] else [],
+        )
+        for row in rows
+    }
+    graph_items = provider_set.llm.extract_graph(list(provider_payloads.values())) if target_store == "neo4j" and chunk_ids else []
+    sync_job_id, final_status, final_error = _create_index_sync_job(
         session,
         kb_row,
         current_user,
@@ -1587,6 +1749,9 @@ def rebuild_index_sync(
         sync_type="rebuild",
         status=status,
         error_message=error_message,
+        provider_payloads=provider_payloads,
+        provider_set=provider_set,
+        graph_items=graph_items,
     )
     _insert_audit_log(
         session,
@@ -1601,8 +1766,8 @@ def rebuild_index_sync(
             "documentId": str(document_id) if document_id else None,
             "versionId": str(version_id) if version_id else None,
             "chunkCount": len(chunk_ids),
-            "status": status,
-            "errorMessage": error_message,
+            "status": final_status,
+            "errorMessage": final_error,
         },
     )
     row = session.execute(select(index_sync_jobs).where(index_sync_jobs.c.sync_job_id == sync_job_id)).mappings().one()

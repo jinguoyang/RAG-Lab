@@ -1,3 +1,5 @@
+import json
+import re
 from dataclasses import dataclass
 from hashlib import sha256
 from uuid import UUID
@@ -19,6 +21,38 @@ class ProviderCandidate:
 
 class ProviderError(RuntimeError):
     """Provider 调用失败，QA 编排用它记录 Trace 并决定是否降级。"""
+
+
+@dataclass(frozen=True)
+class GraphEntity:
+    """从 Chunk 中抽取出的图实体，写入 Neo4j 前保持轻量结构。"""
+
+    entity_key: str
+    name: str
+    entity_type: str
+    aliases: list[str]
+    chunk_id: str
+
+
+@dataclass(frozen=True)
+class GraphRelation:
+    """从 Chunk 中抽取出的图关系，必须能回溯支撑 Chunk。"""
+
+    relation_key: str
+    source_entity_key: str
+    target_entity_key: str
+    relation_type: str
+    chunk_id: str
+
+
+@dataclass(frozen=True)
+class ChunkGraphExtraction:
+    """单个 Chunk 的实体关系抽取结果。"""
+
+    chunk_id: str
+    summary: str
+    entities: list[GraphEntity]
+    relations: list[GraphRelation]
 
 
 class EmbeddingProvider:
@@ -72,6 +106,14 @@ class HttpEmbeddingProvider(EmbeddingProvider):
 class DenseRetrievalProvider:
     """Dense Retrieval Provider 抽象，返回值不得直接当作业务真值。"""
 
+    def upsert_chunks(self, chunk_payloads: list[dict]) -> dict:
+        """写入 Dense 副本，返回 Provider 诊断摘要。"""
+        raise NotImplementedError
+
+    def delete_chunks(self, chunk_ids: list[UUID]) -> dict:
+        """从 Dense 副本删除 Chunk，返回 Provider 诊断摘要。"""
+        raise NotImplementedError
+
     def retrieve(
         self,
         kb_id: UUID,
@@ -85,6 +127,12 @@ class DenseRetrievalProvider:
 
 class LocalDenseRetrievalProvider(DenseRetrievalProvider):
     """本地 Dense 降级 Provider，保留链路形态而不依赖 Milvus。"""
+
+    def upsert_chunks(self, chunk_payloads: list[dict]) -> dict:
+        return {"provider": "local", "targetStore": "milvus", "operation": "upsert", "chunkCount": len(chunk_payloads)}
+
+    def delete_chunks(self, chunk_ids: list[UUID]) -> dict:
+        return {"provider": "local", "targetStore": "milvus", "operation": "delete", "chunkCount": len(chunk_ids)}
 
     def retrieve(
         self,
@@ -115,6 +163,26 @@ class MilvusDenseRetrievalProvider(DenseRetrievalProvider):
 
         self._collection = settings.milvus_collection
         self._client = MilvusClient(uri=settings.milvus_uri, token=settings.milvus_token)
+
+    def upsert_chunks(self, chunk_payloads: list[dict]) -> dict:
+        """将 Chunk 向量和过滤字段真实 upsert 到 Milvus。"""
+        rows = [_to_milvus_row(payload) for payload in chunk_payloads]
+        try:
+            self._client.upsert(collection_name=self._collection, data=rows)
+        except Exception as exc:
+            raise ProviderError("Milvus dense index upsert failed.") from exc
+        return {"provider": "milvus", "targetStore": "milvus", "operation": "upsert", "chunkCount": len(rows)}
+
+    def delete_chunks(self, chunk_ids: list[UUID]) -> dict:
+        """按 chunk_id 从 Milvus 删除可重建副本。"""
+        if not chunk_ids:
+            return {"provider": "milvus", "targetStore": "milvus", "operation": "delete", "chunkCount": 0}
+        escaped_ids = ", ".join(f'"{chunk_id}"' for chunk_id in chunk_ids)
+        try:
+            self._client.delete(collection_name=self._collection, filter=f"chunk_id in [{escaped_ids}]")
+        except Exception as exc:
+            raise ProviderError("Milvus dense index delete failed.") from exc
+        return {"provider": "milvus", "targetStore": "milvus", "operation": "delete", "chunkCount": len(chunk_ids)}
 
     def retrieve(
         self,
@@ -160,6 +228,14 @@ class MilvusDenseRetrievalProvider(DenseRetrievalProvider):
 class SparseRetrievalProvider:
     """Sparse Retrieval Provider 抽象，屏蔽 OpenSearch 查询细节。"""
 
+    def upsert_chunks(self, chunk_payloads: list[dict]) -> dict:
+        """写入 Sparse 文本副本，返回 Provider 诊断摘要。"""
+        raise NotImplementedError
+
+    def delete_chunks(self, chunk_ids: list[UUID]) -> dict:
+        """从 Sparse 文本副本删除 Chunk，返回 Provider 诊断摘要。"""
+        raise NotImplementedError
+
     def retrieve(
         self,
         kb_id: UUID,
@@ -172,6 +248,12 @@ class SparseRetrievalProvider:
 
 class LocalSparseRetrievalProvider(SparseRetrievalProvider):
     """本地 Sparse 降级 Provider，便于无 OpenSearch 环境验证 Trace。"""
+
+    def upsert_chunks(self, chunk_payloads: list[dict]) -> dict:
+        return {"provider": "local", "targetStore": "opensearch", "operation": "upsert", "chunkCount": len(chunk_payloads)}
+
+    def delete_chunks(self, chunk_ids: list[UUID]) -> dict:
+        return {"provider": "local", "targetStore": "opensearch", "operation": "delete", "chunkCount": len(chunk_ids)}
 
     def retrieve(
         self,
@@ -205,6 +287,24 @@ class OpenSearchSparseRetrievalProvider(SparseRetrievalProvider):
             auth = (settings.opensearch_username, settings.opensearch_password)
         self._index = settings.opensearch_index
         self._client = OpenSearch(hosts=hosts, http_auth=auth)
+
+    def upsert_chunks(self, chunk_payloads: list[dict]) -> dict:
+        """将 Chunk 文本、metadata 和过滤字段真实 upsert 到 OpenSearch。"""
+        try:
+            for payload in chunk_payloads:
+                self._client.index(index=self._index, id=payload["chunkId"], body=_to_search_document(payload))
+        except Exception as exc:
+            raise ProviderError("OpenSearch sparse index upsert failed.") from exc
+        return {"provider": "opensearch", "targetStore": "opensearch", "operation": "upsert", "chunkCount": len(chunk_payloads)}
+
+    def delete_chunks(self, chunk_ids: list[UUID]) -> dict:
+        """按 chunk_id 从 OpenSearch 删除文本副本。"""
+        try:
+            for chunk_id in chunk_ids:
+                self._client.delete(index=self._index, id=str(chunk_id), ignore=[404])
+        except Exception as exc:
+            raise ProviderError("OpenSearch sparse index delete failed.") from exc
+        return {"provider": "opensearch", "targetStore": "opensearch", "operation": "delete", "chunkCount": len(chunk_ids)}
 
     def retrieve(
         self,
@@ -250,6 +350,14 @@ class OpenSearchSparseRetrievalProvider(SparseRetrievalProvider):
 class GraphRetrievalProvider:
     """Graph Retrieval Provider 抽象，图结果必须通过 chunk_id 回落。"""
 
+    def upsert_chunks(self, chunk_payloads: list[dict], graph_items: list[ChunkGraphExtraction]) -> dict:
+        """写入图结构和 ChunkRef，返回 Provider 诊断摘要。"""
+        raise NotImplementedError
+
+    def delete_chunks(self, chunk_ids: list[UUID]) -> dict:
+        """从图结构中删除 ChunkRef，返回 Provider 诊断摘要。"""
+        raise NotImplementedError
+
     def retrieve(
         self,
         kb_id: UUID,
@@ -292,6 +400,21 @@ class GraphRetrievalProvider:
 
 class LocalGraphRetrievalProvider(GraphRetrievalProvider):
     """本地图检索降级 Provider，只返回诊断候选。"""
+
+    def upsert_chunks(self, chunk_payloads: list[dict], graph_items: list[ChunkGraphExtraction]) -> dict:
+        entity_count = sum(len(item.entities) for item in graph_items)
+        relation_count = sum(len(item.relations) for item in graph_items)
+        return {
+            "provider": "local",
+            "targetStore": "neo4j",
+            "operation": "upsert",
+            "chunkCount": len(chunk_payloads),
+            "entityCount": entity_count,
+            "relationCount": relation_count,
+        }
+
+    def delete_chunks(self, chunk_ids: list[UUID]) -> dict:
+        return {"provider": "local", "targetStore": "neo4j", "operation": "delete", "chunkCount": len(chunk_ids)}
 
     def retrieve(
         self,
@@ -354,6 +477,97 @@ class Neo4jGraphRetrievalProvider(GraphRetrievalProvider):
 
         self._database = settings.neo4j_database
         self._driver = GraphDatabase.driver(settings.neo4j_uri, auth=(settings.neo4j_username, settings.neo4j_password))
+
+    def upsert_chunks(self, chunk_payloads: list[dict], graph_items: list[ChunkGraphExtraction]) -> dict:
+        """将 LLM 抽取的实体、关系和 ChunkRef 写入 Neo4j。"""
+        payload_by_chunk_id = {str(payload["chunkId"]): payload for payload in chunk_payloads}
+        try:
+            with self._driver.session(database=self._database) as session:
+                for item in graph_items:
+                    payload = payload_by_chunk_id.get(item.chunk_id)
+                    if payload is None:
+                        continue
+                    session.run(
+                        """
+                        MERGE (chunk:ChunkRef {chunk_id: $chunk_id})
+                        SET chunk.kb_id = $kb_id,
+                            chunk.version_id = $version_id,
+                            chunk.document_id = $document_id,
+                            chunk.summary = $summary,
+                            chunk.section = $section,
+                            chunk.security_level = $security_level
+                        """,
+                        chunk_id=item.chunk_id,
+                        kb_id=payload["kbId"],
+                        version_id=payload["versionId"],
+                        document_id=payload["documentId"],
+                        summary=item.summary,
+                        section=payload.get("section"),
+                        security_level=payload.get("securityLevel"),
+                    )
+                    for entity in item.entities:
+                        session.run(
+                            """
+                            MERGE (entity:Entity {entity_key: $entity_key})
+                            SET entity.name = $name,
+                                entity.type = $type,
+                                entity.aliases = $aliases,
+                                entity.kb_id = $kb_id,
+                                entity.graph_snapshot_id = $graph_snapshot_id
+                            WITH entity
+                            MATCH (chunk:ChunkRef {chunk_id: $chunk_id})
+                            MERGE (entity)-[:SUPPORTED_BY]->(chunk)
+                            """,
+                            entity_key=entity.entity_key,
+                            name=entity.name,
+                            type=entity.entity_type,
+                            aliases=entity.aliases,
+                            kb_id=payload["kbId"],
+                            graph_snapshot_id=payload.get("graphSnapshotId"),
+                            chunk_id=item.chunk_id,
+                        )
+                    for relation in item.relations:
+                        session.run(
+                            """
+                            MATCH (source:Entity {entity_key: $source_entity_key})
+                            MATCH (target:Entity {entity_key: $target_entity_key})
+                            MERGE (source)-[relation:RELATED_TO {relation_key: $relation_key}]->(target)
+                            SET relation.relation_type = $relation_type,
+                                relation.support_chunk_id = $chunk_id,
+                                relation.support_node_key = $source_entity_key
+                            """,
+                            source_entity_key=relation.source_entity_key,
+                            target_entity_key=relation.target_entity_key,
+                            relation_key=relation.relation_key,
+                            relation_type=relation.relation_type,
+                            chunk_id=relation.chunk_id,
+                        )
+        except Exception as exc:
+            raise ProviderError("Neo4j graph index upsert failed.") from exc
+        return {
+            "provider": "neo4j",
+            "targetStore": "neo4j",
+            "operation": "upsert",
+            "chunkCount": len(chunk_payloads),
+            "entityCount": sum(len(item.entities) for item in graph_items),
+            "relationCount": sum(len(item.relations) for item in graph_items),
+        }
+
+    def delete_chunks(self, chunk_ids: list[UUID]) -> dict:
+        """删除 ChunkRef 与其支撑边；孤立实体由后续重建清理。"""
+        try:
+            with self._driver.session(database=self._database) as session:
+                for chunk_id in chunk_ids:
+                    session.run(
+                        """
+                        MATCH (chunk:ChunkRef {chunk_id: $chunk_id})
+                        DETACH DELETE chunk
+                        """,
+                        chunk_id=str(chunk_id),
+                    )
+        except Exception as exc:
+            raise ProviderError("Neo4j graph index delete failed.") from exc
+        return {"provider": "neo4j", "targetStore": "neo4j", "operation": "delete", "chunkCount": len(chunk_ids)}
 
     def retrieve(
         self,
@@ -535,6 +749,10 @@ class LlmProvider:
     def rewrite_query(self, query: str) -> str:
         raise NotImplementedError
 
+    def extract_graph(self, chunk_payloads: list[dict]) -> list[ChunkGraphExtraction]:
+        """从 Chunk 正文抽取实体关系，供 Neo4j 写入使用。"""
+        raise NotImplementedError
+
     def generate_answer(
         self,
         query: str,
@@ -550,6 +768,24 @@ class LocalLlmProvider(LlmProvider):
 
     def rewrite_query(self, query: str) -> str:
         return query if query.endswith("?") or query.endswith("？") else f"{query}?"
+
+    def extract_graph(self, chunk_payloads: list[dict]) -> list[ChunkGraphExtraction]:
+        """本地环境生成可回表的轻量图结果，不冒充真实模型质量。"""
+        items: list[ChunkGraphExtraction] = []
+        for payload in chunk_payloads:
+            chunk_id = str(payload["chunkId"])
+            name = (payload.get("section") or payload.get("content") or "Chunk")[:64]
+            entity_key = _entity_key(payload["kbId"], name, chunk_id)
+            entity = GraphEntity(entity_key=entity_key, name=name, entity_type="ChunkTopic", aliases=[], chunk_id=chunk_id)
+            items.append(
+                ChunkGraphExtraction(
+                    chunk_id=chunk_id,
+                    summary=(payload.get("content") or "")[:160],
+                    entities=[entity],
+                    relations=[],
+                )
+            )
+        return items
 
     def generate_answer(
         self,
@@ -582,6 +818,70 @@ class HttpLlmProvider(LlmProvider):
             ]
         )
         return content.strip() or query
+
+    def extract_graph(self, chunk_payloads: list[dict]) -> list[ChunkGraphExtraction]:
+        """调用真实 LLM 从 Chunk 中抽取可写入 Neo4j 的实体关系 JSON。"""
+        items: list[ChunkGraphExtraction] = []
+        for payload in chunk_payloads:
+            content = str(payload.get("content") or "")
+            response = self._chat(
+                [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Extract entities and relations from the user's chunk. "
+                            "Return strict JSON with keys: summary, entities, relations. "
+                            "entities items: name,type,aliases. relations items: source,target,type. "
+                            "Do not include markdown."
+                        ),
+                    },
+                    {"role": "user", "content": content[:4000]},
+                ],
+                temperature=0,
+            )
+            data = _parse_llm_json(response)
+            chunk_id = str(payload["chunkId"])
+            entities = [
+                GraphEntity(
+                    entity_key=_entity_key(payload["kbId"], str(entity.get("name") or "entity"), chunk_id),
+                    name=str(entity.get("name") or "entity"),
+                    entity_type=str(entity.get("type") or "Unknown"),
+                    aliases=[str(alias) for alias in entity.get("aliases", []) if alias],
+                    chunk_id=chunk_id,
+                )
+                for entity in data.get("entities", [])
+                if isinstance(entity, dict)
+            ]
+            key_by_name = {entity.name: entity.entity_key for entity in entities}
+            relations = []
+            for relation in data.get("relations", []):
+                if not isinstance(relation, dict):
+                    continue
+                source_name = str(relation.get("source") or "")
+                target_name = str(relation.get("target") or "")
+                source_key = key_by_name.get(source_name)
+                target_key = key_by_name.get(target_name)
+                if not source_key or not target_key:
+                    continue
+                relation_type = str(relation.get("type") or "RELATED_TO")
+                relations.append(
+                    GraphRelation(
+                        relation_key=_relation_key(payload["kbId"], source_key, target_key, relation_type, chunk_id),
+                        source_entity_key=source_key,
+                        target_entity_key=target_key,
+                        relation_type=relation_type,
+                        chunk_id=chunk_id,
+                    )
+                )
+            items.append(
+                ChunkGraphExtraction(
+                    chunk_id=chunk_id,
+                    summary=str(data.get("summary") or content[:160]),
+                    entities=entities,
+                    relations=relations,
+                )
+            )
+        return items
 
     def generate_answer(
         self,
@@ -711,3 +1011,61 @@ def _safe_float(value: object) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _to_milvus_row(payload: dict) -> dict:
+    """把 camelCase Chunk payload 转成 Milvus Collection 字段。"""
+    return {
+        "chunk_id": payload["chunkId"],
+        "kb_id": payload["kbId"],
+        "document_id": payload["documentId"],
+        "version_id": payload["versionId"],
+        "content": payload.get("content"),
+        "content_hash": payload.get("contentHash"),
+        "page_no": payload.get("pageNo"),
+        "section": payload.get("section"),
+        "security_level": payload.get("securityLevel"),
+        "document_status": payload.get("documentStatus"),
+        "version_status": payload.get("versionStatus"),
+        "chunk_status": payload.get("chunkStatus"),
+        "allow_subject_keys": payload.get("allowSubjectKeys", []),
+        "deny_subject_keys": payload.get("denySubjectKeys", []),
+        "filter_hash": payload.get("filterHash"),
+        "metadata": payload.get("metadata", {}),
+        "embedding": payload.get("embedding"),
+    }
+
+
+def _to_search_document(payload: dict) -> dict:
+    """把 camelCase Chunk payload 转成 OpenSearch 文档。"""
+    document = _to_milvus_row(payload)
+    document["embedding_dimension"] = payload.get("embeddingDimension")
+    document.pop("embedding", None)
+    return document
+
+
+def _parse_llm_json(content: str) -> dict:
+    """解析 LLM JSON 输出，兼容少量 fenced code 包裹。"""
+    cleaned = content.strip()
+    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, flags=re.DOTALL)
+    if fenced:
+        cleaned = fenced.group(1)
+    try:
+        data = json.loads(cleaned)
+    except json.JSONDecodeError as exc:
+        raise ProviderError("LLM graph extraction response is invalid.") from exc
+    if not isinstance(data, dict):
+        raise ProviderError("LLM graph extraction response must be a JSON object.")
+    return data
+
+
+def _entity_key(kb_id: object, name: str, chunk_id: str) -> str:
+    """生成稳定实体键，避免不同知识库或 Chunk 之间互相覆盖。"""
+    digest = sha256(f"{kb_id}:{name}:{chunk_id}".encode("utf-8")).hexdigest()[:16]
+    return f"entity:{digest}"
+
+
+def _relation_key(kb_id: object, source_key: str, target_key: str, relation_type: str, chunk_id: str) -> str:
+    """生成稳定关系键，支撑 Neo4j MERGE 幂等写入。"""
+    digest = sha256(f"{kb_id}:{source_key}:{target_key}:{relation_type}:{chunk_id}".encode("utf-8")).hexdigest()[:16]
+    return f"relation:{digest}"
