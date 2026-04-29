@@ -36,6 +36,8 @@ Epic 是能力域，不是时间盒。一个 Epic 可以跨多个 Sprint 推进�
 | E15 | 知识库治理与文档质量 | V1.2 | Done | Sprint 16 | 建立文档质量检查、批量治理和知识库健康概览 |
 | E16 | 稳定性与观测 | V1.3 | Done | Sprint 17 | 补齐运行指标、慢链路诊断、任务补偿和备份恢复演练 |
 | E17 | 协作与治理增强 | V1.3 | Done | Sprint 18 | 补齐配置发布记录、QA 协作、审计报表和有效权限解释 |
+| E18 | 真实入库与多副本构建 | V1.4 | Todo | Sprint 19、Sprint 20 | 上传后真实解析、Chunk 切分、Embedding、Milvus、OpenSearch、Neo4j 和入库状态闭环 |
+| E19 | 真实检索与回放闭环 | V1.5 | Todo | Sprint 21、Sprint 22 | 基于真实副本执行 Dense/Sparse/Graph 检索、LLM 生成、Citation、回放复跑和差异对比 |
 
 ## 4. 本目录约定
 
