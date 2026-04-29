@@ -27,12 +27,12 @@
 
 | 编号 | Backlog | 标题 | 优先级 | 预估 | 负责人 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| S21-001 | B-091 | 打通真实 Dense 检索闭环 | P0 | 1.5d | Codex | Todo |
-| S21-002 | B-092 | 打通真实 Sparse 检索闭环 | P0 | 1.5d | Codex | Todo |
-| S21-003 | B-093 | 打通真实 Graph 检索闭环 | P0 | 2d | Codex | Todo |
-| S21-004 | B-094 | 完善真实候选 Fusion、Rerank 和诊断摘要 | P0 | 1.5d | Codex | Todo |
-| S21-005 | B-095 | 使用真实 LLM API 完成 Query Rewrite 和 Generation | P0 | 1.5d | Codex | Todo |
-| S21-006 | B-096 | 强化 Evidence 和 Citation 的来源定位 | P1 | 1d | Codex | Todo |
+| S21-001 | B-091 | 打通真实 Dense 检索闭环 | P0 | 1.5d | Codex | Done |
+| S21-002 | B-092 | 打通真实 Sparse 检索闭环 | P0 | 1.5d | Codex | Done |
+| S21-003 | B-093 | 打通真实 Graph 检索闭环 | P0 | 2d | Codex | Done |
+| S21-004 | B-094 | 完善真实候选 Fusion、Rerank 和诊断摘要 | P0 | 1.5d | Codex | Done |
+| S21-005 | B-095 | 使用真实 LLM API 完成 Query Rewrite 和 Generation | P0 | 1.5d | Codex | Done |
+| S21-006 | B-096 | 强化 Evidence 和 Citation 的来源定位 | P1 | 1d | Codex | Done |
 
 ## 5. 验收标准
 
@@ -53,3 +53,10 @@
 - Sprint 21 验证脚本：`conda run -n rag-lab python scripts/verify_sprint21_real_qa.py`
 - 前端构建：`npm run build`
 - 空白检查：`git diff --check`
+
+## 8. 完成记录
+
+- QA 编排已移除 mock evidence 和 PostgreSQL fallback 成功路径，Provider 无候选或无授权证据时不再伪造回答成功。
+- Dense、Sparse、Graph 候选会先进入 `fusion` Trace，再经 Rerank、PostgreSQL 回表、`chunk_access_filters` 权限裁剪后生成 Evidence。
+- Citation 来源快照包含 `documentId`、`documentName`、`versionId`、`chunkId`、`chunkIndex`、`pageNo` 和 `section`，可回溯到 PostgreSQL Chunk 真值。
+- 已新增 `scripts/verify_sprint21_real_qa.py` 作为 Sprint 21 源码级验收脚本。

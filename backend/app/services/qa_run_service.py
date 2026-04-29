@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 from hashlib import sha256
+import json
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -40,7 +41,9 @@ from app.schemas.config import ConfigRevisionDTO
 from app.services.audit_service import write_audit_log
 from app.tables import (
     chunks,
+    chunk_access_filters,
     config_revisions,
+    documents,
     document_versions,
     evaluation_results,
     evaluation_runs,
@@ -51,6 +54,7 @@ from app.tables import (
     qa_run_evidence,
     qa_run_trace_steps,
     qa_runs,
+    graph_snapshots,
 )
 from app.services.qa_providers import ProviderCandidate, ProviderError, QARunProviders, get_qa_run_providers
 from app.services.permission_service import build_chunk_access_filter_context, has_kb_permission
@@ -70,7 +74,6 @@ RETRIEVAL_NODE_TO_OVERRIDE_KEY = {
     "sparseRetrieval": "sparse",
     "graphRetrieval": "graph",
 }
-MOCK_EVIDENCE_CHUNK_ID = UUID("00000000-0000-0000-0000-000000000001")
 DEFAULT_MAX_CONTEXT_TOKENS = 6000
 DEFAULT_TEMPERATURE = 0.2
 FEEDBACK_STATUS_MAP = {
@@ -189,22 +192,22 @@ def _build_effective_pipeline_params(
     }
 
 
-def _limit_candidates_by_context_tokens(
-    candidates: list[ProviderCandidate],
+def _limit_candidate_pairs_by_context_tokens(
+    candidates: list[tuple[ProviderCandidate, UUID]],
     max_context_tokens: int,
-) -> list[ProviderCandidate]:
-    """按粗略 token 预算裁剪生成上下文；候选明细仍保留完整授权结果供诊断。"""
+) -> list[tuple[ProviderCandidate, UUID]]:
+    """按粗略 token 预算裁剪生成上下文，同时保留 Evidence 对应的来源候选 ID。"""
     if not candidates:
         return []
     token_budget = max(1, max_context_tokens)
-    selected: list[ProviderCandidate] = []
+    selected: list[tuple[ProviderCandidate, UUID]] = []
     used_tokens = 0
-    for candidate in candidates:
+    for candidate, candidate_id in candidates:
         content = candidate.content or str(candidate.metadata)
         estimated_tokens = max(1, len(content) // 4)
         if selected and used_tokens + estimated_tokens > token_budget:
             break
-        selected.append(candidate)
+        selected.append((candidate, candidate_id))
         used_tokens += estimated_tokens
     return selected
 
@@ -313,34 +316,6 @@ def _effective_retrieval_channels(revision_row: RowMapping, override_snapshot: d
     return enabled_channels
 
 
-def _load_postgres_chunk_candidates(session: Session, kb_id: UUID, limit: int) -> list[ProviderCandidate]:
-    """从 PostgreSQL Chunk 真值表读取 active 版本证据，供本地 Provider 降级链路回表。"""
-    rows = session.execute(
-        select(chunks)
-        .select_from(chunks.join(document_versions, chunks.c.version_id == document_versions.c.version_id))
-        .where(chunks.c.kb_id == kb_id, chunks.c.status == "active", document_versions.c.status == "active")
-        .order_by(chunks.c.created_at.desc(), chunks.c.chunk_index.asc())
-        .limit(limit)
-    ).mappings()
-    return [
-        ProviderCandidate(
-            source_type="postgres",
-            chunk_id=row["chunk_id"],
-            raw_score=0.7,
-            content=row["content"],
-            metadata={
-                "provider": "postgres",
-                "documentId": str(row["document_id"]),
-                "versionId": str(row["version_id"]),
-                "pageNo": row["page_no"],
-                "section": row["section"],
-            },
-        )
-        for row in rows
-        if not _chunk_is_governance_excluded(row)
-    ]
-
-
 def _chunk_is_governance_excluded(row) -> bool:
     """判断 Chunk 是否被治理排除；排除 Chunk 不进入后续 QA 证据。"""
     metadata = row["metadata"] or {}
@@ -348,59 +323,209 @@ def _chunk_is_governance_excluded(row) -> bool:
     return isinstance(governance, dict) and governance.get("excluded") is True
 
 
+def _candidate_fusion_key(candidate: ProviderCandidate) -> str:
+    """生成 Fusion 去重键；真实 chunk_id 优先，缺失时只保留诊断级候选。"""
+    if candidate.chunk_id is not None:
+        return f"chunk:{candidate.chunk_id}"
+    metadata_digest = sha256(json.dumps(candidate.metadata, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+    content_digest = sha256((candidate.content or "").encode("utf-8")).hexdigest()
+    return f"diagnostic:{candidate.source_type}:{metadata_digest}:{content_digest}"
+
+
+def _fuse_provider_candidates(candidates: list[ProviderCandidate]) -> list[ProviderCandidate]:
+    """融合 Dense/Sparse/Graph 候选，按 chunk_id 去重并保留多路命中诊断。"""
+    fused_by_key: dict[str, ProviderCandidate] = {}
+    for candidate in candidates:
+        key = _candidate_fusion_key(candidate)
+        existing = fused_by_key.get(key)
+        if existing is None:
+            fused_by_key[key] = ProviderCandidate(
+                source_type=candidate.source_type,
+                chunk_id=candidate.chunk_id,
+                raw_score=candidate.raw_score,
+                content=candidate.content,
+                metadata={
+                    **candidate.metadata,
+                    "matchedChannels": [candidate.source_type],
+                    "retrievalScores": {candidate.source_type: candidate.raw_score},
+                },
+            )
+            continue
+
+        matched_channels = list(existing.metadata.get("matchedChannels", []))
+        if candidate.source_type not in matched_channels:
+            matched_channels.append(candidate.source_type)
+        retrieval_scores = dict(existing.metadata.get("retrievalScores", {}))
+        retrieval_scores[candidate.source_type] = candidate.raw_score
+        raw_scores = [score for score in [existing.raw_score, candidate.raw_score] if score is not None]
+        fused_by_key[key] = ProviderCandidate(
+            source_type=existing.source_type,
+            chunk_id=existing.chunk_id or candidate.chunk_id,
+            raw_score=max(raw_scores) if raw_scores else None,
+            content=existing.content or candidate.content,
+            metadata={
+                **existing.metadata,
+                **candidate.metadata,
+                "matchedChannels": matched_channels,
+                "retrievalScores": retrieval_scores,
+            },
+        )
+    return list(fused_by_key.values())
+
+
+def _chunk_access_filter_drop_reason(filter_row: RowMapping | None, access_filter) -> str | None:
+    """按 Chunk ACL 摘要做最终裁剪；Provider 预过滤不能替代 PostgreSQL 真值校验。"""
+    if not access_filter.allowed:
+        return "permissionDenied"
+    if filter_row is None:
+        return "accessFilterMissing"
+    if filter_row["permission_code"] != access_filter.permission_code:
+        return "permissionMismatch"
+    if filter_row["document_status"] != access_filter.document_status:
+        return "documentInactive"
+    if filter_row["version_status"] != access_filter.version_status:
+        return "versionInactive"
+    if filter_row["chunk_status"] != access_filter.chunk_status:
+        return "chunkInactive"
+
+    subject_keys = set(access_filter.allow_subject_keys)
+    deny_subject_keys = set(filter_row["deny_subject_keys"] or [])
+    if subject_keys & deny_subject_keys:
+        return "deniedByAcl"
+    allow_subject_keys = set(filter_row["allow_subject_keys"] or [])
+    if allow_subject_keys and not (subject_keys & allow_subject_keys):
+        return "notAllowedByAcl"
+    return None
+
+
 def _authorize_provider_candidates(
     session: Session,
     kb_id: UUID,
     candidates: list[ProviderCandidate],
     access_filter,
-) -> tuple[list[ProviderCandidate], int]:
+) -> tuple[list[tuple[ProviderCandidate, UUID]], int, list[dict[str, Any]]]:
     """Provider 候选进入生成前必须回表 PostgreSQL，确认真值状态和最终权限。"""
-    if not access_filter.allowed:
-        return [], len(candidates)
-
     chunk_ids = [candidate.chunk_id for candidate in candidates if candidate.chunk_id is not None]
-    if not chunk_ids:
-        return [], len(candidates)
-
-    rows = session.execute(
-        select(chunks)
-        .select_from(chunks.join(document_versions, chunks.c.version_id == document_versions.c.version_id))
-        .where(
-            chunks.c.chunk_id.in_(chunk_ids),
-            chunks.c.kb_id == kb_id,
-            chunks.c.status == "active",
-            document_versions.c.status == "active",
-        )
-    ).mappings()
+    rows = []
+    filter_rows = []
+    if chunk_ids:
+        rows = session.execute(
+            select(
+                chunks.c.chunk_id,
+                chunks.c.kb_id,
+                chunks.c.document_id,
+                chunks.c.version_id,
+                chunks.c.chunk_index,
+                chunks.c.page_no,
+                chunks.c.section,
+                chunks.c.content,
+                chunks.c.security_level,
+                chunks.c.status,
+                chunks.c.metadata,
+                document_versions.c.version_no,
+                documents.c.name.label("document_name"),
+            )
+            .select_from(
+                chunks.join(document_versions, chunks.c.version_id == document_versions.c.version_id)
+                .join(documents, chunks.c.document_id == documents.c.document_id)
+            )
+            .where(
+                chunks.c.chunk_id.in_(chunk_ids),
+                chunks.c.kb_id == kb_id,
+                chunks.c.status == "active",
+                document_versions.c.status == "active",
+                documents.c.status == "active",
+                documents.c.deleted_at.is_(None),
+            )
+        ).mappings()
+        filter_rows = session.execute(
+            select(chunk_access_filters).where(
+                chunk_access_filters.c.chunk_id.in_(chunk_ids),
+                chunk_access_filters.c.kb_id == kb_id,
+                chunk_access_filters.c.permission_code == access_filter.permission_code,
+            )
+        ).mappings()
     chunks_by_id = {row["chunk_id"]: row for row in rows}
+    filters_by_chunk_id = {row["chunk_id"]: row for row in filter_rows}
 
-    authorized: list[ProviderCandidate] = []
+    authorized: list[tuple[ProviderCandidate, UUID]] = []
+    candidate_records: list[dict[str, Any]] = []
     dropped_count = 0
     for candidate in candidates:
+        candidate_id = uuid4()
         chunk_id = candidate.chunk_id
         chunk_row = chunks_by_id.get(chunk_id) if chunk_id is not None else None
-        if chunk_row is None or _chunk_is_governance_excluded(chunk_row):
+        drop_reason: str | None = None
+        if chunk_id is None:
+            drop_reason = "missingChunkId"
+        elif chunk_row is None:
+            drop_reason = "chunkUnavailable"
+        elif _chunk_is_governance_excluded(chunk_row):
+            drop_reason = "governanceExcluded"
+        else:
+            drop_reason = _chunk_access_filter_drop_reason(filters_by_chunk_id.get(chunk_id), access_filter)
+
+        if drop_reason is not None:
             dropped_count += 1
+            candidate_records.append(
+                {
+                    "candidate_id": candidate_id,
+                    "candidate": candidate,
+                    "is_authorized": False,
+                    "drop_reason": drop_reason,
+                }
+            )
             continue
-        authorized.append(
-            ProviderCandidate(
+
+        authorized_candidate = ProviderCandidate(
+            source_type=candidate.source_type,
+            chunk_id=chunk_row["chunk_id"],
+            raw_score=candidate.raw_score,
+            content=chunk_row["content"],
+            metadata={
+                **candidate.metadata,
+                "chunkId": str(chunk_row["chunk_id"]),
+                "documentId": str(chunk_row["document_id"]),
+                "documentName": chunk_row["document_name"],
+                "versionId": str(chunk_row["version_id"]),
+                "versionNo": chunk_row["version_no"],
+                "chunkIndex": chunk_row["chunk_index"],
+                "pageNo": chunk_row["page_no"],
+                "section": chunk_row["section"],
+                "securityLevel": chunk_row["security_level"],
+                "truthSource": "postgres_chunks",
+            },
+        )
+        authorized.append((authorized_candidate, candidate_id))
+        candidate_records.append(
+            {
+                "candidate_id": candidate_id,
+                "candidate": authorized_candidate,
+                "is_authorized": True,
+                "drop_reason": None,
+            }
+        )
+    return authorized, dropped_count, candidate_records
+
+
+def _persist_candidate_records(session: Session, run_id: UUID, candidate_records: list[dict[str, Any]]) -> None:
+    """持久化保留和裁剪的候选摘要，供 P09/P10 解释 Fusion、Rerank 和权限裁剪结果。"""
+    for index, record in enumerate(candidate_records, start=1):
+        candidate: ProviderCandidate = record["candidate"]
+        session.execute(
+            insert(qa_run_candidates).values(
+                candidate_id=record["candidate_id"],
+                run_id=run_id,
+                chunk_id=candidate.chunk_id,
                 source_type=candidate.source_type,
-                chunk_id=chunk_row["chunk_id"],
                 raw_score=candidate.raw_score,
-                content=chunk_row["content"],
-                metadata={
-                    **candidate.metadata,
-                    "documentId": str(chunk_row["document_id"]),
-                    "versionId": str(chunk_row["version_id"]),
-                    "chunkIndex": chunk_row["chunk_index"],
-                    "pageNo": chunk_row["page_no"],
-                    "section": chunk_row["section"],
-                    "securityLevel": chunk_row["security_level"],
-                    "truthSource": "postgres_chunks",
-                },
+                rerank_score=candidate.raw_score,
+                rank_no=index,
+                is_authorized=record["is_authorized"],
+                drop_reason=record["drop_reason"],
+                metadata=candidate.metadata,
             )
         )
-    return authorized, dropped_count
 
 
 def _read_visible_qa_run(
@@ -484,6 +609,34 @@ def _insert_trace_step(
     )
 
 
+def _resolve_graph_snapshot_id(session: Session, kb_id: UUID) -> UUID | None:
+    """读取最新可用图快照；未准备好时 Graph Provider 仍可按 kb_id 做诊断级召回。"""
+    row = session.execute(
+        select(graph_snapshots.c.graph_snapshot_id)
+        .where(
+            graph_snapshots.c.kb_id == kb_id,
+            graph_snapshots.c.status == "success",
+            graph_snapshots.c.stale_at.is_(None),
+        )
+        .order_by(graph_snapshots.c.created_at.desc())
+        .limit(1)
+    ).mappings().first()
+    return row["graph_snapshot_id"] if row else None
+
+
+def _retrieval_channel_counts(candidates: list[ProviderCandidate]) -> dict[str, int]:
+    """统计真实 Provider 召回来源，Fusion 后仍能展示各通道贡献。"""
+    counts = {"denseCount": 0, "sparseCount": 0, "graphCount": 0}
+    for candidate in candidates:
+        if candidate.source_type == "dense":
+            counts["denseCount"] += 1
+        elif candidate.source_type == "sparse":
+            counts["sparseCount"] += 1
+        elif candidate.source_type == "graph":
+            counts["graphCount"] += 1
+    return counts
+
+
 def _execute_provider_qa_run(
     session: Session,
     current_user: CurrentUserResponse,
@@ -494,13 +647,15 @@ def _execute_provider_qa_run(
     override_snapshot: dict,
     providers: QARunProviders | None = None,
 ) -> None:
-    """执行 E5 Provider 编排链路，并在外部组件失败时记录降级 Trace。"""
+    """执行真实 QA Provider 编排链路，并把部分失败写入 Trace 而不是伪造成成功。"""
     started_at = datetime.now(UTC)
     provider_set = providers or get_qa_run_providers()
     settings = get_settings()
+    overrides = _override_params(override_snapshot)
     enabled_channels = _effective_retrieval_channels(revision_row, override_snapshot)
     pipeline_params = _build_effective_pipeline_params(revision_row, override_snapshot, settings.provider_top_k)
     access_filter = build_chunk_access_filter_context(session, current_user, kb_id)
+    graph_snapshot_id = _resolve_graph_snapshot_id(session, kb_id)
     trace_order = 1
     provider_errors: list[str] = []
 
@@ -517,35 +672,49 @@ def _execute_provider_qa_run(
     )
     trace_order += 1
 
-    try:
-        rewritten_query = provider_set.llm.rewrite_query(query)
-        _insert_trace_step(
-            session,
-            run_id,
-            trace_order,
-            "queryRewrite",
-            "success",
-            {"query": query},
-            {"rewrittenQuery": rewritten_query},
-            {"provider": settings.llm_provider},
-            started_at=started_at,
-        )
-    except ProviderError as exc:
+    if overrides.get("rewriteEnabled") is False:
         rewritten_query = query
-        provider_errors.append("queryRewrite")
         _insert_trace_step(
             session,
             run_id,
             trace_order,
             "queryRewrite",
-            "partial",
+            "skipped",
             {"query": query},
-            {"rewrittenQuery": rewritten_query},
+            {"rewrittenQuery": rewritten_query, "reason": "rewriteDisabled"},
             {"provider": settings.llm_provider},
-            error_code="PROVIDER_ERROR",
-            error_message=str(exc),
             started_at=started_at,
         )
+    else:
+        try:
+            rewritten_query = provider_set.llm.rewrite_query(query)
+            _insert_trace_step(
+                session,
+                run_id,
+                trace_order,
+                "queryRewrite",
+                "success",
+                {"query": query},
+                {"rewrittenQuery": rewritten_query},
+                {"provider": settings.llm_provider},
+                started_at=started_at,
+            )
+        except ProviderError as exc:
+            rewritten_query = query
+            provider_errors.append("queryRewrite")
+            _insert_trace_step(
+                session,
+                run_id,
+                trace_order,
+                "queryRewrite",
+                "partial",
+                {"query": query},
+                {"rewrittenQuery": rewritten_query},
+                {"provider": settings.llm_provider},
+                error_code="PROVIDER_ERROR",
+                error_message=str(exc),
+                started_at=started_at,
+            )
     trace_order += 1
 
     try:
@@ -604,6 +773,8 @@ def _execute_provider_qa_run(
 
         try:
             if channel == "dense":
+                if not embedding:
+                    raise ProviderError("Embedding vector is required for dense retrieval.")
                 channel_candidates = provider_set.dense.retrieve(
                     kb_id,
                     rewritten_query,
@@ -622,7 +793,7 @@ def _execute_provider_qa_run(
                 channel_candidates = provider_set.graph.retrieve(
                     kb_id,
                     rewritten_query,
-                    None,
+                    graph_snapshot_id,
                     pipeline_params["retrievalTopK"]["graph"],
                     access_filter,
                 )
@@ -634,7 +805,10 @@ def _execute_provider_qa_run(
                 step_key,
                 "success",
                 {"query": rewritten_query},
-                {"candidateCount": len(channel_candidates)},
+                {
+                    "candidateCount": len(channel_candidates),
+                    "graphSnapshotId": str(graph_snapshot_id) if channel == "graph" and graph_snapshot_id else None,
+                },
                 {
                     "provider": provider_name,
                     "topK": pipeline_params["retrievalTopK"][channel],
@@ -659,45 +833,27 @@ def _execute_provider_qa_run(
             )
         trace_order += 1
 
-    fallback_top_k = (
-        max(pipeline_params["retrievalTopK"][channel] for channel in enabled_channels)
-        if enabled_channels
-        else settings.provider_top_k
+    raw_channel_counts = _retrieval_channel_counts(candidates)
+    fused_candidates = _fuse_provider_candidates(candidates)
+    _insert_trace_step(
+        session,
+        run_id,
+        trace_order,
+        "fusion",
+        "success",
+        {"inputCandidates": len(candidates), "channelCounts": raw_channel_counts},
+        {"candidateCount": len(fused_candidates), "dedupedCandidates": len(candidates) - len(fused_candidates)},
+        {"strategy": "chunkIdDedupe", "preserve": "matchedChannels"},
+        started_at=started_at,
     )
-    postgres_candidates = _load_postgres_chunk_candidates(session, kb_id, fallback_top_k)
-    if postgres_candidates:
-        candidates = postgres_candidates
-        _insert_trace_step(
-            session,
-            run_id,
-            trace_order,
-            "postgresChunkFallback",
-            "success",
-            {"kbId": str(kb_id)},
-            {"candidateCount": len(postgres_candidates)},
-            {"source": "chunks"},
-            started_at=started_at,
-        )
-        trace_order += 1
-
-    if not candidates:
-        candidates = [
-            ProviderCandidate(
-                source_type="mock",
-                chunk_id=MOCK_EVIDENCE_CHUNK_ID,
-                raw_score=1,
-                content="Provider 未返回可用候选，系统使用本地兜底证据保持调试链路可追踪。",
-                metadata={"provider": "fallback"},
-            )
-        ]
-        provider_errors.append("fallbackEvidence")
+    trace_order += 1
 
     try:
-        reranked_candidates = provider_set.rerank.rerank(rewritten_query, candidates, pipeline_params["rerankTopN"])
+        reranked_candidates = provider_set.rerank.rerank(rewritten_query, fused_candidates, pipeline_params["rerankTopN"])
         rerank_status = "success"
         rerank_error = None
     except ProviderError as exc:
-        reranked_candidates = candidates[: pipeline_params["rerankTopN"]]
+        reranked_candidates = fused_candidates[: pipeline_params["rerankTopN"]]
         rerank_status = "partial"
         rerank_error = str(exc)
         provider_errors.append("rerank")
@@ -707,7 +863,7 @@ def _execute_provider_qa_run(
         trace_order,
         "rerank",
         rerank_status,
-        {"inputCandidates": len(candidates)},
+        {"inputCandidates": len(fused_candidates)},
         {"candidateCount": len(reranked_candidates)},
         {"provider": settings.rerank_provider, "topN": pipeline_params["rerankTopN"]},
         error_code="PROVIDER_ERROR" if rerank_error else None,
@@ -716,12 +872,13 @@ def _execute_provider_qa_run(
     )
     trace_order += 1
 
-    authorized_candidates, dropped_by_permission = _authorize_provider_candidates(
+    authorized_pairs, dropped_by_permission, candidate_records = _authorize_provider_candidates(
         session,
         kb_id,
         reranked_candidates,
         access_filter,
     )
+    _persist_candidate_records(session, run_id, candidate_records)
     if dropped_by_permission:
         provider_errors.append("permissionFiltered")
     _insert_trace_step(
@@ -732,7 +889,7 @@ def _execute_provider_qa_run(
         "success",
         {"inputCandidates": len(reranked_candidates)},
         {
-            "authorizedCandidates": len(authorized_candidates),
+            "authorizedCandidates": len(authorized_pairs),
             "droppedCandidates": dropped_by_permission,
             "accessFilter": access_filter.to_trace_summary(),
             "note": "Provider candidates are authorized by PostgreSQL chunks before evidence generation.",
@@ -742,7 +899,7 @@ def _execute_provider_qa_run(
     )
     trace_order += 1
 
-    if not authorized_candidates:
+    if not authorized_pairs:
         session.execute(
             update(qa_runs)
             .where(qa_runs.c.run_id == run_id)
@@ -753,10 +910,8 @@ def _execute_provider_qa_run(
                 metrics={
                     "latencyMs": int((datetime.now(UTC) - started_at).total_seconds() * 1000),
                     "retrievalDiagnostics": {
-                        "denseCount": 0,
-                        "sparseCount": 0,
-                        "graphCount": 0,
-                        "mockCount": 0,
+                        **raw_channel_counts,
+                        "fusedCount": len(fused_candidates),
                         "droppedByPermission": dropped_by_permission,
                         "providerErrors": provider_errors,
                         "pipelineParams": pipeline_params,
@@ -769,10 +924,11 @@ def _execute_provider_qa_run(
         )
         return
 
-    context_candidates = _limit_candidates_by_context_tokens(
-        authorized_candidates,
+    context_pairs = _limit_candidate_pairs_by_context_tokens(
+        authorized_pairs,
         pipeline_params["maxContextTokens"],
     )
+    context_candidates = [candidate for candidate, _candidate_id in context_pairs]
     try:
         answer = provider_set.llm.generate_answer(
             query,
@@ -793,7 +949,7 @@ def _execute_provider_qa_run(
         trace_order,
         "generation",
         generation_status,
-        {"evidenceCount": len(context_candidates), "authorizedEvidenceCount": len(authorized_candidates)},
+        {"evidenceCount": len(context_candidates), "authorizedEvidenceCount": len(authorized_pairs)},
         {"answerPreview": answer[:80]},
         {
             "provider": settings.llm_provider,
@@ -808,32 +964,16 @@ def _execute_provider_qa_run(
 
     evidence_id = uuid4()
     citation_id = uuid4()
-    top_candidate = context_candidates[0]
-    candidate_id = uuid4()
+    top_candidate, top_candidate_id = context_pairs[0]
     content_snapshot = top_candidate.content or "Provider 候选未返回正文，当前仅保留来源摘要。"
     content_hash = sha256(content_snapshot.encode("utf-8")).hexdigest()
-
-    for index, candidate in enumerate(authorized_candidates, start=1):
-        session.execute(
-            insert(qa_run_candidates).values(
-                candidate_id=candidate_id if index == 1 else uuid4(),
-                run_id=run_id,
-                chunk_id=candidate.chunk_id or MOCK_EVIDENCE_CHUNK_ID,
-                source_type=candidate.source_type,
-                raw_score=candidate.raw_score,
-                rerank_score=candidate.raw_score,
-                rank_no=index,
-                is_authorized=True,
-                metadata=candidate.metadata,
-            )
-        )
 
     session.execute(
         insert(qa_run_evidence).values(
             evidence_id=evidence_id,
             run_id=run_id,
-            chunk_id=top_candidate.chunk_id or MOCK_EVIDENCE_CHUNK_ID,
-            candidate_id=candidate_id,
+            chunk_id=top_candidate.chunk_id,
+            candidate_id=top_candidate_id,
             evidence_order=1,
             content_snapshot=content_snapshot,
             content_snapshot_hash=content_hash,
@@ -852,7 +992,16 @@ def _execute_provider_qa_run(
             evidence_id=evidence_id,
             citation_order=1,
             label=f"{top_candidate.source_type}#1",
-            location_snapshot=top_candidate.metadata,
+            location_snapshot={
+                "documentId": top_candidate.metadata.get("documentId"),
+                "documentName": top_candidate.metadata.get("documentName"),
+                "versionId": top_candidate.metadata.get("versionId"),
+                "chunkId": top_candidate.metadata.get("chunkId"),
+                "chunkIndex": top_candidate.metadata.get("chunkIndex"),
+                "pageNo": top_candidate.metadata.get("pageNo"),
+                "section": top_candidate.metadata.get("section"),
+                "matchedChannels": top_candidate.metadata.get("matchedChannels", [top_candidate.source_type]),
+            },
         )
     )
     _insert_trace_step(
@@ -867,17 +1016,6 @@ def _execute_provider_qa_run(
         started_at=started_at,
     )
 
-    channel_counts = {"denseCount": 0, "sparseCount": 0, "graphCount": 0, "mockCount": 0}
-    for candidate in authorized_candidates:
-        if candidate.source_type == "dense":
-            channel_counts["denseCount"] += 1
-        elif candidate.source_type == "sparse":
-            channel_counts["sparseCount"] += 1
-        elif candidate.source_type == "graph":
-            channel_counts["graphCount"] += 1
-        else:
-            channel_counts["mockCount"] += 1
-
     session.execute(
         update(qa_runs)
         .where(qa_runs.c.run_id == run_id)
@@ -888,7 +1026,8 @@ def _execute_provider_qa_run(
             metrics={
                 "latencyMs": int((datetime.now(UTC) - started_at).total_seconds() * 1000),
                 "retrievalDiagnostics": {
-                    **channel_counts,
+                    **raw_channel_counts,
+                    "fusedCount": len(fused_candidates),
                     "droppedByPermission": dropped_by_permission,
                     "providerErrors": provider_errors,
                     "pipelineParams": pipeline_params,
