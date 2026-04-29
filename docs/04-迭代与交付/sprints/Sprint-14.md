@@ -27,10 +27,10 @@
 
 | 编号 | Backlog | 标题 | 优先级 | 预估 | 负责人 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| S14-001 | B-061 | 补齐 EvaluationRun 异步状态、失败重试和取消接口 | P1 | 1d | Codex | Todo |
-| S14-002 | B-062 | 实现评估指标汇总、CSV 导出和回归报告落库 | P1 | 1d | Codex | Todo |
-| S14-003 | B-063 | 实现 Config Revision 差异对比和评估结果关联视图 | P1 | 1d | Codex | Todo |
-| S14-004 | B-064 | 从失败评估样本生成可复核配置优化草稿 | P2 | 1d | Codex | Todo |
+| S14-001 | B-061 | 补齐 EvaluationRun 异步状态、失败重试和取消接口 | P1 | 1d | Codex | Done |
+| S14-002 | B-062 | 实现评估指标汇总、CSV 导出和回归报告落库 | P1 | 1d | Codex | Done |
+| S14-003 | B-063 | 实现 Config Revision 差异对比和评估结果关联视图 | P1 | 1d | Codex | Done |
+| S14-004 | B-064 | 从失败评估样本生成可复核配置优化草稿 | P2 | 1d | Codex | Done |
 
 ## 5. 验收标准
 

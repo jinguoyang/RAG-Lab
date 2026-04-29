@@ -11,6 +11,13 @@ from app.schemas.auth import CurrentUserResponse
 from app.schemas.common import PageResponse
 from app.schemas.config import ConfigRevisionDTO
 from app.schemas.qa_run import (
+    EvaluationOptimizationDraftResponse,
+    EvaluationRunCancelResponse,
+    EvaluationRunConfigDiffDTO,
+    EvaluationRunCreateRequest,
+    EvaluationRunDTO,
+    EvaluationRunDetailDTO,
+    EvaluationRunExportResponse,
     EvaluationSampleCreateRequest,
     EvaluationSampleDTO,
     QARunCreateRequest,
@@ -25,14 +32,22 @@ from app.schemas.qa_run import (
 from app.services.qa_run_service import (
     QARunCreateConflict,
     QARunPermissionError,
+    cancel_evaluation_run,
+    create_evaluation_run,
+    create_optimization_draft_from_evaluation_run,
     create_qa_run,
     create_config_revision_draft_from_qa_run,
     create_evaluation_sample_from_run,
+    export_evaluation_run,
+    get_evaluation_run_config_diff,
+    get_evaluation_run_detail,
     get_qa_run_detail,
     get_qa_run_replay_context,
     get_qa_run_status,
+    list_evaluation_runs,
     list_evaluation_samples,
     list_qa_runs,
+    retry_evaluation_run,
     update_qa_run_feedback,
 )
 from app.services.knowledge_base_service import KnowledgeBaseDisabledError
@@ -218,5 +233,155 @@ def create_evaluation_sample(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PERMISSION_DENIED") from exc
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="QA run not found.")
+    return response
+
+
+@router.get("/evaluation/runs", response_model=PageResponse[EvaluationRunDTO])
+def read_evaluation_runs(
+    kb_id: UUID,
+    page_no: Annotated[int, Query(alias="pageNo", ge=1)] = 1,
+    page_size: Annotated[int, Query(alias="pageSize", ge=1, le=100)] = 20,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> PageResponse[EvaluationRunDTO]:
+    """分页返回评估运行列表。"""
+    try:
+        response = list_evaluation_runs(session, current_user, kb_id, page_no, page_size)
+    except QARunPermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PERMISSION_DENIED") from exc
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found.")
+    return response
+
+
+@router.post("/evaluation/runs", response_model=EvaluationRunDTO, status_code=status.HTTP_201_CREATED)
+def create_evaluation_run_endpoint(
+    kb_id: UUID,
+    request: EvaluationRunCreateRequest,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> EvaluationRunDTO:
+    """创建并执行评估运行。"""
+    try:
+        response = create_evaluation_run(session, current_user, kb_id, request)
+    except QARunPermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PERMISSION_DENIED") from exc
+    except QARunCreateConflict as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found.")
+    return response
+
+
+@router.get("/evaluation/runs/{evaluation_run_id}", response_model=EvaluationRunDetailDTO)
+def read_evaluation_run_detail(
+    kb_id: UUID,
+    evaluation_run_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> EvaluationRunDetailDTO:
+    """读取评估运行详情和样本结果。"""
+    try:
+        response = get_evaluation_run_detail(session, current_user, kb_id, evaluation_run_id)
+    except QARunPermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PERMISSION_DENIED") from exc
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evaluation run not found.")
+    return response
+
+
+@router.post("/evaluation/runs/{evaluation_run_id}/cancel", response_model=EvaluationRunCancelResponse)
+def cancel_evaluation_run_endpoint(
+    kb_id: UUID,
+    evaluation_run_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> EvaluationRunCancelResponse:
+    """取消评估运行。"""
+    try:
+        response = cancel_evaluation_run(session, current_user, kb_id, evaluation_run_id)
+    except QARunPermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PERMISSION_DENIED") from exc
+    except QARunCreateConflict as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evaluation run not found.")
+    return response
+
+
+@router.post("/evaluation/runs/{evaluation_run_id}/retry", response_model=EvaluationRunDTO)
+def retry_evaluation_run_endpoint(
+    kb_id: UUID,
+    evaluation_run_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> EvaluationRunDTO:
+    """重试失败或取消的评估运行。"""
+    try:
+        response = retry_evaluation_run(session, current_user, kb_id, evaluation_run_id)
+    except QARunPermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PERMISSION_DENIED") from exc
+    except QARunCreateConflict as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evaluation run not found.")
+    return response
+
+
+@router.get("/evaluation/runs/{evaluation_run_id}/export", response_model=EvaluationRunExportResponse)
+def export_evaluation_run_endpoint(
+    kb_id: UUID,
+    evaluation_run_id: UUID,
+    export_format: Annotated[str, Query(alias="format")] = "markdown",
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> EvaluationRunExportResponse:
+    """导出评估运行结果。"""
+    try:
+        response = export_evaluation_run(session, current_user, kb_id, evaluation_run_id, export_format)
+    except QARunPermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PERMISSION_DENIED") from exc
+    except QARunCreateConflict as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evaluation run not found.")
+    return response
+
+
+@router.get("/evaluation/runs/{evaluation_run_id}/config-diff", response_model=EvaluationRunConfigDiffDTO)
+def read_evaluation_run_config_diff(
+    kb_id: UUID,
+    evaluation_run_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> EvaluationRunConfigDiffDTO:
+    """读取评估运行关联的配置差异。"""
+    try:
+        response = get_evaluation_run_config_diff(session, current_user, kb_id, evaluation_run_id)
+    except QARunPermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PERMISSION_DENIED") from exc
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evaluation run not found.")
+    return response
+
+
+@router.post(
+    "/evaluation/runs/{evaluation_run_id}/optimization-draft",
+    response_model=EvaluationOptimizationDraftResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_optimization_draft(
+    kb_id: UUID,
+    evaluation_run_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> EvaluationOptimizationDraftResponse:
+    """从评估运行失败样本生成可复核配置优化草稿。"""
+    try:
+        response = create_optimization_draft_from_evaluation_run(session, current_user, kb_id, evaluation_run_id)
+    except QARunPermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PERMISSION_DENIED") from exc
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evaluation run not found.")
     return response
 

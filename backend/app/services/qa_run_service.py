@@ -4,14 +4,24 @@ from hashlib import sha256
 from typing import Any
 from uuid import UUID, uuid4
 
+import sqlalchemy as sa
 from sqlalchemy import RowMapping, func, insert, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.schemas.auth import CurrentUserResponse
 from app.schemas.qa_run import (
+    ConfigRevisionDiffItemDTO,
     EvaluationSampleCreateRequest,
     EvaluationSampleDTO,
+    EvaluationOptimizationDraftResponse,
+    EvaluationResultDTO,
+    EvaluationRunCancelResponse,
+    EvaluationRunConfigDiffDTO,
+    EvaluationRunCreateRequest,
+    EvaluationRunDTO,
+    EvaluationRunDetailDTO,
+    EvaluationRunExportResponse,
     QARunCandidateDTO,
     QARunCitationDTO,
     QARunCreateRequest,
@@ -32,6 +42,8 @@ from app.tables import (
     chunks,
     config_revisions,
     document_versions,
+    evaluation_results,
+    evaluation_runs,
     evaluation_samples,
     knowledge_bases,
     qa_run_candidates,
@@ -1403,4 +1415,682 @@ def list_evaluation_samples(
         pageNo=page_no,
         pageSize=page_size,
         total=total,
+    )
+
+
+def _to_evaluation_run_dto(row: RowMapping) -> EvaluationRunDTO:
+    """将评估运行行转换为接口 DTO。"""
+    total_samples = int(row["total_samples"] or 0)
+    passed_samples = int(row["passed_samples"] or 0)
+    pass_rate = round((passed_samples / total_samples) if total_samples else 0, 4)
+    return EvaluationRunDTO(
+        evaluationRunId=str(row["evaluation_run_id"]),
+        kbId=str(row["kb_id"]),
+        configRevisionId=str(row["config_revision_id"]),
+        status=row["status"],
+        totalSamples=total_samples,
+        passedSamples=passed_samples,
+        failedSamples=int(row["failed_samples"] or 0),
+        cancelledSamples=int(row["cancelled_samples"] or 0),
+        passRate=pass_rate,
+        errorSummary=row["error_summary"] or {},
+        remark=row["remark"],
+        createdBy=str(row["created_by"]) if row["created_by"] else None,
+        createdAt=row["created_at"].isoformat(),
+        startedAt=row["started_at"].isoformat() if row["started_at"] else None,
+        finishedAt=row["finished_at"].isoformat() if row["finished_at"] else None,
+    )
+
+
+def _to_evaluation_result_dto(row: RowMapping) -> EvaluationResultDTO:
+    """将评估结果行转换为接口 DTO。"""
+    return EvaluationResultDTO(
+        evaluationResultId=str(row["evaluation_result_id"]),
+        evaluationRunId=str(row["evaluation_run_id"]),
+        sampleId=str(row["sample_id"]),
+        sourceRunId=str(row["source_run_id"]) if row["source_run_id"] else None,
+        status=row["status"],
+        query=row["query"],
+        expectedAnswer=row["expected_answer"],
+        actualAnswer=row["actual_answer"],
+        failureReason=row["failure_reason"],
+        actualRunId=str(row["actual_run_id"]) if row["actual_run_id"] else None,
+        metrics=row["metrics"] or {},
+        createdAt=row["created_at"].isoformat(),
+        updatedAt=row["updated_at"].isoformat(),
+    )
+
+
+def _normalize_answer_text(value: str | None) -> str:
+    """统一答案比较口径，避免大小写和空白导致误判。"""
+    if not value:
+        return ""
+    return " ".join(value.lower().strip().split())
+
+
+def _evaluate_sample_result(
+    sample_row: RowMapping, run_row: RowMapping | None
+) -> tuple[str, str | None, dict[str, Any], str | None, str | None]:
+    """根据样本期望和运行结果计算通过/失败状态。"""
+    expected_answer = _normalize_answer_text(sample_row["expected_answer"])
+    actual_answer = _normalize_answer_text(run_row["answer"] if run_row else None)
+
+    status = "passed"
+    failure_reason = None
+    if run_row is None:
+        status = "failed"
+        failure_reason = "source_run_missing"
+    elif run_row["status"] not in {"success", "partial"}:
+        status = "failed"
+        failure_reason = "source_run_not_success"
+    elif expected_answer and actual_answer and expected_answer not in actual_answer:
+        status = "failed"
+        failure_reason = "answer_mismatch"
+    elif expected_answer and not actual_answer:
+        status = "failed"
+        failure_reason = "actual_answer_empty"
+
+    metrics = {
+        "sourceRunStatus": run_row["status"] if run_row else None,
+        "latencyMs": (run_row["metrics"] or {}).get("latencyMs") if run_row else None,
+        "feedbackStatus": run_row["feedback_status"] if run_row else None,
+    }
+    actual_answer_output = run_row["answer"] if run_row else None
+    actual_run_id = str(run_row["run_id"]) if run_row else None
+    return status, failure_reason, metrics, actual_answer_output, actual_run_id
+
+
+def _run_evaluation_results(
+    session: Session,
+    evaluation_run_id: UUID,
+    sample_rows: list[RowMapping],
+) -> tuple[int, int, int, dict[str, int], str]:
+    """同步执行评估并写入结果表，返回汇总统计。"""
+    now = datetime.now(UTC)
+    pass_count = 0
+    fail_count = 0
+    cancelled_count = 0
+    error_summary: dict[str, int] = {}
+
+    for sample in sample_rows:
+        source_run = None
+        if sample["source_run_id"]:
+            source_run = session.execute(
+                select(qa_runs).where(qa_runs.c.run_id == sample["source_run_id"]).limit(1)
+            ).mappings().first()
+        status, failure_reason, metrics, actual_answer, actual_run_id = _evaluate_sample_result(sample, source_run)
+        if status == "passed":
+            pass_count += 1
+        elif status == "failed":
+            fail_count += 1
+            reason_key = failure_reason or "failed_unknown"
+            error_summary[reason_key] = int(error_summary.get(reason_key, 0)) + 1
+        else:
+            cancelled_count += 1
+
+        session.execute(
+            insert(evaluation_results).values(
+                evaluation_result_id=uuid4(),
+                evaluation_run_id=evaluation_run_id,
+                sample_id=sample["sample_id"],
+                source_run_id=sample["source_run_id"],
+                actual_run_id=UUID(actual_run_id) if actual_run_id else None,
+                status=status,
+                query=sample["query"],
+                expected_answer=sample["expected_answer"],
+                actual_answer=actual_answer,
+                failure_reason=failure_reason,
+                metrics=metrics,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+
+    final_status = "success" if fail_count == 0 else "failed"
+    return pass_count, fail_count, cancelled_count, error_summary, final_status
+
+
+def _build_evaluation_report(run: EvaluationRunDTO, results: list[EvaluationResultDTO]) -> str:
+    """生成评估报告 Markdown，作为报告落库和导出统一来源。"""
+    lines = [
+        f"# Evaluation Run {run.evaluationRunId}",
+        "",
+        f"- 状态: {run.status}",
+        f"- 样本总数: {run.totalSamples}",
+        f"- 通过: {run.passedSamples}",
+        f"- 失败: {run.failedSamples}",
+        f"- 取消: {run.cancelledSamples}",
+        f"- 通过率: {run.passRate}",
+        "",
+        "## 失败摘要",
+    ]
+    if not run.errorSummary:
+        lines.append("- 无")
+    else:
+        for key, value in sorted(run.errorSummary.items()):
+            lines.append(f"- {key}: {value}")
+    lines.extend(["", "## 样本结果"])
+    for result in results:
+        lines.append(
+            f"- [{result.status}] sample={result.sampleId} run={result.actualRunId or '-'} reason={result.failureReason or '-'}"
+        )
+    return "\n".join(lines)
+
+
+def create_evaluation_run(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    request: EvaluationRunCreateRequest,
+) -> EvaluationRunDTO | None:
+    """创建并同步执行评估运行，满足 V1.1 轻量执行闭环。"""
+    kb_row = _read_visible_knowledge_base(session, current_user, kb_id)
+    if kb_row is None:
+        return None
+    _require_permission(session, current_user, kb_id, "kb.evaluation.manage")
+    config_revision_id = request.configRevisionId or kb_row["active_config_revision_id"]
+    if config_revision_id is None:
+        raise QARunCreateConflict("Active config revision is required before evaluation run.")
+    revision_row = session.execute(
+        select(config_revisions)
+        .where(
+            config_revisions.c.kb_id == kb_id,
+            config_revisions.c.config_revision_id == config_revision_id,
+            config_revisions.c.deleted_at.is_(None),
+        )
+        .limit(1)
+    ).mappings().first()
+    if revision_row is None:
+        raise QARunCreateConflict("Config revision not found for this knowledge base.")
+
+    condition = (
+        (evaluation_samples.c.kb_id == kb_id)
+        & (evaluation_samples.c.deleted_at.is_(None))
+        & (evaluation_samples.c.status == "active")
+    )
+    if request.sampleIds:
+        condition = condition & (evaluation_samples.c.sample_id.in_(request.sampleIds))
+    sample_rows = list(
+        session.execute(
+            select(evaluation_samples).where(condition).order_by(evaluation_samples.c.created_at.desc())
+        ).mappings()
+    )
+    if not sample_rows:
+        raise QARunCreateConflict("No evaluation samples available.")
+
+    now = datetime.now(UTC)
+    actor_id = UUID(current_user.user.userId)
+    evaluation_run_id = uuid4()
+    try:
+        run_row = session.execute(
+            insert(evaluation_runs)
+            .values(
+                evaluation_run_id=evaluation_run_id,
+                kb_id=kb_id,
+                config_revision_id=config_revision_id,
+                status="running",
+                total_samples=len(sample_rows),
+                passed_samples=0,
+                failed_samples=0,
+                cancelled_samples=0,
+                error_summary={},
+                remark=request.remark,
+                metadata={},
+                started_at=now,
+                created_by=actor_id,
+                updated_by=actor_id,
+            )
+            .returning(evaluation_runs)
+        ).mappings().one()
+
+        pass_count, fail_count, cancelled_count, error_summary, final_status = _run_evaluation_results(
+            session, evaluation_run_id, sample_rows
+        )
+        finished_at = datetime.now(UTC)
+        run_row = session.execute(
+            update(evaluation_runs)
+            .where(evaluation_runs.c.evaluation_run_id == evaluation_run_id)
+            .values(
+                status=final_status,
+                passed_samples=pass_count,
+                failed_samples=fail_count,
+                cancelled_samples=cancelled_count,
+                error_summary=error_summary,
+                finished_at=finished_at,
+                updated_at=finished_at,
+                updated_by=actor_id,
+            )
+            .returning(evaluation_runs)
+        ).mappings().one()
+        write_audit_log(
+            session,
+            current_user,
+            "evaluation_run.create",
+            "evaluation_run",
+            evaluation_run_id,
+            kb_id=kb_id,
+            detail={
+                "totalSamples": len(sample_rows),
+                "passedSamples": pass_count,
+                "failedSamples": fail_count,
+            },
+        )
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    return _to_evaluation_run_dto(run_row)
+
+
+def list_evaluation_runs(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    page_no: int,
+    page_size: int,
+) -> PageResponse[EvaluationRunDTO] | None:
+    """分页查询评估运行。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+    _require_permission(session, current_user, kb_id, "kb.evaluation.manage")
+    condition = (
+        (evaluation_runs.c.kb_id == kb_id)
+        & (evaluation_runs.c.deleted_at.is_(None))
+    )
+    total = session.execute(select(func.count()).select_from(evaluation_runs).where(condition)).scalar_one()
+    rows = session.execute(
+        select(evaluation_runs)
+        .where(condition)
+        .order_by(evaluation_runs.c.created_at.desc())
+        .offset((page_no - 1) * page_size)
+        .limit(page_size)
+    ).mappings()
+    return PageResponse(
+        items=[_to_evaluation_run_dto(row) for row in rows],
+        pageNo=page_no,
+        pageSize=page_size,
+        total=total,
+    )
+
+
+def get_evaluation_run_detail(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    evaluation_run_id: UUID,
+) -> EvaluationRunDetailDTO | None:
+    """读取评估运行详情与样本结果。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+    _require_permission(session, current_user, kb_id, "kb.evaluation.manage")
+    run_row = session.execute(
+        select(evaluation_runs)
+        .where(
+            evaluation_runs.c.kb_id == kb_id,
+            evaluation_runs.c.evaluation_run_id == evaluation_run_id,
+            evaluation_runs.c.deleted_at.is_(None),
+        )
+        .limit(1)
+    ).mappings().first()
+    if run_row is None:
+        return None
+    result_rows = session.execute(
+        select(evaluation_results)
+        .where(
+            evaluation_results.c.evaluation_run_id == evaluation_run_id,
+            evaluation_results.c.deleted_at.is_(None),
+        )
+        .order_by(evaluation_results.c.created_at.asc())
+    ).mappings()
+    return EvaluationRunDetailDTO(
+        run=_to_evaluation_run_dto(run_row),
+        results=[_to_evaluation_result_dto(row) for row in result_rows],
+    )
+
+
+def cancel_evaluation_run(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    evaluation_run_id: UUID,
+) -> EvaluationRunCancelResponse | None:
+    """取消评估运行（轻量执行下主要用于 queued/running 状态保护）。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+    _require_permission(session, current_user, kb_id, "kb.evaluation.manage")
+    row = session.execute(
+        select(evaluation_runs)
+        .where(
+            evaluation_runs.c.kb_id == kb_id,
+            evaluation_runs.c.evaluation_run_id == evaluation_run_id,
+            evaluation_runs.c.deleted_at.is_(None),
+        )
+        .limit(1)
+    ).mappings().first()
+    if row is None:
+        return None
+    if row["status"] not in {"queued", "running"}:
+        raise QARunCreateConflict("Only queued/running evaluation run can be cancelled.")
+    now = datetime.now(UTC)
+    updated = session.execute(
+        update(evaluation_runs)
+        .where(evaluation_runs.c.evaluation_run_id == evaluation_run_id)
+        .values(
+            status="cancelled",
+            finished_at=now,
+            updated_at=now,
+            updated_by=UUID(current_user.user.userId),
+        )
+        .returning(evaluation_runs)
+    ).mappings().one()
+    session.commit()
+    return EvaluationRunCancelResponse(
+        evaluationRunId=str(updated["evaluation_run_id"]),
+        status=updated["status"],
+        cancelledAt=now.isoformat(),
+    )
+
+
+def retry_evaluation_run(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    evaluation_run_id: UUID,
+) -> EvaluationRunDTO | None:
+    """重试已有评估运行，复用同一批样本重算结果。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+    _require_permission(session, current_user, kb_id, "kb.evaluation.manage")
+    run_row = session.execute(
+        select(evaluation_runs)
+        .where(
+            evaluation_runs.c.kb_id == kb_id,
+            evaluation_runs.c.evaluation_run_id == evaluation_run_id,
+            evaluation_runs.c.deleted_at.is_(None),
+        )
+        .limit(1)
+    ).mappings().first()
+    if run_row is None:
+        return None
+    if run_row["status"] not in {"failed", "cancelled"}:
+        raise QARunCreateConflict("Only failed/cancelled evaluation run can be retried.")
+
+    sample_rows = list(
+        session.execute(
+            select(evaluation_samples)
+            .join(evaluation_results, evaluation_results.c.sample_id == evaluation_samples.c.sample_id)
+            .where(
+                evaluation_results.c.evaluation_run_id == evaluation_run_id,
+                evaluation_samples.c.deleted_at.is_(None),
+            )
+            .order_by(evaluation_results.c.created_at.asc())
+        ).mappings()
+    )
+    if not sample_rows:
+        raise QARunCreateConflict("No samples found for retry.")
+
+    now = datetime.now(UTC)
+    actor_id = UUID(current_user.user.userId)
+    try:
+        session.execute(
+            update(evaluation_results)
+            .where(evaluation_results.c.evaluation_run_id == evaluation_run_id)
+            .values(deleted_at=now)
+        )
+        session.execute(
+            update(evaluation_runs)
+            .where(evaluation_runs.c.evaluation_run_id == evaluation_run_id)
+            .values(
+                status="running",
+                started_at=now,
+                finished_at=None,
+                passed_samples=0,
+                failed_samples=0,
+                cancelled_samples=0,
+                error_summary={},
+                updated_at=now,
+                updated_by=actor_id,
+            )
+        )
+        pass_count, fail_count, cancelled_count, error_summary, final_status = _run_evaluation_results(
+            session, evaluation_run_id, sample_rows
+        )
+        finished_at = datetime.now(UTC)
+        updated = session.execute(
+            update(evaluation_runs)
+            .where(evaluation_runs.c.evaluation_run_id == evaluation_run_id)
+            .values(
+                status=final_status,
+                passed_samples=pass_count,
+                failed_samples=fail_count,
+                cancelled_samples=cancelled_count,
+                error_summary=error_summary,
+                finished_at=finished_at,
+                updated_at=finished_at,
+                updated_by=actor_id,
+            )
+            .returning(evaluation_runs)
+        ).mappings().one()
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    return _to_evaluation_run_dto(updated)
+
+
+def export_evaluation_run(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    evaluation_run_id: UUID,
+    export_format: str,
+) -> EvaluationRunExportResponse | None:
+    """导出评估结果，同时将 Markdown 报告写回运行元数据。"""
+    detail = get_evaluation_run_detail(session, current_user, kb_id, evaluation_run_id)
+    if detail is None:
+        return None
+    if export_format not in {"csv", "markdown"}:
+        raise QARunCreateConflict("Unsupported export format.")
+    if export_format == "csv":
+        header = "sampleId,status,sourceRunId,actualRunId,failureReason,query\n"
+        rows = [
+            f"{item.sampleId},{item.status},{item.sourceRunId or ''},{item.actualRunId or ''},{item.failureReason or ''},\"{item.query.replace('\"', '\"\"')}\""
+            for item in detail.results
+        ]
+        content = header + "\n".join(rows)
+        file_name = f"evaluation-run-{detail.run.evaluationRunId}.csv"
+    else:
+        content = _build_evaluation_report(detail.run, detail.results)
+        file_name = f"evaluation-run-{detail.run.evaluationRunId}.md"
+
+    # 回填评估报告到运行元数据，满足“报告落库”。
+    run_row = session.execute(
+        select(evaluation_runs).where(evaluation_runs.c.evaluation_run_id == evaluation_run_id).limit(1)
+    ).mappings().one()
+    metadata = dict(run_row["metadata"] or {})
+    metadata["latestReport"] = _build_evaluation_report(detail.run, detail.results)
+    metadata["latestReportAt"] = datetime.now(UTC).isoformat()
+    session.execute(
+        update(evaluation_runs)
+        .where(evaluation_runs.c.evaluation_run_id == evaluation_run_id)
+        .values(metadata=metadata, updated_at=datetime.now(UTC), updated_by=UUID(current_user.user.userId))
+    )
+    session.commit()
+    return EvaluationRunExportResponse(
+        evaluationRunId=detail.run.evaluationRunId,
+        format=export_format,
+        fileName=file_name,
+        content=content,
+    )
+
+
+def _flatten_json(value: Any, prefix: str = "") -> dict[str, Any]:
+    """扁平化 JSON，便于输出配置差异路径。"""
+    flattened: dict[str, Any] = {}
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            path = f"{prefix}.{key}" if prefix else str(key)
+            flattened.update(_flatten_json(nested, path))
+    elif isinstance(value, list):
+        for index, nested in enumerate(value):
+            path = f"{prefix}[{index}]"
+            flattened.update(_flatten_json(nested, path))
+    else:
+        flattened[prefix or "$"] = value
+    return flattened
+
+
+def get_evaluation_run_config_diff(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    evaluation_run_id: UUID,
+) -> EvaluationRunConfigDiffDTO | None:
+    """比较评估运行使用配置和来源运行配置，供 P10/P08 联动查看。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+    _require_permission(session, current_user, kb_id, "kb.config.manage")
+    run_row = session.execute(
+        select(evaluation_runs)
+        .where(
+            evaluation_runs.c.kb_id == kb_id,
+            evaluation_runs.c.evaluation_run_id == evaluation_run_id,
+            evaluation_runs.c.deleted_at.is_(None),
+        )
+        .limit(1)
+    ).mappings().first()
+    if run_row is None:
+        return None
+
+    base_revision_row = session.execute(
+        select(config_revisions)
+        .where(config_revisions.c.config_revision_id == run_row["config_revision_id"])
+        .limit(1)
+    ).mappings().first()
+    if base_revision_row is None:
+        return None
+
+    source_result = session.execute(
+        select(evaluation_results)
+        .where(evaluation_results.c.evaluation_run_id == evaluation_run_id)
+        .limit(1)
+    ).mappings().first()
+    from_revision_id = run_row["config_revision_id"]
+    if source_result and source_result["source_run_id"]:
+        source_run = session.execute(
+            select(qa_runs).where(qa_runs.c.run_id == source_result["source_run_id"]).limit(1)
+        ).mappings().first()
+        if source_run:
+            from_revision_id = source_run["config_revision_id"]
+
+    from_revision_row = session.execute(
+        select(config_revisions)
+        .where(config_revisions.c.config_revision_id == from_revision_id)
+        .limit(1)
+    ).mappings().first()
+    if from_revision_row is None:
+        from_revision_row = base_revision_row
+
+    before_values = _flatten_json(from_revision_row["pipeline_definition"])
+    after_values = _flatten_json(base_revision_row["pipeline_definition"])
+    diff_items: list[ConfigRevisionDiffItemDTO] = []
+    for path in sorted(set(before_values.keys()) | set(after_values.keys())):
+        before = before_values.get(path)
+        after = after_values.get(path)
+        if before != after:
+            diff_items.append(ConfigRevisionDiffItemDTO(path=path, before=before, after=after))
+
+    return EvaluationRunConfigDiffDTO(
+        evaluationRunId=str(evaluation_run_id),
+        fromConfigRevisionId=str(from_revision_row["config_revision_id"]),
+        toConfigRevisionId=str(base_revision_row["config_revision_id"]),
+        diffItems=diff_items[:200],
+    )
+
+
+def create_optimization_draft_from_evaluation_run(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    evaluation_run_id: UUID,
+) -> EvaluationOptimizationDraftResponse | None:
+    """根据失败样本摘要生成可复核的配置优化草稿。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+    _require_permission(session, current_user, kb_id, "kb.config.manage")
+    run_row = session.execute(
+        select(evaluation_runs)
+        .where(
+            evaluation_runs.c.kb_id == kb_id,
+            evaluation_runs.c.evaluation_run_id == evaluation_run_id,
+            evaluation_runs.c.deleted_at.is_(None),
+        )
+        .limit(1)
+    ).mappings().first()
+    if run_row is None:
+        return None
+    base_revision = session.execute(
+        select(config_revisions)
+        .where(config_revisions.c.config_revision_id == run_row["config_revision_id"])
+        .limit(1)
+    ).mappings().first()
+    if base_revision is None:
+        return None
+
+    pipeline_definition = dict(base_revision["pipeline_definition"])
+    nodes = pipeline_definition.get("nodes", [])
+    if not isinstance(nodes, list):
+        nodes = []
+
+    # 简单启发式优化：失败偏多时适度提高检索 topK 和上下文上限，降低生成温度。
+    fail_ratio = (run_row["failed_samples"] / run_row["total_samples"]) if run_row["total_samples"] else 0
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        node_type = node.get("type")
+        params = node.get("params")
+        if not isinstance(params, dict):
+            params = {}
+            node["params"] = params
+        if node_type in {"denseRetrieval", "sparseRetrieval", "graphRetrieval"} and fail_ratio >= 0.2:
+            params["topK"] = min(200, int(params.get("topK", 10)) + 2)
+        if node_type == "contextBuilder" and fail_ratio >= 0.2:
+            params["maxContextTokens"] = min(128000, int(params.get("maxContextTokens", 6000)) + 512)
+        if node_type == "generation" and fail_ratio >= 0.2:
+            params["temperature"] = max(0, round(float(params.get("temperature", 0.2)) - 0.05, 3))
+
+    actor_id = UUID(current_user.user.userId)
+    revision_no = (
+        session.execute(
+            select(func.coalesce(func.max(config_revisions.c.revision_no), 0)).where(config_revisions.c.kb_id == kb_id)
+        ).scalar_one()
+        + 1
+    )
+    remark = f"来自评估运行 {str(evaluation_run_id)[:8]} 的优化草稿"
+    draft_row = session.execute(
+        insert(config_revisions)
+        .values(
+            config_revision_id=uuid4(),
+            kb_id=kb_id,
+            revision_no=revision_no,
+            source_template_id=base_revision["source_template_id"],
+            status="draft",
+            pipeline_definition=pipeline_definition,
+            validation_snapshot={
+                "copiedFromEvaluationRunId": str(evaluation_run_id),
+                "copiedFromRevisionId": str(base_revision["config_revision_id"]),
+                "generatedAt": datetime.now(UTC).isoformat(),
+                "heuristics": {"failRatio": fail_ratio},
+            },
+            remark=remark,
+            created_by=actor_id,
+            updated_by=actor_id,
+        )
+        .returning(config_revisions)
+    ).mappings().one()
+    session.commit()
+    return EvaluationOptimizationDraftResponse(
+        evaluationRunId=str(evaluation_run_id),
+        configRevisionId=str(draft_row["config_revision_id"]),
+        remark=remark,
     )

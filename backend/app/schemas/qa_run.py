@@ -186,3 +186,98 @@ class EvaluationSampleDTO(BaseModel):
     metadata: dict[str, Any]
     createdAt: str
     updatedAt: str
+
+
+class EvaluationRunCreateRequest(BaseModel):
+    """创建评估运行请求，复用现有评估样本集进行批量回归。"""
+
+    sampleIds: list[UUID] | None = None
+    configRevisionId: UUID | None = None
+    remark: str | None = Field(default=None, max_length=500)
+
+
+class EvaluationRunDTO(BaseModel):
+    """评估运行摘要。"""
+
+    evaluationRunId: str
+    kbId: str
+    configRevisionId: str
+    status: str
+    totalSamples: int
+    passedSamples: int
+    failedSamples: int
+    cancelledSamples: int
+    passRate: float
+    errorSummary: dict[str, int]
+    remark: str | None
+    createdBy: str | None
+    createdAt: str
+    startedAt: str | None
+    finishedAt: str | None
+
+
+class EvaluationResultDTO(BaseModel):
+    """单条评估结果。"""
+
+    evaluationResultId: str
+    evaluationRunId: str
+    sampleId: str
+    sourceRunId: str | None
+    status: str
+    query: str
+    expectedAnswer: str | None
+    actualAnswer: str | None
+    failureReason: str | None
+    actualRunId: str | None
+    metrics: dict[str, Any]
+    createdAt: str
+    updatedAt: str
+
+
+class EvaluationRunDetailDTO(BaseModel):
+    """评估运行详情。"""
+
+    run: EvaluationRunDTO
+    results: list[EvaluationResultDTO]
+
+
+class EvaluationRunCancelResponse(BaseModel):
+    """取消评估运行结果。"""
+
+    evaluationRunId: str
+    status: str
+    cancelledAt: str
+
+
+class EvaluationRunExportResponse(BaseModel):
+    """评估运行导出响应。"""
+
+    evaluationRunId: str
+    format: str
+    fileName: str
+    content: str
+
+
+class ConfigRevisionDiffItemDTO(BaseModel):
+    """配置差异项摘要。"""
+
+    path: str
+    before: Any
+    after: Any
+
+
+class EvaluationRunConfigDiffDTO(BaseModel):
+    """评估运行关联配置差异。"""
+
+    evaluationRunId: str
+    fromConfigRevisionId: str
+    toConfigRevisionId: str
+    diffItems: list[ConfigRevisionDiffItemDTO]
+
+
+class EvaluationOptimizationDraftResponse(BaseModel):
+    """失败样本生成配置优化草稿的结果。"""
+
+    evaluationRunId: str
+    configRevisionId: str
+    remark: str

@@ -128,7 +128,7 @@ def verify_acceptance_checklist_results() -> None:
 def verify_project_docs_reference_script() -> None:
     """确认测试计划和 Sprint 计划均能指向本脚本。"""
     test_plan = _read(ROOT_DIR / "docs/05-测试与验收/测试计划.md")
-    sprint_plan = _read(ROOT_DIR / "docs/04-迭代与交付/Epic-11/迭代计划-Sprint-12.md")
+    sprint_plan = _read(ROOT_DIR / "docs/04-迭代与交付/sprints/Sprint-12.md")
     _assert_contains(test_plan, "verify_sprint12_acceptance.py", "测试计划未纳入 Sprint 12 验收脚本")
     _assert_contains(sprint_plan, "verify_sprint12_acceptance.py", "Sprint 12 计划未记录验收脚本")
 

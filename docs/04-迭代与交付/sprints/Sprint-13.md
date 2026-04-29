@@ -26,10 +26,10 @@
 
 | 编号 | Backlog | 标题 | 优先级 | 预估 | 负责人 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| S13-001 | B-056 | 扩展 Provider 真实连通性诊断与降级说明 | P1 | 1d | Codex | Todo |
-| S13-002 | B-057 | 补 V1.0 验收执行报告与遗留风险清单 | P1 | 0.5d | Codex | Todo |
-| S13-003 | B-058 | 实现 EvaluationRun / Result 最小模型与批量回归执行接口 | P1 | 1.5d | Codex | Todo |
-| S13-004 | B-060 | P10 增加评估集回归结果视图 | P1 | 1d | Codex | Todo |
+| S13-001 | B-056 | 扩展 Provider 真实连通性诊断与降级说明 | P1 | 1d | Codex | Done |
+| S13-002 | B-057 | 补 V1.0 验收执行报告与遗留风险清单 | P1 | 0.5d | Codex | Done |
+| S13-003 | B-058 | 实现 EvaluationRun / Result 最小模型与批量回归执行接口 | P1 | 1.5d | Codex | Done |
+| S13-004 | B-060 | P10 增加评估集回归结果视图 | P1 | 1d | Codex | Done |
 
 ## 5. 验收标准
 

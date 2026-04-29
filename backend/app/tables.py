@@ -443,6 +443,49 @@ evaluation_samples = sa.Table(
     sa.Column("deleted_by", postgresql.UUID(as_uuid=True), nullable=True),
 )
 
+evaluation_runs = sa.Table(
+    "evaluation_runs",
+    metadata,
+    sa.Column("evaluation_run_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("kb_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("config_revision_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("total_samples", sa.Integer(), nullable=False),
+    sa.Column("passed_samples", sa.Integer(), nullable=False),
+    sa.Column("failed_samples", sa.Integer(), nullable=False),
+    sa.Column("cancelled_samples", sa.Integer(), nullable=False),
+    sa.Column("error_summary", postgresql.JSONB(), nullable=False),
+    sa.Column("remark", sa.Text(), nullable=True),
+    sa.Column("metadata", postgresql.JSONB(), nullable=False),
+    sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("deleted_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
+evaluation_results = sa.Table(
+    "evaluation_results",
+    metadata,
+    sa.Column("evaluation_result_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("evaluation_run_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("sample_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("source_run_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("actual_run_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("query", sa.Text(), nullable=False),
+    sa.Column("expected_answer", sa.Text(), nullable=True),
+    sa.Column("actual_answer", sa.Text(), nullable=True),
+    sa.Column("failure_reason", sa.String(length=128), nullable=True),
+    sa.Column("metrics", postgresql.JSONB(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+)
+
 graph_snapshots = sa.Table(
     "graph_snapshots",
     metadata,

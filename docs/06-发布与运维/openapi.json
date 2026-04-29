@@ -4232,6 +4232,587 @@
         }
       }
     },
+    "/api/v1/knowledge-bases/{kb_id}/qa-runs/evaluation/runs": {
+      "get": {
+        "tags": [
+          "qa-runs"
+        ],
+        "summary": "Read Evaluation Runs",
+        "description": "分页返回评估运行列表。",
+        "operationId": "read_evaluation_runs_api_v1_knowledge_bases__kb_id__qa_runs_evaluation_runs_get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "pageNo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Pageno"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Pagesize"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageResponse_EvaluationRunDTO_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "qa-runs"
+        ],
+        "summary": "Create Evaluation Run Endpoint",
+        "description": "创建并执行评估运行。",
+        "operationId": "create_evaluation_run_endpoint_api_v1_knowledge_bases__kb_id__qa_runs_evaluation_runs_post",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationRunCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationRunDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/qa-runs/evaluation/runs/{evaluation_run_id}": {
+      "get": {
+        "tags": [
+          "qa-runs"
+        ],
+        "summary": "Read Evaluation Run Detail",
+        "description": "读取评估运行详情和样本结果。",
+        "operationId": "read_evaluation_run_detail_api_v1_knowledge_bases__kb_id__qa_runs_evaluation_runs__evaluation_run_id__get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "evaluation_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evaluation Run Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationRunDetailDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/qa-runs/evaluation/runs/{evaluation_run_id}/cancel": {
+      "post": {
+        "tags": [
+          "qa-runs"
+        ],
+        "summary": "Cancel Evaluation Run Endpoint",
+        "description": "取消评估运行。",
+        "operationId": "cancel_evaluation_run_endpoint_api_v1_knowledge_bases__kb_id__qa_runs_evaluation_runs__evaluation_run_id__cancel_post",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "evaluation_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evaluation Run Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationRunCancelResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/qa-runs/evaluation/runs/{evaluation_run_id}/retry": {
+      "post": {
+        "tags": [
+          "qa-runs"
+        ],
+        "summary": "Retry Evaluation Run Endpoint",
+        "description": "重试失败或取消的评估运行。",
+        "operationId": "retry_evaluation_run_endpoint_api_v1_knowledge_bases__kb_id__qa_runs_evaluation_runs__evaluation_run_id__retry_post",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "evaluation_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evaluation Run Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationRunDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/qa-runs/evaluation/runs/{evaluation_run_id}/export": {
+      "get": {
+        "tags": [
+          "qa-runs"
+        ],
+        "summary": "Export Evaluation Run Endpoint",
+        "description": "导出评估运行结果。",
+        "operationId": "export_evaluation_run_endpoint_api_v1_knowledge_bases__kb_id__qa_runs_evaluation_runs__evaluation_run_id__export_get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "evaluation_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evaluation Run Id"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "markdown",
+              "title": "Format"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationRunExportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/qa-runs/evaluation/runs/{evaluation_run_id}/config-diff": {
+      "get": {
+        "tags": [
+          "qa-runs"
+        ],
+        "summary": "Read Evaluation Run Config Diff",
+        "description": "读取评估运行关联的配置差异。",
+        "operationId": "read_evaluation_run_config_diff_api_v1_knowledge_bases__kb_id__qa_runs_evaluation_runs__evaluation_run_id__config_diff_get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "evaluation_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evaluation Run Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationRunConfigDiffDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/qa-runs/evaluation/runs/{evaluation_run_id}/optimization-draft": {
+      "post": {
+        "tags": [
+          "qa-runs"
+        ],
+        "summary": "Create Optimization Draft",
+        "description": "从评估运行失败样本生成可复核配置优化草稿。",
+        "operationId": "create_optimization_draft_api_v1_knowledge_bases__kb_id__qa_runs_evaluation_runs__evaluation_run_id__optimization_draft_post",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "evaluation_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evaluation Run Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationOptimizationDraftResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/knowledge-bases/{kb_id}/graph-snapshots": {
       "get": {
         "tags": [
@@ -4483,6 +5064,211 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/GraphEntitySearchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/graph/paths": {
+      "get": {
+        "tags": [
+          "graph"
+        ],
+        "summary": "Read Graph Paths",
+        "description": "搜索图关系路径摘要；正文证据仍需通过 supporting chunks 回落。",
+        "operationId": "read_graph_paths_api_v1_knowledge_bases__kb_id__graph_paths_get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Keyword"
+            }
+          },
+          {
+            "name": "graphSnapshotId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Graphsnapshotid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphPathSearchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/graph/communities": {
+      "get": {
+        "tags": [
+          "graph"
+        ],
+        "summary": "Read Graph Communities",
+        "description": "搜索图社区摘要；正文证据仍需通过 supporting chunks 回落。",
+        "operationId": "read_graph_communities_api_v1_knowledge_bases__kb_id__graph_communities_get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Keyword"
+            }
+          },
+          {
+            "name": "graphSnapshotId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Graphsnapshotid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphCommunitySearchResponse"
                 }
               }
             }
@@ -5063,6 +5849,28 @@
         "title": "ConfigRevisionDTO",
         "description": "配置版本 DTO，接口层保持 camelCase 字段。"
       },
+      "ConfigRevisionDiffItemDTO": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "before": {
+            "title": "Before"
+          },
+          "after": {
+            "title": "After"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "before",
+          "after"
+        ],
+        "title": "ConfigRevisionDiffItemDTO",
+        "description": "配置差异项摘要。"
+      },
       "ConfigRevisionDraftFromRevisionRequest": {
         "properties": {
           "sourceRevisionId": {
@@ -5495,6 +6303,407 @@
         "title": "DocumentVersionDTO",
         "description": "文档版本 DTO，承载解析和索引副本的最小状态。"
       },
+      "EvaluationOptimizationDraftResponse": {
+        "properties": {
+          "evaluationRunId": {
+            "type": "string",
+            "title": "Evaluationrunid"
+          },
+          "configRevisionId": {
+            "type": "string",
+            "title": "Configrevisionid"
+          },
+          "remark": {
+            "type": "string",
+            "title": "Remark"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evaluationRunId",
+          "configRevisionId",
+          "remark"
+        ],
+        "title": "EvaluationOptimizationDraftResponse",
+        "description": "失败样本生成配置优化草稿的结果。"
+      },
+      "EvaluationResultDTO": {
+        "properties": {
+          "evaluationResultId": {
+            "type": "string",
+            "title": "Evaluationresultid"
+          },
+          "evaluationRunId": {
+            "type": "string",
+            "title": "Evaluationrunid"
+          },
+          "sampleId": {
+            "type": "string",
+            "title": "Sampleid"
+          },
+          "sourceRunId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcerunid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "expectedAnswer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectedanswer"
+          },
+          "actualAnswer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actualanswer"
+          },
+          "failureReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failurereason"
+          },
+          "actualRunId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actualrunid"
+          },
+          "metrics": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metrics"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "updatedAt": {
+            "type": "string",
+            "title": "Updatedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evaluationResultId",
+          "evaluationRunId",
+          "sampleId",
+          "sourceRunId",
+          "status",
+          "query",
+          "expectedAnswer",
+          "actualAnswer",
+          "failureReason",
+          "actualRunId",
+          "metrics",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "EvaluationResultDTO",
+        "description": "单条评估结果。"
+      },
+      "EvaluationRunCancelResponse": {
+        "properties": {
+          "evaluationRunId": {
+            "type": "string",
+            "title": "Evaluationrunid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "cancelledAt": {
+            "type": "string",
+            "title": "Cancelledat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evaluationRunId",
+          "status",
+          "cancelledAt"
+        ],
+        "title": "EvaluationRunCancelResponse",
+        "description": "取消评估运行结果。"
+      },
+      "EvaluationRunConfigDiffDTO": {
+        "properties": {
+          "evaluationRunId": {
+            "type": "string",
+            "title": "Evaluationrunid"
+          },
+          "fromConfigRevisionId": {
+            "type": "string",
+            "title": "Fromconfigrevisionid"
+          },
+          "toConfigRevisionId": {
+            "type": "string",
+            "title": "Toconfigrevisionid"
+          },
+          "diffItems": {
+            "items": {
+              "$ref": "#/components/schemas/ConfigRevisionDiffItemDTO"
+            },
+            "type": "array",
+            "title": "Diffitems"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evaluationRunId",
+          "fromConfigRevisionId",
+          "toConfigRevisionId",
+          "diffItems"
+        ],
+        "title": "EvaluationRunConfigDiffDTO",
+        "description": "评估运行关联配置差异。"
+      },
+      "EvaluationRunCreateRequest": {
+        "properties": {
+          "sampleIds": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sampleids"
+          },
+          "configRevisionId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configrevisionid"
+          },
+          "remark": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remark"
+          }
+        },
+        "type": "object",
+        "title": "EvaluationRunCreateRequest",
+        "description": "创建评估运行请求，复用现有评估样本集进行批量回归。"
+      },
+      "EvaluationRunDTO": {
+        "properties": {
+          "evaluationRunId": {
+            "type": "string",
+            "title": "Evaluationrunid"
+          },
+          "kbId": {
+            "type": "string",
+            "title": "Kbid"
+          },
+          "configRevisionId": {
+            "type": "string",
+            "title": "Configrevisionid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "totalSamples": {
+            "type": "integer",
+            "title": "Totalsamples"
+          },
+          "passedSamples": {
+            "type": "integer",
+            "title": "Passedsamples"
+          },
+          "failedSamples": {
+            "type": "integer",
+            "title": "Failedsamples"
+          },
+          "cancelledSamples": {
+            "type": "integer",
+            "title": "Cancelledsamples"
+          },
+          "passRate": {
+            "type": "number",
+            "title": "Passrate"
+          },
+          "errorSummary": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Errorsummary"
+          },
+          "remark": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remark"
+          },
+          "createdBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdby"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat"
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finishedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evaluationRunId",
+          "kbId",
+          "configRevisionId",
+          "status",
+          "totalSamples",
+          "passedSamples",
+          "failedSamples",
+          "cancelledSamples",
+          "passRate",
+          "errorSummary",
+          "remark",
+          "createdBy",
+          "createdAt",
+          "startedAt",
+          "finishedAt"
+        ],
+        "title": "EvaluationRunDTO",
+        "description": "评估运行摘要。"
+      },
+      "EvaluationRunDetailDTO": {
+        "properties": {
+          "run": {
+            "$ref": "#/components/schemas/EvaluationRunDTO"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationResultDTO"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run",
+          "results"
+        ],
+        "title": "EvaluationRunDetailDTO",
+        "description": "评估运行详情。"
+      },
+      "EvaluationRunExportResponse": {
+        "properties": {
+          "evaluationRunId": {
+            "type": "string",
+            "title": "Evaluationrunid"
+          },
+          "format": {
+            "type": "string",
+            "title": "Format"
+          },
+          "fileName": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evaluationRunId",
+          "format",
+          "fileName",
+          "content"
+        ],
+        "title": "EvaluationRunExportResponse",
+        "description": "评估运行导出响应。"
+      },
       "EvaluationSampleCreateRequest": {
         "properties": {
           "expectedAnswer": {
@@ -5612,6 +6821,92 @@
         "title": "EvaluationSampleDTO",
         "description": "评估样本 DTO，用于回归样本最小管理。"
       },
+      "GraphCommunityDTO": {
+        "properties": {
+          "communityKey": {
+            "type": "string",
+            "title": "Communitykey"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "entityCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entitycount"
+          },
+          "supportKeys": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Supportkeys"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "communityKey",
+          "title",
+          "summary"
+        ],
+        "title": "GraphCommunityDTO",
+        "description": "图社区摘要；不能直接作为最终 Evidence。"
+      },
+      "GraphCommunitySearchResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GraphCommunityDTO"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "graphSnapshotId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graphsnapshotid"
+          },
+          "diagnostics": {
+            "$ref": "#/components/schemas/GraphQueryDiagnosticsDTO"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "graphSnapshotId"
+        ],
+        "title": "GraphCommunitySearchResponse",
+        "description": "社区摘要查询响应。"
+      },
       "GraphEntityDTO": {
         "properties": {
           "entityKey": {
@@ -5695,6 +6990,117 @@
         ],
         "title": "GraphEntitySearchResponse",
         "description": "实体搜索响应，返回实际使用的图快照 ID。"
+      },
+      "GraphPathDTO": {
+        "properties": {
+          "pathKey": {
+            "type": "string",
+            "title": "Pathkey"
+          },
+          "sourceEntity": {
+            "$ref": "#/components/schemas/GraphEntityDTO"
+          },
+          "targetEntity": {
+            "$ref": "#/components/schemas/GraphEntityDTO"
+          },
+          "relationType": {
+            "type": "string",
+            "title": "Relationtype"
+          },
+          "hopCount": {
+            "type": "integer",
+            "title": "Hopcount"
+          },
+          "supportKeys": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Supportkeys"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pathKey",
+          "sourceEntity",
+          "targetEntity",
+          "relationType",
+          "hopCount"
+        ],
+        "title": "GraphPathDTO",
+        "description": "图关系路径摘要；正文证据必须继续通过 supporting chunks 回落。"
+      },
+      "GraphPathSearchResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GraphPathDTO"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "graphSnapshotId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graphsnapshotid"
+          },
+          "diagnostics": {
+            "$ref": "#/components/schemas/GraphQueryDiagnosticsDTO"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "graphSnapshotId"
+        ],
+        "title": "GraphPathSearchResponse",
+        "description": "关系路径查询响应。"
+      },
+      "GraphQueryDiagnosticsDTO": {
+        "properties": {
+          "degraded": {
+            "type": "boolean",
+            "title": "Degraded",
+            "default": false
+          },
+          "degradedReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Degradedreason"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "default": "graph"
+          }
+        },
+        "type": "object",
+        "title": "GraphQueryDiagnosticsDTO",
+        "description": "图查询诊断信息，供 P11 区分真实空结果和 Provider 降级。"
       },
       "GraphSnapshotDTO": {
         "properties": {
@@ -5838,6 +7244,26 @@
             "type": "string",
             "title": "Chunkid"
           },
+          "documentId": {
+            "type": "string",
+            "title": "Documentid"
+          },
+          "documentName": {
+            "type": "string",
+            "title": "Documentname"
+          },
+          "chunkIndex": {
+            "type": "integer",
+            "title": "Chunkindex"
+          },
+          "contentPreview": {
+            "type": "string",
+            "title": "Contentpreview"
+          },
+          "securityLevel": {
+            "type": "string",
+            "title": "Securitylevel"
+          },
           "refType": {
             "type": "string",
             "title": "Reftype"
@@ -5851,11 +7277,16 @@
         "type": "object",
         "required": [
           "chunkId",
+          "documentId",
+          "documentName",
+          "chunkIndex",
+          "contentPreview",
+          "securityLevel",
           "refType",
           "metadata"
         ],
         "title": "GraphSupportingChunkDTO",
-        "description": "图对象回落 Chunk 摘要；当前尚未包含 Chunk 正文真值。"
+        "description": "图对象回落后的授权 Chunk 摘要。"
       },
       "GraphSupportingChunksResponse": {
         "properties": {
@@ -6711,6 +8142,37 @@
           "total"
         ],
         "title": "PageResponse[DocumentDTO]"
+      },
+      "PageResponse_EvaluationRunDTO_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationRunDTO"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "pageNo": {
+            "type": "integer",
+            "title": "Pageno"
+          },
+          "pageSize": {
+            "type": "integer",
+            "title": "Pagesize"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "pageNo",
+          "pageSize",
+          "total"
+        ],
+        "title": "PageResponse[EvaluationRunDTO]"
       },
       "PageResponse_EvaluationSampleDTO_": {
         "properties": {

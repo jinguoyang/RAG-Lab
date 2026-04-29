@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { BookmarkPlus, Copy, Eye, GitCompare, PlayCircle, Search, ThumbsDown, ThumbsUp } from "lucide-react";
+import { BookmarkPlus, Copy, Eye, FileDown, GitCompare, PlayCircle, Search, Sparkles, ThumbsDown, ThumbsUp } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
@@ -11,6 +11,12 @@ import { Drawer, DrawerSection } from "../components/rag/Drawer";
 import { ratingToFeedbackStatus, toQAHistoryRecord, type QAHistoryRecordViewModel } from "../adapters/qaRunAdapter";
 import {
   createConfigDraftFromQARun,
+  createEvaluationRun,
+  createOptimizationDraftFromEvaluationRun,
+  exportEvaluationRun,
+  fetchEvaluationRunConfigDiff,
+  fetchEvaluationRunDetail,
+  fetchEvaluationRuns,
   createEvaluationSampleFromRun,
   fetchEvaluationSamples,
   fetchQARunDetail,
@@ -18,7 +24,7 @@ import {
   fetchQARuns,
   updateQARunFeedback,
 } from "../services/qaRunService";
-import type { QARunDetailDTO } from "../types/qaRun";
+import type { EvaluationRunDetailDTO, QARunDetailDTO } from "../types/qaRun";
 
 type RatingStatus = "up" | "down" | "none";
 type HistoryRecord = QAHistoryRecordViewModel;
@@ -36,6 +42,9 @@ export function QAHistory() {
   const [statusFilter, setStatusFilter] = useState("");
   const [selectedRun, setSelectedRun] = useState<HistoryRecord | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<QARunDetailDTO | null>(null);
+  const [evaluationRuns, setEvaluationRuns] = useState<EvaluationRunDetailDTO["run"][]>([]);
+  const [selectedEvaluationRun, setSelectedEvaluationRun] = useState<EvaluationRunDetailDTO | null>(null);
+  const [selectedDiff, setSelectedDiff] = useState<{ path: string; before: unknown; after: unknown }[]>([]);
   const [evaluationCount, setEvaluationCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -57,8 +66,11 @@ export function QAHistory() {
       try {
         const samples = await fetchEvaluationSamples(kbId);
         setEvaluationCount(samples.total);
+        const runPage = await fetchEvaluationRuns(kbId);
+        setEvaluationRuns(runPage.items);
       } catch {
         setEvaluationCount(0);
+        setEvaluationRuns([]);
       }
     } catch (error) {
       setFeedback({
@@ -68,6 +80,79 @@ export function QAHistory() {
       });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function openEvaluationRun(evaluationRunId: string) {
+    try {
+      setSelectedEvaluationRun(await fetchEvaluationRunDetail(kbId, evaluationRunId));
+      const diff = await fetchEvaluationRunConfigDiff(kbId, evaluationRunId);
+      setSelectedDiff(diff.diffItems.slice(0, 12));
+    } catch (error) {
+      setSelectedEvaluationRun(null);
+      setSelectedDiff([]);
+      setFeedback({
+        variant: "error",
+        title: "评估运行详情加载失败",
+        message: error instanceof Error ? error.message : "请检查评估权限和运行状态。",
+      });
+    }
+  }
+
+  async function runEvaluationBatch() {
+    setActionLoading("evaluation-create");
+    try {
+      await createEvaluationRun(kbId, { remark: "P10 手动触发回归" });
+      await loadHistory(searchTerm);
+      setFeedback({ variant: "success", title: "评估运行已创建", message: "已使用当前评估样本触发回归批次。" });
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "创建评估运行失败",
+        message: error instanceof Error ? error.message : "请检查评估样本和权限。",
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function exportRun(evaluationRunId: string, format: "csv" | "markdown") {
+    setActionLoading(`evaluation-export-${evaluationRunId}-${format}`);
+    try {
+      const response = await exportEvaluationRun(kbId, evaluationRunId, format);
+      setFeedback({
+        variant: "success",
+        title: "评估结果已导出",
+        message: `${response.fileName} 内容已生成，可复制到文档或工单系统。`,
+      });
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "导出失败",
+        message: error instanceof Error ? error.message : "请稍后重试。",
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function createOptimizationDraft(evaluationRunId: string) {
+    setActionLoading(`evaluation-draft-${evaluationRunId}`);
+    try {
+      const response = await createOptimizationDraftFromEvaluationRun(kbId, evaluationRunId);
+      setFeedback({
+        variant: "success",
+        title: "优化草稿已生成",
+        message: `已创建草稿 ${response.configRevisionId.slice(0, 8)}，可到配置中心复核。`,
+      });
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "生成优化草稿失败",
+        message: error instanceof Error ? error.message : "请稍后重试。",
+      });
+    } finally {
+      setActionLoading(null);
     }
   }
 
@@ -216,6 +301,9 @@ export function QAHistory() {
         <Button variant="outline" onClick={() => void loadHistory(searchTerm)}>
           {loading ? "加载中..." : "搜索"}
         </Button>
+        <Button variant="primary" onClick={() => void runEvaluationBatch()} disabled={actionLoading === "evaluation-create"}>
+          <PlayCircle className="w-4 h-4 mr-2" /> 触发评估回归
+        </Button>
       </div>
 
       <div className="flex-1 overflow-auto border border-border-cream rounded-xl">
@@ -269,6 +357,54 @@ export function QAHistory() {
             ))}
           </TableBody>
         </Table>
+      </div>
+
+      <div className="shrink-0 border border-border-cream rounded-xl p-4 bg-ivory space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-near-black">评估运行批次</h3>
+          <Badge variant="default">{evaluationRuns.length} 批次</Badge>
+        </div>
+        <div className="max-h-48 overflow-auto space-y-2">
+          {evaluationRuns.length === 0 ? (
+            <p className="text-sm text-stone-gray">暂无评估运行，可点击“触发评估回归”创建。</p>
+          ) : (
+            evaluationRuns.map((run) => (
+              <div key={run.evaluationRunId} className="rounded-lg border border-border-cream bg-parchment p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium text-near-black">{run.evaluationRunId.slice(0, 8)}</div>
+                    <div className="text-xs text-stone-gray">
+                      状态 {run.status} · 通过率 {(run.passRate * 100).toFixed(1)}% · 失败 {run.failedSamples}
+                    </div>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="sm" title="查看运行详情" onClick={() => void openEvaluationRun(run.evaluationRunId)}>
+                      <Eye className="w-4 h-4 text-terracotta" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      title="导出 CSV"
+                      disabled={actionLoading === `evaluation-export-${run.evaluationRunId}-csv`}
+                      onClick={() => void exportRun(run.evaluationRunId, "csv")}
+                    >
+                      <FileDown className="w-4 h-4 text-terracotta" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      title="生成优化草稿"
+                      disabled={actionLoading === `evaluation-draft-${run.evaluationRunId}`}
+                      onClick={() => void createOptimizationDraft(run.evaluationRunId)}
+                    >
+                      <Sparkles className="w-4 h-4 text-terracotta" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
       <Drawer
@@ -375,6 +511,56 @@ export function QAHistory() {
                 <Button variant="ghost" disabled={actionLoading === `draft-${selectedRun.id}`} onClick={() => void createDraft(selectedRun)}>
                   <Copy className="w-4 h-4 mr-2" /> 生成 Revision 草稿
                 </Button>
+              </div>
+            </DrawerSection>
+          </>
+        )}
+      </Drawer>
+
+      <Drawer
+        isOpen={selectedEvaluationRun !== null}
+        onClose={() => {
+          setSelectedEvaluationRun(null);
+          setSelectedDiff([]);
+        }}
+        title={selectedEvaluationRun ? `评估批次 · ${selectedEvaluationRun.run.evaluationRunId.slice(0, 8)}` : "评估批次"}
+        width="640px"
+      >
+        {selectedEvaluationRun && (
+          <>
+            <DrawerSection title="批次概览">
+              <div className="space-y-2 text-sm text-near-black">
+                <div>状态：{selectedEvaluationRun.run.status}</div>
+                <div>样本：{selectedEvaluationRun.run.totalSamples}（通过 {selectedEvaluationRun.run.passedSamples} / 失败 {selectedEvaluationRun.run.failedSamples}）</div>
+                <div>通过率：{(selectedEvaluationRun.run.passRate * 100).toFixed(1)}%</div>
+              </div>
+            </DrawerSection>
+            <DrawerSection title="配置差异（前 12 项）">
+              {selectedDiff.length === 0 ? (
+                <p className="text-sm text-stone-gray">该批次与来源配置无显著差异，或暂无可比较来源。</p>
+              ) : (
+                <div className="space-y-2">
+                  {selectedDiff.map((item) => (
+                    <div key={item.path} className="rounded-lg border border-border-cream bg-parchment p-2 text-xs">
+                      <div className="font-mono text-near-black">{item.path}</div>
+                      <div className="text-stone-gray">before: {String(item.before)}</div>
+                      <div className="text-stone-gray">after: {String(item.after)}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </DrawerSection>
+            <DrawerSection title="失败样本摘要">
+              <div className="space-y-2">
+                {selectedEvaluationRun.results.filter((result) => result.status === "failed").slice(0, 8).map((result) => (
+                  <div key={result.evaluationResultId} className="rounded-lg border border-border-cream bg-parchment p-2 text-xs text-stone-gray">
+                    <div className="font-mono text-near-black">{result.sampleId.slice(0, 8)} · {result.failureReason || "failed"}</div>
+                    <div className="mt-1">{result.query}</div>
+                  </div>
+                ))}
+                {selectedEvaluationRun.results.every((result) => result.status !== "failed") && (
+                  <p className="text-sm text-stone-gray">该批次无失败样本。</p>
+                )}
               </div>
             </DrawerSection>
           </>

@@ -2,6 +2,12 @@ import { apiGet, apiPatchJson, apiPostJson } from "./apiClient";
 import type {
   EvaluationSampleDTO,
   EvaluationSamplePage,
+  EvaluationOptimizationDraftResponse,
+  EvaluationRunConfigDiffDTO,
+  EvaluationRunDetailDTO,
+  EvaluationRunDTO,
+  EvaluationRunExportResponse,
+  EvaluationRunPage,
   QARunCreateResponse,
   QARunDetailDTO,
   QARunFeedbackResponse,
@@ -89,4 +95,56 @@ export async function createEvaluationSampleFromRun(
 
 export async function fetchEvaluationSamples(kbId: string): Promise<EvaluationSamplePage> {
   return apiGet<EvaluationSamplePage>(`/knowledge-bases/${kbId}/qa-runs/evaluation-samples?pageNo=1&pageSize=50`);
+}
+
+export async function createEvaluationRun(
+  kbId: string,
+  payload: { sampleIds?: string[]; configRevisionId?: string; remark?: string } = {},
+): Promise<EvaluationRunDTO> {
+  return apiPostJson<EvaluationRunDTO>(`/knowledge-bases/${kbId}/qa-runs/evaluation/runs`, payload);
+}
+
+export async function fetchEvaluationRuns(kbId: string): Promise<EvaluationRunPage> {
+  return apiGet<EvaluationRunPage>(`/knowledge-bases/${kbId}/qa-runs/evaluation/runs?pageNo=1&pageSize=50`);
+}
+
+export async function fetchEvaluationRunDetail(kbId: string, evaluationRunId: string): Promise<EvaluationRunDetailDTO> {
+  return apiGet<EvaluationRunDetailDTO>(`/knowledge-bases/${kbId}/qa-runs/evaluation/runs/${evaluationRunId}`);
+}
+
+export async function retryEvaluationRun(kbId: string, evaluationRunId: string): Promise<unknown> {
+  return apiPostJson<unknown>(`/knowledge-bases/${kbId}/qa-runs/evaluation/runs/${evaluationRunId}/retry`, {});
+}
+
+export async function cancelEvaluationRun(kbId: string, evaluationRunId: string): Promise<unknown> {
+  return apiPostJson<unknown>(`/knowledge-bases/${kbId}/qa-runs/evaluation/runs/${evaluationRunId}/cancel`, {});
+}
+
+export async function exportEvaluationRun(
+  kbId: string,
+  evaluationRunId: string,
+  format: "csv" | "markdown",
+): Promise<EvaluationRunExportResponse> {
+  return apiGet<EvaluationRunExportResponse>(
+    `/knowledge-bases/${kbId}/qa-runs/evaluation/runs/${evaluationRunId}/export?format=${format}`,
+  );
+}
+
+export async function fetchEvaluationRunConfigDiff(
+  kbId: string,
+  evaluationRunId: string,
+): Promise<EvaluationRunConfigDiffDTO> {
+  return apiGet<EvaluationRunConfigDiffDTO>(
+    `/knowledge-bases/${kbId}/qa-runs/evaluation/runs/${evaluationRunId}/config-diff`,
+  );
+}
+
+export async function createOptimizationDraftFromEvaluationRun(
+  kbId: string,
+  evaluationRunId: string,
+): Promise<EvaluationOptimizationDraftResponse> {
+  return apiPostJson<EvaluationOptimizationDraftResponse>(
+    `/knowledge-bases/${kbId}/qa-runs/evaluation/runs/${evaluationRunId}/optimization-draft`,
+    {},
+  );
 }

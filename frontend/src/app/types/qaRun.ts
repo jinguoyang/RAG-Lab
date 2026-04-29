@@ -129,5 +129,71 @@ export interface EvaluationSampleDTO {
   updatedAt: string;
 }
 
+export interface EvaluationRunDTO {
+  evaluationRunId: string;
+  kbId: string;
+  configRevisionId: string;
+  status: string;
+  totalSamples: number;
+  passedSamples: number;
+  failedSamples: number;
+  cancelledSamples: number;
+  passRate: number;
+  errorSummary: Record<string, number>;
+  remark: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface EvaluationResultDTO {
+  evaluationResultId: string;
+  evaluationRunId: string;
+  sampleId: string;
+  sourceRunId: string | null;
+  actualRunId: string | null;
+  status: "passed" | "failed" | "cancelled";
+  query: string;
+  expectedAnswer: string | null;
+  actualAnswer: string | null;
+  failureReason: string | null;
+  metrics: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EvaluationRunDetailDTO {
+  run: EvaluationRunDTO;
+  results: EvaluationResultDTO[];
+}
+
+export interface EvaluationRunExportResponse {
+  evaluationRunId: string;
+  format: "csv" | "markdown";
+  fileName: string;
+  content: string;
+}
+
+export interface ConfigRevisionDiffItemDTO {
+  path: string;
+  before: unknown;
+  after: unknown;
+}
+
+export interface EvaluationRunConfigDiffDTO {
+  evaluationRunId: string;
+  fromConfigRevisionId: string;
+  toConfigRevisionId: string;
+  diffItems: ConfigRevisionDiffItemDTO[];
+}
+
+export interface EvaluationOptimizationDraftResponse {
+  evaluationRunId: string;
+  configRevisionId: string;
+  remark: string;
+}
+
 export type QARunPage = PageResponse<QARunListItemDTO>;
 export type EvaluationSamplePage = PageResponse<EvaluationSampleDTO>;
+export type EvaluationRunPage = PageResponse<EvaluationRunDTO>;
