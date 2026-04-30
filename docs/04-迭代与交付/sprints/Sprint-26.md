@@ -26,10 +26,10 @@
 
 | 编号 | Backlog | 标题 | 优先级 | 预估 | 负责人 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| S26-001 | B-115 | 固化 QARun Pipeline Snapshot 和节点级参数快照 | P0 | 1.5d | Codex | Todo |
-| S26-002 | B-116 | 建立不同 Pipeline 配置的评估对比脚本 | P1 | 2d | Codex | Todo |
-| S26-003 | B-117 | P10/P08 展示配置效果对比和优化建议 | P1 | 2d | Codex | Todo |
-| S26-004 | B-118 | 建立 V1.7 RAG 调优指南和参数字典 | P2 | 1d | Codex | Todo |
+| S26-001 | B-115 | 固化 QARun Pipeline Snapshot 和节点级参数快照 | P0 | 1.5d | Codex | Done |
+| S26-002 | B-116 | 建立不同 Pipeline 配置的评估对比脚本 | P1 | 2d | Codex | Done |
+| S26-003 | B-117 | P10/P08 展示配置效果对比和优化建议 | P1 | 2d | Codex | Done |
+| S26-004 | B-118 | 建立 V1.7 RAG 调优指南和参数字典 | P2 | 1d | Codex | Done |
 
 ## 5. 验收标准
 
@@ -50,3 +50,10 @@
 - 配置评估验证：`conda run -n rag-lab python scripts/verify_v17_pipeline_evaluation.py`
 - 前端构建：`npm run build`
 - 空白检查：`git diff --check`
+
+## 8. 执行记录
+
+- B-115：新增 QARun `pipeline_snapshot` 与 `node_param_snapshot` 持久化字段，详情和配置对比优先读取运行快照。
+- B-116：新增 V1.7 评估闭环验证脚本，评估结果补充 `hitCount`、`citationCount`、`latencyMs`、`failureReason` 和节点参数快照。
+- B-117：P10 展示参数快照、配置效果对比、失败样本指标和优化建议；P08 发布复核提示关联评估对比。
+- B-118：新增 [V1.7 RAG 调优指南](../V1.7-RAG调优指南.md)，覆盖参数字典、推荐范围、调参流程和发布注意事项。

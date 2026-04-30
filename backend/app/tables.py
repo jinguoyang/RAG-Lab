@@ -351,6 +351,8 @@ qa_runs = sa.Table(
     sa.Column("answer", sa.Text(), nullable=True),
     sa.Column("has_override", sa.Boolean(), nullable=False),
     sa.Column("override_snapshot", postgresql.JSONB(), nullable=False),
+    sa.Column("pipeline_snapshot", postgresql.JSONB(), nullable=False),
+    sa.Column("node_param_snapshot", postgresql.JSONB(), nullable=False),
     sa.Column("metrics", postgresql.JSONB(), nullable=False),
     sa.Column("feedback_status", sa.String(length=32), nullable=False),
     sa.Column("feedback_note", sa.Text(), nullable=True),

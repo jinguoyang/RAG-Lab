@@ -788,7 +788,7 @@ export function ConfigCenter() {
       await createConfigReleaseRecord(
         kbId,
         revision.id,
-        `变更说明：${revision.revisionNo} 已完成发布复核。`,
+        `变更说明：${revision.revisionNo} 已完成发布复核，建议结合 P10 优化建议与评估对比确认效果。`,
         "回滚前确认评估结果、影响范围和最近一个稳定版本。",
       );
       await loadRevisions();

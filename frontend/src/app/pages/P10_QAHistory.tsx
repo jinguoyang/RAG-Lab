@@ -150,7 +150,7 @@ export function QAHistory() {
       setFeedback({
         variant: "success",
         title: "优化草稿已生成",
-        message: `已创建草稿 ${response.configRevisionId.slice(0, 8)}，可到配置中心复核。`,
+        message: `已创建草稿 ${response.configRevisionId.slice(0, 8)}，包含 ${response.recommendations.length} 条优化建议，可到配置中心复核。`,
       });
     } catch (error) {
       setFeedback({
@@ -171,6 +171,10 @@ export function QAHistory() {
     if (!selectedRun) return [];
     return history.filter((run) => run.query === selectedRun.query && run.id !== selectedRun.id);
   }, [history, selectedRun]);
+  const snapshotPreview = useMemo(() => {
+    if (!selectedDetail) return "{}";
+    return JSON.stringify(selectedDetail.nodeParamSnapshot, null, 2).slice(0, 1200);
+  }, [selectedDetail]);
 
   async function openRun(run: HistoryRecord) {
     setSelectedRun(run);
@@ -493,6 +497,17 @@ export function QAHistory() {
               </div>
             </DrawerSection>
 
+            <DrawerSection title="参数快照">
+              <div className="space-y-2 text-xs text-stone-gray">
+                <div className="rounded-lg border border-border-cream bg-parchment p-3">
+                  Pipeline：{String(selectedDetail?.pipelineSnapshot?.version || "unknown")} · 节点参数来自本次运行固化快照
+                </div>
+                <pre className="max-h-44 overflow-auto rounded-lg border border-border-cream bg-parchment p-3 font-mono text-[11px] leading-5 text-near-black">
+                  {snapshotPreview}
+                </pre>
+              </div>
+            </DrawerSection>
+
             <DrawerSection title="质量标注">
               <div className="space-y-3">
                 <div className="flex gap-2">
@@ -702,17 +717,64 @@ export function QAHistory() {
                 </div>
               )}
             </DrawerSection>
+            <DrawerSection title="配置效果对比">
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="rounded-lg border border-border-cream bg-parchment p-3">
+                  <div className="text-stone-gray">平均命中</div>
+                  <div className="mt-1 font-medium text-near-black">
+                    {(
+                      selectedEvaluationRun.results.reduce((sum, result) => sum + Number(result.metrics.hitCount || 0), 0) /
+                      Math.max(1, selectedEvaluationRun.results.length)
+                    ).toFixed(1)}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border-cream bg-parchment p-3">
+                  <div className="text-stone-gray">平均引用</div>
+                  <div className="mt-1 font-medium text-near-black">
+                    {(
+                      selectedEvaluationRun.results.reduce((sum, result) => sum + Number(result.metrics.citationCount || 0), 0) /
+                      Math.max(1, selectedEvaluationRun.results.length)
+                    ).toFixed(1)}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border-cream bg-parchment p-3">
+                  <div className="text-stone-gray">平均耗时</div>
+                  <div className="mt-1 font-medium text-near-black">
+                    {Math.round(
+                      selectedEvaluationRun.results.reduce((sum, result) => sum + Number(result.metrics.latencyMs || 0), 0) /
+                      Math.max(1, selectedEvaluationRun.results.length),
+                    )} ms
+                  </div>
+                </div>
+              </div>
+            </DrawerSection>
             <DrawerSection title="失败样本摘要">
               <div className="space-y-2">
                 {selectedEvaluationRun.results.filter((result) => result.status === "failed").slice(0, 8).map((result) => (
                   <div key={result.evaluationResultId} className="rounded-lg border border-border-cream bg-parchment p-2 text-xs text-stone-gray">
                     <div className="font-mono text-near-black">{result.sampleId.slice(0, 8)} · {result.failureReason || "failed"}</div>
                     <div className="mt-1">{result.query}</div>
+                    <div className="mt-2">
+                      命中 {String(result.metrics.hitCount ?? "-")} · 引用 {String(result.metrics.citationCount ?? "-")} · 耗时 {String(result.metrics.latencyMs ?? "-")} ms
+                    </div>
                   </div>
                 ))}
                 {selectedEvaluationRun.results.every((result) => result.status !== "failed") && (
                   <p className="text-sm text-stone-gray">该批次无失败样本。</p>
                 )}
+              </div>
+            </DrawerSection>
+            <DrawerSection title="优化建议">
+              <div className="space-y-2 text-xs text-stone-gray">
+                <div className="rounded-lg border border-border-cream bg-parchment p-3">
+                  预期影响：失败样本优先围绕 topK、scoreThreshold、fusionWeight、Context Packing 和 generation temperature 复核。
+                </div>
+                <div className="rounded-lg border border-border-cream bg-parchment p-3">
+                  风险：提高召回和上下文窗口会增加延迟与噪声，降低温度可能让答案更保守。
+                </div>
+                <div className="rounded-lg border border-border-cream bg-parchment p-3">
+                  关联样本：{selectedEvaluationRun.results.filter((result) => result.status === "failed").slice(0, 5).map((result) => result.sampleId.slice(0, 8)).join("、") || "无"}
+                </div>
               </div>
             </DrawerSection>
           </>

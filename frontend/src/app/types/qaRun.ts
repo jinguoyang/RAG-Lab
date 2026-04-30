@@ -73,6 +73,8 @@ export interface QARunDetailDTO {
   answer: string | null;
   retrievalDiagnostics: Record<string, unknown>;
   overrideSnapshot: Record<string, unknown>;
+  pipelineSnapshot: Record<string, unknown>;
+  nodeParamSnapshot: Record<string, unknown>;
   feedbackStatus: string;
   feedbackNote: string | null;
   failureType: string | null;
@@ -248,10 +250,21 @@ export interface EvaluationRunConfigDiffDTO {
   diffItems: ConfigRevisionDiffItemDTO[];
 }
 
+export interface EvaluationOptimizationRecommendationDTO {
+  title: string;
+  paramPath: string;
+  before: unknown;
+  after: unknown;
+  expectedImpact: string;
+  risk: string;
+  relatedSampleIds: string[];
+}
+
 export interface EvaluationOptimizationDraftResponse {
   evaluationRunId: string;
   configRevisionId: string;
   remark: string;
+  recommendations: EvaluationOptimizationRecommendationDTO[];
 }
 
 export type QARunPage = PageResponse<QARunListItemDTO>;

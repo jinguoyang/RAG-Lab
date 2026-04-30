@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 from hashlib import sha256
+from copy import deepcopy
 import json
 from typing import Any
 from uuid import UUID, uuid4
@@ -23,6 +24,7 @@ from app.schemas.qa_run import (
     EvaluationRunDTO,
     EvaluationRunDetailDTO,
     EvaluationRunExportResponse,
+    EvaluationOptimizationRecommendationDTO,
     QARunCandidateDTO,
     QARunCitationDTO,
     QARunCompareDTO,
@@ -301,6 +303,12 @@ def _build_effective_pipeline_params(
         },
         "temperature": temperature,
     }
+
+
+def _qa_run_pipeline_snapshot(revision_row: RowMapping | dict[str, Any]) -> dict[str, Any]:
+    """复制运行时 Pipeline 定义，避免后续配置版本变更影响历史评估。"""
+    pipeline_definition = revision_row["pipeline_definition"]
+    return deepcopy(pipeline_definition) if isinstance(pipeline_definition, dict) else {}
 
 
 def _limit_candidate_pairs_by_context_tokens(
@@ -1148,6 +1156,9 @@ def _execute_provider_qa_run(
                 answer="当前用户没有可用于回答的授权证据。",
                 metrics={
                     "latencyMs": int((datetime.now(UTC) - started_at).total_seconds() * 1000),
+                    "hitCount": 0,
+                    "evidenceCount": 0,
+                    "citationCount": 0,
                     "retrievalDiagnostics": {
                         **raw_channel_counts,
                         "fusedCount": len(fused_candidates),
@@ -1276,6 +1287,9 @@ def _execute_provider_qa_run(
             answer=answer,
             metrics={
                 "latencyMs": int((datetime.now(UTC) - started_at).total_seconds() * 1000),
+                "hitCount": len(fused_candidates),
+                "evidenceCount": 1,
+                "citationCount": 1,
                 "retrievalDiagnostics": {
                     **raw_channel_counts,
                     "fusedCount": len(fused_candidates),
@@ -1313,6 +1327,8 @@ def create_qa_run(
     if not has_kb_permission(session, current_user, kb_id, "kb.qa.run"):
         raise QARunCreateConflict("Current user cannot run QA in this knowledge base.")
     _assert_retrieval_enabled(revision_row, override_snapshot)
+    pipeline_snapshot = _qa_run_pipeline_snapshot(revision_row)
+    node_param_snapshot = _build_effective_pipeline_params(revision_row, override_snapshot, get_settings().provider_top_k)
 
     try:
         row = session.execute(
@@ -1326,6 +1342,8 @@ def create_qa_run(
                 status="queued",
                 has_override=bool(override_snapshot),
                 override_snapshot=override_snapshot,
+                pipeline_snapshot=pipeline_snapshot,
+                node_param_snapshot=node_param_snapshot,
                 metrics={},
                 feedback_status="unrated",
                 created_by=actor_id,
@@ -1532,6 +1550,8 @@ def get_qa_run_detail(
         answer=row["answer"],
         retrievalDiagnostics=row["metrics"].get("retrievalDiagnostics", {}),
         overrideSnapshot=row["override_snapshot"],
+        pipelineSnapshot=row["pipeline_snapshot"] or {},
+        nodeParamSnapshot=row["node_param_snapshot"] or row["metrics"].get("retrievalDiagnostics", {}).get("pipelineParams", {}),
         feedbackStatus=row["feedback_status"],
         feedbackNote=row["feedback_note"],
         failureType=_failure_type(row),
@@ -1684,7 +1704,7 @@ def _build_replay_context_snapshot(
     if not isinstance(retrieval_diagnostics, dict):
         retrieval_diagnostics = {}
 
-    pipeline_params = retrieval_diagnostics.get("pipelineParams")
+    pipeline_params = run_row["node_param_snapshot"] or retrieval_diagnostics.get("pipelineParams")
     if not isinstance(pipeline_params, dict):
         pipeline_params = (
             _build_effective_pipeline_params(revision_row, run_row["override_snapshot"])
@@ -1843,16 +1863,20 @@ def _compare_trace_rows(
 
 
 def _qa_run_config_snapshot(session: Session, run_row: RowMapping) -> dict[str, Any]:
-    """汇总运行时配置版本和覆盖参数，作为配置差异对比输入。"""
+    """汇总运行时配置快照，作为配置差异对比输入。"""
     revision_row = session.execute(
         select(config_revisions)
         .where(config_revisions.c.config_revision_id == run_row["config_revision_id"])
         .limit(1)
     ).mappings().first()
+    pipeline_snapshot = run_row["pipeline_snapshot"] or {}
+    if not pipeline_snapshot and revision_row:
+        pipeline_snapshot = revision_row["pipeline_definition"]
     return {
         "configRevisionId": str(run_row["config_revision_id"]),
-        "pipelineDefinition": revision_row["pipeline_definition"] if revision_row else {},
+        "pipelineDefinition": pipeline_snapshot,
         "overrideSnapshot": run_row["override_snapshot"],
+        "nodeParamSnapshot": run_row["node_param_snapshot"] or {},
     }
 
 
@@ -2114,7 +2138,7 @@ def _normalize_answer_text(value: str | None) -> str:
 
 
 def _evaluate_sample_result(
-    sample_row: RowMapping, run_row: RowMapping | None
+    sample_row: RowMapping, run_row: RowMapping | None, target_config_revision_id: UUID
 ) -> tuple[str, str | None, dict[str, Any], str | None, str | None]:
     """根据样本期望和运行结果计算通过/失败状态。"""
     expected_answer = _normalize_answer_text(sample_row["expected_answer"])
@@ -2135,10 +2159,24 @@ def _evaluate_sample_result(
         status = "failed"
         failure_reason = "actual_answer_empty"
 
+    run_metrics = run_row["metrics"] if run_row else {}
+    if not isinstance(run_metrics, dict):
+        run_metrics = {}
+    retrieval_diagnostics = run_metrics.get("retrievalDiagnostics", {})
+    if not isinstance(retrieval_diagnostics, dict):
+        retrieval_diagnostics = {}
     metrics = {
         "sourceRunStatus": run_row["status"] if run_row else None,
-        "latencyMs": (run_row["metrics"] or {}).get("latencyMs") if run_row else None,
+        "sourceConfigRevisionId": str(run_row["config_revision_id"]) if run_row else None,
+        "configRevisionId": str(target_config_revision_id),
+        "latencyMs": run_metrics.get("latencyMs"),
+        "hitCount": run_metrics.get("hitCount", retrieval_diagnostics.get("fusedCount")),
+        "evidenceCount": run_metrics.get("evidenceCount"),
+        "citationCount": run_metrics.get("citationCount"),
+        "failureReason": failure_reason,
         "feedbackStatus": run_row["feedback_status"] if run_row else None,
+        "nodeParamSnapshot": run_row["node_param_snapshot"] if run_row else {},
+        "pipelineSnapshotVersion": (run_row["pipeline_snapshot"] or {}).get("version") if run_row else None,
     }
     actual_answer_output = run_row["answer"] if run_row else None
     actual_run_id = str(run_row["run_id"]) if run_row else None
@@ -2149,6 +2187,7 @@ def _run_evaluation_results(
     session: Session,
     evaluation_run_id: UUID,
     sample_rows: list[RowMapping],
+    target_config_revision_id: UUID,
 ) -> tuple[int, int, int, dict[str, int], str]:
     """同步执行评估并写入结果表，返回汇总统计。"""
     now = datetime.now(UTC)
@@ -2163,7 +2202,11 @@ def _run_evaluation_results(
             source_run = session.execute(
                 select(qa_runs).where(qa_runs.c.run_id == sample["source_run_id"]).limit(1)
             ).mappings().first()
-        status, failure_reason, metrics, actual_answer, actual_run_id = _evaluate_sample_result(sample, source_run)
+        status, failure_reason, metrics, actual_answer, actual_run_id = _evaluate_sample_result(
+            sample,
+            source_run,
+            target_config_revision_id,
+        )
         if status == "passed":
             pass_count += 1
         elif status == "failed":
@@ -2207,6 +2250,10 @@ def _build_evaluation_report(run: EvaluationRunDTO, results: list[EvaluationResu
         f"- 取消: {run.cancelledSamples}",
         f"- 通过率: {run.passRate}",
         "",
+        "## 配置对比摘要",
+        f"- 目标配置版本: {run.configRevisionId}",
+        "- 快照策略: qa_run_snapshot",
+        "",
         "## 失败摘要",
     ]
     if not run.errorSummary:
@@ -2216,9 +2263,21 @@ def _build_evaluation_report(run: EvaluationRunDTO, results: list[EvaluationResu
             lines.append(f"- {key}: {value}")
     lines.extend(["", "## 样本结果"])
     for result in results:
+        metric_parts = []
+        for key in ["hitCount", "citationCount", "latencyMs"]:
+            value = result.metrics.get(key)
+            if value is not None:
+                metric_parts.append(f"{key}={value}")
+        metric_text = f" ({', '.join(metric_parts)})" if metric_parts else ""
         lines.append(
-            f"- [{result.status}] sample={result.sampleId} run={result.actualRunId or '-'} reason={result.failureReason or '-'}"
+            f"- [{result.status}] sample={result.sampleId} run={result.actualRunId or '-'} reason={result.failureReason or '-'}{metric_text}"
         )
+    lines.extend(["", "## 优化建议线索"])
+    if run.failedSamples:
+        lines.append("- 优先检查失败样本的 hitCount、citationCount、latencyMs 与 nodeParamSnapshot。")
+        lines.append("- 结合配置差异确认 topK、scoreThreshold、fusionWeight、contextPacking 与 generation 参数影响。")
+    else:
+        lines.append("- 当前批次无失败样本，建议保留配置并继续扩大评估集。")
     return "\n".join(lines)
 
 
@@ -2266,6 +2325,14 @@ def create_evaluation_run(
     now = datetime.now(UTC)
     actor_id = UUID(current_user.user.userId)
     evaluation_run_id = uuid4()
+    source_run_ids = [sample["source_run_id"] for sample in sample_rows if sample["source_run_id"]]
+    source_config_revision_ids: list[str] = []
+    if source_run_ids:
+        source_rows = session.execute(
+            select(qa_runs.c.config_revision_id).where(qa_runs.c.run_id.in_(source_run_ids))
+        ).mappings()
+        source_config_revision_ids = sorted({str(source["config_revision_id"]) for source in source_rows})
+    baseline_config_revision_id = source_config_revision_ids[0] if source_config_revision_ids else str(config_revision_id)
     try:
         run_row = session.execute(
             insert(evaluation_runs)
@@ -2280,7 +2347,13 @@ def create_evaluation_run(
                 cancelled_samples=0,
                 error_summary={},
                 remark=request.remark,
-                metadata={},
+                metadata={
+                    "baselineConfigRevisionId": baseline_config_revision_id,
+                    "targetConfigRevisionId": str(config_revision_id),
+                    "sourceConfigRevisionIds": source_config_revision_ids,
+                    "comparisonMode": "config_revision",
+                    "snapshotPolicy": "qa_run_snapshot",
+                },
                 started_at=now,
                 created_by=actor_id,
                 updated_by=actor_id,
@@ -2289,7 +2362,7 @@ def create_evaluation_run(
         ).mappings().one()
 
         pass_count, fail_count, cancelled_count, error_summary, final_status = _run_evaluation_results(
-            session, evaluation_run_id, sample_rows
+            session, evaluation_run_id, sample_rows, config_revision_id
         )
         finished_at = datetime.now(UTC)
         run_row = session.execute(
@@ -2498,7 +2571,7 @@ def retry_evaluation_run(
             )
         )
         pass_count, fail_count, cancelled_count, error_summary, final_status = _run_evaluation_results(
-            session, evaluation_run_id, sample_rows
+            session, evaluation_run_id, sample_rows, run_row["config_revision_id"]
         )
         finished_at = datetime.now(UTC)
         updated = session.execute(
@@ -2636,7 +2709,14 @@ def get_evaluation_run_config_diff(
     if from_revision_row is None:
         from_revision_row = base_revision_row
 
-    before_values = _flatten_json(from_revision_row["pipeline_definition"])
+    before_pipeline_definition = from_revision_row["pipeline_definition"]
+    if source_result and source_result["source_run_id"]:
+        source_run = session.execute(
+            select(qa_runs).where(qa_runs.c.run_id == source_result["source_run_id"]).limit(1)
+        ).mappings().first()
+        if source_run and source_run["pipeline_snapshot"]:
+            before_pipeline_definition = source_run["pipeline_snapshot"]
+    before_values = _flatten_json(before_pipeline_definition)
     after_values = _flatten_json(base_revision_row["pipeline_definition"])
     diff_items: list[ConfigRevisionDiffItemDTO] = []
     for path in sorted(set(before_values.keys()) | set(after_values.keys())):
@@ -2682,10 +2762,25 @@ def create_optimization_draft_from_evaluation_run(
     if base_revision is None:
         return None
 
-    pipeline_definition = dict(base_revision["pipeline_definition"])
+    pipeline_definition = deepcopy(base_revision["pipeline_definition"])
     nodes = pipeline_definition.get("nodes", [])
     if not isinstance(nodes, list):
         nodes = []
+
+    failed_results = list(
+        session.execute(
+            select(evaluation_results)
+            .where(
+                evaluation_results.c.evaluation_run_id == evaluation_run_id,
+                evaluation_results.c.status == "failed",
+                evaluation_results.c.deleted_at.is_(None),
+            )
+            .order_by(evaluation_results.c.created_at.asc())
+        ).mappings()
+    )
+    related_sample_ids = [str(result["sample_id"]) for result in failed_results[:8]]
+    failure_reasons = {str(result["failure_reason"] or "failed_unknown") for result in failed_results}
+    recommendations: list[EvaluationOptimizationRecommendationDTO] = []
 
     # 简单启发式优化：失败偏多时适度提高检索 topK 和上下文上限，降低生成温度。
     fail_ratio = (run_row["failed_samples"] / run_row["total_samples"]) if run_row["total_samples"] else 0
@@ -2698,11 +2793,47 @@ def create_optimization_draft_from_evaluation_run(
             params = {}
             node["params"] = params
         if node_type in {"denseRetrieval", "sparseRetrieval", "graphRetrieval"} and fail_ratio >= 0.2:
-            params["topK"] = min(200, int(params.get("topK", 10)) + 2)
-        if node_type == "contextBuilder" and fail_ratio >= 0.2:
-            params["maxContextTokens"] = min(128000, int(params.get("maxContextTokens", 6000)) + 512)
-        if node_type == "generation" and fail_ratio >= 0.2:
-            params["temperature"] = max(0, round(float(params.get("temperature", 0.2)) - 0.05, 3))
+            before_top_k = int(params.get("topK", 10))
+            params["topK"] = min(200, before_top_k + 2)
+            recommendations.append(
+                EvaluationOptimizationRecommendationDTO(
+                    title=f"提高 {node_type} topK",
+                    paramPath=f"{node_type}.params.topK",
+                    before=before_top_k,
+                    after=params["topK"],
+                    expectedImpact="提升低召回失败样本的候选覆盖率。",
+                    risk="候选数增加会带来更高延迟，并可能引入更多噪声。",
+                    relatedSampleIds=related_sample_ids,
+                )
+            )
+        if node_type in {"contextPacking", "contextBuilder"} and fail_ratio >= 0.2:
+            before_tokens = int(params.get("maxContextTokens", 6000))
+            params["maxContextTokens"] = min(128000, before_tokens + 512)
+            recommendations.append(
+                EvaluationOptimizationRecommendationDTO(
+                    title="扩大上下文打包窗口",
+                    paramPath=f"{node_type}.params.maxContextTokens",
+                    before=before_tokens,
+                    after=params["maxContextTokens"],
+                    expectedImpact="为 citationCount 偏低或答案不完整的样本保留更多证据上下文。",
+                    risk="上下文更长会增加生成成本，并可能稀释核心证据。",
+                    relatedSampleIds=related_sample_ids,
+                )
+            )
+        if node_type == "generation" and (fail_ratio >= 0.2 or "answer_mismatch" in failure_reasons):
+            before_temperature = float(params.get("temperature", 0.2))
+            params["temperature"] = max(0, round(before_temperature - 0.05, 3))
+            recommendations.append(
+                EvaluationOptimizationRecommendationDTO(
+                    title="降低生成温度",
+                    paramPath="generation.params.temperature",
+                    before=before_temperature,
+                    after=params["temperature"],
+                    expectedImpact="降低答案漂移，改善 answer_mismatch 类失败。",
+                    risk="温度过低可能让答案更保守，需结合人工验收复核。",
+                    relatedSampleIds=related_sample_ids,
+                )
+            )
 
     actor_id = UUID(current_user.user.userId)
     revision_no = (
@@ -2725,7 +2856,11 @@ def create_optimization_draft_from_evaluation_run(
                 "copiedFromEvaluationRunId": str(evaluation_run_id),
                 "copiedFromRevisionId": str(base_revision["config_revision_id"]),
                 "generatedAt": datetime.now(UTC).isoformat(),
-                "heuristics": {"failRatio": fail_ratio},
+                "heuristics": {
+                    "failRatio": fail_ratio,
+                    "failureReasons": sorted(failure_reasons),
+                    "recommendations": [recommendation.model_dump() for recommendation in recommendations],
+                },
             },
             remark=remark,
             created_by=actor_id,
@@ -2738,4 +2873,5 @@ def create_optimization_draft_from_evaluation_run(
         evaluationRunId=str(evaluation_run_id),
         configRevisionId=str(draft_row["config_revision_id"]),
         remark=remark,
+        recommendations=recommendations,
     )

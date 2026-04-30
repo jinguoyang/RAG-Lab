@@ -108,6 +108,8 @@ class QARunDetailDTO(BaseModel):
     answer: str | None
     retrievalDiagnostics: dict[str, Any]
     overrideSnapshot: dict[str, Any]
+    pipelineSnapshot: dict[str, Any]
+    nodeParamSnapshot: dict[str, Any]
     feedbackStatus: str
     feedbackNote: str | None
     failureType: str | None
@@ -361,9 +363,22 @@ class EvaluationRunConfigDiffDTO(BaseModel):
     diffItems: list[ConfigRevisionDiffItemDTO]
 
 
+class EvaluationOptimizationRecommendationDTO(BaseModel):
+    """评估失败样本推导出的单条可复核调参建议。"""
+
+    title: str
+    paramPath: str
+    before: Any
+    after: Any
+    expectedImpact: str
+    risk: str
+    relatedSampleIds: list[str]
+
+
 class EvaluationOptimizationDraftResponse(BaseModel):
     """失败样本生成配置优化草稿的结果。"""
 
     evaluationRunId: str
     configRevisionId: str
     remark: str
+    recommendations: list[EvaluationOptimizationRecommendationDTO]
