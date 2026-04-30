@@ -26,10 +26,10 @@
 
 | 编号 | Backlog | 标题 | 优先级 | 预估 | 负责人 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| S23-001 | B-101 | 建立真实文档样例集和端到端 smoke 数据 | P0 | 0.5d | Codex | Todo |
-| S23-002 | B-102 | 打通上传后解析、Chunk、索引副本的一键验收路径 | P0 | 2d | Codex | Todo |
-| S23-003 | B-103 | 打通基于真实文档的 QA 查询与授权 Evidence 生成 | P0 | 2d | Codex | Todo |
-| S23-004 | B-104 | 完善解析、索引、检索、生成阶段的统一监控诊断 | P0 | 1.5d | Codex | Todo |
+| S23-001 | B-101 | 建立真实文档样例集和端到端 smoke 数据 | P0 | 0.5d | Codex | Done |
+| S23-002 | B-102 | 打通上传后解析、Chunk、索引副本的一键验收路径 | P0 | 2d | Codex | Done |
+| S23-003 | B-103 | 打通基于真实文档的 QA 查询与授权 Evidence 生成 | P0 | 2d | Codex | Done |
+| S23-004 | B-104 | 完善解析、索引、检索、生成阶段的统一监控诊断 | P0 | 1.5d | Codex | Done |
 
 ## 5. 验收标准
 
@@ -54,3 +54,4 @@
 ## 8. 执行记录
 
 - V1.6 smoke 初始结果：`conda run -n rag-lab python scripts\verify_v16_real_rag_e2e.py` 输出 `V16CodeGap`；首个缺口为真实样例文档解析后 Chunk 缺少页码或章节定位信息。终端输出包含 `ERROR conda.cli.main_run:execute(125)`。
+- V1.6 smoke 收口结果：`conda run -n rag-lab python scripts\verify_v16_real_rag_e2e.py` 输出 `V1.6 real RAG smoke source verification passed.`。

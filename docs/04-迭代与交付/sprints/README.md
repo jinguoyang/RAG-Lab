@@ -30,8 +30,8 @@ Sprint 是时间盒，用于承接一轮可验证交付。Sprint 不隶属于某
 | Sprint 20 | 真实多副本写入与入库状态 | E18 | Done | [Sprint-20](./Sprint-20.md) |
 | Sprint 21 | 真实检索与生成链路 | E19 | Done | [Sprint-21](./Sprint-21.md) |
 | Sprint 22 | 真实回放、复跑与对比 | E19 | Done | [Sprint-22](./Sprint-22.md) |
-| Sprint 23 | 真实文档 RAG 端到端链路 | E20 | 规划中 | [Sprint-23](./Sprint-23.md) |
-| Sprint 24 | 真实 RAG 监控回放与验收硬化 | E20 | 规划中 | [Sprint-24](./Sprint-24.md) |
+| Sprint 23 | 真实文档 RAG 端到端链路 | E20 | Done | [Sprint-23](./Sprint-23.md) |
+| Sprint 24 | 真实 RAG 监控回放与验收硬化 | E20 | Done | [Sprint-24](./Sprint-24.md) |
 | Sprint 25 | RAG 检索节点模块化配置 | E21 | 规划中 | [Sprint-25](./Sprint-25.md) |
 | Sprint 26 | RAG 配置评估与优化闭环 | E21 | 规划中 | [Sprint-26](./Sprint-26.md) |
 
