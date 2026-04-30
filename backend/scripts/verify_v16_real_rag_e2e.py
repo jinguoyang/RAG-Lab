@@ -116,6 +116,13 @@ def verify_real_qa_evidence_contract() -> None:
         _assert(needle in service_source, f"真实 QA Evidence/Citation 缺少片段: {needle}")
 
 
+def verify_monitoring_stage_contract() -> None:
+    """Verify monitoring can classify real RAG stages and failures."""
+    observability_source = (BACKEND_DIR / "app/services/observability_service.py").read_text(encoding="utf-8")
+    for needle in ["ingest_jobs", "index_sync_jobs", "qa_run_trace_steps", "denseRetrieval", "generation"]:
+        _assert(needle in observability_source, f"监控诊断缺少真实 RAG 来源: {needle}")
+
+
 def main() -> None:
     """Run the V1.6 local smoke guardrails."""
     try:
@@ -123,6 +130,7 @@ def main() -> None:
         verify_real_document_parse()
         verify_ingest_stage_diagnostics_contract()
         verify_real_qa_evidence_contract()
+        verify_monitoring_stage_contract()
     except ModuleNotFoundError as exc:
         raise V16EnvironmentLimit(f"本地依赖缺失，无法执行完整 V1.6 smoke: {exc.name}") from exc
     print("V1.6 real RAG smoke source verification passed.")
