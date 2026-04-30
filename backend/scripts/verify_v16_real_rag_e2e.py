@@ -98,12 +98,31 @@ def verify_ingest_stage_diagnostics_contract() -> None:
         _assert(needle in document_source, f"入库诊断缺少字段或阶段: {needle}")
 
 
+def verify_real_qa_evidence_contract() -> None:
+    """Verify QA evidence is grounded in PostgreSQL chunks and not mock fallback."""
+    service_source = (BACKEND_DIR / "app/services/qa_run_service.py").read_text(encoding="utf-8")
+    for forbidden in ["MOCK_EVIDENCE_CHUNK_ID", "fallbackEvidence", "postgresChunkFallback"]:
+        _assert(forbidden not in service_source, f"QA 仍保留 mock/fallback 成功路径: {forbidden}")
+    for needle in [
+        '"truthSource": "postgres_chunks"',
+        "chunk_access_filters",
+        "drop_reason=",
+        '"documentId"',
+        '"versionId"',
+        '"chunkId"',
+        '"pageNo"',
+        '"section"',
+    ]:
+        _assert(needle in service_source, f"真实 QA Evidence/Citation 缺少片段: {needle}")
+
+
 def main() -> None:
     """Run the V1.6 local smoke guardrails."""
     try:
         verify_source_level_contracts()
         verify_real_document_parse()
         verify_ingest_stage_diagnostics_contract()
+        verify_real_qa_evidence_contract()
     except ModuleNotFoundError as exc:
         raise V16EnvironmentLimit(f"本地依赖缺失，无法执行完整 V1.6 smoke: {exc.name}") from exc
     print("V1.6 real RAG smoke source verification passed.")
