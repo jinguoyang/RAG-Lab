@@ -694,13 +694,13 @@ export function QADebug() {
                 <div className="p-2 border-b border-border-cream">
                   <Tabs.List className="flex gap-2 flex-wrap">
                     <Tabs.Trigger value="trace" className="px-4 py-2 text-sm font-medium text-stone-gray hover:text-near-black data-[state=active]:bg-parchment data-[state=active]:text-terracotta rounded-md transition-colors">
-                      实际执行链路
+                      Trace 执行链路
                     </Tabs.Trigger>
                     <Tabs.Trigger value="retrieval" className="px-4 py-2 text-sm font-medium text-stone-gray hover:text-near-black data-[state=active]:bg-parchment data-[state=active]:text-terracotta rounded-md transition-colors">
                       检索与融合
                     </Tabs.Trigger>
                     <Tabs.Trigger value="evidence" className="px-4 py-2 text-sm font-medium text-stone-gray hover:text-near-black data-[state=active]:bg-parchment data-[state=active]:text-terracotta rounded-md transition-colors">
-                      证据与引用
+                      Evidence 与引用
                     </Tabs.Trigger>
                   </Tabs.List>
                 </div>

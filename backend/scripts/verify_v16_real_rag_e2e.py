@@ -140,6 +140,21 @@ def verify_replay_comparison_contract() -> None:
         _assert(needle in source, f"回放对比缺少字段或逻辑: {needle}")
 
 
+def verify_frontend_real_chain_visibility() -> None:
+    """Verify frontend pages expose real-chain status instead of hiding failures."""
+    frontend_dir = ROOT_DIR / "frontend" / "src" / "app"
+    checks = {
+        "pages/P06_DocumentCenter.tsx": ["indexStages", "失败"],
+        "pages/P07_DocumentDetail.tsx": ["indexStages", "Chunk"],
+        "pages/P09_QADebug.tsx": ["Trace", "Evidence"],
+        "pages/P10_QAHistory.tsx": ["Trace 差异", "Citation"],
+    }
+    for relative_path, needles in checks.items():
+        source = (frontend_dir / relative_path).read_text(encoding="utf-8")
+        for needle in needles:
+            _assert(needle in source, f"{relative_path} 缺少真实链路展示: {needle}")
+
+
 def main() -> None:
     """Run the V1.6 local smoke guardrails."""
     try:
@@ -149,6 +164,7 @@ def main() -> None:
         verify_real_qa_evidence_contract()
         verify_monitoring_stage_contract()
         verify_replay_comparison_contract()
+        verify_frontend_real_chain_visibility()
     except ModuleNotFoundError as exc:
         raise V16EnvironmentLimit(f"本地依赖缺失，无法执行完整 V1.6 smoke: {exc.name}") from exc
     print("V1.6 real RAG smoke source verification passed.")
