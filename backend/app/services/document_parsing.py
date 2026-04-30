@@ -97,7 +97,10 @@ def _decode_text(file_bytes: bytes) -> str:
 def _parse_plain_text(file_bytes: bytes) -> list[dict]:
     """解析纯文本，保留段落边界供后续切分。"""
     text = _normalize_text(_decode_text(file_bytes))
-    return [{"content": paragraph, "section": None, "page_no": None} for paragraph in _paragraphs(text)]
+    return [
+        {"content": paragraph, "section": f"Text paragraph {index}", "page_no": None}
+        for index, paragraph in enumerate(_paragraphs(text), start=1)
+    ]
 
 
 def _parse_markdown(file_bytes: bytes) -> list[dict]:

@@ -631,6 +631,13 @@ def run_ingest_job(
         ingest_final_status = "success" if not index_errors else "failed"
 
         total_tokens = sum(row["token_count"] or 0 for row in chunk_rows)
+        error_summary = {
+            "parse": {"status": "success", "error": None},
+            "embedding": {"status": "success", "error": None},
+            "milvus": {"status": dense_status, "error": dense_error},
+            "opensearch": {"status": sparse_status, "error": sparse_error},
+            "neo4j": {"status": graph_status, "error": graph_error},
+        }
         session.execute(
             update(document_versions)
             .where(document_versions.c.version_id == version_row["version_id"])
@@ -653,6 +660,7 @@ def run_ingest_job(
                     "sourceFileName": file_name,
                     "embeddingProvider": get_settings().embedding_provider,
                     "embeddingModel": get_settings().embedding_model,
+                    "error_summary": error_summary,
                 },
                 updated_by=UUID(current_user.user.userId),
                 updated_at=func.now(),
@@ -677,6 +685,7 @@ def run_ingest_job(
                     "embeddingProvider": get_settings().embedding_provider,
                     "embeddingModel": get_settings().embedding_model,
                     "indexErrors": index_errors,
+                    "error_summary": error_summary,
                 },
                 finished_at=func.now(),
             )
@@ -696,6 +705,22 @@ def run_ingest_job(
                 retrieval_ready=False,
                 error_code=error_code,
                 error_message=str(exc),
+                metadata={
+                    **(version_row["metadata"] or {}),
+                    "error_summary": {
+                        "parse": {"status": "failed" if isinstance(exc, DocumentParseError) else "success", "error": str(exc)},
+                        "embedding": {"status": "failed" if not isinstance(exc, DocumentParseError) else "not_started", "error": str(exc)},
+                        "milvus": {"status": "failed", "error": None},
+                        "opensearch": {
+                            "status": "failed" if kb_row["sparse_index_enabled"] else "not_required",
+                            "error": None,
+                        },
+                        "neo4j": {
+                            "status": "failed" if kb_row["graph_index_enabled"] else "not_required",
+                            "error": None,
+                        },
+                    },
+                },
                 updated_by=UUID(current_user.user.userId),
                 updated_at=func.now(),
             )
@@ -709,6 +734,12 @@ def run_ingest_job(
                 progress=100,
                 error_code=error_code,
                 error_message=str(exc),
+                result_summary={
+                    "error_summary": {
+                        "parse": {"status": "failed" if isinstance(exc, DocumentParseError) else "success", "error": str(exc)},
+                        "embedding": {"status": "failed" if not isinstance(exc, DocumentParseError) else "not_started", "error": str(exc)},
+                    }
+                },
                 finished_at=func.now(),
             )
             .returning(ingest_jobs)
@@ -726,6 +757,22 @@ def run_ingest_job(
                 retrieval_ready=False,
                 error_code="INGEST_PARSE_FAILED",
                 error_message=str(exc),
+                metadata={
+                    **(version_row["metadata"] or {}),
+                    "error_summary": {
+                        "parse": {"status": "failed", "error": str(exc)},
+                        "embedding": {"status": "not_started", "error": None},
+                        "milvus": {"status": "failed", "error": None},
+                        "opensearch": {
+                            "status": "failed" if kb_row["sparse_index_enabled"] else "not_required",
+                            "error": None,
+                        },
+                        "neo4j": {
+                            "status": "failed" if kb_row["graph_index_enabled"] else "not_required",
+                            "error": None,
+                        },
+                    },
+                },
                 updated_by=UUID(current_user.user.userId),
                 updated_at=func.now(),
             )
@@ -739,6 +786,12 @@ def run_ingest_job(
                 progress=100,
                 error_code="INGEST_PARSE_FAILED",
                 error_message=str(exc),
+                result_summary={
+                    "error_summary": {
+                        "parse": {"status": "failed", "error": str(exc)},
+                        "embedding": {"status": "not_started", "error": None},
+                    }
+                },
                 finished_at=func.now(),
             )
             .returning(ingest_jobs)

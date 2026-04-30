@@ -81,11 +81,29 @@ def verify_real_document_parse() -> None:
     _assert(any(chunk.page_no is not None or chunk.section for chunk in parsed.chunks), "Chunk 缺少页码或章节定位信息")
 
 
+def verify_ingest_stage_diagnostics_contract() -> None:
+    """Verify ingest jobs expose parse, embedding, and index-copy stage outcomes."""
+    document_source = (BACKEND_DIR / "app/services/document_service.py").read_text(encoding="utf-8")
+    for needle in [
+        '"parse"',
+        '"embedding"',
+        '"milvus"',
+        '"opensearch"',
+        '"neo4j"',
+        "dense_index_status",
+        "sparse_index_status",
+        "graph_index_status",
+        "error_summary",
+    ]:
+        _assert(needle in document_source, f"入库诊断缺少字段或阶段: {needle}")
+
+
 def main() -> None:
     """Run the V1.6 local smoke guardrails."""
     try:
         verify_source_level_contracts()
         verify_real_document_parse()
+        verify_ingest_stage_diagnostics_contract()
     except ModuleNotFoundError as exc:
         raise V16EnvironmentLimit(f"本地依赖缺失，无法执行完整 V1.6 smoke: {exc.name}") from exc
     print("V1.6 real RAG smoke source verification passed.")
