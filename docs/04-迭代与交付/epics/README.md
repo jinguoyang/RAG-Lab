@@ -38,6 +38,8 @@ Epic 是能力域，不是时间盒。一个 Epic 可以跨多个 Sprint 推进�
 | E17 | 协作与治理增强 | V1.3 | Done | Sprint 18 | 补齐配置发布记录、QA 协作、审计报表和有效权限解释 |
 | E18 | 真实入库与多副本构建 | V1.4 | Done | Sprint 19、Sprint 20 | 上传后真实解析、Chunk 切分、Embedding、Milvus、OpenSearch、Neo4j 和入库状态闭环 |
 | E19 | 真实检索与回放闭环 | V1.5 | Done | Sprint 21、Sprint 22 | 基于真实副本执行 Dense/Sparse/Graph 检索、LLM 生成、Citation、回放复跑和差异对比 |
+| E20 | 真实 RAG 有效闭环 | V1.6 | Ready | Sprint 23、Sprint 24 | 基于真实文档完成解析、索引、检索、生成、监控和回放的端到端验收闭环 |
+| E21 | RAG 模块化调优 | V1.7 | Todo | Sprint 25、Sprint 26 | 丰富可配置检索节点、节点参数、Pipeline 快照和评估对比能力 |
 
 ## 4. 本目录约定
 
