@@ -123,6 +123,23 @@ def verify_monitoring_stage_contract() -> None:
         _assert(needle in observability_source, f"监控诊断缺少真实 RAG 来源: {needle}")
 
 
+def verify_replay_comparison_contract() -> None:
+    """Verify replay preserves context and comparison includes trace and evidence deltas."""
+    source = (BACKEND_DIR / "app/services/qa_run_service.py").read_text(encoding="utf-8")
+    for needle in [
+        "get_qa_run_replay_context",
+        "sourceRunId",
+        "retrievalChannels",
+        "retrievalTopK",
+        "graphSnapshotId",
+        "traceDelta",
+        "evidenceDelta",
+        "citationDelta",
+        "configDiff",
+    ]:
+        _assert(needle in source, f"回放对比缺少字段或逻辑: {needle}")
+
+
 def main() -> None:
     """Run the V1.6 local smoke guardrails."""
     try:
@@ -131,6 +148,7 @@ def main() -> None:
         verify_ingest_stage_diagnostics_contract()
         verify_real_qa_evidence_contract()
         verify_monitoring_stage_contract()
+        verify_replay_comparison_contract()
     except ModuleNotFoundError as exc:
         raise V16EnvironmentLimit(f"本地依赖缺失，无法执行完整 V1.6 smoke: {exc.name}") from exc
     print("V1.6 real RAG smoke source verification passed.")
