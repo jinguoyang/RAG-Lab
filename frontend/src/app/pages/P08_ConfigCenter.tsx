@@ -124,27 +124,34 @@ const DEFAULT_NODE_PARAMS: Record<string, NodeParams> = {
     preserveOriginalQuery: true,
     expansionCount: 3,
   },
+  multiQuery: {
+    queryCount: 3,
+    mergeStrategy: "rrf",
+  },
   dense: {
     topK: 20,
-    minScore: 0.75,
-    hybridWeight: 0.4,
+    scoreThreshold: 0.75,
+    fusionWeight: 0.4,
     embeddingModel: "bge-m3",
+    metadataFilter: "active-documents",
   },
   sparse: {
     topK: 15,
-    minScore: 12.5,
-    hybridWeight: 0.3,
+    scoreThreshold: 0.2,
+    fusionWeight: 0.3,
     matchMode: "bm25+phrase",
+    metadataFilter: "active-documents",
   },
   graph: {
-    hopDepth: 2,
+    graphDepth: 2,
+    graphExpansionLimit: 50,
     maxNodes: 50,
-    hybridWeight: 0.3,
+    fusionWeight: 0.3,
     pathMode: "entity-path",
     mustFallbackToChunk: true,
   },
   fusion: {
-    method: "rrf",
+    method: "weighted",
     rrfK: 60,
     candidateLimit: 40,
     dedupBy: "chunkId",
@@ -152,13 +159,14 @@ const DEFAULT_NODE_PARAMS: Record<string, NodeParams> = {
   rerank: {
     model: "bge-reranker-v2-m3",
     topN: 5,
-    minScore: 0,
+    scoreThreshold: 0,
     keepRejectedReason: true,
   },
-  contextBuilder: {
+  contextPacking: {
     maxContextTokens: 6000,
     packingStrategy: "citation-aware",
-    evidenceOnly: true,
+    chunkWindow: 1,
+    citationPolicy: "strict",
   },
   generation: {
     model: "claude-3-5-sonnet",
@@ -182,23 +190,36 @@ const NODE_PARAMETER_FIELDS: Record<string, NodeParameterField[]> = {
       type: "select",
       options: [
         { label: "混合改写", value: "hybrid" },
-        { label: "多查询扩展", value: "multi-query" },
-        { label: "术语规范化", value: "term-normalization" },
+        { label: "语义改写", value: "semantic" },
+        { label: "关键词改写", value: "keyword" },
       ],
     },
     { key: "preserveOriginalQuery", label: "保留原问", type: "boolean" },
     { key: "expansionCount", label: "扩展问题数", type: "number", min: 1, max: 8, step: 1 },
   ],
+  multiQuery: [
+    { key: "queryCount", label: "查询条数", type: "number", min: 1, max: 8, step: 1 },
+    {
+      key: "mergeStrategy",
+      label: "合并策略",
+      type: "select",
+      options: [
+        { label: "RRF", value: "rrf" },
+        { label: "加权合并", value: "weighted" },
+      ],
+    },
+  ],
   dense: [
     { key: "topK", label: "Top K", type: "number", min: 1, max: 200, step: 1 },
-    { key: "minScore", label: "最低相似度", type: "number", min: 0, max: 1, step: 0.01 },
-    { key: "hybridWeight", label: "混合权重", type: "number", min: 0, max: 1, step: 0.05 },
+    { key: "scoreThreshold", label: "最低相似度", type: "number", min: 0, max: 1, step: 0.01 },
+    { key: "fusionWeight", label: "融合权重", type: "number", min: 0, max: 1, step: 0.05 },
     { key: "embeddingModel", label: "Embedding 模型", type: "text" },
+    { key: "metadataFilter", label: "Metadata Filter", type: "text" },
   ],
   sparse: [
     { key: "topK", label: "Top K", type: "number", min: 1, max: 200, step: 1 },
-    { key: "minScore", label: "最低 BM25 分", type: "number", min: 0, max: 100, step: 0.5 },
-    { key: "hybridWeight", label: "混合权重", type: "number", min: 0, max: 1, step: 0.05 },
+    { key: "scoreThreshold", label: "最低 BM25 分", type: "number", min: 0, max: 100, step: 0.5 },
+    { key: "fusionWeight", label: "融合权重", type: "number", min: 0, max: 1, step: 0.05 },
     {
       key: "matchMode",
       label: "匹配模式",
@@ -209,11 +230,13 @@ const NODE_PARAMETER_FIELDS: Record<string, NodeParameterField[]> = {
         { label: "关键词精确", value: "keyword-exact" },
       ],
     },
+    { key: "metadataFilter", label: "Metadata Filter", type: "text" },
   ],
   graph: [
-    { key: "hopDepth", label: "关系跳数", type: "number", min: 1, max: 4, step: 1 },
+    { key: "graphDepth", label: "关系跳数", type: "number", min: 1, max: 4, step: 1 },
+    { key: "graphExpansionLimit", label: "扩展上限", type: "number", min: 1, max: 500, step: 5 },
     { key: "maxNodes", label: "最大节点数", type: "number", min: 5, max: 200, step: 5 },
-    { key: "hybridWeight", label: "混合权重", type: "number", min: 0, max: 1, step: 0.05 },
+    { key: "fusionWeight", label: "融合权重", type: "number", min: 0, max: 1, step: 0.05 },
     {
       key: "pathMode",
       label: "路径策略",
@@ -238,7 +261,7 @@ const NODE_PARAMETER_FIELDS: Record<string, NodeParameterField[]> = {
       type: "select",
       options: [
         { label: "RRF", value: "rrf" },
-        { label: "加权分数", value: "weighted-score" },
+        { label: "加权分数", value: "weighted" },
       ],
     },
     { key: "rrfK", label: "RRF K", type: "number", min: 10, max: 120, step: 5 },
@@ -249,17 +272,17 @@ const NODE_PARAMETER_FIELDS: Record<string, NodeParameterField[]> = {
       type: "select",
       options: [
         { label: "Chunk ID", value: "chunkId" },
-        { label: "Document + Section", value: "documentSection" },
+        { label: "Source", value: "source" },
       ],
     },
   ],
   rerank: [
     { key: "model", label: "Rerank 模型", type: "text" },
     { key: "topN", label: "Top N", type: "number", min: 1, max: 50, step: 1 },
-    { key: "minScore", label: "最低精排分", type: "number", min: 0, max: 1, step: 0.01 },
+    { key: "scoreThreshold", label: "最低精排分", type: "number", min: 0, max: 1, step: 0.01 },
     { key: "keepRejectedReason", label: "保留淘汰原因", type: "boolean" },
   ],
-  contextBuilder: [
+  contextPacking: [
     { key: "maxContextTokens", label: "上下文 Token 上限", type: "number", min: 512, max: 32000, step: 256 },
     {
       key: "packingStrategy",
@@ -267,11 +290,20 @@ const NODE_PARAMETER_FIELDS: Record<string, NodeParameterField[]> = {
       type: "select",
       options: [
         { label: "引用感知", value: "citation-aware" },
-        { label: "按分数排序", value: "score-desc" },
-        { label: "按文档聚合", value: "document-grouped" },
+        { label: "按分数排序", value: "score" },
+        { label: "来源均衡", value: "source-balanced" },
       ],
     },
-    { key: "evidenceOnly", label: "仅使用 Evidence", type: "boolean" },
+    { key: "chunkWindow", label: "Chunk Window", type: "number", min: 0, max: 5, step: 1 },
+    {
+      key: "citationPolicy",
+      label: "引用约束",
+      type: "select",
+      options: [
+        { label: "严格引用", value: "strict" },
+        { label: "宽松引用", value: "relaxed" },
+      ],
+    },
   ],
   generation: [
     { key: "model", label: "生成模型", type: "text" },
@@ -371,6 +403,7 @@ export function ConfigCenter() {
   const [releaseActionRevision, setReleaseActionRevision] = useState<string | null>(null);
   const [serverValidation, setServerValidation] = useState<PipelineValidationResultDTO | null>(null);
   const [queryRewriteEnabled, setQueryRewriteEnabled] = useState(true);
+  const [multiQueryEnabled, setMultiQueryEnabled] = useState(true);
   const [rerankEnabled, setRerankEnabled] = useState(true);
   const [retrievalChannels, setRetrievalChannels] = useState({
     dense: true,
@@ -433,6 +466,17 @@ export function ConfigCenter() {
         icon: <Wand2 className="h-4 w-4" />,
         params: formatNodeParams("queryRewrite", nodeParams.queryRewrite),
         rule: "如果启用，必须位于任何检索节点之前。",
+      },
+      {
+        id: "multiQuery",
+        type: "multiQuery",
+        label: "Multi Query",
+        stageId: "preprocess",
+        description: "基于改写问题生成少量受控查询变体，合并进入检索阶段。",
+        enabled: multiQueryEnabled,
+        icon: <Split className="h-4 w-4" />,
+        params: formatNodeParams("multiQuery", nodeParams.multiQuery),
+        rule: "只能在预处理阶段运行，查询条数必须受控，不允许自由脚本扩展。",
       },
       {
         id: "dense",
@@ -503,15 +547,15 @@ export function ConfigCenter() {
         rule: "只能处理已融合且已标准化的候选列表。",
       },
       {
-        id: "contextBuilder",
-        type: "contextBuilder",
-        label: "Context Builder",
+        id: "contextPacking",
+        type: "contextPacking",
+        label: "Context Packing",
         stageId: "generation",
         description: "将权限过滤后的 Evidence 组织成进入 LLM 的上下文。",
         locked: true,
         enabled: true,
         icon: <Layers className="h-4 w-4" />,
-        params: formatNodeParams("contextBuilder", nodeParams.contextBuilder),
+        params: formatNodeParams("contextPacking", nodeParams.contextPacking),
         rule: "只能读取权限过滤后的候选和 Evidence。",
       },
       {
@@ -551,7 +595,7 @@ export function ConfigCenter() {
         rule: "诊断输出必须绑定本次 ConfigRevision 和 QARun。",
       },
     ],
-    [queryRewriteEnabled, rerankEnabled, retrievalChannels, nodeParams],
+    [queryRewriteEnabled, multiQueryEnabled, rerankEnabled, retrievalChannels, nodeParams],
   );
 
   const selectedNode = useMemo(
@@ -803,6 +847,7 @@ export function ConfigCenter() {
     }
 
     if (nodeId === "queryRewrite") setQueryRewriteEnabled(enabled);
+    if (nodeId === "multiQuery") setMultiQueryEnabled(enabled);
     if (nodeId === "rerank") setRerankEnabled(enabled);
     if (nodeId === "dense") {
       setRetrievalChannels((current) => ({ ...current, dense: enabled }));

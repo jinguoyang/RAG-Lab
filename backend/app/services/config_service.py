@@ -36,9 +36,36 @@ LOCKED_NODE_TYPES = {
     "fusion",
     "permissionFilter",
     "contextBuilder",
+    "contextPacking",
     "generation",
     "citation",
     "output",
+}
+OPTIONAL_NODE_TYPES = {
+    "queryRewrite",
+    "multiQuery",
+    "rerank",
+}
+ALLOWED_NODE_TYPES = RETRIEVAL_NODE_TYPES | LOCKED_NODE_TYPES | OPTIONAL_NODE_TYPES
+PARAM_RANGES: dict[str, dict[str, tuple[float, float]]] = {
+    "queryRewrite": {"expansionCount": (1, 8)},
+    "multiQuery": {"queryCount": (1, 8)},
+    "denseRetrieval": {"topK": (1, 200), "scoreThreshold": (0, 1), "fusionWeight": (0, 1), "chunkWindow": (0, 5)},
+    "sparseRetrieval": {"topK": (1, 200), "scoreThreshold": (0, 1000), "fusionWeight": (0, 1), "chunkWindow": (0, 5)},
+    "graphRetrieval": {
+        "topK": (1, 200),
+        "maxNodes": (1, 500),
+        "scoreThreshold": (0, 1),
+        "fusionWeight": (0, 1),
+        "graphDepth": (1, 4),
+        "graphExpansionLimit": (1, 500),
+    },
+    "fusion": {"rrfK": (1, 1000), "candidateLimit": (1, 500)},
+    "rerank": {"topN": (1, 200), "scoreThreshold": (0, 1)},
+    "contextBuilder": {"maxContextTokens": (256, 128000), "chunkWindow": (0, 5)},
+    "contextPacking": {"maxContextTokens": (256, 128000), "chunkWindow": (0, 5)},
+    "generation": {"temperature": (0, 2), "maxOutputTokens": (1, 32000)},
+    "citation": {"minEvidence": (1, 20)},
 }
 
 
@@ -77,6 +104,50 @@ def _nodes_by_type(nodes: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         if isinstance(node_type, str) and node_type not in result:
             result[node_type] = node
     return result
+
+
+def _validate_node_params(node_type: str, params: Any, index: int) -> list[PipelineValidationIssueDTO]:
+    """校验 V1.7 受控节点参数范围，避免非法调参进入执行链路。"""
+    if params is None:
+        return []
+    if not isinstance(params, dict):
+        return [_issue("PIPELINE_PARAM_INVALID", "节点 params 必须是对象。", f"pipelineDefinition.nodes[{index}].params")]
+
+    issues: list[PipelineValidationIssueDTO] = []
+    for key, (minimum, maximum) in PARAM_RANGES.get(node_type, {}).items():
+        if key not in params:
+            continue
+        value = params.get(key)
+        if isinstance(value, bool):
+            issues.append(
+                _issue(
+                    "PIPELINE_PARAM_RANGE_INVALID",
+                    f"{node_type}.{key} 必须是 {minimum} 到 {maximum} 之间的数字。",
+                    f"pipelineDefinition.nodes[{index}].params.{key}",
+                )
+            )
+            continue
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            issues.append(
+                _issue(
+                    "PIPELINE_PARAM_RANGE_INVALID",
+                    f"{node_type}.{key} 必须是 {minimum} 到 {maximum} 之间的数字。",
+                    f"pipelineDefinition.nodes[{index}].params.{key}",
+                )
+            )
+            continue
+        if number < minimum or number > maximum:
+            issues.append(
+                _issue(
+                    "PIPELINE_PARAM_RANGE_INVALID",
+                    f"{node_type}.{key} 必须在 {minimum} 到 {maximum} 之间。",
+                    f"pipelineDefinition.nodes[{index}].params.{key}",
+                )
+            )
+
+    return issues
 
 
 def _normalize_pipeline_definition(pipeline_definition: dict[str, Any]) -> dict[str, Any]:
@@ -127,10 +198,13 @@ def validate_pipeline_definition(
         if node_type in seen_types:
             errors.append(_issue("PIPELINE_NODE_DUPLICATED", f"节点类型 {node_type} 重复。", f"pipelineDefinition.nodes[{index}].type"))
         seen_types.add(node_type)
+        if node_type not in ALLOWED_NODE_TYPES:
+            errors.append(_issue("PIPELINE_NODE_TYPE_UNSUPPORTED", f"节点类型 {node_type} 不在 V1.7 受控节点列表中。", f"pipelineDefinition.nodes[{index}].type"))
         if stage not in STAGE_ORDER:
             errors.append(_issue("PIPELINE_STAGE_INVALID", f"节点 {node_type} 的阶段无效。", f"pipelineDefinition.nodes[{index}].stage"))
         if node_type in LOCKED_NODE_TYPES and node.get("enabled") is False:
             errors.append(_issue("PIPELINE_LOCKED_NODE_DISABLED", f"锁定节点 {node_type} 不允许禁用。", f"pipelineDefinition.nodes[{index}].enabled"))
+        errors.extend(_validate_node_params(node_type, node.get("params", {}), index))
 
     enabled_retrieval_nodes = [
         node for node in nodes if node.get("type") in RETRIEVAL_NODE_TYPES and node.get("enabled") is not False
@@ -179,6 +253,18 @@ def validate_pipeline_definition(
                 )
             )
 
+    multi_query = nodes_by_type.get("multiQuery")
+    if multi_query and multi_query.get("enabled") is not False:
+        multi_query_stage = STAGE_ORDER.get(str(multi_query.get("stage")), 99)
+        if multi_query_stage >= STAGE_ORDER["retrieval"]:
+            errors.append(
+                _issue(
+                    "PIPELINE_STAGE_ORDER_INVALID",
+                    "Multi Query 如果启用，必须位于 Retrieval 之前。",
+                    "pipelineDefinition.nodes",
+                )
+            )
+
     graph_node = nodes_by_type.get("graphRetrieval")
     graph_params = graph_node.get("params", {}) if graph_node else {}
     if graph_node and graph_node.get("enabled") is not False and isinstance(graph_params, dict):
@@ -194,6 +280,10 @@ def validate_pipeline_definition(
     citation = nodes_by_type.get("citation")
     if citation is None or citation.get("enabled") is False:
         errors.append(_issue("PIPELINE_CITATION_INVALID", "Citation 节点必须存在且启用。", "pipelineDefinition.nodes"))
+
+    context_packing = nodes_by_type.get("contextPacking") or nodes_by_type.get("contextBuilder")
+    if context_packing is None or context_packing.get("enabled") is False:
+        errors.append(_issue("PIPELINE_CONTEXT_PACKING_REQUIRED", "Context Packing 节点必须存在且启用。", "pipelineDefinition.nodes"))
 
     if not errors and not normalized.get("validationSnapshot"):
         warnings.append(

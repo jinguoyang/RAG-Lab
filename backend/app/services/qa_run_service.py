@@ -80,6 +80,7 @@ RETRIEVAL_NODE_TO_OVERRIDE_KEY = {
 }
 DEFAULT_MAX_CONTEXT_TOKENS = 6000
 DEFAULT_TEMPERATURE = 0.2
+DEFAULT_FUSION_WEIGHTS = {"dense": 0.4, "sparse": 0.3, "graph": 0.3}
 FEEDBACK_STATUS_MAP = {
     "unrated": "unrated",
     "correct": "correct",
@@ -107,6 +108,19 @@ def _node_params_by_type(revision_row: RowMapping | dict[str, Any]) -> dict[str,
     return params_by_type
 
 
+def _node_enabled_by_type(revision_row: RowMapping | dict[str, Any]) -> dict[str, bool]:
+    """读取节点启用状态，供 Multi Query、Rerank 等可选节点决定执行路径。"""
+    pipeline_definition = revision_row["pipeline_definition"]
+    nodes = pipeline_definition.get("nodes", []) if isinstance(pipeline_definition, dict) else []
+    enabled_by_type: dict[str, bool] = {}
+    for node in nodes if isinstance(nodes, list) else []:
+        if not isinstance(node, dict):
+            continue
+        node_type = str(node.get("type") or "")
+        enabled_by_type[node_type] = node.get("enabled") is not False
+    return enabled_by_type
+
+
 def _as_positive_int(value: Any, fallback: int, minimum: int = 1, maximum: int | None = None) -> int:
     """将配置参数收口为安全整数，避免前端或历史数据中的异常值污染执行链路。"""
     try:
@@ -132,6 +146,14 @@ def _as_float(value: Any, fallback: float, minimum: float | None = None, maximum
     return number
 
 
+def _as_string(value: Any, fallback: str, allowed: set[str] | None = None) -> str:
+    """将策略类参数收口到受控字符串集合，历史异常值回退到默认策略。"""
+    text = str(value) if value is not None else fallback
+    if allowed is not None and text not in allowed:
+        return fallback
+    return text
+
+
 def _override_params(override_snapshot: dict | None) -> dict[str, Any]:
     """兼容 P09 旧版平铺覆盖和新版 params 覆盖，单次运行覆盖优先级最高。"""
     if not isinstance(override_snapshot, dict):
@@ -149,6 +171,7 @@ def _build_effective_pipeline_params(
     """合并 ConfigRevision 参数与单次覆盖，产出 QA 执行可观测参数快照。"""
     base_top_k = _as_positive_int(default_top_k or get_settings().provider_top_k, 5, maximum=200)
     node_params = _node_params_by_type(revision_row)
+    node_enabled = _node_enabled_by_type(revision_row)
     overrides = _override_params(override_snapshot)
 
     dense_top_k = _as_positive_int(node_params.get("denseRetrieval", {}).get("topK"), base_top_k, maximum=200)
@@ -159,8 +182,9 @@ def _build_effective_pipeline_params(
         maximum=200,
     )
     rerank_top_n = _as_positive_int(node_params.get("rerank", {}).get("topN"), base_top_k, maximum=200)
+    context_params = node_params.get("contextPacking") or node_params.get("contextBuilder", {})
     max_context_tokens = _as_positive_int(
-        node_params.get("contextBuilder", {}).get("maxContextTokens"),
+        context_params.get("maxContextTokens"),
         DEFAULT_MAX_CONTEXT_TOKENS,
         minimum=256,
         maximum=128000,
@@ -183,15 +207,98 @@ def _build_effective_pipeline_params(
         maximum=128000,
     )
     temperature = _as_float(overrides.get("temperature"), temperature, minimum=0, maximum=2)
+    candidate_limit = _as_positive_int(
+        node_params.get("fusion", {}).get("candidateLimit"),
+        max(dense_top_k + sparse_top_k + graph_top_k, rerank_top_n),
+        maximum=500,
+    )
+    fusion_weights = {
+        "dense": _as_float(
+            node_params.get("denseRetrieval", {}).get("fusionWeight"),
+            DEFAULT_FUSION_WEIGHTS["dense"],
+            minimum=0,
+            maximum=1,
+        ),
+        "sparse": _as_float(
+            node_params.get("sparseRetrieval", {}).get("fusionWeight"),
+            DEFAULT_FUSION_WEIGHTS["sparse"],
+            minimum=0,
+            maximum=1,
+        ),
+        "graph": _as_float(
+            node_params.get("graphRetrieval", {}).get("fusionWeight"),
+            DEFAULT_FUSION_WEIGHTS["graph"],
+            minimum=0,
+            maximum=1,
+        ),
+    }
+    retrieval_score_threshold = {
+        "dense": _as_float(node_params.get("denseRetrieval", {}).get("scoreThreshold"), 0, minimum=0, maximum=1),
+        "sparse": _as_float(node_params.get("sparseRetrieval", {}).get("scoreThreshold"), 0, minimum=0),
+        "graph": _as_float(node_params.get("graphRetrieval", {}).get("scoreThreshold"), 0, minimum=0, maximum=1),
+    }
+    multi_query_params = node_params.get("multiQuery", {})
+    graph_params = node_params.get("graphRetrieval", {})
+    rerank_params = node_params.get("rerank", {})
+    citation_params = node_params.get("citation", {})
 
     return {
+        "queryRewrite": {
+            "enabled": node_enabled.get("queryRewrite", True) and overrides.get("rewriteEnabled") is not False,
+            "rewriteStrategy": _as_string(
+                node_params.get("queryRewrite", {}).get("rewriteStrategy"),
+                "hybrid",
+                {"none", "semantic", "keyword", "hybrid"},
+            ),
+            "preserveOriginalQuery": node_params.get("queryRewrite", {}).get("preserveOriginalQuery", True) is not False,
+        },
+        "multiQuery": {
+            "enabled": node_enabled.get("multiQuery", False),
+            "queryCount": _as_positive_int(multi_query_params.get("queryCount"), 1, maximum=8),
+            "mergeStrategy": _as_string(multi_query_params.get("mergeStrategy"), "rrf", {"rrf", "weighted"}),
+        },
         "retrievalTopK": {
             "dense": dense_top_k,
             "sparse": sparse_top_k,
             "graph": graph_top_k,
         },
+        "retrievalScoreThreshold": retrieval_score_threshold,
+        "fusionWeights": fusion_weights,
+        "fusion": {
+            "method": _as_string(node_params.get("fusion", {}).get("method"), "chunkIdDedupe", {"chunkIdDedupe", "rrf", "weighted"}),
+            "candidateLimit": candidate_limit,
+            "dedupBy": _as_string(node_params.get("fusion", {}).get("dedupBy"), "chunkId", {"chunkId", "source"}),
+        },
         "rerankTopN": rerank_top_n,
+        "rerank": {
+            "enabled": node_enabled.get("rerank", True),
+            "topN": rerank_top_n,
+            "scoreThreshold": _as_float(rerank_params.get("scoreThreshold"), 0, minimum=0, maximum=1),
+        },
+        "graph": {
+            "graphDepth": _as_positive_int(graph_params.get("graphDepth"), 1, maximum=4),
+            "graphExpansionLimit": _as_positive_int(
+                graph_params.get("graphExpansionLimit", graph_params.get("maxNodes")),
+                graph_top_k,
+                maximum=500,
+            ),
+            "mustFallbackToChunk": graph_params.get("mustFallbackToChunk", True) is not False,
+        },
         "maxContextTokens": max_context_tokens,
+        "contextPacking": {
+            "maxContextTokens": max_context_tokens,
+            "chunkWindow": _as_positive_int(context_params.get("chunkWindow"), 0, minimum=0, maximum=5),
+            "packingStrategy": _as_string(
+                context_params.get("packingStrategy"),
+                "citation-aware",
+                {"citation-aware", "score", "source-balanced"},
+            ),
+            "citationPolicy": _as_string(context_params.get("citationPolicy"), "strict", {"strict", "relaxed"}),
+        },
+        "citation": {
+            "minEvidence": _as_positive_int(citation_params.get("minEvidence"), 1, maximum=20),
+            "citationPolicy": _as_string(citation_params.get("citationPolicy"), "strict", {"strict", "relaxed"}),
+        },
         "temperature": temperature,
     }
 
@@ -336,12 +443,36 @@ def _candidate_fusion_key(candidate: ProviderCandidate) -> str:
     return f"diagnostic:{candidate.source_type}:{metadata_digest}:{content_digest}"
 
 
-def _fuse_provider_candidates(candidates: list[ProviderCandidate]) -> list[ProviderCandidate]:
+def _filter_candidates_by_score_threshold(
+    candidates: list[ProviderCandidate],
+    score_thresholds: dict[str, float],
+) -> list[ProviderCandidate]:
+    """按节点级 scoreThreshold 过滤候选，缺少分数的诊断候选保留到权限裁剪阶段解释。"""
+    filtered: list[ProviderCandidate] = []
+    for candidate in candidates:
+        threshold = score_thresholds.get(candidate.source_type, 0)
+        if candidate.raw_score is None or candidate.raw_score >= threshold:
+            filtered.append(candidate)
+    return filtered
+
+
+def _weighted_score(candidate: ProviderCandidate, fusion_weights: dict[str, float]) -> float:
+    """计算融合排序分，低层 Provider 原始分只在通道权重范围内参与排序。"""
+    return (candidate.raw_score or 0) * fusion_weights.get(candidate.source_type, 1)
+
+
+def _fuse_provider_candidates(
+    candidates: list[ProviderCandidate],
+    fusion_weights: dict[str, float] | None = None,
+    candidate_limit: int | None = None,
+) -> list[ProviderCandidate]:
     """融合 Dense/Sparse/Graph 候选，按 chunk_id 去重并保留多路命中诊断。"""
+    weights = fusion_weights or {"dense": 1, "sparse": 1, "graph": 1}
     fused_by_key: dict[str, ProviderCandidate] = {}
     for candidate in candidates:
         key = _candidate_fusion_key(candidate)
         existing = fused_by_key.get(key)
+        weighted_score = _weighted_score(candidate, weights)
         if existing is None:
             fused_by_key[key] = ProviderCandidate(
                 source_type=candidate.source_type,
@@ -352,6 +483,8 @@ def _fuse_provider_candidates(candidates: list[ProviderCandidate]) -> list[Provi
                     **candidate.metadata,
                     "matchedChannels": [candidate.source_type],
                     "retrievalScores": {candidate.source_type: candidate.raw_score},
+                    "fusionWeights": {candidate.source_type: weights.get(candidate.source_type, 1)},
+                    "fusedScore": weighted_score,
                 },
             )
             continue
@@ -361,7 +494,17 @@ def _fuse_provider_candidates(candidates: list[ProviderCandidate]) -> list[Provi
             matched_channels.append(candidate.source_type)
         retrieval_scores = dict(existing.metadata.get("retrievalScores", {}))
         retrieval_scores[candidate.source_type] = candidate.raw_score
+        fusion_weights_by_channel = dict(existing.metadata.get("fusionWeights", {}))
+        fusion_weights_by_channel[candidate.source_type] = weights.get(candidate.source_type, 1)
         raw_scores = [score for score in [existing.raw_score, candidate.raw_score] if score is not None]
+        fused_scores = [
+            score
+            for score in [
+                existing.metadata.get("fusedScore") if isinstance(existing.metadata, dict) else None,
+                weighted_score,
+            ]
+            if isinstance(score, (int, float))
+        ]
         fused_by_key[key] = ProviderCandidate(
             source_type=existing.source_type,
             chunk_id=existing.chunk_id or candidate.chunk_id,
@@ -372,9 +515,12 @@ def _fuse_provider_candidates(candidates: list[ProviderCandidate]) -> list[Provi
                 **candidate.metadata,
                 "matchedChannels": matched_channels,
                 "retrievalScores": retrieval_scores,
+                "fusionWeights": fusion_weights_by_channel,
+                "fusedScore": max(fused_scores) if fused_scores else None,
             },
         )
-    return list(fused_by_key.values())
+    fused = sorted(fused_by_key.values(), key=lambda item: item.metadata.get("fusedScore") or 0, reverse=True)
+    return fused[:candidate_limit] if candidate_limit else fused
 
 
 def _chunk_access_filter_drop_reason(filter_row: RowMapping | None, access_filter) -> str | None:
@@ -694,7 +840,7 @@ def _execute_provider_qa_run(
     )
     trace_order += 1
 
-    if overrides.get("rewriteEnabled") is False:
+    if pipeline_params["queryRewrite"]["enabled"] is False:
         rewritten_query = query
         _insert_trace_step(
             session,
@@ -737,6 +883,36 @@ def _execute_provider_qa_run(
                 error_message=str(exc),
                 started_at=started_at,
             )
+    trace_order += 1
+
+    multi_query_params = pipeline_params["multiQuery"]
+    retrieval_queries = [rewritten_query]
+    if multi_query_params["enabled"] and multi_query_params["queryCount"] > 1:
+        if query != rewritten_query and pipeline_params["queryRewrite"]["preserveOriginalQuery"]:
+            retrieval_queries.append(query)
+        _insert_trace_step(
+            session,
+            run_id,
+            trace_order,
+            "multiQuery",
+            "success",
+            {"rewrittenQuery": rewritten_query, "queryCount": multi_query_params["queryCount"]},
+            {"queries": retrieval_queries, "mergeStrategy": multi_query_params["mergeStrategy"]},
+            {"actualQueryCount": len(retrieval_queries)},
+            started_at=started_at,
+        )
+    else:
+        _insert_trace_step(
+            session,
+            run_id,
+            trace_order,
+            "multiQuery",
+            "skipped",
+            {"rewrittenQuery": rewritten_query},
+            {"reason": "multiQueryDisabled"},
+            {"configuredQueryCount": multi_query_params["queryCount"]},
+            started_at=started_at,
+        )
     trace_order += 1
 
     try:
@@ -805,20 +981,37 @@ def _execute_provider_qa_run(
                     access_filter,
                 )
             elif channel == "sparse":
-                channel_candidates = provider_set.sparse.retrieve(
-                    kb_id,
-                    rewritten_query,
-                    pipeline_params["retrievalTopK"]["sparse"],
-                    access_filter,
-                )
+                channel_candidates = []
+                for retrieval_query in retrieval_queries:
+                    channel_candidates.extend(
+                        provider_set.sparse.retrieve(
+                            kb_id,
+                            retrieval_query,
+                            pipeline_params["retrievalTopK"]["sparse"],
+                            access_filter,
+                        )
+                    )
             else:
-                channel_candidates = provider_set.graph.retrieve(
-                    kb_id,
-                    rewritten_query,
-                    graph_snapshot_id,
+                channel_candidates = []
+                graph_limit = min(
+                    pipeline_params["graph"]["graphExpansionLimit"],
                     pipeline_params["retrievalTopK"]["graph"],
-                    access_filter,
                 )
+                for retrieval_query in retrieval_queries:
+                    channel_candidates.extend(
+                        provider_set.graph.retrieve(
+                            kb_id,
+                            retrieval_query,
+                            graph_snapshot_id,
+                            graph_limit,
+                            access_filter,
+                        )
+                    )
+            before_threshold_count = len(channel_candidates)
+            channel_candidates = _filter_candidates_by_score_threshold(
+                channel_candidates,
+                pipeline_params["retrievalScoreThreshold"],
+            )
             candidates.extend(channel_candidates)
             _insert_trace_step(
                 session,
@@ -829,11 +1022,13 @@ def _execute_provider_qa_run(
                 {"query": rewritten_query},
                 {
                     "candidateCount": len(channel_candidates),
+                    "droppedByScoreThreshold": before_threshold_count - len(channel_candidates),
                     "graphSnapshotId": str(graph_snapshot_id) if channel == "graph" and graph_snapshot_id else None,
                 },
                 {
                     "provider": provider_name,
                     "topK": pipeline_params["retrievalTopK"][channel],
+                    "scoreThreshold": pipeline_params["retrievalScoreThreshold"][channel],
                     "accessFilter": access_filter.to_trace_summary(),
                 },
                 started_at=started_at,
@@ -856,7 +1051,11 @@ def _execute_provider_qa_run(
         trace_order += 1
 
     raw_channel_counts = _retrieval_channel_counts(candidates)
-    fused_candidates = _fuse_provider_candidates(candidates)
+    fused_candidates = _fuse_provider_candidates(
+        candidates,
+        pipeline_params["fusionWeights"],
+        pipeline_params["fusion"]["candidateLimit"],
+    )
     _insert_trace_step(
         session,
         run_id,
@@ -865,15 +1064,29 @@ def _execute_provider_qa_run(
         "success",
         {"inputCandidates": len(candidates), "channelCounts": raw_channel_counts},
         {"candidateCount": len(fused_candidates), "dedupedCandidates": len(candidates) - len(fused_candidates)},
-        {"strategy": "chunkIdDedupe", "preserve": "matchedChannels"},
+        {
+            "strategy": pipeline_params["fusion"]["method"],
+            "candidateLimit": pipeline_params["fusion"]["candidateLimit"],
+            "fusionWeights": pipeline_params["fusionWeights"],
+            "preserve": "matchedChannels",
+        },
         started_at=started_at,
     )
     trace_order += 1
 
     try:
-        reranked_candidates = provider_set.rerank.rerank(rewritten_query, fused_candidates, pipeline_params["rerankTopN"])
-        rerank_status = "success"
-        rerank_error = None
+        if not pipeline_params["rerank"]["enabled"]:
+            reranked_candidates = fused_candidates[: pipeline_params["rerankTopN"]]
+            rerank_status = "skipped"
+            rerank_error = None
+        else:
+            reranked_candidates = provider_set.rerank.rerank(rewritten_query, fused_candidates, pipeline_params["rerankTopN"])
+            reranked_candidates = _filter_candidates_by_score_threshold(
+                reranked_candidates,
+                {"dense": pipeline_params["rerank"]["scoreThreshold"], "sparse": pipeline_params["rerank"]["scoreThreshold"], "graph": pipeline_params["rerank"]["scoreThreshold"]},
+            )
+            rerank_status = "success"
+            rerank_error = None
     except ProviderError as exc:
         reranked_candidates = fused_candidates[: pipeline_params["rerankTopN"]]
         rerank_status = "partial"
@@ -887,7 +1100,11 @@ def _execute_provider_qa_run(
         rerank_status,
         {"inputCandidates": len(fused_candidates)},
         {"candidateCount": len(reranked_candidates)},
-        {"provider": settings.rerank_provider, "topN": pipeline_params["rerankTopN"]},
+        {
+            "provider": settings.rerank_provider,
+            "topN": pipeline_params["rerankTopN"],
+            "scoreThreshold": pipeline_params["rerank"]["scoreThreshold"],
+        },
         error_code="PROVIDER_ERROR" if rerank_error else None,
         error_message=rerank_error,
         started_at=started_at,
@@ -951,6 +1168,18 @@ def _execute_provider_qa_run(
         pipeline_params["maxContextTokens"],
     )
     context_candidates = [candidate for candidate, _candidate_id in context_pairs]
+    _insert_trace_step(
+        session,
+        run_id,
+        trace_order,
+        "contextPacking",
+        "success",
+        {"authorizedEvidenceCount": len(authorized_pairs)},
+        {"contextCandidateCount": len(context_candidates), "maxContextTokens": pipeline_params["maxContextTokens"]},
+        pipeline_params["contextPacking"],
+        started_at=started_at,
+    )
+    trace_order += 1
     try:
         answer = provider_set.llm.generate_answer(
             query,

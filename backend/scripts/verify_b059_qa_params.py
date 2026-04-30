@@ -37,7 +37,7 @@ def verify_pipeline_params_snapshot() -> None:
                 {"type": "graphRetrieval", "enabled": True, "params": {"topK": 5}},
                 {"type": "rerank", "enabled": True, "params": {"topN": 4}},
                 {"type": "contextBuilder", "enabled": True, "params": {"maxContextTokens": 2048}},
-                {"type": "llmGeneration", "enabled": True, "params": {"temperature": 0.35}},
+                {"type": "generation", "enabled": True, "params": {"temperature": 0.35}},
             ],
         },
     }
@@ -64,7 +64,7 @@ def verify_execution_uses_pipeline_params() -> None:
     _assert_contains(qa_source, 'pipeline_params["retrievalTopK"]["sparse"]', "Sparse 检索未使用生效 topK")
     _assert_contains(qa_source, 'pipeline_params["retrievalTopK"]["graph"]', "Graph 检索未使用生效 topK")
     _assert_contains(qa_source, 'pipeline_params["rerankTopN"]', "Rerank 未使用生效 topN")
-    _assert_contains(qa_source, "_limit_candidates_by_context_tokens(", "生成上下文未按 maxContextTokens 裁剪")
+    _assert_contains(qa_source, "_limit_candidate_pairs_by_context_tokens(", "生成上下文未按 maxContextTokens 裁剪")
     _assert_contains(qa_source, 'temperature=pipeline_params["temperature"]', "生成未传入生效 temperature")
     _assert_contains(qa_source, '"pipelineParams": pipeline_params', "QARun metrics 未写入参数生效快照")
     _assert_contains(provider_source, "temperature if temperature is not None else 0.2", "HTTP LLM 未使用传入 temperature")

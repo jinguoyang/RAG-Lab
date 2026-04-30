@@ -25,12 +25,12 @@
 
 | 编号 | Backlog | 标题 | 优先级 | 预估 | 负责人 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| S25-001 | B-109 | 扩展 Pipeline 节点模型支持 Query Rewrite、Multi Query 和 Context Packing | P0 | 2d | Codex | Todo |
-| S25-002 | B-110 | 丰富 Dense、Sparse、Hybrid 检索节点参数 | P0 | 2d | Codex | Todo |
-| S25-003 | B-111 | 丰富 Graph Retrieval 节点参数和扩展策略 | P1 | 1.5d | Codex | Todo |
-| S25-004 | B-112 | 丰富 Fusion、Rerank 策略和诊断指标 | P0 | 1.5d | Codex | Todo |
-| S25-005 | B-113 | 支持上下文组装策略参数和引用约束 | P0 | 1.5d | Codex | Todo |
-| S25-006 | B-114 | 将 P08 升级为可复核 RAG Pipeline 调参台 | P0 | 2d | Codex | Todo |
+| S25-001 | B-109 | 扩展 Pipeline 节点模型支持 Query Rewrite、Multi Query 和 Context Packing | P0 | 2d | Codex | Done |
+| S25-002 | B-110 | 丰富 Dense、Sparse、Hybrid 检索节点参数 | P0 | 2d | Codex | Done |
+| S25-003 | B-111 | 丰富 Graph Retrieval 节点参数和扩展策略 | P1 | 1.5d | Codex | Done |
+| S25-004 | B-112 | 丰富 Fusion、Rerank 策略和诊断指标 | P0 | 1.5d | Codex | Done |
+| S25-005 | B-113 | 支持上下文组装策略参数和引用约束 | P0 | 1.5d | Codex | Done |
+| S25-006 | B-114 | 将 P08 升级为可复核 RAG Pipeline 调参台 | P0 | 2d | Codex | Done |
 
 ## 5. 验收标准
 
@@ -51,3 +51,7 @@
 - Pipeline 参数验证：`conda run -n rag-lab python scripts/verify_v17_pipeline_params.py`
 - 前端构建：`npm run build`
 - 空白检查：`git diff --check`
+
+## 8. 执行记录
+
+- 2026-04-30：完成 B-109 至 B-114，新增 V1.7 Pipeline 参数验证脚本，后端编译、参数验证、前端构建和空白检查均通过。
