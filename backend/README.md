@@ -71,9 +71,7 @@ conda run -n rag-lab python -m alembic upgrade head
 
 当前 E1 迁移会创建 `users`、`user_groups`、`user_group_members`、`knowledge_bases` 基础表，并写入开发期默认用户和默认知识库。
 当前 E2 迁移会创建 `stored_files`、`documents`、`document_versions`、`ingest_jobs`，用于文档中心最小上传与作业追踪链路。
-
-更完整的 E1 初始化与联调说明见：[E1 本地验证说明](../docs/04-迭代与交付/E1-本地验证说明.md)。
-更完整的 E2 文档中心验证说明见：[E2 本地验证说明](../docs/04-迭代与交付/E2-本地验证说明.md)。
+当前提交前验证以本文件下方“最小验证”和仓库根目录 `README.md` 为准；早期 E1/E2 单独验证说明已归档清理，避免与当前迁移版本重复维护。
 
 ## 最小验证
 
