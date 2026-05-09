@@ -135,6 +135,8 @@ conda run -n rag-lab python -m compileall app
 conda run -n rag-lab python -c "from fastapi.testclient import TestClient; from app.main import app; r=TestClient(app).get('/api/v1/health'); print(r.status_code); print(r.json())"
 conda run -n rag-lab python scripts/export_openapi.py
 conda run -n rag-lab python scripts/verify_epic10_release_ops.py
+conda run -n rag-lab python scripts/verify_v17_pipeline_params.py
+conda run -n rag-lab python scripts/verify_v17_pipeline_evaluation.py
 ```
 
 预期结果：
@@ -143,6 +145,7 @@ conda run -n rag-lab python scripts/verify_epic10_release_ops.py
 - 后端编译无错误。
 - 健康检查状态码为 `200`，响应中包含 `status`、`app_name`、`version`、`environment`。
 - OpenAPI Schema 可导出，Epic10 发布验收脚本输出通过。
+- V1.7 Pipeline 参数验证和评估闭环验证输出通过。
 
 ## 依赖说明
 

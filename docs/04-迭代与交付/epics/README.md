@@ -23,7 +23,7 @@ Epic 是能力域，不是时间盒。一个 Epic 可以跨多个 Sprint 推进�
 | E2 | 文档中心 | V1.0 | Done | Sprint 03、Sprint 08 | 文档上传元数据、版本、作业状态和详情接入已完成 |
 | E3 | 配置中心 | V1.0 | Done | Sprint 04、Sprint 12 | Revision 保存/激活、Pipeline 校验和核心参数保存已完成 |
 | E4 | QA Run 最小链路 | V1.0 | Done | Sprint 05、Sprint 12 | QARun 创建、状态轮询、详情、Trace 和参数生效链路已完成 |
-| E5 | 真实 Provider 接入 | V1.0 | Done | Sprint 06、Sprint 13 | Provider 抽象已完成；真实连通性诊断仍在 Sprint 13 中收尾 |
+| E5 | 真实 Provider 接入 | V1.0 | Done | Sprint 06、Sprint 13 | Provider 抽象、配置摘要和连通性诊断入口已完成；真实环境网络级复测按发布运维记录执行 |
 | E6 | 权限与成员治理 | V1.0 | Done | Sprint 07、Sprint 12 | 成员绑定、权限摘要、ACL 和 Chunk 访问过滤已完成 |
 | E7 | 文档生命周期与 Ingest Worker | V1.0 | Done | Sprint 08、Sprint 12 | 解析切块、重解析、active version 和同步状态已完成 |
 | E8 | QA 历史与评估闭环 | V1.0/V1.1 | Done | Sprint 09、Sprint 13 | 历史、回放、人工反馈、样本管理和批量回归入口已完成 |
