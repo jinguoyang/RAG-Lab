@@ -1,5 +1,8 @@
-import { apiGet, apiPostForm, apiPostJson } from "./apiClient";
+import { apiGet, apiPatchJson, apiPostForm, apiPostJson } from "./apiClient";
 import type {
+  BulkDocumentGovernanceRequest,
+  BulkDocumentGovernanceResponse,
+  ChunkGovernanceResponse,
   ChunkPage,
   ChunkDTO,
   DocumentDetailDTO,
@@ -8,6 +11,9 @@ import type {
   DocumentUploadResponse,
   DocumentVersionActivateResponse,
   DocumentVersionDTO,
+  IndexSyncJobDTO,
+  IndexSyncJobPage,
+  IndexSyncRebuildRequest,
   IngestJobDTO,
   IngestJobPage,
 } from "../types/document";
@@ -57,6 +63,13 @@ export async function fetchDocumentQualitySummary(kbId: string): Promise<Documen
   return apiGet<DocumentQualitySummaryDTO>(`/knowledge-bases/${kbId}/documents/quality-summary`);
 }
 
+export async function runBulkDocumentGovernance(
+  kbId: string,
+  request: BulkDocumentGovernanceRequest,
+): Promise<BulkDocumentGovernanceResponse> {
+  return apiPostJson<BulkDocumentGovernanceResponse>(`/knowledge-bases/${kbId}/documents/batch-governance`, request);
+}
+
 export async function fetchDocumentVersions(
   kbId: string,
   documentId: string,
@@ -104,6 +117,18 @@ export async function fetchChunk(kbId: string, chunkId: string): Promise<ChunkDT
   return apiGet<ChunkDTO>(`/knowledge-bases/${kbId}/chunks/${chunkId}`);
 }
 
+export async function updateChunkGovernance(
+  kbId: string,
+  chunkId: string,
+  excluded: boolean,
+  note?: string | null,
+): Promise<ChunkGovernanceResponse> {
+  return apiPatchJson<ChunkGovernanceResponse>(`/knowledge-bases/${kbId}/chunks/${chunkId}/governance`, {
+    excluded,
+    note,
+  });
+}
+
 export async function fetchIngestJobs(kbId: string, documentId?: string): Promise<IngestJobPage> {
   const params = new URLSearchParams({ pageNo: "1", pageSize: "20" });
   if (documentId) {
@@ -123,4 +148,12 @@ export async function retryIngestJob(kbId: string, jobId: string): Promise<Inges
 
 export async function cancelIngestJob(kbId: string, jobId: string): Promise<IngestJobDTO> {
   return apiPostJson<IngestJobDTO>(`/knowledge-bases/${kbId}/ingest-jobs/${jobId}/cancel`, {});
+}
+
+export async function fetchIndexSyncJobs(kbId: string): Promise<IndexSyncJobPage> {
+  return apiGet<IndexSyncJobPage>(`/knowledge-bases/${kbId}/index-sync-jobs?pageNo=1&pageSize=20`);
+}
+
+export async function rebuildIndexSync(kbId: string, request: IndexSyncRebuildRequest): Promise<IndexSyncJobDTO> {
+  return apiPostJson<IndexSyncJobDTO>(`/knowledge-bases/${kbId}/index-sync-jobs/rebuild`, request);
 }

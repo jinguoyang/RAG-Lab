@@ -6,7 +6,7 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 
 - 当前没有进行中的 Sprint。
 - Sprint 01 至 Sprint 26 已完成，对应 V1.0 至 V1.7。
-- V1.7 已通过 Sprint 25 和 Sprint 26 完成 E21 RAG 模块化调优范围：P08 支持受控 RAG Pipeline 节点参数配置，QARun 固化 Pipeline Snapshot 和节点级参数快照，P10 支持配置效果对比和优化建议展示，并已补充 V1.7 RAG 调优指南。
+- Sprint 27 至 Sprint 29 已完成 E22 知识库治理工作流强化范围：P05 支持治理问题定位和治理后验证摘要，P06 支持批量治理和索引同步作业，P07 支持 Chunk 治理标记、索引重建和作业查看。
 - 新增工作应先进入 [产品待办清单](../产品待办清单.md)，再建立新的 Sprint 文档。
 
 ## 2. 历史 Sprint 索引
@@ -18,6 +18,7 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 | Sprint 15-18 | V1.2 / V1.3 | Provider 生产化、知识库治理、稳定性观测、协作治理 | Done | `Sprint-15.md` 至 `Sprint-18.md` |
 | Sprint 19-22 | V1.4 / V1.5 | 真实入库、多副本写入、真实检索、回放复跑 | Done | `Sprint-19.md` 至 `Sprint-22.md` |
 | Sprint 23-26 | V1.6 / V1.7 | 真实 RAG 端到端闭环、模块化调优、评估对比 | Done | `Sprint-23.md` 至 `Sprint-26.md` |
+| Sprint 27-29 | 内部增强 | 知识库治理工作流、诊断可操作化、治理后验证 | Done | 本总览记录 |
 
 ## 3. 单个 Sprint 文档约定
 

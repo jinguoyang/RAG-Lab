@@ -127,6 +127,10 @@ class DocumentQualityIssueDTO(BaseModel):
     documentId: str | None = None
     versionId: str | None = None
     chunkId: str | None = None
+    contentHash: str | None = None
+    sampleChunkIds: list[str] = Field(default_factory=list)
+    recommendedAction: str | None = None
+    targetStore: str | None = None
     count: int
     message: str
 

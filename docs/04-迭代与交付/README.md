@@ -16,7 +16,7 @@
 ## 2. 当前状态
 
 - V1.0 至 V1.7 的 Backlog、Epic、Sprint 和 Release 已收口为完成。
-- 最新完成范围是 V1.7 / E21：RAG 模块化调优、QARun Pipeline Snapshot、节点级参数快照、配置评估对比和优化建议。
+- 最新完成范围是 E22：知识库治理工作流强化，已通过 Sprint 27 至 Sprint 29 补齐治理操作、诊断详情和治理后验证入口。
 - 当前没有进行中的 Sprint；后续新工作应先进入产品待办清单，再建立新的 Sprint 或 Release 计划。
 - 发布前仍需在目标测试或预生产环境补齐真实 Provider 网络级复测记录，入口见 [V1.7 Provider 网络级复测记录](../06-发布与运维/V1.7-Provider网络级复测记录.md)。
 
