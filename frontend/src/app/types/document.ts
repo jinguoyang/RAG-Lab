@@ -70,12 +70,23 @@ export interface ChunkDTO {
   createdAt: string;
 }
 
+export interface ChunkGovernanceResponse {
+  chunk: ChunkDTO;
+  excluded: boolean;
+  governanceNote: string | null;
+  permissionInheritance: string;
+}
+
 export interface DocumentQualityIssueDTO {
   issueType: string;
   severity: "high" | "medium" | "low";
   documentId: string | null;
   versionId: string | null;
   chunkId: string | null;
+  contentHash: string | null;
+  sampleChunkIds: string[];
+  recommendedAction: string | null;
+  targetStore: string | null;
   count: number;
   message: string;
 }
@@ -96,6 +107,43 @@ export interface DocumentVersionActivateResponse {
   activeVersionId: string;
   previousActiveVersionId: string | null;
   auditLogId: string;
+}
+
+export interface BulkDocumentGovernanceRequest {
+  operation: "reparse" | "disable" | "rebuild_index";
+  documentIds: string[];
+  confirmImpact: boolean;
+  reason?: string | null;
+  targetStore?: string | null;
+}
+
+export interface BulkDocumentGovernanceResponse {
+  operation: string;
+  requestedCount: number;
+  successCount: number;
+  failedCount: number;
+  affectedIds: string[];
+  errors: string[];
+}
+
+export interface IndexSyncJobDTO {
+  syncJobId: string;
+  kbId: string;
+  targetStore: string;
+  syncType: string;
+  scope: Record<string, unknown>;
+  requiredForActivation: boolean;
+  status: JobStatus;
+  errorMessage: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface IndexSyncRebuildRequest {
+  targetStore: string;
+  documentId?: string | null;
+  versionId?: string | null;
 }
 
 export interface DocumentDetailDTO {
@@ -154,3 +202,4 @@ export interface ChunkViewModel {
 export type DocumentPage = PageResponse<DocumentDTO>;
 export type IngestJobPage = PageResponse<IngestJobDTO>;
 export type ChunkPage = PageResponse<ChunkDTO>;
+export type IndexSyncJobPage = PageResponse<IndexSyncJobDTO>;

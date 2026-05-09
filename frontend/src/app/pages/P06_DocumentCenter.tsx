@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Search, Upload, Download, FileWarning, Eye, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Upload, Download, FileWarning, Eye, ChevronLeft, ChevronRight, Database, RefreshCw } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
@@ -8,11 +8,26 @@ import { Input } from "../components/rag/Input";
 import { Alert } from "../components/rag/Alert";
 import { Badge, StatusBadge } from "../components/rag/Badge";
 import { Drawer, DrawerSection } from "../components/rag/Drawer";
+import { useConfirmDialog } from "../components/rag/ConfirmDialog";
 import { toDocumentRow, toIngestJobView } from "../adapters/documentAdapter";
-import { fetchDocuments, fetchIngestJobs, uploadDocument } from "../services/documentService";
-import type { DocumentDTO, IndexStageViewModel, IngestJobDTO, JobStatus } from "../types/document";
+import {
+  fetchDocuments,
+  fetchIndexSyncJobs,
+  fetchIngestJobs,
+  rebuildIndexSync,
+  runBulkDocumentGovernance,
+  uploadDocument,
+} from "../services/documentService";
+import type { BulkDocumentGovernanceRequest, DocumentDTO, IndexStageViewModel, IndexSyncJobDTO, IngestJobDTO, JobStatus } from "../types/document";
 
 const DOCUMENT_PAGE_SIZE = 10;
+type BatchOperation = BulkDocumentGovernanceRequest["operation"];
+
+const BATCH_OPERATION_LABELS: Record<BatchOperation, string> = {
+  reparse: "批量重解析",
+  disable: "批量停用",
+  rebuild_index: "批量重建索引",
+};
 
 function indexStageVariant(status: IndexStageViewModel["status"]) {
   if (status === "success") return "success";
@@ -28,11 +43,16 @@ function indexStageVariant(status: IndexStageViewModel["status"]) {
  */
 export function DocumentCenter() {
   const navigate = useNavigate();
+  const confirm = useConfirmDialog();
   const { kbId = "" } = useParams();
   const [documents, setDocuments] = useState<DocumentDTO[]>([]);
   const [documentTotal, setDocumentTotal] = useState(0);
   const [pageNo, setPageNo] = useState(1);
   const [jobs, setJobs] = useState<IngestJobDTO[]>([]);
+  const [indexSyncJobs, setIndexSyncJobs] = useState<IndexSyncJobDTO[]>([]);
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
+  const [batchOperation, setBatchOperation] = useState<BatchOperation>("reparse");
+  const [targetStore, setTargetStore] = useState("milvus");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | JobStatus>("");
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -55,10 +75,13 @@ export function DocumentCenter() {
         fetchDocuments(kbId, { keyword, pageNo: nextPageNo, pageSize: DOCUMENT_PAGE_SIZE }),
         fetchIngestJobs(kbId),
       ]);
+      const indexSyncPage = await fetchIndexSyncJobs(kbId);
       setDocuments(documentPage.items);
       setDocumentTotal(documentPage.total);
       setPageNo(documentPage.pageNo);
       setJobs(jobPage.items);
+      setIndexSyncJobs(indexSyncPage.items);
+      setSelectedDocumentIds((current) => current.filter((documentId) => documentPage.items.some((item) => item.documentId === documentId)));
     } catch (error) {
       setFeedback({
         variant: "error",
@@ -122,7 +145,80 @@ export function DocumentCenter() {
     await loadData(searchTerm, nextPageNo);
   }
 
+  function toggleDocumentSelection(documentId: string, checked: boolean) {
+    setSelectedDocumentIds((current) => (
+      checked ? Array.from(new Set([...current, documentId])) : current.filter((item) => item !== documentId)
+    ));
+  }
+
+  function toggleCurrentPageSelection(checked: boolean) {
+    const currentPageIds = filteredRows.map((row) => row.id);
+    setSelectedDocumentIds((current) => (
+      checked
+        ? Array.from(new Set([...current, ...currentPageIds]))
+        : current.filter((item) => !currentPageIds.includes(item))
+    ));
+  }
+
+  async function handleBatchGovernance() {
+    if (selectedDocumentIds.length === 0) {
+      setFeedback({ variant: "warning", title: "请选择文档", message: "批量治理需要先选择至少一个文档。" });
+      return;
+    }
+    const label = BATCH_OPERATION_LABELS[batchOperation];
+    const ok = await confirm({
+      title: `确认${label}？`,
+      description: `${label}会影响 ${selectedDocumentIds.length} 个文档，操作会写入审计记录。`,
+      confirmText: label,
+    });
+    if (!ok) return;
+
+    setLoading(true);
+    try {
+      const response = await runBulkDocumentGovernance(kbId, {
+        operation: batchOperation,
+        documentIds: selectedDocumentIds,
+        confirmImpact: true,
+        reason: `P06 ${label}`,
+        targetStore: batchOperation === "rebuild_index" ? targetStore : null,
+      });
+      setFeedback({
+        variant: response.failedCount > 0 ? "warning" : "success",
+        title: `${label}已提交`,
+        message: `成功 ${response.successCount} 项，失败 ${response.failedCount} 项。`,
+      });
+      setSelectedDocumentIds([]);
+      await loadData(searchTerm, pageNo);
+    } catch (error) {
+      setFeedback({ variant: "error", title: `${label}失败`, message: error instanceof Error ? error.message : "请稍后重试。" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleKnowledgeBaseIndexRebuild() {
+    const ok = await confirm({
+      title: `重建 ${targetStore} 索引？`,
+      description: "未选择文档时会按当前知识库 active Chunk 范围重建目标副本。",
+      confirmText: "重建索引",
+    });
+    if (!ok) return;
+
+    setLoading(true);
+    try {
+      await rebuildIndexSync(kbId, { targetStore });
+      const nextJobs = await fetchIndexSyncJobs(kbId);
+      setIndexSyncJobs(nextJobs.items);
+      setFeedback({ variant: "success", title: "索引重建已创建", message: `${targetStore} 副本重建作业已写入。` });
+    } catch (error) {
+      setFeedback({ variant: "error", title: "索引重建失败", message: error instanceof Error ? error.message : "请稍后重试。" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
   const totalPages = Math.max(1, Math.ceil(documentTotal / DOCUMENT_PAGE_SIZE));
+  const currentPageSelected = filteredRows.length > 0 && filteredRows.every((row) => selectedDocumentIds.includes(row.id));
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8">
@@ -179,6 +275,33 @@ export function DocumentCenter() {
             </div>
           </div>
 
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border-cream bg-ivory p-4">
+            <span className="text-sm text-stone-gray">已选 {selectedDocumentIds.length} 个文档</span>
+            <select
+              className="px-3 py-2 bg-parchment border border-border-cream rounded-md text-sm text-near-black focus:outline-none focus:ring-1 focus:ring-focus-blue"
+              value={batchOperation}
+              onChange={(event) => setBatchOperation(event.target.value as BatchOperation)}
+            >
+              <option value="reparse">批量重解析</option>
+              <option value="disable">批量停用</option>
+              <option value="rebuild_index">批量重建索引</option>
+            </select>
+            {batchOperation === "rebuild_index" && (
+              <select
+                className="px-3 py-2 bg-parchment border border-border-cream rounded-md text-sm text-near-black focus:outline-none focus:ring-1 focus:ring-focus-blue"
+                value={targetStore}
+                onChange={(event) => setTargetStore(event.target.value)}
+              >
+                <option value="milvus">milvus</option>
+                <option value="opensearch">opensearch</option>
+                <option value="neo4j">neo4j</option>
+              </select>
+            )}
+            <Button variant="outline" disabled={loading || selectedDocumentIds.length === 0} onClick={() => void handleBatchGovernance()}>
+              <RefreshCw className="w-4 h-4 mr-2" /> 执行治理
+            </Button>
+          </div>
+
           {filteredRows.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border-warm bg-ivory p-10 text-center">
               <div className="mx-auto mb-3 w-12 h-12 rounded-full bg-parchment flex items-center justify-center">
@@ -194,6 +317,14 @@ export function DocumentCenter() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12">
+                      <input
+                        type="checkbox"
+                        aria-label="选择当前页文档"
+                        checked={currentPageSelected}
+                        onChange={(event) => toggleCurrentPageSelection(event.target.checked)}
+                      />
+                    </TableHead>
                     <TableHead>文档名</TableHead>
                     <TableHead className="whitespace-nowrap">状态</TableHead>
                     <TableHead className="whitespace-nowrap">密级</TableHead>
@@ -208,6 +339,14 @@ export function DocumentCenter() {
                       className="cursor-pointer hover:bg-border-cream/30"
                       onClick={() => navigate(`/kb/${kbId}/docs/${doc.id}`)}
                     >
+                      <TableCell onClick={(event) => event.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          aria-label={`选择文档 ${doc.name}`}
+                          checked={selectedDocumentIds.includes(doc.id)}
+                          onChange={(event) => toggleDocumentSelection(doc.id, event.target.checked)}
+                        />
+                      </TableCell>
                       <TableCell className="font-medium">{doc.name}</TableCell>
                       <TableCell className="whitespace-nowrap">
                         <StatusBadge status={doc.status} />
@@ -297,6 +436,34 @@ export function DocumentCenter() {
                 </div>
               ))
             )}
+          </div>
+
+          <div className="rounded-xl border border-border-cream bg-ivory p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-serif text-lg text-near-black">索引同步作业</h3>
+                <p className="mt-1 text-sm text-stone-gray">查看目标副本、失败原因，并可重建当前知识库索引。</p>
+              </div>
+              <Button variant="ghost" size="sm" disabled={loading} onClick={() => void handleKnowledgeBaseIndexRebuild()} title="重建索引">
+                <Database className="w-4 h-4" />
+              </Button>
+            </div>
+            <div className="mt-4 space-y-3">
+              {indexSyncJobs.length === 0 ? (
+                <p className="text-sm text-stone-gray">暂无索引同步作业。</p>
+              ) : (
+                indexSyncJobs.slice(0, 5).map((job) => (
+                  <div key={job.syncJobId} className="rounded-lg border border-border-cream bg-parchment p-3 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-medium text-near-black">{job.targetStore}</span>
+                      <StatusBadge status={job.status} />
+                    </div>
+                    <p className="mt-1 text-xs text-stone-gray">类型：{job.syncType}</p>
+                    {job.errorMessage && <p className="mt-1 text-xs text-error-red">{job.errorMessage}</p>}
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </aside>
       </div>

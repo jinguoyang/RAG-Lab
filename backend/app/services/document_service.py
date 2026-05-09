@@ -1049,6 +1049,22 @@ def get_document_quality_summary(
         .group_by(chunks.c.content_hash)
         .having(func.count() > 1)
     ).mappings().all()
+    duplicate_hashes = [row["content_hash"] for row in duplicate_groups if row["content_hash"]]
+    duplicate_samples: dict[str, list[str]] = {content_hash: [] for content_hash in duplicate_hashes}
+    if duplicate_hashes:
+        sample_rows = session.execute(
+            select(chunks.c.content_hash, chunks.c.chunk_id)
+            .where(
+                chunks.c.kb_id == kb_id,
+                chunks.c.status == "active",
+                chunks.c.content_hash.in_(duplicate_hashes),
+            )
+            .order_by(chunks.c.content_hash.asc(), chunks.c.chunk_index.asc())
+        ).mappings().all()
+        for row in sample_rows:
+            samples = duplicate_samples.setdefault(row["content_hash"], [])
+            if len(samples) < 5:
+                samples.append(str(row["chunk_id"]))
     permission_anomalies = session.execute(
         select(chunks.c.document_id, chunks.c.version_id, chunks.c.chunk_id)
         .select_from(chunks.outerjoin(chunk_access_filters, chunks.c.chunk_id == chunk_access_filters.c.chunk_id))
@@ -1063,6 +1079,7 @@ def get_document_quality_summary(
                 severity="high",
                 documentId=str(row["document_id"]),
                 versionId=str(row["version_id"]),
+                recommendedAction="reparse",
                 count=1,
                 message=row["error_message"] or "文档版本解析失败。",
             )
@@ -1075,17 +1092,23 @@ def get_document_quality_summary(
                 documentId=str(row["document_id"]),
                 versionId=str(row["version_id"]),
                 chunkId=str(row["chunk_id"]),
+                sampleChunkIds=[str(row["chunk_id"])],
+                recommendedAction="exclude_or_reparse",
                 count=1,
                 message="Chunk 正文为空，建议重解析或排除。",
             )
         )
     for row in duplicate_groups[:20]:
+        content_hash = row["content_hash"]
         issues.append(
             DocumentQualityIssueDTO(
                 issueType="duplicate_chunk",
                 severity="low",
+                contentHash=str(content_hash),
+                sampleChunkIds=duplicate_samples.get(content_hash, []),
+                recommendedAction="review_duplicate_chunks",
                 count=row["chunk_count"],
-                message=f"存在 {row['chunk_count']} 个重复正文 Chunk，contentHash={row['content_hash']}。",
+                message=f"存在 {row['chunk_count']} 个重复正文 Chunk，contentHash={content_hash}。",
             )
         )
     for row in permission_anomalies[:20]:
@@ -1096,6 +1119,9 @@ def get_document_quality_summary(
                 documentId=str(row["document_id"]),
                 versionId=str(row["version_id"]),
                 chunkId=str(row["chunk_id"]),
+                sampleChunkIds=[str(row["chunk_id"])],
+                recommendedAction="rebuild_index",
+                targetStore="milvus",
                 count=1,
                 message="Chunk 缺少访问过滤摘要，检索副本同步前应重建。",
             )

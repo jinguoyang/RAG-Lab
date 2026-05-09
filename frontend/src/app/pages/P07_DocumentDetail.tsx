@@ -1,7 +1,7 @@
 import * as Tabs from "@radix-ui/react-tabs";
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router";
-import { ChevronLeft, ChevronRight, Eye, FileSymlink, RefreshCw, RotateCcw, XCircle } from "lucide-react";
+import { Link, useLocation, useParams } from "react-router";
+import { ChevronLeft, ChevronRight, Database, Eye, FileSymlink, RefreshCw, RotateCcw, Save, XCircle } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
@@ -17,11 +17,14 @@ import {
   fetchChunks,
   fetchDocumentDetail,
   fetchDocumentVersions,
+  fetchIndexSyncJobs,
   fetchIngestJobs,
+  rebuildIndexSync,
   reparseDocument,
   retryIngestJob,
+  updateChunkGovernance,
 } from "../services/documentService";
-import type { ChunkDTO, DocumentDetailDTO, DocumentVersionDTO, IndexStageViewModel, IngestJobDTO } from "../types/document";
+import type { ChunkDTO, DocumentDetailDTO, DocumentVersionDTO, IndexStageViewModel, IndexSyncJobDTO, IngestJobDTO } from "../types/document";
 
 function indexStageVariant(status: IndexStageViewModel["status"]) {
   if (status === "success") return "success";
@@ -31,21 +34,38 @@ function indexStageVariant(status: IndexStageViewModel["status"]) {
   return "queued";
 }
 
+function readChunkGovernance(chunk: ChunkDTO | null): { excluded: boolean; note: string } {
+  const governance = chunk?.metadata?.governance;
+  if (typeof governance !== "object" || governance === null) {
+    return { excluded: false, note: "" };
+  }
+  const record = governance as Record<string, unknown>;
+  return {
+    excluded: record.excluded === true,
+    note: typeof record.note === "string" ? record.note : "",
+  };
+}
+
 /**
  * 文档详情页接入 E7 文档生命周期接口。
  * 页面只编排交互状态，版本切换、Chunk 权限和作业动作以后端结果为准。
  */
 export function DocumentDetail() {
   const { kbId = "", docId = "" } = useParams();
+  const location = useLocation();
   const confirm = useConfirmDialog();
   const [activeTab, setActiveTab] = useState("versions");
   const [detail, setDetail] = useState<DocumentDetailDTO | null>(null);
   const [versions, setVersions] = useState<DocumentVersionDTO[]>([]);
   const [jobs, setJobs] = useState<IngestJobDTO[]>([]);
+  const [indexSyncJobs, setIndexSyncJobs] = useState<IndexSyncJobDTO[]>([]);
   const [chunks, setChunks] = useState<ChunkDTO[]>([]);
   const [chunkPageNo, setChunkPageNo] = useState(1);
   const [chunkTotal, setChunkTotal] = useState(0);
   const [selectedChunk, setSelectedChunk] = useState<ChunkDTO | null>(null);
+  const [governanceExcluded, setGovernanceExcluded] = useState(false);
+  const [governanceNoteInput, setGovernanceNoteInput] = useState("");
+  const [rebuildTargetStore, setRebuildTargetStore] = useState("milvus");
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{
@@ -71,9 +91,11 @@ export function DocumentDetail() {
         fetchDocumentVersions(kbId, docId),
         fetchIngestJobs(kbId, docId),
       ]);
+      const nextIndexSyncJobs = await fetchIndexSyncJobs(kbId);
       setDetail(nextDetail);
       setVersions(nextVersions);
       setJobs(nextJobs.items);
+      setIndexSyncJobs(nextIndexSyncJobs.items);
       const activeVersionId = nextDetail.document.activeVersionId;
       if (activeVersionId) {
         const nextChunks = await fetchChunks(kbId, docId, activeVersionId, nextChunkPageNo, 10);
@@ -98,6 +120,27 @@ export function DocumentDetail() {
   useEffect(() => {
     void loadData(1);
   }, [kbId, docId]);
+
+  useEffect(() => {
+    const state = location.state as {
+      governanceIssue?: { chunkId?: string | null; versionId?: string | null; recommendedAction?: string | null };
+    } | null;
+    const governanceIssue = state?.governanceIssue;
+    if (!governanceIssue) return;
+    if (governanceIssue.chunkId) {
+      setActiveTab("chunks");
+      void fetchChunk(kbId, governanceIssue.chunkId).then((chunk) => {
+        const governance = readChunkGovernance(chunk);
+        setSelectedChunk(chunk);
+        setGovernanceExcluded(governance.excluded);
+        setGovernanceNoteInput(governance.note);
+      });
+      return;
+    }
+    if (governanceIssue.versionId) {
+      setActiveTab("versions");
+    }
+  }, [kbId, location.state]);
 
   async function handleReparse() {
     const ok = await confirm({
@@ -172,9 +215,69 @@ export function DocumentDetail() {
     if (!kbId) return;
     setSelectedChunk(chunk);
     try {
-      setSelectedChunk(await fetchChunk(kbId, chunk.chunkId));
+      const nextChunk = await fetchChunk(kbId, chunk.chunkId);
+      const governance = readChunkGovernance(nextChunk);
+      setSelectedChunk(nextChunk);
+      setGovernanceExcluded(governance.excluded);
+      setGovernanceNoteInput(governance.note);
     } catch (error) {
       setFeedback({ variant: "error", title: "Chunk 详情加载失败", message: error instanceof Error ? error.message : "请检查权限。" });
+    }
+  }
+
+  async function handleSaveChunkGovernance() {
+    if (!kbId || !selectedChunk) return;
+    setActionLoading(`chunk-governance-${selectedChunk.chunkId}`);
+    try {
+      const response = await updateChunkGovernance(
+        kbId,
+        selectedChunk.chunkId,
+        governanceExcluded,
+        governanceNoteInput.trim() || null,
+      );
+      const governance = readChunkGovernance(response.chunk);
+      setSelectedChunk(response.chunk);
+      setGovernanceExcluded(governance.excluded);
+      setGovernanceNoteInput(governance.note);
+      setFeedback({
+        variant: "success",
+        title: "Chunk 治理已保存",
+        message: `permissionInheritance：${response.permissionInheritance}`,
+      });
+      if (activeVersion) {
+        await loadChunks(activeVersion.versionId, chunkPageNo);
+      }
+    } catch (error) {
+      setFeedback({ variant: "error", title: "Chunk 治理保存失败", message: error instanceof Error ? error.message : "请稍后重试。" });
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleDocumentIndexRebuild() {
+    if (!kbId || !docId) return;
+    const ok = await confirm({
+      title: `重建 ${rebuildTargetStore} 索引？`,
+      description: "重建范围将收窄到当前文档的 active version，结果会写入索引同步作业。",
+      confirmText: "重建索引",
+    });
+    if (!ok) return;
+
+    setActionLoading("rebuild-index");
+    try {
+      await rebuildIndexSync(kbId, {
+        targetStore: rebuildTargetStore,
+        documentId: docId,
+        versionId: activeVersion?.versionId ?? null,
+      });
+      const nextJobs = await fetchIndexSyncJobs(kbId);
+      setIndexSyncJobs(nextJobs.items);
+      setFeedback({ variant: "success", title: "索引重建已创建", message: `${rebuildTargetStore} 作业已写入。` });
+      setActiveTab("indexSync");
+    } catch (error) {
+      setFeedback({ variant: "error", title: "索引重建失败", message: error instanceof Error ? error.message : "请稍后重试。" });
+    } finally {
+      setActionLoading(null);
     }
   }
 
@@ -253,6 +356,9 @@ export function DocumentDetail() {
           </Tabs.Trigger>
           <Tabs.Trigger value="jobs" className="pb-2 text-stone-gray font-medium hover:text-near-black data-[state=active]:text-terracotta data-[state=active]:border-b-2 data-[state=active]:border-terracotta transition-all">
             入库作业（{jobRows.length}）
+          </Tabs.Trigger>
+          <Tabs.Trigger value="indexSync" className="pb-2 text-stone-gray font-medium hover:text-near-black data-[state=active]:text-terracotta data-[state=active]:border-b-2 data-[state=active]:border-terracotta transition-all">
+            索引同步作业（{indexSyncJobs.length}）
           </Tabs.Trigger>
         </Tabs.List>
 
@@ -423,6 +529,53 @@ export function DocumentDetail() {
             </TableBody>
           </Table>
         </Tabs.Content>
+
+        <Tabs.Content value="indexSync" className="flex-1 overflow-auto outline-none space-y-4">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border-cream bg-ivory p-4">
+            <span className="text-sm text-stone-gray">目标副本</span>
+            <select
+              className="px-3 py-2 bg-parchment border border-border-cream rounded-md text-sm text-near-black focus:outline-none focus:ring-1 focus:ring-focus-blue"
+              value={rebuildTargetStore}
+              onChange={(event) => setRebuildTargetStore(event.target.value)}
+            >
+              <option value="milvus">milvus</option>
+              <option value="opensearch">opensearch</option>
+              <option value="neo4j">neo4j</option>
+            </select>
+            <Button variant="outline" disabled={actionLoading === "rebuild-index"} onClick={() => void handleDocumentIndexRebuild()}>
+              <Database className="w-4 h-4 mr-2" /> 重建索引
+            </Button>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>作业 ID</TableHead>
+                <TableHead>目标副本</TableHead>
+                <TableHead>状态</TableHead>
+                <TableHead>类型</TableHead>
+                <TableHead>失败原因</TableHead>
+                <TableHead>创建时间</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {indexSyncJobs.map((job) => (
+                <TableRow key={job.syncJobId}>
+                  <TableCell mono>{job.syncJobId}</TableCell>
+                  <TableCell>{job.targetStore}</TableCell>
+                  <TableCell><StatusBadge status={job.status} /></TableCell>
+                  <TableCell>{job.syncType}</TableCell>
+                  <TableCell className="max-w-xs text-stone-gray">{job.errorMessage || "-"}</TableCell>
+                  <TableCell>{job.createdAt}</TableCell>
+                </TableRow>
+              ))}
+              {indexSyncJobs.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6}>暂无索引同步作业。</TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </Tabs.Content>
       </Tabs.Root>
 
       <Drawer isOpen={Boolean(selectedChunk)} onClose={() => setSelectedChunk(null)} title="Chunk 详情" width="640px">
@@ -445,6 +598,31 @@ export function DocumentDetail() {
               <pre className="whitespace-pre-wrap break-words rounded-lg border border-border-cream bg-parchment p-4 text-xs text-olive-gray">
                 {JSON.stringify(selectedChunk.metadata, null, 2)}
               </pre>
+            </DrawerSection>
+            <DrawerSection title="治理标记">
+              <div className="space-y-4">
+                <label className="flex items-center gap-2 text-sm text-near-black">
+                  <input
+                    type="checkbox"
+                    checked={governanceExcluded}
+                    onChange={(event) => setGovernanceExcluded(event.target.checked)}
+                  />
+                  排除 Chunk
+                </label>
+                <textarea
+                  className="min-h-24 w-full rounded-lg border border-border-cream bg-parchment p-3 text-sm text-near-black focus:outline-none focus:ring-1 focus:ring-focus-blue"
+                  value={governanceNoteInput}
+                  onChange={(event) => setGovernanceNoteInput(event.target.value)}
+                  placeholder="填写治理备注，说明排除或恢复原因。"
+                />
+                <Button
+                  variant="primary"
+                  disabled={actionLoading === `chunk-governance-${selectedChunk.chunkId}`}
+                  onClick={() => void handleSaveChunkGovernance()}
+                >
+                  <Save className="w-4 h-4 mr-2" /> 保存治理标记
+                </Button>
+              </div>
             </DrawerSection>
           </>
         )}
