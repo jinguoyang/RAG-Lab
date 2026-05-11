@@ -9,7 +9,7 @@ import { Alert } from "../components/rag/Alert";
 import { Badge, StatusBadge } from "../components/rag/Badge";
 import { Drawer, DrawerSection } from "../components/rag/Drawer";
 import { useConfirmDialog } from "../components/rag/ConfirmDialog";
-import { toChunkView, toIngestJobView, toVersionRow } from "../adapters/documentAdapter";
+import { formatIndexStageStatus, toChunkView, toIngestJobView, toVersionRow } from "../adapters/documentAdapter";
 import {
   activateDocumentVersion,
   cancelIngestJob,
@@ -369,7 +369,7 @@ export function DocumentDetail() {
                 <TableHead>版本</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead>解析状态</TableHead>
-                <TableHead>索引阶段</TableHead>
+                <TableHead>副本状态</TableHead>
                 <TableHead>Chunk 数</TableHead>
                 <TableHead>检索就绪</TableHead>
                 <TableHead>创建时间</TableHead>
@@ -383,12 +383,12 @@ export function DocumentDetail() {
                   <TableRow key={version.versionId}>
                     <TableCell mono>{row.versionNo}</TableCell>
                     <TableCell><StatusBadge status={row.status} /></TableCell>
-                    <TableCell>{row.parseStatusLabel}</TableCell>
+                    <TableCell>{formatIndexStageStatus(version.parseStatus)}</TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1.5">
                         {row.indexStages.map((stage) => (
                           <Badge key={stage.key} variant={indexStageVariant(stage.status)}>
-                            {stage.label}: {stage.status}
+                            {stage.label}: {formatIndexStageStatus(stage.status)}
                           </Badge>
                         ))}
                       </div>
@@ -476,7 +476,7 @@ export function DocumentDetail() {
                 <TableHead>作业 ID</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead>阶段</TableHead>
-                <TableHead>索引阶段</TableHead>
+                <TableHead>处理链路</TableHead>
                 <TableHead>进度</TableHead>
                 <TableHead>创建时间</TableHead>
                 <TableHead>错误信息</TableHead>
@@ -495,7 +495,7 @@ export function DocumentDetail() {
                       <div className="flex flex-wrap gap-1.5">
                         {row.indexStages.map((stage) => (
                           <Badge key={stage.key} variant={indexStageVariant(stage.status)}>
-                            {stage.label}: {stage.status}
+                            {stage.label}: {formatIndexStageStatus(stage.status)}
                           </Badge>
                         ))}
                       </div>

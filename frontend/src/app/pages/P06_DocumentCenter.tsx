@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Search, Upload, Download, FileWarning, Eye, ChevronLeft, ChevronRight, Database, RefreshCw } from "lucide-react";
+import { Search, Upload, Download, FileWarning, Eye, ChevronLeft, ChevronRight, Database, RefreshCw, Trash2 } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
@@ -9,11 +9,12 @@ import { Alert } from "../components/rag/Alert";
 import { Badge, StatusBadge } from "../components/rag/Badge";
 import { Drawer, DrawerSection } from "../components/rag/Drawer";
 import { useConfirmDialog } from "../components/rag/ConfirmDialog";
-import { toDocumentRow, toIngestJobView } from "../adapters/documentAdapter";
+import { formatIndexStageStatus, toDocumentRow, toIngestJobView } from "../adapters/documentAdapter";
 import {
   fetchDocuments,
   fetchIndexSyncJobs,
   fetchIngestJobs,
+  deleteDocument,
   rebuildIndexSync,
   runBulkDocumentGovernance,
   uploadDocument,
@@ -59,6 +60,7 @@ export function DocumentCenter() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadName, setUploadName] = useState("");
   const [uploadLevel, setUploadLevel] = useState("public");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [feedback, setFeedback] = useState<{
@@ -141,6 +143,11 @@ export function DocumentCenter() {
     }
   }
 
+  function handleUploadFileChange(file: File | null) {
+    setSelectedFile(file);
+    setUploadName(file?.name ?? "");
+  }
+
   async function handlePageChange(nextPageNo: number) {
     await loadData(searchTerm, nextPageNo);
   }
@@ -212,6 +219,34 @@ export function DocumentCenter() {
       setFeedback({ variant: "success", title: "索引重建已创建", message: `${targetStore} 副本重建作业已写入。` });
     } catch (error) {
       setFeedback({ variant: "error", title: "索引重建失败", message: error instanceof Error ? error.message : "请稍后重试。" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDeleteDocument(documentId: string, documentName: string) {
+    const ok = await confirm({
+      title: "确认删除文档？",
+      description: `删除“${documentName}”后，文档会立即从列表、检索和图支撑结果中移除，并尝试清理 MinIO 与检索副本。`,
+      confirmText: "删除文档",
+      variant: "destructive",
+    });
+    if (!ok) return;
+
+    setLoading(true);
+    try {
+      const response = await deleteDocument(kbId, documentId, `P06 删除文档：${documentName}`);
+      setFeedback({
+        variant: response.warnings.length > 0 ? "warning" : "success",
+        title: response.warnings.length > 0 ? "文档已删除，副本清理待处理" : "文档已删除",
+        message: response.warnings.length > 0
+          ? response.warnings.join("；")
+          : `已创建 ${response.cleanupJobs.length} 个清理作业。`,
+      });
+      setSelectedDocumentIds((current) => current.filter((item) => item !== documentId));
+      await loadData(searchTerm, pageNo);
+    } catch (error) {
+      setFeedback({ variant: "error", title: "删除失败", message: error instanceof Error ? error.message : "请稍后重试。" });
     } finally {
       setLoading(false);
     }
@@ -329,7 +364,7 @@ export function DocumentCenter() {
                     <TableHead className="whitespace-nowrap">状态</TableHead>
                     <TableHead className="whitespace-nowrap">密级</TableHead>
                     <TableHead className="whitespace-nowrap">更新时间</TableHead>
-                    <TableHead className="w-20 text-right whitespace-nowrap">操作</TableHead>
+                    <TableHead className="w-28 text-right whitespace-nowrap">操作</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -366,6 +401,17 @@ export function DocumentCenter() {
                           }}
                         >
                           <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="删除文档"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleDeleteDocument(doc.id, doc.name);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -429,7 +475,7 @@ export function DocumentCenter() {
                   <div className="flex flex-wrap gap-1.5">
                     {job.indexStages.map((stage) => (
                       <Badge key={stage.key} variant={indexStageVariant(stage.status)}>
-                        {stage.label}: {stage.status}
+                        {stage.label}: {formatIndexStageStatus(stage.status)}
                       </Badge>
                     ))}
                   </div>
@@ -471,15 +517,22 @@ export function DocumentCenter() {
       <Drawer isOpen={isUploadOpen} onClose={() => setIsUploadOpen(false)} title="上传文档" width="560px">
         <DrawerSection title="上传信息">
           <div className="space-y-4">
-            <input
-              type="file"
-              className="block w-full rounded-[10px] border border-border-cream bg-ivory px-3 py-2 text-sm"
-              onChange={(event) => {
-                const file = event.target.files?.[0] ?? null;
-                setSelectedFile(file);
-                setUploadName((current) => current || file?.name || "");
-              }}
-            />
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="sr-only"
+                onChange={(event) => handleUploadFileChange(event.target.files?.[0] ?? null)}
+              />
+              <div className="flex flex-wrap items-center gap-3">
+                <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+                  <Upload className="w-4 h-4 mr-2" /> 选择文件
+                </Button>
+                <span className="text-sm text-stone-gray">
+                  {selectedFile ? selectedFile.name : "未选择文件"}
+                </span>
+              </div>
+            </div>
             <Input
               label="文档名称"
               value={uploadName}
@@ -493,18 +546,15 @@ export function DocumentCenter() {
                 value={uploadLevel}
                 onChange={(event) => setUploadLevel(event.target.value)}
               >
-                <option value="public">public</option>
-                <option value="internal">internal</option>
-                <option value="confidential">confidential</option>
+                <option value="public">公开</option>
+                <option value="internal">内部</option>
+                <option value="confidential">机密</option>
               </select>
             </div>
           </div>
         </DrawerSection>
         <DrawerSection title="提交结果">
-          <p className="text-sm text-stone-gray">
-            当前配置为 MinIO 时会写入对象存储；解析 Worker 和 Chunk 生成仍在后续迭代。
-          </p>
-          <div className="mt-4 flex justify-end gap-2">
+          <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setIsUploadOpen(false)}>
               取消
             </Button>

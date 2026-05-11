@@ -7,8 +7,8 @@ interface TableProps {
 
 export function Table({ children, className = '' }: TableProps) {
   return (
-    <div className={`bg-ivory border border-border-cream rounded-[12px] overflow-hidden ${className}`}>
-      <table className="w-full">
+    <div className={`bg-ivory border border-border-cream rounded-[12px] overflow-x-auto ${className}`}>
+      <table className="w-full min-w-[960px]">
         {children}
       </table>
     </div>
@@ -67,7 +67,7 @@ interface TableHeadProps {
 
 export function TableHead({ children, className = '' }: TableHeadProps) {
   return (
-    <th className={`px-4 py-3 text-left text-sm font-medium text-olive-gray ${className}`}>
+    <th className={`px-4 py-3 text-left text-sm font-medium text-olive-gray whitespace-nowrap ${className}`}>
       {children}
     </th>
   );

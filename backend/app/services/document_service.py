@@ -12,6 +12,8 @@ from app.schemas.document import (
     ChunkDTO,
     BulkDocumentGovernanceResponse,
     DocumentDetailDTO,
+    DocumentDeleteCleanupJobDTO,
+    DocumentDeleteResponse,
     ChunkGovernanceResponse,
     DocumentDTO,
     DocumentVersionActivateResponse,
@@ -137,6 +139,7 @@ def _to_ingest_job_dto(row: RowMapping) -> IngestJobDTO:
         progress=row["progress"],
         errorCode=row["error_code"],
         errorMessage=row["error_message"],
+        resultSummary=row["result_summary"],
         createdAt=row["created_at"].isoformat(),
     )
 
@@ -350,6 +353,81 @@ def _run_index_sync_job(
             return provider_set.graph.delete_chunks(chunk_ids)
         return provider_set.graph.upsert_chunks(chunk_payloads, graph_items)
     raise ProviderError(f"Unsupported target store: {target_store}")
+
+
+def _create_minio_cleanup_job(
+    session: Session,
+    kb_id: UUID,
+    current_user: CurrentUserResponse,
+    stored_file_rows: list[RowMapping],
+    storage_provider: ObjectStorageProvider | None = None,
+) -> DocumentDeleteCleanupJobDTO | None:
+    """记录并执行 MinIO 对象清理；失败只影响清理作业，不回滚文档删除。"""
+    unique_rows = {row["object_key"]: row for row in stored_file_rows}
+    if not unique_rows:
+        return None
+
+    sync_job_id = uuid4()
+    actor_id = UUID(current_user.user.userId)
+    session.execute(
+        insert(index_sync_jobs).values(
+            sync_job_id=sync_job_id,
+            kb_id=kb_id,
+            target_store="minio",
+            sync_type="delete",
+            scope={"objectKeys": list(unique_rows.keys())},
+            required_for_activation=False,
+            status="running",
+            error_message=None,
+            created_by=actor_id,
+            started_at=func.now(),
+        )
+    )
+
+    storage = storage_provider or get_object_storage_provider()
+    errors: list[str] = []
+    deleted_keys: set[str] = set()
+    for object_key in unique_rows:
+        try:
+            storage.delete_object(object_key)
+            deleted_keys.add(object_key)
+        except Exception as exc:
+            errors.append(f"{object_key}: {exc}")
+
+    final_status = "failed" if errors else "success"
+    final_error = "; ".join(errors) if errors else None
+    session.execute(
+        update(index_sync_jobs)
+        .where(index_sync_jobs.c.sync_job_id == sync_job_id)
+        .values(status=final_status, error_message=final_error, finished_at=func.now())
+    )
+    for object_key, row in unique_rows.items():
+        object_error = next((error for error in errors if error.startswith(f"{object_key}:")), None)
+        session.execute(
+            insert(index_sync_records).values(
+                sync_record_id=uuid4(),
+                sync_job_id=sync_job_id,
+                target_store="minio",
+                resource_type="stored_file",
+                resource_id=row["file_id"],
+                operation="delete",
+                status="success" if object_key in deleted_keys else "failed",
+                error_message=object_error,
+                provider_payload={
+                    "provider": "minio",
+                    "targetStore": "minio",
+                    "operation": "delete",
+                    "objectKey": object_key,
+                    "bucket": row["bucket"],
+                },
+            )
+        )
+    return DocumentDeleteCleanupJobDTO(
+        targetStore="minio",
+        syncJobId=str(sync_job_id),
+        status=final_status,
+        errorMessage=final_error,
+    )
 
 
 def _write_chunk_access_filters(
@@ -1016,6 +1094,158 @@ def get_document_detail(
     return DocumentDetailDTO(
         document=_to_document_dto(document_row),
         activeVersion=_to_version_dto(active_version) if active_version else None,
+    )
+
+
+def delete_document(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    document_id: UUID,
+    confirm_impact: bool,
+    reason: str | None,
+    storage_provider: ObjectStorageProvider | None = None,
+) -> DocumentDeleteResponse | None:
+    """逻辑删除文档并尽力物理清理外部副本；PostgreSQL 状态先提交为准。"""
+    kb_row = _read_visible_knowledge_base(session, current_user, kb_id)
+    if kb_row is None:
+        return None
+    if kb_row["status"] == "disabled":
+        raise KnowledgeBaseDisabledError
+    _ensure_permission(session, current_user, kb_id, "kb.document.upload")
+    if not confirm_impact:
+        raise DocumentConflictError("confirmImpact must be true.")
+
+    document_row = session.execute(
+        select(documents)
+        .where(
+            documents.c.kb_id == kb_id,
+            documents.c.document_id == document_id,
+            documents.c.deleted_at.is_(None),
+        )
+        .limit(1)
+    ).mappings().first()
+    if document_row is None:
+        return None
+
+    chunk_ids = [
+        row[0]
+        for row in session.execute(
+            select(chunks.c.chunk_id).where(chunks.c.kb_id == kb_id, chunks.c.document_id == document_id)
+        )
+    ]
+    stored_file_rows = list(
+        session.execute(
+            select(stored_files)
+            .where(
+                stored_files.c.file_id.in_(
+                    select(document_versions.c.source_file_id).where(document_versions.c.document_id == document_id)
+                )
+            )
+        ).mappings()
+    )
+    stored_file_ids = [row["file_id"] for row in stored_file_rows]
+    actor_id = UUID(current_user.user.userId)
+    audit_log_id = _insert_audit_log(
+        session,
+        current_user,
+        "document.delete_requested",
+        "document",
+        document_id,
+        kb_id,
+        document_id,
+        {
+            "reason": reason,
+            "chunkCount": len(chunk_ids),
+            "sourceFileIds": [str(file_id) for file_id in stored_file_ids],
+        },
+    )
+
+    deleted_document_row = session.execute(
+        update(documents)
+        .where(documents.c.document_id == document_id)
+        .values(
+            status="archived",
+            deleted_at=func.now(),
+            deleted_by=actor_id,
+            updated_at=func.now(),
+            updated_by=actor_id,
+        )
+        .returning(documents)
+    ).mappings().one()
+    if chunk_ids:
+        session.execute(
+            update(chunks)
+            .where(chunks.c.chunk_id.in_(chunk_ids))
+            .values(status="deleted")
+        )
+        session.execute(
+            update(chunk_access_filters)
+            .where(chunk_access_filters.c.chunk_id.in_(chunk_ids))
+            .values(chunk_status="deleted", updated_at=func.now())
+        )
+        session.execute(delete(graph_chunk_refs).where(graph_chunk_refs.c.chunk_id.in_(chunk_ids)))
+    if stored_file_ids:
+        session.execute(
+            update(stored_files)
+            .where(stored_files.c.file_id.in_(stored_file_ids))
+            .values(status="deleted", deleted_at=func.now(), deleted_by=actor_id)
+        )
+    mark_graph_snapshots_stale(session, kb_id, "document_deleted", current_user)
+    session.commit()
+
+    cleanup_jobs: list[DocumentDeleteCleanupJobDTO] = []
+    warnings: list[str] = []
+    if chunk_ids:
+        targets = ["milvus"]
+        if kb_row["sparse_index_enabled"]:
+            targets.append("opensearch")
+        if kb_row["graph_index_enabled"]:
+            targets.append("neo4j")
+        for target_store in targets:
+            try:
+                sync_job_id, cleanup_status, cleanup_error = _create_index_sync_job(
+                    session,
+                    kb_row,
+                    current_user,
+                    target_store,
+                    None,
+                    chunk_ids,
+                    False,
+                    sync_type="delete",
+                )
+                session.commit()
+                cleanup_jobs.append(
+                    DocumentDeleteCleanupJobDTO(
+                        targetStore=target_store,
+                        syncJobId=str(sync_job_id),
+                        status=cleanup_status,
+                        errorMessage=cleanup_error,
+                    )
+                )
+                if cleanup_status != "success":
+                    warnings.append(f"{target_store} 副本清理失败，业务删除已生效。")
+            except Exception as exc:
+                session.rollback()
+                warnings.append(f"{target_store} 副本清理作业创建失败，业务删除已生效：{exc}")
+
+    try:
+        minio_job = _create_minio_cleanup_job(session, kb_id, current_user, stored_file_rows, storage_provider)
+        if minio_job is not None:
+            session.commit()
+            cleanup_jobs.append(minio_job)
+            if minio_job.status != "success":
+                warnings.append("minio 原始文件清理失败，业务删除已生效。")
+    except Exception as exc:
+        session.rollback()
+        warnings.append(f"minio 原始文件清理作业创建失败，业务删除已生效：{exc}")
+
+    return DocumentDeleteResponse(
+        documentId=str(document_id),
+        deletedAt=deleted_document_row["deleted_at"].isoformat(),
+        auditLogId=str(audit_log_id),
+        cleanupJobs=cleanup_jobs,
+        warnings=warnings,
     )
 
 

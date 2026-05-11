@@ -165,3 +165,19 @@ export async function apiDelete(path: string): Promise<void> {
     await throwApiError(response);
   }
 }
+
+export async function apiDeleteJson<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    await throwApiError(response);
+  }
+
+  return response.json() as Promise<T>;
+}

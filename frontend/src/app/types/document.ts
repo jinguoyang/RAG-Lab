@@ -50,6 +50,7 @@ export interface IngestJobDTO {
   progress: number;
   errorCode: string | null;
   errorMessage: string | null;
+  resultSummary: Record<string, unknown> | null;
   createdAt: string;
 }
 
@@ -107,6 +108,21 @@ export interface DocumentVersionActivateResponse {
   activeVersionId: string;
   previousActiveVersionId: string | null;
   auditLogId: string;
+}
+
+export interface DocumentDeleteCleanupJobDTO {
+  targetStore: string;
+  syncJobId: string | null;
+  status: JobStatus;
+  errorMessage: string | null;
+}
+
+export interface DocumentDeleteResponse {
+  documentId: string;
+  deletedAt: string;
+  auditLogId: string;
+  cleanupJobs: DocumentDeleteCleanupJobDTO[];
+  warnings: string[];
 }
 
 export interface BulkDocumentGovernanceRequest {

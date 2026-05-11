@@ -8,7 +8,7 @@ interface BadgeProps {
 }
 
 export function Badge({ children, variant = 'default', icon, className = '' }: BadgeProps) {
-  const baseStyles = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium';
+  const baseStyles = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap';
 
   const variantStyles = {
     default: 'bg-border-warm text-olive-gray border border-border-cream',

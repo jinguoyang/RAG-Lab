@@ -3245,6 +3245,84 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Delete Document Endpoint",
+        "description": "逻辑删除文档，并记录外部副本清理结果。",
+        "operationId": "delete_document_endpoint_api_v1_knowledge_bases__kb_id__documents__document_id__delete",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentDeleteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentDeleteResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/knowledge-bases/{kb_id}/documents/{document_id}/versions": {
@@ -5672,6 +5750,86 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/QARunReplayContextDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/qa-runs/{run_id}/compare/{target_run_id}": {
+      "get": {
+        "tags": [
+          "qa-runs"
+        ],
+        "summary": "Read Qa Run Compare",
+        "description": "对比来源运行和复跑运行，供 P10 展示结果、Trace 和配置差异。",
+        "operationId": "read_qa_run_compare_api_v1_knowledge_bases__kb_id__qa_runs__run_id__compare__target_run_id__get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "target_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Target Run Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QARunCompareDTO"
                 }
               }
             }
@@ -8314,6 +8472,110 @@
         "title": "DocumentDTO",
         "description": "文档主对象 DTO，接口层保持 camelCase 命名。"
       },
+      "DocumentDeleteCleanupJobDTO": {
+        "properties": {
+          "targetStore": {
+            "type": "string",
+            "title": "Targetstore"
+          },
+          "syncJobId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Syncjobid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "errorMessage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errormessage"
+          }
+        },
+        "type": "object",
+        "required": [
+          "targetStore",
+          "status"
+        ],
+        "title": "DocumentDeleteCleanupJobDTO",
+        "description": "文档删除后的外部副本清理作业摘要。"
+      },
+      "DocumentDeleteRequest": {
+        "properties": {
+          "confirmImpact": {
+            "type": "boolean",
+            "title": "Confirmimpact"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "confirmImpact"
+        ],
+        "title": "DocumentDeleteRequest",
+        "description": "文档删除请求；删除会影响检索副本，必须由前端二次确认。"
+      },
+      "DocumentDeleteResponse": {
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "title": "Documentid"
+          },
+          "deletedAt": {
+            "type": "string",
+            "title": "Deletedat"
+          },
+          "auditLogId": {
+            "type": "string",
+            "title": "Auditlogid"
+          },
+          "cleanupJobs": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentDeleteCleanupJobDTO"
+            },
+            "type": "array",
+            "title": "Cleanupjobs"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "documentId",
+          "deletedAt",
+          "auditLogId"
+        ],
+        "title": "DocumentDeleteResponse",
+        "description": "文档删除结果，区分业务删除和外部副本清理状态。"
+      },
       "DocumentDetailDTO": {
         "properties": {
           "document": {
@@ -8380,6 +8642,46 @@
               }
             ],
             "title": "Chunkid"
+          },
+          "contentHash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contenthash"
+          },
+          "sampleChunkIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Samplechunkids"
+          },
+          "recommendedAction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommendedaction"
+          },
+          "targetStore": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetstore"
           },
           "count": {
             "type": "integer",
@@ -8852,16 +9154,69 @@
           "remark": {
             "type": "string",
             "title": "Remark"
+          },
+          "recommendations": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationOptimizationRecommendationDTO"
+            },
+            "type": "array",
+            "title": "Recommendations"
           }
         },
         "type": "object",
         "required": [
           "evaluationRunId",
           "configRevisionId",
-          "remark"
+          "remark",
+          "recommendations"
         ],
         "title": "EvaluationOptimizationDraftResponse",
         "description": "失败样本生成配置优化草稿的结果。"
+      },
+      "EvaluationOptimizationRecommendationDTO": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "paramPath": {
+            "type": "string",
+            "title": "Parampath"
+          },
+          "before": {
+            "title": "Before"
+          },
+          "after": {
+            "title": "After"
+          },
+          "expectedImpact": {
+            "type": "string",
+            "title": "Expectedimpact"
+          },
+          "risk": {
+            "type": "string",
+            "title": "Risk"
+          },
+          "relatedSampleIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Relatedsampleids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "paramPath",
+          "before",
+          "after",
+          "expectedImpact",
+          "risk",
+          "relatedSampleIds"
+        ],
+        "title": "EvaluationOptimizationRecommendationDTO",
+        "description": "评估失败样本推导出的单条可复核调参建议。"
       },
       "EvaluationResultDTO": {
         "properties": {
@@ -10213,6 +10568,18 @@
               }
             ],
             "title": "Errormessage"
+          },
+          "resultSummary": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resultsummary"
           },
           "createdAt": {
             "type": "string",
@@ -11662,6 +12029,217 @@
         "title": "QARunCommentDTO",
         "description": "QA Run 协作评论。"
       },
+      "QARunCompareDTO": {
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/QARunCompareSummaryDTO"
+          },
+          "target": {
+            "$ref": "#/components/schemas/QARunCompareSummaryDTO"
+          },
+          "answerChanged": {
+            "type": "boolean",
+            "title": "Answerchanged"
+          },
+          "evidenceDelta": {
+            "$ref": "#/components/schemas/QARunCompareEvidenceDeltaDTO"
+          },
+          "citationDelta": {
+            "$ref": "#/components/schemas/QARunCompareEvidenceDeltaDTO"
+          },
+          "traceDelta": {
+            "items": {
+              "$ref": "#/components/schemas/QARunCompareTraceDeltaDTO"
+            },
+            "type": "array",
+            "title": "Tracedelta"
+          },
+          "configDiff": {
+            "items": {
+              "$ref": "#/components/schemas/ConfigRevisionDiffItemDTO"
+            },
+            "type": "array",
+            "title": "Configdiff"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "target",
+          "answerChanged",
+          "evidenceDelta",
+          "citationDelta",
+          "traceDelta",
+          "configDiff"
+        ],
+        "title": "QARunCompareDTO",
+        "description": "来源 QARun 与复跑 QARun 的轻量对比结果。"
+      },
+      "QARunCompareEvidenceDeltaDTO": {
+        "properties": {
+          "added": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Added"
+          },
+          "removed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Removed"
+          },
+          "shared": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Shared"
+          }
+        },
+        "type": "object",
+        "required": [
+          "added",
+          "removed",
+          "shared"
+        ],
+        "title": "QARunCompareEvidenceDeltaDTO",
+        "description": "Evidence 或 Citation 集合差异摘要。"
+      },
+      "QARunCompareSummaryDTO": {
+        "properties": {
+          "runId": {
+            "type": "string",
+            "title": "Runid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "configRevisionId": {
+            "type": "string",
+            "title": "Configrevisionid"
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "evidenceCount": {
+            "type": "integer",
+            "title": "Evidencecount"
+          },
+          "citationCount": {
+            "type": "integer",
+            "title": "Citationcount"
+          },
+          "latencyMs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latencyms"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "runId",
+          "status",
+          "configRevisionId",
+          "answer",
+          "evidenceCount",
+          "citationCount",
+          "latencyMs",
+          "createdAt"
+        ],
+        "title": "QARunCompareSummaryDTO",
+        "description": "对比视图中的单次运行摘要。"
+      },
+      "QARunCompareTraceDeltaDTO": {
+        "properties": {
+          "stepKey": {
+            "type": "string",
+            "title": "Stepkey"
+          },
+          "sourceStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcestatus"
+          },
+          "targetStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetstatus"
+          },
+          "sourceLatencyMs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcelatencyms"
+          },
+          "targetLatencyMs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetlatencyms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stepKey",
+          "sourceStatus",
+          "targetStatus",
+          "sourceLatencyMs",
+          "targetLatencyMs"
+        ],
+        "title": "QARunCompareTraceDeltaDTO",
+        "description": "同一 Trace 阶段在来源运行和复跑运行间的状态与耗时差异。"
+      },
       "QARunCreateRequest": {
         "properties": {
           "query": {
@@ -11781,6 +12359,17 @@
             "type": "string",
             "title": "Runid"
           },
+          "sourceRunId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcerunid"
+          },
           "status": {
             "type": "string",
             "title": "Status"
@@ -11828,6 +12417,16 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Overridesnapshot"
+          },
+          "pipelineSnapshot": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Pipelinesnapshot"
+          },
+          "nodeParamSnapshot": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Nodeparamsnapshot"
           },
           "feedbackStatus": {
             "type": "string",
@@ -11896,6 +12495,7 @@
         "type": "object",
         "required": [
           "runId",
+          "sourceRunId",
           "status",
           "kbId",
           "configRevisionId",
@@ -11904,6 +12504,8 @@
           "answer",
           "retrievalDiagnostics",
           "overrideSnapshot",
+          "pipelineSnapshot",
+          "nodeParamSnapshot",
           "feedbackStatus",
           "feedbackNote",
           "failureType",
@@ -12063,6 +12665,17 @@
             "type": "string",
             "title": "Runid"
           },
+          "sourceRunId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcerunid"
+          },
           "kbId": {
             "type": "string",
             "title": "Kbid"
@@ -12182,6 +12795,44 @@
             "type": "object",
             "title": "Overrideparams"
           },
+          "retrievalChannels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Retrievalchannels"
+          },
+          "retrievalTopK": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Retrievaltopk"
+          },
+          "temperature": {
+            "type": "number",
+            "title": "Temperature"
+          },
+          "maxContextTokens": {
+            "type": "integer",
+            "title": "Maxcontexttokens"
+          },
+          "graphSnapshotId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graphsnapshotid"
+          },
+          "providerDiagnostics": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Providerdiagnostics"
+          },
           "suggestedMode": {
             "type": "string",
             "title": "Suggestedmode"
@@ -12200,6 +12851,11 @@
           "query",
           "configRevisionId",
           "overrideParams",
+          "retrievalChannels",
+          "retrievalTopK",
+          "temperature",
+          "maxContextTokens",
+          "providerDiagnostics",
           "suggestedMode"
         ],
         "title": "QARunReplayContextDTO",

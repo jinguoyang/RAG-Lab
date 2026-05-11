@@ -49,14 +49,65 @@ function jobStatusToIndexStatus(status: JobStatus, stage: string | null): IndexS
   return "pending";
 }
 
+export function formatIndexStageStatus(status: IndexStageViewModel["status"]): string {
+  const labels: Record<IndexStageViewModel["status"], string> = {
+    not_required: "未启用",
+    pending: "待处理",
+    running: "处理中",
+    success: "成功",
+    failed: "失败",
+  };
+  return labels[status];
+}
+
+function normalizeIndexStageStatus(value: unknown, fallback: IndexStageViewModel["status"]): IndexStageViewModel["status"] {
+  if (
+    value === "not_required" ||
+    value === "pending" ||
+    value === "running" ||
+    value === "success" ||
+    value === "failed"
+  ) {
+    return value;
+  }
+  return fallback;
+}
+
+function readJobErrorSummary(job: IngestJobDTO): Record<string, { status?: unknown }> | null {
+  const summary = job.resultSummary?.error_summary;
+  if (typeof summary !== "object" || summary === null) {
+    return null;
+  }
+  return summary as Record<string, { status?: unknown }>;
+}
+
+function inferMissingReplicaStatus(job: IngestJobDTO, key: "milvus" | "opensearch" | "neo4j"): IndexStageViewModel["status"] {
+  const message = (job.errorMessage || "").toLowerCase();
+  if (message.includes(key)) {
+    return "failed";
+  }
+  return "not_required";
+}
+
 function toJobIndexStages(job: IngestJobDTO): IndexStageViewModel[] {
   const derivedStatus = jobStatusToIndexStatus(job.status, job.stage);
+  const errorSummary = readJobErrorSummary(job);
+  if (errorSummary) {
+    return [
+      { key: "parse", label: "解析", status: normalizeIndexStageStatus(errorSummary.parse?.status, derivedStatus) },
+      { key: "embedding", label: "Embedding", status: normalizeIndexStageStatus(errorSummary.embedding?.status, derivedStatus) },
+      { key: "milvus", label: "Milvus", status: normalizeIndexStageStatus(errorSummary.milvus?.status, inferMissingReplicaStatus(job, "milvus")) },
+      { key: "opensearch", label: "OpenSearch", status: normalizeIndexStageStatus(errorSummary.opensearch?.status, inferMissingReplicaStatus(job, "opensearch")) },
+      { key: "neo4j", label: "Neo4j", status: normalizeIndexStageStatus(errorSummary.neo4j?.status, inferMissingReplicaStatus(job, "neo4j")) },
+    ];
+  }
+
   return [
-    { key: "parse", label: "parse", status: job.stage === "queued" ? "pending" : derivedStatus },
-    { key: "embedding", label: "embedding", status: job.stage === "parse" ? "pending" : derivedStatus },
-    { key: "milvus", label: "milvus", status: job.stage === "index_sync" ? derivedStatus : job.status === "success" ? "success" : "pending" },
-    { key: "opensearch", label: "opensearch", status: job.stage === "index_sync" ? derivedStatus : job.status === "success" ? "success" : "pending" },
-    { key: "neo4j", label: "neo4j", status: job.stage === "index_sync" ? derivedStatus : job.status === "success" ? "success" : "pending" },
+    { key: "parse", label: "解析", status: job.stage === "queued" ? "pending" : derivedStatus },
+    { key: "embedding", label: "Embedding", status: job.stage === "parse" ? "pending" : derivedStatus },
+    { key: "milvus", label: "Milvus", status: job.stage === "index_sync" ? derivedStatus : job.status === "success" ? "success" : "pending" },
+    { key: "opensearch", label: "OpenSearch", status: job.stage === "index_sync" ? derivedStatus : job.status === "success" ? "success" : "pending" },
+    { key: "neo4j", label: "Neo4j", status: job.stage === "index_sync" ? derivedStatus : job.status === "success" ? "success" : "pending" },
   ];
 }
 
@@ -84,11 +135,9 @@ export function toVersionRow(
     createdAtLabel: formatDateTime(version.createdAt),
     active: version.versionId === activeVersionId,
     indexStages: [
-      { key: "parse", label: "parse", status: version.parseStatus },
-      { key: "embedding", label: "embedding", status: version.denseIndexStatus === "success" ? "success" : version.denseIndexStatus },
-      { key: "milvus", label: "milvus", status: version.denseIndexStatus },
-      { key: "opensearch", label: "opensearch", status: version.sparseIndexStatus },
-      { key: "neo4j", label: "neo4j", status: version.graphIndexStatus },
+      { key: "milvus", label: "Dense / Milvus", status: version.denseIndexStatus },
+      { key: "opensearch", label: "OpenSearch", status: version.sparseIndexStatus },
+      { key: "neo4j", label: "Neo4j", status: version.graphIndexStatus },
     ],
   };
 }

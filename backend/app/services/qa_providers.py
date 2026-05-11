@@ -168,20 +168,60 @@ class MilvusDenseRetrievalProvider(DenseRetrievalProvider):
         """将 Chunk 向量和过滤字段真实 upsert 到 Milvus。"""
         rows = [_to_milvus_row(payload) for payload in chunk_payloads]
         try:
+            self._ensure_collection(rows)
             self._client.upsert(collection_name=self._collection, data=rows)
         except Exception as exc:
-            raise ProviderError("Milvus dense index upsert failed.") from exc
+            raise ProviderError(f"Milvus dense index upsert failed: {exc}") from exc
         return {"provider": "milvus", "targetStore": "milvus", "operation": "upsert", "chunkCount": len(rows)}
+
+    def _ensure_collection(self, rows: list[dict]) -> None:
+        """按首批向量维度初始化缺失 Collection，避免空 Milvus 环境直接 upsert 失败。"""
+        if not rows or self._client.has_collection(self._collection):
+            return
+        embedding = rows[0].get("embedding")
+        if not isinstance(embedding, list) or not embedding:
+            raise ProviderError("Milvus collection creation requires a non-empty embedding.")
+
+        from pymilvus import DataType, MilvusClient
+
+        schema = MilvusClient.create_schema(auto_id=False, enable_dynamic_field=True)
+        schema.add_field("chunk_id", DataType.VARCHAR, is_primary=True, max_length=64)
+        schema.add_field("kb_id", DataType.VARCHAR, max_length=64)
+        schema.add_field("document_id", DataType.VARCHAR, max_length=64)
+        schema.add_field("version_id", DataType.VARCHAR, max_length=64)
+        schema.add_field("content", DataType.VARCHAR, max_length=65535)
+        schema.add_field("content_hash", DataType.VARCHAR, max_length=128)
+        schema.add_field("page_no", DataType.INT64)
+        schema.add_field("section", DataType.VARCHAR, max_length=1024)
+        schema.add_field("security_level", DataType.VARCHAR, max_length=64)
+        schema.add_field("document_status", DataType.VARCHAR, max_length=32)
+        schema.add_field("version_status", DataType.VARCHAR, max_length=32)
+        schema.add_field("chunk_status", DataType.VARCHAR, max_length=32)
+        schema.add_field("allow_subject_keys", DataType.JSON)
+        schema.add_field("deny_subject_keys", DataType.JSON)
+        schema.add_field("filter_hash", DataType.VARCHAR, max_length=128)
+        schema.add_field("metadata", DataType.JSON)
+        schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=len(embedding))
+
+        index_params = MilvusClient.prepare_index_params()
+        index_params.add_index(field_name="embedding", index_type="AUTOINDEX", metric_type="COSINE")
+        self._client.create_collection(
+            collection_name=self._collection,
+            schema=schema,
+            index_params=index_params,
+        )
 
     def delete_chunks(self, chunk_ids: list[UUID]) -> dict:
         """按 chunk_id 从 Milvus 删除可重建副本。"""
         if not chunk_ids:
             return {"provider": "milvus", "targetStore": "milvus", "operation": "delete", "chunkCount": 0}
+        if not self._client.has_collection(self._collection):
+            return {"provider": "milvus", "targetStore": "milvus", "operation": "delete", "chunkCount": len(chunk_ids)}
         escaped_ids = ", ".join(f'"{chunk_id}"' for chunk_id in chunk_ids)
         try:
             self._client.delete(collection_name=self._collection, filter=f"chunk_id in [{escaped_ids}]")
         except Exception as exc:
-            raise ProviderError("Milvus dense index delete failed.") from exc
+            raise ProviderError(f"Milvus dense index delete failed: {exc}") from exc
         return {"provider": "milvus", "targetStore": "milvus", "operation": "delete", "chunkCount": len(chunk_ids)}
 
     def retrieve(
@@ -1020,17 +1060,17 @@ def _to_milvus_row(payload: dict) -> dict:
         "kb_id": payload["kbId"],
         "document_id": payload["documentId"],
         "version_id": payload["versionId"],
-        "content": payload.get("content"),
-        "content_hash": payload.get("contentHash"),
-        "page_no": payload.get("pageNo"),
-        "section": payload.get("section"),
-        "security_level": payload.get("securityLevel"),
-        "document_status": payload.get("documentStatus"),
-        "version_status": payload.get("versionStatus"),
-        "chunk_status": payload.get("chunkStatus"),
+        "content": payload.get("content") or "",
+        "content_hash": payload.get("contentHash") or "",
+        "page_no": payload.get("pageNo") or 0,
+        "section": payload.get("section") or "",
+        "security_level": payload.get("securityLevel") or "",
+        "document_status": payload.get("documentStatus") or "",
+        "version_status": payload.get("versionStatus") or "",
+        "chunk_status": payload.get("chunkStatus") or "",
         "allow_subject_keys": payload.get("allowSubjectKeys", []),
         "deny_subject_keys": payload.get("denySubjectKeys", []),
-        "filter_hash": payload.get("filterHash"),
+        "filter_hash": payload.get("filterHash") or "",
         "metadata": payload.get("metadata", {}),
         "embedding": payload.get("embedding"),
     }

@@ -59,6 +59,7 @@ class IngestJobDTO(BaseModel):
     progress: int
     errorCode: str | None
     errorMessage: str | None
+    resultSummary: dict | None = None
     createdAt: str
 
 
@@ -117,6 +118,32 @@ class DocumentVersionActivateResponse(BaseModel):
     activeVersionId: str
     previousActiveVersionId: str | None
     auditLogId: str
+
+
+class DocumentDeleteRequest(BaseModel):
+    """文档删除请求；删除会影响检索副本，必须由前端二次确认。"""
+
+    confirmImpact: bool
+    reason: str | None = None
+
+
+class DocumentDeleteCleanupJobDTO(BaseModel):
+    """文档删除后的外部副本清理作业摘要。"""
+
+    targetStore: str
+    syncJobId: str | None = None
+    status: str
+    errorMessage: str | None = None
+
+
+class DocumentDeleteResponse(BaseModel):
+    """文档删除结果，区分业务删除和外部副本清理状态。"""
+
+    documentId: str
+    deletedAt: str
+    auditLogId: str
+    cleanupJobs: list[DocumentDeleteCleanupJobDTO] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class DocumentQualityIssueDTO(BaseModel):

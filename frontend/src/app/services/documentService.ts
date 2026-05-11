@@ -1,4 +1,4 @@
-import { apiGet, apiPatchJson, apiPostForm, apiPostJson } from "./apiClient";
+import { apiDeleteJson, apiGet, apiPatchJson, apiPostForm, apiPostJson } from "./apiClient";
 import type {
   BulkDocumentGovernanceRequest,
   BulkDocumentGovernanceResponse,
@@ -6,6 +6,7 @@ import type {
   ChunkPage,
   ChunkDTO,
   DocumentDetailDTO,
+  DocumentDeleteResponse,
   DocumentPage,
   DocumentQualitySummaryDTO,
   DocumentUploadResponse,
@@ -57,6 +58,17 @@ export async function fetchDocumentDetail(
   documentId: string,
 ): Promise<DocumentDetailDTO> {
   return apiGet<DocumentDetailDTO>(`/knowledge-bases/${kbId}/documents/${documentId}`);
+}
+
+export async function deleteDocument(
+  kbId: string,
+  documentId: string,
+  reason?: string,
+): Promise<DocumentDeleteResponse> {
+  return apiDeleteJson<DocumentDeleteResponse>(`/knowledge-bases/${kbId}/documents/${documentId}`, {
+    confirmImpact: true,
+    reason,
+  });
 }
 
 export async function fetchDocumentQualitySummary(kbId: string): Promise<DocumentQualitySummaryDTO> {

@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -15,6 +15,8 @@ from app.schemas.document import (
     ChunkGovernanceRequest,
     ChunkGovernanceResponse,
     DocumentDTO,
+    DocumentDeleteRequest,
+    DocumentDeleteResponse,
     DocumentDetailDTO,
     DocumentQualitySummaryDTO,
     DocumentReparseRequest,
@@ -32,6 +34,7 @@ from app.services.document_service import (
     activate_document_version,
     cancel_ingest_job,
     create_document_upload,
+    delete_document,
     get_chunk,
     get_document_detail,
     get_document_quality_summary,
@@ -189,6 +192,31 @@ def read_document_detail(
 ) -> DocumentDetailDTO:
     """返回文档详情和 active version 摘要。"""
     response = get_document_detail(session, current_user, kb_id, document_id)
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
+    return response
+
+
+@router.delete("/{document_id}", response_model=DocumentDeleteResponse)
+def delete_document_endpoint(
+    kb_id: UUID,
+    document_id: UUID,
+    request: DocumentDeleteRequest = Body(...),
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> DocumentDeleteResponse:
+    """逻辑删除文档，并记录外部副本清理结果。"""
+    try:
+        response = delete_document(
+            session=session,
+            current_user=current_user,
+            kb_id=kb_id,
+            document_id=document_id,
+            confirm_impact=request.confirmImpact,
+            reason=request.reason,
+        )
+    except (KnowledgeBaseDisabledError, DocumentPermissionError, DocumentConflictError) as exc:
+        _raise_document_error(exc)
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
     return response
