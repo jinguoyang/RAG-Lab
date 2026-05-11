@@ -362,69 +362,25 @@ def _create_minio_cleanup_job(
     stored_file_rows: list[RowMapping],
     storage_provider: ObjectStorageProvider | None = None,
 ) -> DocumentDeleteCleanupJobDTO | None:
-    """记录并执行 MinIO 对象清理；失败只影响清理作业，不回滚文档删除。"""
+    """执行 MinIO 对象清理；MinIO 不属于 index_sync_jobs 的受约束目标集合。"""
+    _ = (session, kb_id, current_user)
     unique_rows = {row["object_key"]: row for row in stored_file_rows}
     if not unique_rows:
         return None
 
-    sync_job_id = uuid4()
-    actor_id = UUID(current_user.user.userId)
-    session.execute(
-        insert(index_sync_jobs).values(
-            sync_job_id=sync_job_id,
-            kb_id=kb_id,
-            target_store="minio",
-            sync_type="delete",
-            scope={"objectKeys": list(unique_rows.keys())},
-            required_for_activation=False,
-            status="running",
-            error_message=None,
-            created_by=actor_id,
-            started_at=func.now(),
-        )
-    )
-
     storage = storage_provider or get_object_storage_provider()
     errors: list[str] = []
-    deleted_keys: set[str] = set()
     for object_key in unique_rows:
         try:
             storage.delete_object(object_key)
-            deleted_keys.add(object_key)
         except Exception as exc:
             errors.append(f"{object_key}: {exc}")
 
     final_status = "failed" if errors else "success"
     final_error = "; ".join(errors) if errors else None
-    session.execute(
-        update(index_sync_jobs)
-        .where(index_sync_jobs.c.sync_job_id == sync_job_id)
-        .values(status=final_status, error_message=final_error, finished_at=func.now())
-    )
-    for object_key, row in unique_rows.items():
-        object_error = next((error for error in errors if error.startswith(f"{object_key}:")), None)
-        session.execute(
-            insert(index_sync_records).values(
-                sync_record_id=uuid4(),
-                sync_job_id=sync_job_id,
-                target_store="minio",
-                resource_type="stored_file",
-                resource_id=row["file_id"],
-                operation="delete",
-                status="success" if object_key in deleted_keys else "failed",
-                error_message=object_error,
-                provider_payload={
-                    "provider": "minio",
-                    "targetStore": "minio",
-                    "operation": "delete",
-                    "objectKey": object_key,
-                    "bucket": row["bucket"],
-                },
-            )
-        )
     return DocumentDeleteCleanupJobDTO(
         targetStore="minio",
-        syncJobId=str(sync_job_id),
+        syncJobId=None,
         status=final_status,
         errorMessage=final_error,
     )
