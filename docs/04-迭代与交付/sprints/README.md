@@ -13,12 +13,12 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 
 | Sprint 范围 | 版本 | 主题 | 状态 | 明细 |
 | --- | --- | --- | --- | --- |
-| Sprint 01-12 | V1.0 | 工程启动、基础业务、文档中心、配置中心、QA、权限、验收硬化 | Done | `Sprint-01.md` 至 `Sprint-12.md` |
-| Sprint 13-14 | V1.0 / V1.1 | Provider 诊断、质量回归、配置优化闭环 | Done | `Sprint-13.md`、`Sprint-14.md` |
-| Sprint 15-18 | V1.2 / V1.3 | Provider 生产化、知识库治理、稳定性观测、协作治理 | Done | `Sprint-15.md` 至 `Sprint-18.md` |
-| Sprint 19-22 | V1.4 / V1.5 | 真实入库、多副本写入、真实检索、回放复跑 | Done | `Sprint-19.md` 至 `Sprint-22.md` |
-| Sprint 23-26 | V1.6 / V1.7 | 真实 RAG 端到端闭环、模块化调优、评估对比 | Done | `Sprint-23.md` 至 `Sprint-26.md` |
-| Sprint 27-29 | 内部增强 | 知识库治理工作流、诊断可操作化、治理后验证 | Done | `Sprint-27.md` 至 `Sprint-29.md` |
+| Sprint 01-12 | V1.0 | 工程启动、基础业务、文档中心、配置中心、QA、权限、验收硬化 | Done | `sprint1-20/Sprint-01.md` 至 `sprint1-20/Sprint-12.md` |
+| Sprint 13-14 | V1.0 / V1.1 | Provider 诊断、质量回归、配置优化闭环 | Done | `sprint1-20/Sprint-13.md`、`sprint1-20/Sprint-14.md` |
+| Sprint 15-18 | V1.2 / V1.3 | Provider 生产化、知识库治理、稳定性观测、协作治理 | Done | `sprint1-20/Sprint-15.md` 至 `sprint1-20/Sprint-18.md` |
+| Sprint 19-22 | V1.4 / V1.5 | 真实入库、多副本写入、真实检索、回放复跑 | Done | `sprint1-20/Sprint-19.md` 至 `sprint21-40/Sprint-22.md` |
+| Sprint 23-26 | V1.6 / V1.7 | 真实 RAG 端到端闭环、模块化调优、评估对比 | Done | `sprint21-40/Sprint-23.md` 至 `sprint21-40/Sprint-26.md` |
+| Sprint 27-29 | 内部增强 | 知识库治理工作流、诊断可操作化、治理后验证 | Done | `sprint21-40/Sprint-27.md` 至 `sprint21-40/Sprint-29.md` |
 
 ## 3. 单个 Sprint 文档约定
 

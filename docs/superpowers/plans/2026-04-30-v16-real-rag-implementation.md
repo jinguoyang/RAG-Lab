@@ -25,8 +25,8 @@
 
 **Files:**
 - Create: `backend/scripts/verify_v16_real_rag_e2e.py`
-- Modify: `docs/04-迭代与交付/sprints/Sprint-23.md`
-- Modify: `docs/04-迭代与交付/sprints/Sprint-24.md`
+- Modify: `docs/04-迭代与交付/sprints/sprint21-40/Sprint-23.md`
+- Modify: `docs/04-迭代与交付/sprints/sprint21-40/Sprint-24.md`
 
 - [ ] **Step 1: Create the failing verification script**
 
@@ -147,7 +147,7 @@ Expected:
 
 - [ ] **Step 3: Record the first smoke result**
 
-In `docs/04-迭代与交付/sprints/Sprint-23.md`, add a short completion note only after the script result is known:
+In `docs/04-迭代与交付/sprints/sprint21-40/Sprint-23.md`, add a short completion note only after the script result is known:
 
 ```markdown
 ## 8. 执行记录
@@ -158,7 +158,7 @@ In `docs/04-迭代与交付/sprints/Sprint-23.md`, add a short completion note o
 - [ ] **Step 4: Commit**
 
 ```powershell
-git add backend/scripts/verify_v16_real_rag_e2e.py docs/04-迭代与交付/sprints/Sprint-23.md docs/04-迭代与交付/sprints/Sprint-24.md
+git add backend/scripts/verify_v16_real_rag_e2e.py docs/04-迭代与交付/sprints/sprint21-40/Sprint-23.md docs/04-迭代与交付/sprints/sprint21-40/Sprint-24.md
 git commit -m "test: add v1.6 real rag smoke verification"
 ```
 
@@ -515,8 +515,8 @@ git commit -m "docs: add v1.6 real rag provider retest notes"
 
 **Files:**
 - Modify: `docs/04-迭代与交付/产品待办清单.md`
-- Modify: `docs/04-迭代与交付/sprints/Sprint-23.md`
-- Modify: `docs/04-迭代与交付/sprints/Sprint-24.md`
+- Modify: `docs/04-迭代与交付/sprints/sprint21-40/Sprint-23.md`
+- Modify: `docs/04-迭代与交付/sprints/sprint21-40/Sprint-24.md`
 - Modify: `docs/04-迭代与交付/releases/V1.6-真实RAG闭环规划.md`
 
 - [ ] **Step 1: Run full V1.6 verification**
@@ -544,6 +544,6 @@ Only after verification:
 - [ ] **Step 3: Commit final closure**
 
 ```powershell
-git add docs/04-迭代与交付/产品待办清单.md docs/04-迭代与交付/sprints/Sprint-23.md docs/04-迭代与交付/sprints/Sprint-24.md docs/04-迭代与交付/releases/README.md docs/04-迭代与交付/releases/V1.6-真实RAG闭环规划.md
+git add docs/04-迭代与交付/产品待办清单.md docs/04-迭代与交付/sprints/sprint21-40/Sprint-23.md docs/04-迭代与交付/sprints/sprint21-40/Sprint-24.md docs/04-迭代与交付/releases/README.md docs/04-迭代与交付/releases/V1.6-真实RAG闭环规划.md
 git commit -m "docs: close v1.6 real rag plan status"
 ```

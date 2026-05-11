@@ -36,7 +36,8 @@
 
 这些文档保留历史计划、执行证据和验收口径，通常不再反复同步状态：
 
-- `sprints/Sprint-01.md` 至 `sprints/Sprint-26.md`
+- `sprints/sprint1-20/Sprint-01.md` 至 `sprints/sprint1-20/Sprint-20.md`
+- `sprints/sprint21-40/Sprint-21.md` 至 `sprints/sprint21-40/Sprint-29.md`
 - `releases/V1.0-*.md` 至 `releases/V1.7-*.md`
 - [中长期规划](./中长期规划.md)
 - `docs/superpowers/specs/` 和 `docs/superpowers/plans/`
