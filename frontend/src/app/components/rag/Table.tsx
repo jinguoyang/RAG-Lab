@@ -3,12 +3,13 @@ import { ReactNode, TdHTMLAttributes } from 'react';
 interface TableProps {
   children: ReactNode;
   className?: string;
+  tableClassName?: string;
 }
 
-export function Table({ children, className = '' }: TableProps) {
+export function Table({ children, className = '', tableClassName = 'min-w-[960px]' }: TableProps) {
   return (
     <div className={`bg-ivory border border-border-cream rounded-[12px] overflow-x-auto ${className}`}>
-      <table className="w-full min-w-[960px]">
+      <table className={`w-full ${tableClassName}`}>
         {children}
       </table>
     </div>

@@ -113,6 +113,8 @@ class MinioStorageProvider(ObjectStorageProvider):
                 response.close()
                 response.release_conn()
         except Exception as exc:
+            if getattr(exc, "code", "") in {"NoSuchKey", "NoSuchObject", "NoSuchBucket"}:
+                return None
             raise ObjectStorageError("Object storage read failed.") from exc
 
 

@@ -1,5 +1,7 @@
+from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import PurePath
+import time
 from uuid import UUID, uuid4
 
 import sqlalchemy as sa
@@ -7,7 +9,8 @@ from sqlalchemy import RowMapping, delete, func, insert, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.schemas.auth import CurrentUserResponse
+from app.core.database import get_session_factory
+from app.schemas.auth import CurrentUserResponse, UserDTO
 from app.schemas.document import (
     ChunkDTO,
     BulkDocumentGovernanceResponse,
@@ -39,6 +42,7 @@ from app.tables import (
     ingest_jobs,
     knowledge_bases,
     stored_files,
+    users,
 )
 from app.services.chunk_payload import build_chunk_index_payload
 from app.services.document_parsing import DocumentParseError, parse_document
@@ -49,12 +53,29 @@ from app.services.permission_service import build_chunk_access_filter_context, h
 from app.services.qa_providers import ChunkGraphExtraction, ProviderError, QARunProviders, get_qa_run_providers
 
 
+@dataclass(frozen=True)
+class DocumentSourceDownload:
+    """文档原文件下载结果，包含响应所需文件名、类型和二进制内容。"""
+
+    file_name: str
+    mime_type: str | None
+    content: bytes
+
+
 class DocumentPermissionError(Exception):
     """当前用户缺少文档生命周期操作权限。"""
 
 
 class DocumentConflictError(Exception):
     """文档生命周期状态冲突，例如作业不可重试或版本不可激活。"""
+
+
+class DocumentSourceFileUnavailableError(Exception):
+    """原始文件元数据存在，但对象存储中无法读取对应内容。"""
+
+
+class DocumentIngestEnqueueError(Exception):
+    """文档入库任务投递到后台队列失败。"""
 
 
 def _is_platform_admin(current_user: CurrentUserResponse) -> bool:
@@ -193,6 +214,32 @@ def _to_stored_file_dto(row: RowMapping) -> StoredFileDTO:
     )
 
 
+def _read_scope_ids(scope: object, key: str) -> set[str]:
+    """从 IndexSyncJob scope 中读取字符串 ID 集合，兼容历史 JSON 结构。"""
+    if not isinstance(scope, dict):
+        return set()
+    value = scope.get(key)
+    if not isinstance(value, list):
+        return set()
+    return {item for item in value if isinstance(item, str)}
+
+
+def _index_sync_job_matches_document(
+    row: RowMapping,
+    document_id: UUID,
+    version_ids: set[str],
+    chunk_ids: set[str],
+) -> bool:
+    """判断 KB 级索引同步作业是否属于指定文档的历史范围。"""
+    scope = row["scope"]
+    document_id_text = str(document_id)
+    if document_id_text in _read_scope_ids(scope, "documentIds"):
+        return True
+    if version_ids & _read_scope_ids(scope, "versionIds"):
+        return True
+    return bool(chunk_ids & _read_scope_ids(scope, "chunkIds"))
+
+
 def _safe_file_name(file_name: str) -> str:
     """提取上传文件名，避免客户端路径片段进入对象引用。"""
     name = PurePath(file_name).name.strip()
@@ -256,12 +303,15 @@ def _create_index_sync_job(
     provider_payloads: dict[UUID, dict] | None = None,
     provider_set: QARunProviders | None = None,
     graph_items: list[ChunkGraphExtraction] | None = None,
+    document_ids: list[UUID] | None = None,
 ) -> tuple[UUID, str, str | None]:
     """创建并执行 IndexSyncJob，真实 Provider 成功后才标记 success。"""
     sync_job_id = uuid4()
     scope = {"chunkIds": [str(chunk_id) for chunk_id in chunk_ids]}
     if version_id:
         scope["versionIds"] = [str(version_id)]
+    if document_ids:
+        scope["documentIds"] = [str(document_id) for document_id in document_ids]
     session.execute(
         insert(index_sync_jobs).values(
             sync_job_id=sync_job_id,
@@ -414,6 +464,50 @@ def _write_chunk_access_filters(
     return access_filter.to_trace_summary()
 
 
+def _update_ingest_progress(
+    session: Session,
+    job_id: UUID,
+    stage: str,
+    progress: int,
+    message: str,
+    chunk_count: int = 0,
+    processed_count: int = 0,
+    stage_timings: dict[str, float] | None = None,
+    extra: dict | None = None,
+) -> None:
+    """更新 IngestJob 进度并提交，让前端轮询能看到长任务当前阶段。"""
+    job_row = session.execute(
+        select(ingest_jobs.c.result_summary).where(ingest_jobs.c.job_id == job_id).limit(1)
+    ).mappings().first()
+    result_summary = dict(job_row["result_summary"] or {}) if job_row else {}
+    stage_summary = {
+        "message": message,
+        "chunkCount": chunk_count,
+        "processedCount": processed_count,
+    }
+    if stage_timings:
+        result_summary["stageTimings"] = stage_timings
+    if extra:
+        stage_summary.update(extra)
+    stage_summaries = dict(result_summary.get("stageSummaries") or {})
+    stage_summaries[stage] = stage_summary
+    result_summary.update(
+        {
+            "currentStage": stage,
+            "stageMessage": message,
+            "chunkCount": chunk_count,
+            "processedCount": processed_count,
+            "stageSummaries": stage_summaries,
+        }
+    )
+    session.execute(
+        update(ingest_jobs)
+        .where(ingest_jobs.c.job_id == job_id)
+        .values(status="running", stage=stage, progress=progress, result_summary=result_summary)
+    )
+    session.commit()
+
+
 def run_ingest_job(
     session: Session,
     current_user: CurrentUserResponse,
@@ -460,10 +554,13 @@ def run_ingest_job(
     file_name = file_row["file_name"] if file_row else document_row["name"]
     if source_bytes is None:
         raise DocumentConflictError("Source file content is unavailable.")
+    stage_timings: dict[str, float] = {}
+    stage_started_at = time.perf_counter()
+    _update_ingest_progress(session, job_id, "parse", 20, "正在解析原始文档")
     session.execute(
         update(ingest_jobs)
-        .where(ingest_jobs.c.job_id == job_id)
-        .values(status="running", stage="parse", progress=20, started_at=func.now())
+        .where(ingest_jobs.c.job_id == job_id, ingest_jobs.c.started_at.is_(None))
+        .values(started_at=func.now())
     )
     session.execute(
         update(document_versions)
@@ -474,6 +571,7 @@ def run_ingest_job(
     try:
         parsed_document = parse_document(file_name, file_row["mime_type"] if file_row else None, source_bytes or b"")
         parsed_chunks = parsed_document.chunks
+        stage_timings["parse"] = round(time.perf_counter() - stage_started_at, 3)
         old_chunk_ids = [
             row[0]
             for row in session.execute(
@@ -509,6 +607,18 @@ def run_ingest_job(
         chunk_rows: list[RowMapping] = []
         embedding_by_chunk_id: dict[UUID, list[float]] = {}
         embedding_provider = provider_set.embedding
+        chunk_count = len(parsed_chunks)
+        stage_started_at = time.perf_counter()
+        _update_ingest_progress(
+            session,
+            job_id,
+            "embedding",
+            35,
+            "正在生成 Chunk Embedding",
+            chunk_count=chunk_count,
+            processed_count=0,
+            stage_timings=stage_timings,
+        )
         for index, parsed in enumerate(parsed_chunks, start=1):
             content = parsed.content
             embedding = embedding_provider.embed_query(content)
@@ -539,8 +649,20 @@ def run_ingest_job(
             ).mappings().one()
             chunk_rows.append(row)
             embedding_by_chunk_id[row["chunk_id"]] = embedding
+            if index == chunk_count or index % 5 == 0:
+                _update_ingest_progress(
+                    session,
+                    job_id,
+                    "embedding",
+                    min(50, 35 + int(index / max(chunk_count, 1) * 15)),
+                    "正在生成 Chunk Embedding",
+                    chunk_count=chunk_count,
+                    processed_count=index,
+                    stage_timings=stage_timings,
+                )
 
         chunk_ids = [row["chunk_id"] for row in chunk_rows]
+        stage_timings["embedding"] = round(time.perf_counter() - stage_started_at, 3)
         new_version_status = "active" if document_row["active_version_id"] == version_row["version_id"] else "inactive"
         access_filter = _write_chunk_access_filters(session, current_user, kb_row["kb_id"], chunk_rows, new_version_status)
         dense_payloads = {
@@ -553,6 +675,17 @@ def run_ingest_job(
             )
             for row in chunk_rows
         }
+        stage_started_at = time.perf_counter()
+        _update_ingest_progress(
+            session,
+            job_id,
+            "dense_index",
+            55,
+            "正在写入 Dense/Milvus 副本",
+            chunk_count=len(chunk_ids),
+            processed_count=0,
+            stage_timings=stage_timings,
+        )
         _, dense_status, dense_error = _create_index_sync_job(
             session,
             kb_row,
@@ -564,11 +697,24 @@ def run_ingest_job(
             provider_payloads=dense_payloads,
             provider_set=provider_set,
         )
+        stage_timings["dense_index"] = round(time.perf_counter() - stage_started_at, 3)
         sparse_status = "not_required"
         sparse_error = None
         graph_status = "not_required"
         graph_error = None
+        graph_extraction_errors: list[dict] = []
         if kb_row["sparse_index_enabled"]:
+            stage_started_at = time.perf_counter()
+            _update_ingest_progress(
+                session,
+                job_id,
+                "sparse_index",
+                65,
+                "正在写入 Sparse/OpenSearch 副本",
+                chunk_count=len(chunk_ids),
+                processed_count=0,
+                stage_timings=stage_timings,
+            )
             _, sparse_status, sparse_error = _create_index_sync_job(
                 session,
                 kb_row,
@@ -580,6 +726,7 @@ def run_ingest_job(
                 provider_payloads=dense_payloads,
                 provider_set=provider_set,
             )
+            stage_timings["sparse_index"] = round(time.perf_counter() - stage_started_at, 3)
         if kb_row["graph_index_enabled"]:
             if new_version_status == "active":
                 mark_graph_snapshots_stale(session, kb_row["kb_id"], "chunk_changed", current_user)
@@ -589,10 +736,36 @@ def run_ingest_job(
                 for chunk_id, payload in dense_payloads.items()
             }
             try:
+                stage_started_at = time.perf_counter()
+                _update_ingest_progress(
+                    session,
+                    job_id,
+                    "graph_extract",
+                    75,
+                    "正在并发抽取 Graph 实体关系",
+                    chunk_count=len(graph_payloads),
+                    processed_count=0,
+                    stage_timings=stage_timings,
+                )
                 graph_items = provider_set.llm.extract_graph(list(graph_payloads.values()))
+                graph_extraction_errors = list(getattr(provider_set.llm, "last_graph_extraction_errors", []) or [])
+                stage_timings["graph_extract"] = round(time.perf_counter() - stage_started_at, 3)
+                _update_ingest_progress(
+                    session,
+                    job_id,
+                    "graph_extract",
+                    85,
+                    "Graph 实体关系抽取完成",
+                    chunk_count=len(graph_payloads),
+                    processed_count=len(graph_items),
+                    stage_timings=stage_timings,
+                    extra={"graphExtractionErrors": graph_extraction_errors},
+                )
             except ProviderError as exc:
                 graph_items = []
                 graph_error = str(exc)
+                graph_extraction_errors = list(getattr(provider_set.llm, "last_graph_extraction_errors", []) or [])
+                stage_timings["graph_extract"] = round(time.perf_counter() - stage_started_at, 3)
             entity_count = sum(len(item.entities) for item in graph_items)
             relation_count = sum(len(item.relations) for item in graph_items)
             session.execute(
@@ -611,6 +784,18 @@ def run_ingest_job(
                 )
             )
             if graph_error is None:
+                stage_started_at = time.perf_counter()
+                _update_ingest_progress(
+                    session,
+                    job_id,
+                    "graph_index",
+                    90,
+                    "正在写入 Graph/Neo4j 副本",
+                    chunk_count=len(chunk_ids),
+                    processed_count=len(graph_items),
+                    stage_timings=stage_timings,
+                    extra={"graphExtractionErrors": graph_extraction_errors},
+                )
                 _, graph_status, graph_error = _create_index_sync_job(
                     session,
                     kb_row,
@@ -623,6 +808,7 @@ def run_ingest_job(
                     provider_set=provider_set,
                     graph_items=graph_items,
                 )
+                stage_timings["graph_index"] = round(time.perf_counter() - stage_started_at, 3)
             else:
                 graph_status = "failed"
                 _create_index_sync_job(
@@ -672,6 +858,7 @@ def run_ingest_job(
             "opensearch": {"status": sparse_status, "error": sparse_error},
             "neo4j": {"status": graph_status, "error": graph_error},
         }
+        stage_timings["completed"] = 0
         session.execute(
             update(document_versions)
             .where(document_versions.c.version_id == version_row["version_id"])
@@ -695,6 +882,7 @@ def run_ingest_job(
                     "embeddingProvider": get_settings().embedding_provider,
                     "embeddingModel": get_settings().embedding_model,
                     "error_summary": error_summary,
+                    "graphExtractionErrors": graph_extraction_errors,
                 },
                 updated_by=UUID(current_user.user.userId),
                 updated_at=func.now(),
@@ -705,7 +893,7 @@ def run_ingest_job(
             .where(ingest_jobs.c.job_id == job_id)
             .values(
                 status=ingest_final_status,
-                stage="completed" if not index_errors else "index_sync",
+                stage="completed" if not index_errors else "failed",
                 progress=100,
                 error_code="INDEX_SYNC_FAILED" if index_errors else None,
                 error_message="; ".join(
@@ -720,6 +908,8 @@ def run_ingest_job(
                     "embeddingModel": get_settings().embedding_model,
                     "indexErrors": index_errors,
                     "error_summary": error_summary,
+                    "stageTimings": stage_timings,
+                    "graphExtractionErrors": graph_extraction_errors,
                 },
                 finished_at=func.now(),
             )
@@ -831,6 +1021,115 @@ def run_ingest_job(
             .returning(ingest_jobs)
         ).mappings().one()
     return job_row
+
+
+def _to_current_user_from_user_row(user_row: RowMapping) -> CurrentUserResponse:
+    """将作业创建人行转换为 Worker 执行所需的用户上下文。"""
+    return CurrentUserResponse(
+        user=UserDTO(
+            userId=str(user_row["user_id"]),
+            username=user_row["username"],
+            displayName=user_row["display_name"],
+            email=user_row["email"],
+            platformRole=user_row["platform_role"],
+            securityLevel=user_row["security_level"],
+            status=user_row["status"],
+        ),
+        platformPermissions=[],
+        visibleKbCount=0,
+    )
+
+
+def _mark_ingest_enqueue_failed(session: Session, job_id: UUID, error_message: str) -> None:
+    """记录 Celery 入队失败，避免 queued 作业永久悬挂。"""
+    job_row = session.execute(
+        select(ingest_jobs).where(ingest_jobs.c.job_id == job_id).limit(1)
+    ).mappings().first()
+    if job_row is None:
+        return
+    kb_row = session.execute(
+        select(knowledge_bases).where(knowledge_bases.c.kb_id == job_row["kb_id"]).limit(1)
+    ).mappings().first()
+    if job_row["version_id"] is not None:
+        session.execute(
+            update(document_versions)
+            .where(document_versions.c.version_id == job_row["version_id"])
+            .values(
+                status="failed",
+                parse_status="failed",
+                dense_index_status="failed",
+                sparse_index_status="failed" if kb_row and kb_row["sparse_index_enabled"] else "not_required",
+                graph_index_status="failed" if kb_row and kb_row["graph_index_enabled"] else "not_required",
+                retrieval_ready=False,
+                error_code="INGEST_ENQUEUE_FAILED",
+                error_message=error_message,
+                updated_at=func.now(),
+            )
+        )
+    session.execute(
+        update(ingest_jobs)
+        .where(ingest_jobs.c.job_id == job_id)
+        .values(
+            status="failed",
+            stage="enqueue",
+            progress=100,
+            error_code="INGEST_ENQUEUE_FAILED",
+            error_message=error_message,
+            result_summary={"error_summary": {"enqueue": {"status": "failed", "error": error_message}}},
+            finished_at=func.now(),
+        )
+    )
+    session.commit()
+
+
+def enqueue_ingest_job(session: Session, job_id: UUID) -> None:
+    """将文档入库作业投递给 Celery，失败时落库为 failed 并抛出业务异常。"""
+    try:
+        from app.worker import run_document_ingest_task
+
+        run_document_ingest_task.delay(str(job_id))
+    except Exception as exc:
+        error_message = f"Failed to enqueue ingest job: {exc}"
+        _mark_ingest_enqueue_failed(session, job_id, error_message)
+        raise DocumentIngestEnqueueError(error_message) from exc
+
+
+def run_ingest_job_by_id(job_id: UUID) -> dict:
+    """Worker 入口：重新打开数据库会话并按作业创建人上下文执行入库。"""
+    session = get_session_factory()()
+    try:
+        job_row = session.execute(
+            select(ingest_jobs).where(ingest_jobs.c.job_id == job_id).limit(1)
+        ).mappings().first()
+        if job_row is None:
+            raise DocumentConflictError("Ingest job not found.")
+        kb_row = session.execute(
+            select(knowledge_bases)
+            .where(knowledge_bases.c.kb_id == job_row["kb_id"], knowledge_bases.c.deleted_at.is_(None))
+            .limit(1)
+        ).mappings().first()
+        if kb_row is None:
+            raise DocumentConflictError("Knowledge base not found.")
+        user_row = session.execute(
+            select(users).where(users.c.user_id == job_row["created_by"]).limit(1)
+        ).mappings().first()
+        if user_row is None:
+            raise DocumentConflictError("Ingest job creator not found.")
+
+        current_user = _to_current_user_from_user_row(user_row)
+        final_job_row = run_ingest_job(session, current_user, kb_row, job_id)
+        session.commit()
+        return {
+            "jobId": str(final_job_row["job_id"]),
+            "kbId": str(final_job_row["kb_id"]),
+            "status": final_job_row["status"],
+            "stage": final_job_row["stage"],
+        }
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 def create_document_upload(
@@ -953,14 +1252,6 @@ def create_document_upload(
             document_id,
             {"versionId": str(version_id), "jobId": str(job_id), "fileName": normalized_file_name},
         )
-        job_row = run_ingest_job(
-            session=session,
-            current_user=current_user,
-            kb_row=kb_row,
-            job_id=job_id,
-            source_bytes=file_bytes,
-            storage_provider=storage,
-        )
         document_row = session.execute(select(documents).where(documents.c.document_id == document_id)).mappings().one()
         version_row = session.execute(select(document_versions).where(document_versions.c.version_id == version_id)).mappings().one()
         session.commit()
@@ -972,6 +1263,7 @@ def create_document_upload(
             # 保留原始数据库异常，补偿删除失败交给后续运维巡检处理。
             pass
         raise
+    enqueue_ingest_job(session, job_id)
 
     return DocumentUploadResponse(
         document=_to_document_dto(document_row),
@@ -1050,6 +1342,59 @@ def get_document_detail(
     return DocumentDetailDTO(
         document=_to_document_dto(document_row),
         activeVersion=_to_version_dto(active_version) if active_version else None,
+    )
+
+
+def download_document_source(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    document_id: UUID,
+    storage_provider: ObjectStorageProvider | None = None,
+) -> DocumentSourceDownload | None:
+    """读取当前 active version 的原始文件内容，供 API 层返回文件流。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+    _ensure_permission(session, current_user, kb_id, "kb.document.download")
+
+    document_row = session.execute(
+        select(documents)
+        .where(
+            documents.c.kb_id == kb_id,
+            documents.c.document_id == document_id,
+            documents.c.deleted_at.is_(None),
+        )
+        .limit(1)
+    ).mappings().first()
+    if document_row is None:
+        return None
+    if not document_row["active_version_id"]:
+        raise DocumentSourceFileUnavailableError("文档没有可下载的 active version，请先完成文档入库。")
+
+    source_row = session.execute(
+        select(document_versions, stored_files)
+        .select_from(
+            document_versions.join(stored_files, document_versions.c.source_file_id == stored_files.c.file_id)
+        )
+        .where(
+            document_versions.c.version_id == document_row["active_version_id"],
+            document_versions.c.document_id == document_id,
+            stored_files.c.status == "active",
+        )
+        .limit(1)
+    ).mappings().first()
+    if source_row is None:
+        raise DocumentSourceFileUnavailableError("原始文件元数据不可用，请重新上传文档或联系管理员。")
+
+    storage = storage_provider or get_object_storage_provider()
+    content = storage.get_object(source_row["object_key"])
+    if content is None:
+        raise DocumentSourceFileUnavailableError("原始文件在对象存储中不存在，请重新上传文档或联系管理员恢复备份。")
+
+    return DocumentSourceDownload(
+        file_name=source_row["file_name"],
+        mime_type=source_row["mime_type"],
+        content=content,
     )
 
 
@@ -1424,11 +1769,12 @@ def run_bulk_document_governance(
             target_store,
             None,
             chunk_ids,
-            target_store == "milvus",
-            sync_type="rebuild",
-            status=status,
-            error_message=error_message,
-        )
+        target_store == "milvus",
+        sync_type="rebuild",
+        status=status,
+        error_message=error_message,
+        document_ids=document_ids or None,
+    )
         _insert_audit_log(
             session,
             current_user,
@@ -1632,7 +1978,7 @@ def reparse_document(
     document_id: UUID,
     reason: str | None,
 ) -> DocumentUploadResponse | None:
-    """基于当前 active version 的源文件创建新版本，并立即执行本地解析 Worker。"""
+    """基于当前 active version 的源文件创建新版本，并投递后台解析 Worker。"""
     kb_row = _read_visible_knowledge_base(session, current_user, kb_id)
     if kb_row is None:
         return None
@@ -1714,7 +2060,6 @@ def reparse_document(
             document_id,
             {"versionId": str(version_id), "jobId": str(job_id), "reason": reason},
         )
-        job_row = run_ingest_job(session, current_user, kb_row, job_id)
         version_row = session.execute(select(document_versions).where(document_versions.c.version_id == version_id)).mappings().one()
         stored_file_row = session.execute(
             select(stored_files).where(stored_files.c.file_id == version_row["source_file_id"]).limit(1)
@@ -1723,6 +2068,7 @@ def reparse_document(
     except Exception:
         session.rollback()
         raise
+    enqueue_ingest_job(session, job_id)
 
     return DocumentUploadResponse(
         document=_to_document_dto(document_row),
@@ -1876,8 +2222,8 @@ def retry_ingest_job(
         old_job["document_id"],
         {"retryOfJobId": str(old_job["job_id"])},
     )
-    job_row = run_ingest_job(session, current_user, kb_row, new_job_id)
     session.commit()
+    enqueue_ingest_job(session, new_job_id)
     return _to_ingest_job_dto(job_row)
 
 
@@ -1929,11 +2275,47 @@ def list_index_sync_jobs(
     kb_id: UUID,
     page_no: int,
     page_size: int,
+    document_id: UUID | None = None,
 ) -> PageResponse[IndexSyncJobDTO] | None:
     """分页查询知识库副本同步作业状态。"""
     if _read_visible_knowledge_base(session, current_user, kb_id) is None:
         return None
     condition = index_sync_jobs.c.kb_id == kb_id
+    if document_id is not None:
+        document_exists = session.execute(
+            select(documents.c.document_id)
+            .where(documents.c.kb_id == kb_id, documents.c.document_id == document_id, documents.c.deleted_at.is_(None))
+            .limit(1)
+        ).scalar_one_or_none()
+        if document_exists is None:
+            return PageResponse(items=[], pageNo=page_no, pageSize=page_size, total=0)
+
+        version_ids = {
+            str(row[0])
+            for row in session.execute(
+                select(document_versions.c.version_id).where(document_versions.c.document_id == document_id)
+            )
+        }
+        chunk_ids = {
+            str(row[0])
+            for row in session.execute(select(chunks.c.chunk_id).where(chunks.c.document_id == document_id))
+        }
+        rows = [
+            row
+            for row in session.execute(
+                select(index_sync_jobs).where(condition).order_by(index_sync_jobs.c.created_at.desc())
+            ).mappings()
+            if _index_sync_job_matches_document(row, document_id, version_ids, chunk_ids)
+        ]
+        total = len(rows)
+        offset = (page_no - 1) * page_size
+        return PageResponse(
+            items=[_to_index_sync_job_dto(row) for row in rows[offset : offset + page_size]],
+            pageNo=page_no,
+            pageSize=page_size,
+            total=total,
+        )
+
     total = session.execute(select(func.count()).select_from(index_sync_jobs).where(condition)).scalar_one()
     rows = session.execute(
         select(index_sync_jobs)
@@ -2017,6 +2399,7 @@ def rebuild_index_sync(
         provider_payloads=provider_payloads,
         provider_set=provider_set,
         graph_items=graph_items,
+        document_ids=[document_id] if document_id else None,
     )
     _insert_audit_log(
         session,

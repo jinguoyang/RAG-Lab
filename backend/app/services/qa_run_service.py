@@ -75,6 +75,12 @@ class QARunPermissionError(Exception):
     """当前用户缺少读取历史、标注或管理评估样本的权限。"""
 
 
+def _candidate_content_preview(content: str, limit: int = 240) -> str:
+    """生成候选正文预览，避免调试页只显示文件名而无法区分同文档内不同 Chunk。"""
+    normalized = " ".join(content.split())
+    return normalized[:limit] if len(normalized) <= limit else f"{normalized[:limit]}..."
+
+
 RETRIEVAL_NODE_TO_OVERRIDE_KEY = {
     "denseRetrieval": "dense",
     "sparseRetrieval": "sparse",
@@ -1411,6 +1417,62 @@ def _to_candidate_dto(row: RowMapping) -> QARunCandidateDTO:
     )
 
 
+def _append_authorized_candidate_previews(
+    session: Session,
+    kb_id: UUID,
+    candidates: list[QARunCandidateDTO],
+    access_filter,
+) -> list[QARunCandidateDTO]:
+    """为当前用户仍有权限访问的候选补充正文预览；无权限或不可用 Chunk 不暴露正文。"""
+    candidate_chunk_ids = [
+        UUID(candidate.chunkId)
+        for candidate in candidates
+        if candidate.isAuthorized and candidate.chunkId is not None
+    ]
+    if not candidate_chunk_ids:
+        return candidates
+
+    chunk_rows = session.execute(
+        select(chunks.c.chunk_id, chunks.c.content)
+        .select_from(
+            chunks.join(document_versions, chunks.c.version_id == document_versions.c.version_id)
+            .join(documents, chunks.c.document_id == documents.c.document_id)
+        )
+        .where(
+            chunks.c.kb_id == kb_id,
+            chunks.c.chunk_id.in_(candidate_chunk_ids),
+            chunks.c.status == "active",
+            document_versions.c.status == "active",
+            documents.c.status == "active",
+            documents.c.deleted_at.is_(None),
+        )
+    ).mappings()
+    filter_rows = session.execute(
+        select(chunk_access_filters).where(
+            chunk_access_filters.c.kb_id == kb_id,
+            chunk_access_filters.c.chunk_id.in_(candidate_chunk_ids),
+            chunk_access_filters.c.permission_code == access_filter.permission_code,
+        )
+    ).mappings()
+    content_by_chunk_id = {row["chunk_id"]: row["content"] for row in chunk_rows}
+    filters_by_chunk_id = {row["chunk_id"]: row for row in filter_rows}
+
+    for candidate in candidates:
+        if not candidate.isAuthorized or candidate.chunkId is None:
+            continue
+        chunk_id = UUID(candidate.chunkId)
+        content = content_by_chunk_id.get(chunk_id)
+        if content is None:
+            continue
+        if _chunk_access_filter_drop_reason(filters_by_chunk_id.get(chunk_id), access_filter) is not None:
+            continue
+        candidate.metadata = {
+            **candidate.metadata,
+            "contentPreview": _candidate_content_preview(content),
+        }
+    return candidates
+
+
 def _failure_type(row: RowMapping) -> str | None:
     """从 metrics 中读取失败归因，保持历史表结构稳定。"""
     metrics = row["metrics"] or {}
@@ -1464,6 +1526,7 @@ def get_qa_run_detail(
     if row is None:
         return None
 
+    access_filter = build_chunk_access_filter_context(session, current_user, kb_id)
     candidates = []
     if include_candidates:
         candidate_rows = session.execute(
@@ -1472,6 +1535,7 @@ def get_qa_run_detail(
             .order_by(qa_run_candidates.c.rank_no.asc().nullslast(), qa_run_candidates.c.created_at.asc())
         ).mappings()
         candidates = [_to_candidate_dto(candidate_row) for candidate_row in candidate_rows]
+        candidates = _append_authorized_candidate_previews(session, kb_id, candidates, access_filter)
 
     evidence_rows = list(session.execute(
         select(qa_run_evidence)
@@ -1483,7 +1547,6 @@ def get_qa_run_detail(
         .where(qa_run_citations.c.run_id == run_id)
         .order_by(qa_run_citations.c.citation_order.asc())
     ).mappings()
-    access_filter = build_chunk_access_filter_context(session, current_user, kb_id)
     evidence_chunk_ids = [evidence_row["chunk_id"] for evidence_row in evidence_rows]
     filter_rows = []
     if evidence_chunk_ids:

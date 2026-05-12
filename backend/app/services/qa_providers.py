@@ -1,5 +1,6 @@
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from hashlib import sha256
 from uuid import UUID
@@ -358,10 +359,10 @@ class OpenSearchSparseRetrievalProvider(SparseRetrievalProvider):
             "query": {
                 "bool": {
                     "filter": [
-                        {"term": {"kb_id": str(kb_id)}},
-                        {"term": {"document_status": access_filter.document_status}},
-                        {"term": {"version_status": access_filter.version_status}},
-                        {"term": {"chunk_status": access_filter.chunk_status}},
+                        _exact_field_filter("kb_id", str(kb_id)),
+                        _exact_field_filter("document_status", access_filter.document_status),
+                        _exact_field_filter("version_status", access_filter.version_status),
+                        _exact_field_filter("chunk_status", access_filter.chunk_status),
                     ],
                     "must": [{"multi_match": {"query": query, "fields": ["content", "title", "section"]}}],
                 }
@@ -621,11 +622,11 @@ class Neo4jGraphRetrievalProvider(GraphRetrievalProvider):
         MATCH (e:Entity)-[:SUPPORTED_BY]->(c:ChunkRef)
         WHERE e.kb_id = $kb_id
           AND ($graph_snapshot_id IS NULL OR e.graph_snapshot_id = $graph_snapshot_id)
-          AND toLower(e.name) CONTAINS toLower($query)
+          AND toLower(e.name) CONTAINS toLower($search_text)
         RETURN c.chunk_id AS chunk_id, c.summary AS content, e.name AS entity_name, e.entity_key AS entity_key
         LIMIT $limit
         """
-        records = self._run_read(cypher, kb_id=kb_id, graph_snapshot_id=graph_snapshot_id, query=query, limit=limit)
+        records = self._run_read(cypher, kb_id=kb_id, graph_snapshot_id=graph_snapshot_id, search_text=query, limit=limit)
         return [
             ProviderCandidate(
                 source_type="graph",
@@ -747,6 +748,7 @@ class HttpRerankProvider(RerankProvider):
             raise ProviderError("Rerank endpoint is required.")
         self._endpoint = settings.rerank_endpoint
         self._api_key = settings.rerank_api_key
+        self._model = settings.rerank_model
 
     def rerank(self, query: str, candidates: list[ProviderCandidate], limit: int) -> list[ProviderCandidate]:
         import httpx
@@ -758,7 +760,12 @@ class HttpRerankProvider(RerankProvider):
             response = httpx.post(
                 self._endpoint,
                 headers=headers,
-                json={"query": query, "documents": [candidate.content or "" for candidate in candidates], "top_n": limit},
+                json={
+                    "model": self._model,
+                    "query": query,
+                    "documents": [candidate.content or "" for candidate in candidates],
+                    "top_n": limit,
+                },
                 timeout=30,
             )
             response.raise_for_status()
@@ -849,6 +856,8 @@ class HttpLlmProvider(LlmProvider):
         self._endpoint = settings.llm_endpoint
         self._api_key = settings.llm_api_key
         self._model = settings.llm_model
+        self._graph_extraction_concurrency = max(1, min(8, getattr(settings, "graph_extraction_concurrency", 3)))
+        self.last_graph_extraction_errors: list[dict] = []
 
     def rewrite_query(self, query: str) -> str:
         content = self._chat(
@@ -861,67 +870,90 @@ class HttpLlmProvider(LlmProvider):
 
     def extract_graph(self, chunk_payloads: list[dict]) -> list[ChunkGraphExtraction]:
         """调用真实 LLM 从 Chunk 中抽取可写入 Neo4j 的实体关系 JSON。"""
-        items: list[ChunkGraphExtraction] = []
-        for payload in chunk_payloads:
-            content = str(payload.get("content") or "")
-            response = self._chat(
-                [
-                    {
-                        "role": "system",
-                        "content": (
-                            "Extract entities and relations from the user's chunk. "
-                            "Return strict JSON with keys: summary, entities, relations. "
-                            "entities items: name,type,aliases. relations items: source,target,type. "
-                            "Do not include markdown."
-                        ),
-                    },
-                    {"role": "user", "content": content[:4000]},
-                ],
-                temperature=0,
-            )
-            data = _parse_llm_json(response)
-            chunk_id = str(payload["chunkId"])
-            entities = [
-                GraphEntity(
-                    entity_key=_entity_key(payload["kbId"], str(entity.get("name") or "entity"), chunk_id),
-                    name=str(entity.get("name") or "entity"),
-                    entity_type=str(entity.get("type") or "Unknown"),
-                    aliases=[str(alias) for alias in entity.get("aliases", []) if alias],
-                    chunk_id=chunk_id,
-                )
-                for entity in data.get("entities", [])
-                if isinstance(entity, dict)
-            ]
-            key_by_name = {entity.name: entity.entity_key for entity in entities}
-            relations = []
-            for relation in data.get("relations", []):
-                if not isinstance(relation, dict):
-                    continue
-                source_name = str(relation.get("source") or "")
-                target_name = str(relation.get("target") or "")
-                source_key = key_by_name.get(source_name)
-                target_key = key_by_name.get(target_name)
-                if not source_key or not target_key:
-                    continue
-                relation_type = str(relation.get("type") or "RELATED_TO")
-                relations.append(
-                    GraphRelation(
-                        relation_key=_relation_key(payload["kbId"], source_key, target_key, relation_type, chunk_id),
-                        source_entity_key=source_key,
-                        target_entity_key=target_key,
-                        relation_type=relation_type,
-                        chunk_id=chunk_id,
+        self.last_graph_extraction_errors = []
+        if not chunk_payloads:
+            return []
+        results: list[ChunkGraphExtraction | None] = [None] * len(chunk_payloads)
+        max_workers = min(self._graph_extraction_concurrency, len(chunk_payloads))
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(self._extract_graph_payload, payload): (index, payload)
+                for index, payload in enumerate(chunk_payloads)
+            }
+            for future in as_completed(futures):
+                index, payload = futures[future]
+                try:
+                    results[index] = future.result()
+                except ProviderError as exc:
+                    self.last_graph_extraction_errors.append(
+                        {
+                            "chunkId": str(payload.get("chunkId")),
+                            "errorMessage": str(exc),
+                        }
                     )
-                )
-            items.append(
-                ChunkGraphExtraction(
+        items = [item for item in results if item is not None]
+        if not items and chunk_payloads:
+            raise ProviderError("All graph extraction requests failed.")
+        return items
+
+    def _extract_graph_payload(self, payload: dict) -> ChunkGraphExtraction:
+        """抽取单个 Chunk 的图结构，供并发执行器调用。"""
+        content = str(payload.get("content") or "")
+        response = self._chat(
+            [
+                {
+                    "role": "system",
+                    "content": (
+                        "Extract entities and relations from the user's chunk. "
+                        "Return strict JSON with keys: summary, entities, relations. "
+                        "entities items: name,type,aliases. relations items: source,target,type. "
+                        "Do not include markdown."
+                    ),
+                },
+                {"role": "user", "content": content[:4000]},
+            ],
+            temperature=0,
+        )
+        data = _parse_llm_json(response)
+        chunk_id = str(payload["chunkId"])
+        entities = [
+            GraphEntity(
+                entity_key=_entity_key(payload["kbId"], str(entity.get("name") or "entity"), chunk_id),
+                name=str(entity.get("name") or "entity"),
+                entity_type=str(entity.get("type") or "Unknown"),
+                aliases=[str(alias) for alias in entity.get("aliases", []) if alias],
+                chunk_id=chunk_id,
+            )
+            for entity in data.get("entities", [])
+            if isinstance(entity, dict)
+        ]
+        key_by_name = {entity.name: entity.entity_key for entity in entities}
+        relations = []
+        for relation in data.get("relations", []):
+            if not isinstance(relation, dict):
+                continue
+            source_name = str(relation.get("source") or "")
+            target_name = str(relation.get("target") or "")
+            source_key = key_by_name.get(source_name)
+            target_key = key_by_name.get(target_name)
+            if not source_key or not target_key:
+                continue
+            relation_type = str(relation.get("type") or "RELATED_TO")
+            relations.append(
+                GraphRelation(
+                    relation_key=_relation_key(payload["kbId"], source_key, target_key, relation_type, chunk_id),
+                    source_entity_key=source_key,
+                    target_entity_key=target_key,
+                    relation_type=relation_type,
                     chunk_id=chunk_id,
-                    summary=str(data.get("summary") or content[:160]),
-                    entities=entities,
-                    relations=relations,
                 )
             )
-        return items
+        return ChunkGraphExtraction(
+            chunk_id=chunk_id,
+            summary=str(data.get("summary") or content[:160]),
+            entities=entities,
+            relations=relations,
+        )
 
     def generate_answer(
         self,
@@ -1082,6 +1114,19 @@ def _to_search_document(payload: dict) -> dict:
     document["embedding_dimension"] = payload.get("embeddingDimension")
     document.pop("embedding", None)
     return document
+
+
+def _exact_field_filter(field: str, value: object) -> dict:
+    """构造兼容 keyword 字段和动态 text.keyword 子字段的精确过滤条件。"""
+    return {
+        "bool": {
+            "should": [
+                {"term": {field: value}},
+                {"term": {f"{field}.keyword": value}},
+            ],
+            "minimum_should_match": 1,
+        }
+    }
 
 
 def _parse_llm_json(content: str) -> dict:

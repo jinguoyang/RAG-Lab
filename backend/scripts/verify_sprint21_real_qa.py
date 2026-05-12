@@ -90,6 +90,7 @@ def verify_provider_read_contracts() -> None:
     _assert_contains(source, "self._client.search(", "Milvus Provider 未调用真实 search")
     _assert_contains(source, '"chunk_id"', "Milvus/OpenSearch 检索未返回 chunk_id")
     _assert_contains(source, "self._client.search(index=self._index", "OpenSearch Provider 未调用真实 search")
+    _assert_contains(source, "_exact_field_filter(\"kb_id\"", "OpenSearch 精确过滤未兼容 keyword 子字段")
     _assert_contains(source, "MATCH (e:Entity)-[:SUPPORTED_BY]->(c:ChunkRef)", "Neo4j Provider 未通过 ChunkRef 回落支撑 Chunk")
 
 

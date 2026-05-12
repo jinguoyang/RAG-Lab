@@ -20,9 +20,11 @@ import { toKnowledgeBaseCard } from "../adapters/knowledgeBaseAdapter";
 import {
   createKnowledgeBase,
   disableKnowledgeBase,
+  enableKnowledgeBase,
   fetchKnowledgeBases,
   updateKnowledgeBase,
 } from "../services/knowledgeBaseService";
+import { fetchDocuments } from "../services/documentService";
 import type { KnowledgeBase, KnowledgeBaseCreateRequest } from "../types/knowledgeBase";
 
 interface KnowledgeBaseFormState {
@@ -91,8 +93,11 @@ export function PlatformHome() {
   const [editingKb, setEditingKb] = useState<KnowledgeBase | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [form, setForm] = useState<KnowledgeBaseFormState>(EMPTY_FORM);
+  const [indexCapabilityLocked, setIndexCapabilityLocked] = useState(false);
+  const [indexCapabilityLockLoading, setIndexCapabilityLockLoading] = useState(false);
 
   const kbCards = useMemo(() => knowledgeBases.map(toKnowledgeBaseCard), [knowledgeBases]);
+  const indexCapabilityControlsDisabled = indexCapabilityLocked || indexCapabilityLockLoading;
 
   const loadKnowledgeBases = useCallback((nextKeyword: string) => {
     setIsLoading(true);
@@ -124,6 +129,8 @@ export function PlatformHome() {
     setDialogMode("create");
     setEditingKb(null);
     setForm(EMPTY_FORM);
+    setIndexCapabilityLocked(false);
+    setIndexCapabilityLockLoading(false);
     setIsDialogOpen(true);
   };
 
@@ -132,7 +139,19 @@ export function PlatformHome() {
     setDialogMode("edit");
     setEditingKb(kb);
     setForm(toFormState(kb));
+    setIndexCapabilityLocked(false);
+    setIndexCapabilityLockLoading(true);
     setIsDialogOpen(true);
+    void fetchDocuments(kb.kbId, { pageNo: 1, pageSize: 1 })
+      .then((page) => {
+        setIndexCapabilityLocked(page.total > 0);
+      })
+      .catch(() => {
+        setIndexCapabilityLocked(true);
+      })
+      .finally(() => {
+        setIndexCapabilityLockLoading(false);
+      });
   };
 
   const handleSubmit = async (event: FormEvent) => {
@@ -179,6 +198,27 @@ export function PlatformHome() {
       await loadKnowledgeBases(keyword);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "知识库停用失败。");
+    }
+  };
+
+  const handleEnable = async (event: MouseEvent<HTMLButtonElement>, kb: KnowledgeBase) => {
+    event.stopPropagation();
+    const confirmed = await confirm({
+      title: "恢复启用知识库",
+      description: "恢复后将重新允许上传文档、保存配置和发起 QA 调试，历史数据保持不变。",
+      detail: <span className="font-medium text-near-black">{kb.name}</span>,
+      confirmText: "恢复启用",
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    setErrorMessage(null);
+    try {
+      await enableKnowledgeBase(kb.kbId);
+      await loadKnowledgeBases(keyword);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "知识库启用失败。");
     }
   };
 
@@ -280,11 +320,11 @@ export function PlatformHome() {
                   <Button
                     variant="outline"
                     size="sm"
-                    title="停用知识库"
-                    disabled={isDisabled}
-                    onClick={(event) => handleDisable(event, kb)}
+                    title={isDisabled ? "恢复启用知识库" : "停用知识库"}
+                    onClick={(event) => isDisabled ? handleEnable(event, kb) : handleDisable(event, kb)}
                   >
                     <Power className="h-4 w-4" />
+                    <span className="sr-only">{isDisabled ? "恢复启用" : "停用"}</span>
                   </Button>
                 </CardFooter>
               </Card>
@@ -334,11 +374,15 @@ export function PlatformHome() {
               </div>
 
               <div className="grid gap-3 rounded-lg border border-border-cream bg-parchment p-4">
+                {dialogMode === "edit" && indexCapabilityLocked && (
+                  <p className="text-xs text-stone-gray">已有文档后不可变更 OpenSearch / Neo4j 索引能力。</p>
+                )}
                 <label className="flex items-center justify-between gap-4 text-sm text-near-black">
                   维护 Sparse 文本索引
                   <input
                     type="checkbox"
                     checked={form.sparseIndexEnabled}
+                    disabled={indexCapabilityControlsDisabled}
                     onChange={(event) => setForm({ ...form, sparseIndexEnabled: event.target.checked })}
                     className="h-4 w-4 accent-terracotta"
                   />
@@ -357,6 +401,7 @@ export function PlatformHome() {
                   <input
                     type="checkbox"
                     checked={form.graphIndexEnabled}
+                    disabled={indexCapabilityControlsDisabled}
                     onChange={(event) => setForm({ ...form, graphIndexEnabled: event.target.checked })}
                     className="h-4 w-4 accent-terracotta"
                   />

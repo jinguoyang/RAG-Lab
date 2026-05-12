@@ -78,7 +78,7 @@ def verify_e2e_flow_guards() -> None:
     qa_source = _read_backend("app/services/qa_run_service.py")
     graph_source = _read_backend("app/services/graph_service.py")
 
-    _assert_contains(document_source, "run_ingest_job(session, current_user, kb_row", "文档上传/重解析未触发本地入库 Worker")
+    _assert_contains(document_source, "enqueue_ingest_job(session", "文档上传/重解析未投递后台入库 Worker")
     _assert_contains(document_source, "def reparse_document(", "缺少文档重解析服务")
     _assert_contains(document_source, "confirmImpact must be true", "版本切换缺少二次确认约束")
     _assert_contains(document_source, "mark_graph_snapshots_stale(", "active version 切换未联动图快照 stale")
@@ -128,7 +128,7 @@ def verify_acceptance_checklist_results() -> None:
 def verify_project_docs_reference_script() -> None:
     """确认测试计划和 Sprint 计划均能指向本脚本。"""
     test_plan = _read(ROOT_DIR / "docs/05-测试与验收/测试计划.md")
-    sprint_plan = _read(ROOT_DIR / "docs/04-迭代与交付/sprints/Sprint-12.md")
+    sprint_plan = _read(ROOT_DIR / "docs/04-迭代与交付/sprints/sprint1-20/Sprint-12.md")
     _assert_contains(test_plan, "verify_sprint12_acceptance.py", "测试计划未纳入 Sprint 12 验收脚本")
     _assert_contains(sprint_plan, "verify_sprint12_acceptance.py", "Sprint 12 计划未记录验收脚本")
 

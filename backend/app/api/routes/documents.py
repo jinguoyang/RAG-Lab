@@ -1,7 +1,8 @@
 from typing import Annotated
+from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -30,11 +31,14 @@ from app.schemas.document import (
 )
 from app.services.document_service import (
     DocumentConflictError,
+    DocumentIngestEnqueueError,
     DocumentPermissionError,
+    DocumentSourceFileUnavailableError,
     activate_document_version,
     cancel_ingest_job,
     create_document_upload,
     delete_document,
+    download_document_source,
     get_chunk,
     get_document_detail,
     get_document_quality_summary,
@@ -68,6 +72,11 @@ def _raise_document_error(exc: Exception) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PERMISSION_DENIED") from exc
     if isinstance(exc, KnowledgeBaseDisabledError):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="KB_DISABLED: knowledge base is disabled.") from exc
+    if isinstance(exc, DocumentIngestEnqueueError):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="INGEST_ENQUEUE_FAILED: document ingest task enqueue failed.",
+        ) from exc
     if isinstance(exc, DocumentConflictError):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     raise exc
@@ -114,7 +123,7 @@ async def upload_document(
             name=name,
             security_level=security_level,
         )
-    except (KnowledgeBaseDisabledError, DocumentPermissionError, DocumentConflictError) as exc:
+    except (KnowledgeBaseDisabledError, DocumentPermissionError, DocumentConflictError, DocumentIngestEnqueueError) as exc:
         _raise_document_error(exc)
     except ObjectStorageError as exc:
         raise HTTPException(
@@ -173,10 +182,10 @@ def reparse_document_endpoint(
     current_user: CurrentUserResponse = Depends(get_current_user),
     session: Session = Depends(get_db_session),
 ) -> DocumentUploadResponse:
-    """创建重解析版本和作业，并执行本地解析 Worker。"""
+    """创建重解析版本和 queued 作业，并投递后台 Worker。"""
     try:
         response = reparse_document(session, current_user, kb_id, document_id, request.reason)
-    except (KnowledgeBaseDisabledError, DocumentPermissionError, DocumentConflictError) as exc:
+    except (KnowledgeBaseDisabledError, DocumentPermissionError, DocumentConflictError, DocumentIngestEnqueueError) as exc:
         _raise_document_error(exc)
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
@@ -195,6 +204,36 @@ def read_document_detail(
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
     return response
+
+
+@router.get("/{document_id}/download")
+def download_document_endpoint(
+    kb_id: UUID,
+    document_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> Response:
+    """下载当前 active version 的原始文件，文件缺失时返回可展示提示。"""
+    try:
+        download = download_document_source(session, current_user, kb_id, document_id)
+    except DocumentPermissionError as exc:
+        _raise_document_error(exc)
+    except DocumentSourceFileUnavailableError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ObjectStorageError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="STORAGE_READ_FAILED: 原始文件读取失败，请稍后重试或联系管理员。",
+        ) from exc
+    if download is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
+
+    encoded_file_name = quote(download.file_name)
+    return Response(
+        content=download.content,
+        media_type=download.mime_type or "application/octet-stream",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_file_name}"},
+    )
 
 
 @router.delete("/{document_id}", response_model=DocumentDeleteResponse)
@@ -358,7 +397,7 @@ def retry_ingest_job_endpoint(
     """重试失败或取消的 IngestJob。"""
     try:
         response = retry_ingest_job(session, current_user, kb_id, job_id)
-    except (KnowledgeBaseDisabledError, DocumentPermissionError, DocumentConflictError) as exc:
+    except (KnowledgeBaseDisabledError, DocumentPermissionError, DocumentConflictError, DocumentIngestEnqueueError) as exc:
         _raise_document_error(exc)
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ingest job not found.")
@@ -387,11 +426,12 @@ def read_index_sync_jobs(
     kb_id: UUID,
     page_no: Annotated[int, Query(alias="pageNo", ge=1)] = 1,
     page_size: Annotated[int, Query(alias="pageSize", ge=1, le=100)] = 20,
+    document_id: Annotated[UUID | None, Query(alias="documentId")] = None,
     current_user: CurrentUserResponse = Depends(get_current_user),
     session: Session = Depends(get_db_session),
 ) -> PageResponse[IndexSyncJobDTO]:
     """分页返回副本同步作业。"""
-    response = list_index_sync_jobs(session, current_user, kb_id, page_no, page_size)
+    response = list_index_sync_jobs(session, current_user, kb_id, page_no, page_size, document_id)
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found.")
     return response

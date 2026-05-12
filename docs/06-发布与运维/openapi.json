@@ -1782,6 +1782,66 @@
         }
       }
     },
+    "/api/v1/knowledge-bases/{kb_id}/enable": {
+      "post": {
+        "tags": [
+          "knowledge-bases"
+        ],
+        "summary": "Enable Knowledge Base Endpoint",
+        "description": "恢复启用知识库，重新允许上传、配置保存和 QA 调试等写操作。",
+        "operationId": "enable_knowledge_base_endpoint_api_v1_knowledge_bases__kb_id__enable_post",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeBaseDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/knowledge-bases/{kb_id}/permissions/summary": {
       "get": {
         "tags": [

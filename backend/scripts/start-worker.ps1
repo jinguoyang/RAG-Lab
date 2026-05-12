@@ -1,6 +1,4 @@
-param(
-    [int]$Port = 8000
-)
+param()
 
 $ErrorActionPreference = "Stop"
 
@@ -32,5 +30,5 @@ function Get-CondaExecutable {
 
 $CondaExe = Get-CondaExecutable
 
-# Start with the project-specific Conda env to avoid using base by mistake.
-& $CondaExe run --no-capture-output -n $EnvName python -m uvicorn app.main:app --reload --host 127.0.0.1 --port $Port
+# Windows 本地 worker 使用 solo pool；通过 python -m celery 避免 console script 入口缺失。
+& $CondaExe run --no-capture-output -n $EnvName python -m celery -A app.worker worker --loglevel=info --pool=solo

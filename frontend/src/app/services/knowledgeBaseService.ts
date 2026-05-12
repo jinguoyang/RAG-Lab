@@ -41,6 +41,10 @@ export async function disableKnowledgeBase(kbId: string): Promise<KnowledgeBase>
   return apiPostJson<KnowledgeBase>(`/knowledge-bases/${kbId}/disable`, {});
 }
 
+export async function enableKnowledgeBase(kbId: string): Promise<KnowledgeBase> {
+  return apiPostJson<KnowledgeBase>(`/knowledge-bases/${kbId}/enable`, {});
+}
+
 interface FetchKbMembersParams {
   keyword?: string;
   pageNo?: number;

@@ -62,6 +62,50 @@ def verify_real_document_parsers() -> None:
             _assert(any(chunk.section for chunk in parsed.chunks), f"{extension} 缺少章节 metadata")
 
 
+def verify_structured_plain_text_sections() -> None:
+    """校验 Markdown-like txt 能提取章节路径，而不是退化为段落序号。"""
+    content = """# 呆滞物料管理办法
+
+## 第一章 总则
+
+### 第一条 目的
+为规范公司呆滞物料管理，提高库存周转率，降低库存成本，特制定本办法。
+
+### 第二条 适用范围
+本办法适用于公司所有原材料、半成品、成品及备品备件的呆滞物料管理。
+
+## 第二章 呆滞物料定义与标准
+
+### 第三条 呆滞物料定义
+- 原材料：连续3个月无领用记录的物料
+- 半成品：连续2个月无生产需求的在制品
+
+## 第三章 统计职责
+
+### 第五条 物流保障部职责
+1. 按季度组织呆滞物料统计工作
+2. 每季度首月5日前完成上季度统计
+3. 建立呆滞物料台账，实时更新
+"""
+    parsed = parse_document("structured.txt", "text/plain", content.encode("utf-8"), chunk_size=700, chunk_overlap=80)
+    sections = [chunk.section or "" for chunk in parsed.chunks]
+
+    _assert(parsed.parser_name == "plain_text", "txt 文件应保持 plain_text parserName")
+    _assert(all(not section.startswith("Text paragraph") for section in sections), "结构化 txt 不应使用 Text paragraph 作为章节")
+    _assert(
+        any("第一章 总则" in section and "第一条 目的" in section for section in sections),
+        "结构化 txt 未提取章/条章节路径",
+    )
+    _assert(
+        any("第二章 呆滞物料定义与标准" in section and "第三条 呆滞物料定义" in section for section in sections),
+        "结构化 txt 未继承后续章节路径",
+    )
+    _assert(
+        all(" > 2. 每季度首月5日前完成上季度统计" not in section for section in sections),
+        "结构化 txt 不应把正文编号列表误判为章节",
+    )
+
+
 def verify_unsupported_binary_fails() -> None:
     """校验无法识别的二进制文件显式失败，不创建成功占位 Chunk。"""
     try:
@@ -212,6 +256,7 @@ def verify_ingest_worker_uses_real_parser_contract() -> None:
 def main() -> None:
     """执行 Sprint 19 真实解析和 Embedding 契约验收。"""
     verify_real_document_parsers()
+    verify_structured_plain_text_sections()
     verify_unsupported_binary_fails()
     verify_chunk_payload_contract()
     verify_embedding_http_contract()

@@ -8,7 +8,9 @@ import { Input } from "../components/rag/Input";
 import { Alert } from "../components/rag/Alert";
 import { StatusBadge, Badge } from "../components/rag/Badge";
 import { Drawer, DrawerSection } from "../components/rag/Drawer";
-import { ratingToFeedbackStatus, toQAHistoryRecord, type QAHistoryRecordViewModel } from "../adapters/qaRunAdapter";
+import { QAPartialDiagnosticsPanel } from "../components/rag/QAPartialDiagnosticsPanel";
+import { ratingToFeedbackStatus, toQAHistoryRecord, toQARewriteTrace, type QAHistoryRecordViewModel } from "../adapters/qaRunAdapter";
+import { deriveQAPartialDiagnostics } from "../utils/qaPartialDiagnostics";
 import {
   addQARunComment,
   createConfigDraftFromQARun,
@@ -174,6 +176,12 @@ export function QAHistory() {
   const snapshotPreview = useMemo(() => {
     if (!selectedDetail) return "{}";
     return JSON.stringify(selectedDetail.nodeParamSnapshot, null, 2).slice(0, 1200);
+  }, [selectedDetail]);
+  const selectedPartialDiagnostics = useMemo(() => {
+    return selectedDetail ? deriveQAPartialDiagnostics(selectedDetail) : undefined;
+  }, [selectedDetail]);
+  const selectedRewriteTrace = useMemo(() => {
+    return selectedDetail ? toQARewriteTrace(selectedDetail) : null;
   }, [selectedDetail]);
 
   async function openRun(run: HistoryRecord) {
@@ -497,6 +505,38 @@ export function QAHistory() {
               </div>
             </DrawerSection>
 
+            <DrawerSection title="问题改写">
+              {selectedRewriteTrace ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-xs">
+                    <Badge variant={selectedRewriteTrace.usedOriginalQuery ? "default" : "success"}>
+                      {selectedRewriteTrace.statusLabel}
+                    </Badge>
+                    <span className="font-mono text-stone-gray">provider {selectedRewriteTrace.providerLabel}</span>
+                  </div>
+                  <div className="grid gap-3 text-sm">
+                    <div className="rounded-lg border border-border-cream bg-parchment p-3">
+                      <div className="mb-1 text-xs text-stone-gray">原始问题</div>
+                      <div className="text-near-black">{selectedRewriteTrace.originalQuery}</div>
+                    </div>
+                    <div className="rounded-lg border border-border-cream bg-parchment p-3">
+                      <div className="mb-1 text-xs text-stone-gray">改写后问题</div>
+                      <div className="text-near-black">{selectedRewriteTrace.rewrittenQuery}</div>
+                    </div>
+                  </div>
+                  {selectedRewriteTrace.errorMessage && (
+                    <div className="rounded-lg border border-error-red/20 bg-error-red/10 p-3 text-xs text-error-red">
+                      {selectedRewriteTrace.errorMessage}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-border-cream bg-parchment p-3 text-sm text-stone-gray">
+                  正在加载问题改写详情...
+                </div>
+              )}
+            </DrawerSection>
+
             <DrawerSection title="参数快照">
               <div className="space-y-2 text-xs text-stone-gray">
                 <div className="rounded-lg border border-border-cream bg-parchment p-3">
@@ -538,6 +578,12 @@ export function QAHistory() {
                 )}
               </div>
             </DrawerSection>
+
+            {selectedPartialDiagnostics?.hasPartialIssue && (
+              <DrawerSection title="部分成功详情">
+                <QAPartialDiagnosticsPanel diagnostics={selectedPartialDiagnostics} />
+              </DrawerSection>
+            )}
 
             <DrawerSection title="协作处理">
               <div className="space-y-3">

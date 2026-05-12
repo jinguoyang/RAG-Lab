@@ -43,7 +43,15 @@ function jobStatusToIndexStatus(status: JobStatus, stage: string | null): IndexS
   if (status === "success") {
     return "success";
   }
-  if (stage === "parse" || stage === "embedding" || stage === "index_sync") {
+  if (
+    stage === "parse" ||
+    stage === "embedding" ||
+    stage === "dense_index" ||
+    stage === "sparse_index" ||
+    stage === "graph_extract" ||
+    stage === "graph_index" ||
+    stage === "index_sync"
+  ) {
     return "running";
   }
   return "pending";
@@ -89,6 +97,38 @@ function inferMissingReplicaStatus(job: IngestJobDTO, key: "milvus" | "opensearc
   return "not_required";
 }
 
+function stageOrder(stage: string | null): number {
+  const stages = ["queued", "parse", "embedding", "dense_index", "sparse_index", "graph_extract", "graph_index", "completed"];
+  const normalized =
+    stage === "index_sync"
+      ? "dense_index"
+      : stage === "milvus"
+        ? "dense_index"
+        : stage === "opensearch"
+          ? "sparse_index"
+          : stage || "queued";
+  const index = stages.indexOf(normalized);
+  return index >= 0 ? index : 0;
+}
+
+function statusByCurrentStage(job: IngestJobDTO, stageKey: IndexStageViewModel["key"]): IndexStageViewModel["status"] {
+  if (job.status === "success") {
+    return "success";
+  }
+  if (job.status === "failed") {
+    return job.stage === stageKey ? "failed" : stageOrder(job.stage) > stageOrder(stageKey) ? "success" : "pending";
+  }
+  const currentOrder = stageOrder(job.stage);
+  const targetOrder = stageOrder(stageKey);
+  if (currentOrder > targetOrder) {
+    return "success";
+  }
+  if (currentOrder === targetOrder) {
+    return "running";
+  }
+  return "pending";
+}
+
 function toJobIndexStages(job: IngestJobDTO): IndexStageViewModel[] {
   const derivedStatus = jobStatusToIndexStatus(job.status, job.stage);
   const errorSummary = readJobErrorSummary(job);
@@ -98,16 +138,18 @@ function toJobIndexStages(job: IngestJobDTO): IndexStageViewModel[] {
       { key: "embedding", label: "Embedding", status: normalizeIndexStageStatus(errorSummary.embedding?.status, derivedStatus) },
       { key: "milvus", label: "Milvus", status: normalizeIndexStageStatus(errorSummary.milvus?.status, inferMissingReplicaStatus(job, "milvus")) },
       { key: "opensearch", label: "OpenSearch", status: normalizeIndexStageStatus(errorSummary.opensearch?.status, inferMissingReplicaStatus(job, "opensearch")) },
-      { key: "neo4j", label: "Neo4j", status: normalizeIndexStageStatus(errorSummary.neo4j?.status, inferMissingReplicaStatus(job, "neo4j")) },
+      { key: "graph_extract", label: "Graph 抽取", status: normalizeIndexStageStatus(errorSummary.neo4j?.status, inferMissingReplicaStatus(job, "neo4j")) },
+      { key: "graph_index", label: "Neo4j", status: normalizeIndexStageStatus(errorSummary.neo4j?.status, inferMissingReplicaStatus(job, "neo4j")) },
     ];
   }
 
   return [
-    { key: "parse", label: "解析", status: job.stage === "queued" ? "pending" : derivedStatus },
-    { key: "embedding", label: "Embedding", status: job.stage === "parse" ? "pending" : derivedStatus },
-    { key: "milvus", label: "Milvus", status: job.stage === "index_sync" ? derivedStatus : job.status === "success" ? "success" : "pending" },
-    { key: "opensearch", label: "OpenSearch", status: job.stage === "index_sync" ? derivedStatus : job.status === "success" ? "success" : "pending" },
-    { key: "neo4j", label: "Neo4j", status: job.stage === "index_sync" ? derivedStatus : job.status === "success" ? "success" : "pending" },
+    { key: "parse", label: "解析", status: statusByCurrentStage(job, "parse") },
+    { key: "embedding", label: "Embedding", status: statusByCurrentStage(job, "embedding") },
+    { key: "milvus", label: "Milvus", status: statusByCurrentStage(job, "milvus") },
+    { key: "opensearch", label: "OpenSearch", status: statusByCurrentStage(job, "opensearch") },
+    { key: "graph_extract", label: "Graph 抽取", status: statusByCurrentStage(job, "graph_extract") },
+    { key: "graph_index", label: "Neo4j", status: statusByCurrentStage(job, "graph_index") },
   ];
 }
 
@@ -137,7 +179,7 @@ export function toVersionRow(
     indexStages: [
       { key: "milvus", label: "Dense / Milvus", status: version.denseIndexStatus },
       { key: "opensearch", label: "OpenSearch", status: version.sparseIndexStatus },
-      { key: "neo4j", label: "Neo4j", status: version.graphIndexStatus },
+      { key: "graph_index", label: "Neo4j", status: version.graphIndexStatus },
     ],
   };
 }

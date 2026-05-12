@@ -34,7 +34,7 @@ export interface DocumentVersionDTO {
 }
 
 export interface IndexStageViewModel {
-  key: "parse" | "embedding" | "milvus" | "opensearch" | "neo4j";
+  key: "parse" | "embedding" | "milvus" | "opensearch" | "graph_extract" | "graph_index";
   label: string;
   status: "not_required" | "pending" | "running" | "success" | "failed";
 }

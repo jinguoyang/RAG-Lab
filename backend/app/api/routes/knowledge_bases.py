@@ -25,6 +25,7 @@ from app.schemas.permission import (
 )
 from app.services.permission_service import get_kb_permission_summary, simulate_effective_permission
 from app.services.knowledge_base_service import (
+    KnowledgeBaseIndexCapabilityLockedError,
     KbMemberBindingConflictError,
     KbMemberBindingNotFoundError,
     KbMemberSubjectNotFoundError,
@@ -34,6 +35,7 @@ from app.services.knowledge_base_service import (
     create_knowledge_base,
     create_kb_member,
     disable_knowledge_base,
+    enable_knowledge_base,
     get_knowledge_base,
     list_knowledge_bases,
     list_kb_members,
@@ -92,6 +94,11 @@ def _raise_kb_management_error(exc: Exception) -> None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="KB_DISABLED: knowledge base is disabled.",
+        ) from exc
+    if isinstance(exc, KnowledgeBaseIndexCapabilityLockedError):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="KB_INDEX_CAPABILITY_LOCKED: index capabilities cannot be changed after documents are uploaded.",
         ) from exc
     raise exc
 
@@ -170,6 +177,19 @@ def disable_knowledge_base_endpoint(
     """停用知识库，保留历史数据但阻止后续写操作。"""
     try:
         return disable_knowledge_base(session, current_user, kb_id)
+    except Exception as exc:
+        _raise_kb_management_error(exc)
+
+
+@router.post("/{kb_id}/enable", response_model=KnowledgeBaseDTO)
+def enable_knowledge_base_endpoint(
+    kb_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> KnowledgeBaseDTO:
+    """恢复启用知识库，重新允许上传、配置保存和 QA 调试等写操作。"""
+    try:
+        return enable_knowledge_base(session, current_user, kb_id)
     except Exception as exc:
         _raise_kb_management_error(exc)
 

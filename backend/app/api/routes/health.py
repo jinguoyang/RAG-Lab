@@ -197,6 +197,7 @@ def read_dependency_health() -> DependencyHealthResponse:
             config=[
                 _config_item("RAG_LAB_RERANK_ENDPOINT", settings.rerank_endpoint),
                 _config_item("RAG_LAB_RERANK_API_KEY", settings.rerank_api_key, sensitive=True),
+                _config_item("RAG_LAB_RERANK_MODEL", settings.rerank_model),
             ],
         ),
     ]
@@ -237,6 +238,7 @@ def read_provider_diagnostics() -> ProviderDiagnosticsResponse:
             [
                 _config_item("RAG_LAB_RERANK_ENDPOINT", settings.rerank_endpoint),
                 _config_item("RAG_LAB_RERANK_API_KEY", settings.rerank_api_key, sensitive=True),
+                _config_item("RAG_LAB_RERANK_MODEL", settings.rerank_model),
             ],
             {"identity"},
         ),

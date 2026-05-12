@@ -1,0 +1,162 @@
+"""默认受控 Pipeline 定义，供新建知识库生成初始可运行配置。"""
+
+from typing import Any
+
+
+def build_default_pipeline_definition(
+    sparse_index_enabled: bool,
+    graph_index_enabled: bool,
+) -> dict[str, Any]:
+    """构造系统默认 Pipeline，检索通道跟随知识库索引能力开关。"""
+    return {
+        "version": "1.0",
+        "constraintsVersion": "1.0",
+        "mode": "constrained-stage-pipeline",
+        "stages": ["preprocess", "retrieval", "fusion", "generation", "diagnostics"],
+        "templateId": "system_default",
+        "nodes": [
+            {
+                "id": "input",
+                "type": "input",
+                "stage": "preprocess",
+                "enabled": True,
+                "locked": True,
+                "params": {},
+            },
+            {
+                "id": "queryRewrite",
+                "type": "queryRewrite",
+                "stage": "preprocess",
+                "enabled": True,
+                "locked": False,
+                "params": {
+                    "promptVersion": "v2",
+                    "rewriteStrategy": "hybrid",
+                    "preserveOriginalQuery": True,
+                    "expansionCount": 3,
+                },
+            },
+            {
+                "id": "multiQuery",
+                "type": "multiQuery",
+                "stage": "preprocess",
+                "enabled": False,
+                "locked": False,
+                "params": {"queryCount": 3, "mergeStrategy": "rrf"},
+            },
+            {
+                "id": "dense",
+                "type": "denseRetrieval",
+                "stage": "retrieval",
+                "enabled": True,
+                "locked": False,
+                "params": {
+                    "topK": 20,
+                    "scoreThreshold": 0.75,
+                    "fusionWeight": 0.4,
+                    "embeddingModel": "bge-m3",
+                    "metadataFilter": "active-documents",
+                },
+            },
+            {
+                "id": "sparse",
+                "type": "sparseRetrieval",
+                "stage": "retrieval",
+                "enabled": sparse_index_enabled,
+                "locked": False,
+                "params": {
+                    "topK": 15,
+                    "scoreThreshold": 0.2,
+                    "fusionWeight": 0.3,
+                    "matchMode": "bm25+phrase",
+                    "metadataFilter": "active-documents",
+                },
+            },
+            {
+                "id": "graph",
+                "type": "graphRetrieval",
+                "stage": "retrieval",
+                "enabled": graph_index_enabled,
+                "locked": False,
+                "params": {
+                    "graphDepth": 2,
+                    "graphExpansionLimit": 50,
+                    "maxNodes": 50,
+                    "fusionWeight": 0.3,
+                    "pathMode": "entity-path",
+                    "mustFallbackToChunk": True,
+                },
+            },
+            {
+                "id": "fusion",
+                "type": "fusion",
+                "stage": "fusion",
+                "enabled": True,
+                "locked": True,
+                "params": {"method": "weighted", "rrfK": 60, "candidateLimit": 40, "dedupBy": "chunkId"},
+            },
+            {
+                "id": "permissionFilter",
+                "type": "permissionFilter",
+                "stage": "fusion",
+                "enabled": True,
+                "locked": True,
+                "params": {},
+            },
+            {
+                "id": "rerank",
+                "type": "rerank",
+                "stage": "fusion",
+                "enabled": True,
+                "locked": False,
+                "params": {
+                    "model": "bge-reranker-v2-m3",
+                    "topN": 5,
+                    "scoreThreshold": 0,
+                    "keepRejectedReason": True,
+                },
+            },
+            {
+                "id": "contextPacking",
+                "type": "contextPacking",
+                "stage": "generation",
+                "enabled": True,
+                "locked": True,
+                "params": {
+                    "maxContextTokens": 6000,
+                    "packingStrategy": "citation-aware",
+                    "chunkWindow": 1,
+                    "citationPolicy": "strict",
+                },
+            },
+            {
+                "id": "generation",
+                "type": "generation",
+                "stage": "generation",
+                "enabled": True,
+                "locked": True,
+                "params": {
+                    "model": "claude-3-5-sonnet",
+                    "temperature": 0.1,
+                    "maxOutputTokens": 1200,
+                    "citationPolicy": "strict",
+                },
+            },
+            {
+                "id": "citation",
+                "type": "citation",
+                "stage": "generation",
+                "enabled": True,
+                "locked": True,
+                "params": {"minEvidence": 1, "citationPolicy": "strict", "enableGraphLinks": True},
+            },
+            {
+                "id": "output",
+                "type": "output",
+                "stage": "diagnostics",
+                "enabled": True,
+                "locked": True,
+                "params": {},
+            },
+        ],
+    }

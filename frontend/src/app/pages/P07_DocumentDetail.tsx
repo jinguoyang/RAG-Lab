@@ -86,16 +86,16 @@ export function DocumentDetail() {
     if (!kbId || !docId) return;
     setLoading(true);
     try {
-      const [nextDetail, nextVersions, nextJobs] = await Promise.all([
+      const [nextDetail, nextVersions, nextJobs, nextIndexSyncJobPage] = await Promise.all([
         fetchDocumentDetail(kbId, docId),
         fetchDocumentVersions(kbId, docId),
         fetchIngestJobs(kbId, docId),
+        fetchIndexSyncJobs(kbId, docId),
       ]);
-      const nextIndexSyncJobs = await fetchIndexSyncJobs(kbId);
       setDetail(nextDetail);
       setVersions(nextVersions);
       setJobs(nextJobs.items);
-      setIndexSyncJobs(nextIndexSyncJobs.items);
+      setIndexSyncJobs(nextIndexSyncJobPage.items);
       const activeVersionId = nextDetail.document.activeVersionId;
       if (activeVersionId) {
         const nextChunks = await fetchChunks(kbId, docId, activeVersionId, nextChunkPageNo, 10);
@@ -123,8 +123,23 @@ export function DocumentDetail() {
 
   useEffect(() => {
     const state = location.state as {
+      focusChunkId?: string | null;
       governanceIssue?: { chunkId?: string | null; versionId?: string | null; recommendedAction?: string | null };
     } | null;
+    if (state?.focusChunkId) {
+      setActiveTab("chunks");
+      void fetchChunk(kbId, state.focusChunkId)
+        .then((chunk) => {
+          const governance = readChunkGovernance(chunk);
+          setSelectedChunk(chunk);
+          setGovernanceExcluded(governance.excluded);
+          setGovernanceNoteInput(governance.note);
+        })
+        .catch((error) => {
+          setFeedback({ variant: "error", title: "Chunk 详情加载失败", message: error instanceof Error ? error.message : "请检查权限。" });
+        });
+      return;
+    }
     const governanceIssue = state?.governanceIssue;
     if (!governanceIssue) return;
     if (governanceIssue.chunkId) {
@@ -270,7 +285,7 @@ export function DocumentDetail() {
         documentId: docId,
         versionId: activeVersion?.versionId ?? null,
       });
-      const nextJobs = await fetchIndexSyncJobs(kbId);
+      const nextJobs = await fetchIndexSyncJobs(kbId, docId);
       setIndexSyncJobs(nextJobs.items);
       setFeedback({ variant: "success", title: "索引重建已创建", message: `${rebuildTargetStore} 作业已写入。` });
       setActiveTab("indexSync");
@@ -307,7 +322,7 @@ export function DocumentDetail() {
         actions={
           <>
             <Button variant="outline" disabled={loading} onClick={() => void loadData()}>
-              <RefreshCw className="w-4 h-4 mr-2" /> 刷新
+              <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} /> {loading ? "刷新中..." : "刷新"}
             </Button>
             <Button variant="primary" disabled={actionLoading === "reparse"} onClick={() => void handleReparse()}>
               <FileSymlink className="w-4 h-4 mr-2" /> 重解析
@@ -329,6 +344,13 @@ export function DocumentDetail() {
         <Alert variant={feedback.variant} title={feedback.title} onClose={() => setFeedback(null)}>
           {feedback.message}
         </Alert>
+      )}
+      {loading && (
+        <div role="status" aria-live="polite">
+          <Alert variant="info" title="正在刷新文档详情">
+            正在从后端读取文档、版本、作业和 Chunk，请稍候。
+          </Alert>
+        </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -508,6 +530,7 @@ export function DocumentDetail() {
                         <Button
                           variant="outline"
                           size="sm"
+                          className="whitespace-nowrap"
                           disabled={!["failed", "cancelled"].includes(job.status) || actionLoading === job.jobId}
                           onClick={() => void handleRetryJob(job)}
                         >
@@ -516,6 +539,7 @@ export function DocumentDetail() {
                         <Button
                           variant="ghost"
                           size="sm"
+                          className="whitespace-nowrap"
                           disabled={!["queued", "running"].includes(job.status) || actionLoading === job.jobId}
                           onClick={() => void handleCancelJob(job)}
                         >

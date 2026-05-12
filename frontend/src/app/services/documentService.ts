@@ -1,4 +1,5 @@
-import { apiDeleteJson, apiGet, apiPatchJson, apiPostForm, apiPostJson } from "./apiClient";
+import { apiDeleteJson, apiDownload, apiGet, apiPatchJson, apiPostForm, apiPostJson } from "./apiClient";
+import type { ApiDownload } from "./apiClient";
 import type {
   BulkDocumentGovernanceRequest,
   BulkDocumentGovernanceResponse,
@@ -69,6 +70,13 @@ export async function deleteDocument(
     confirmImpact: true,
     reason,
   });
+}
+
+export async function downloadDocumentSource(
+  kbId: string,
+  documentId: string,
+): Promise<ApiDownload> {
+  return apiDownload(`/knowledge-bases/${kbId}/documents/${documentId}/download`);
 }
 
 export async function fetchDocumentQualitySummary(kbId: string): Promise<DocumentQualitySummaryDTO> {
@@ -162,8 +170,13 @@ export async function cancelIngestJob(kbId: string, jobId: string): Promise<Inge
   return apiPostJson<IngestJobDTO>(`/knowledge-bases/${kbId}/ingest-jobs/${jobId}/cancel`, {});
 }
 
-export async function fetchIndexSyncJobs(kbId: string): Promise<IndexSyncJobPage> {
-  return apiGet<IndexSyncJobPage>(`/knowledge-bases/${kbId}/index-sync-jobs?pageNo=1&pageSize=20`);
+export async function fetchIndexSyncJobs(kbId: string, documentId?: string): Promise<IndexSyncJobPage> {
+  const params = new URLSearchParams({ pageNo: "1", pageSize: "20" });
+  if (documentId) {
+    params.set("documentId", documentId);
+  }
+
+  return apiGet<IndexSyncJobPage>(`/knowledge-bases/${kbId}/index-sync-jobs?${params.toString()}`);
 }
 
 export async function rebuildIndexSync(kbId: string, request: IndexSyncRebuildRequest): Promise<IndexSyncJobDTO> {

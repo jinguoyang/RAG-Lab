@@ -129,7 +129,23 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("RAG_LAB_RERANK_API_KEY", "RERANK_API_KEY"),
     )
+    rerank_model: str = Field(
+        default="qwen3-rerank",
+        validation_alias=AliasChoices("RAG_LAB_RERANK_MODEL", "RERANK_MODEL", "OPENAI_RERANK_MODEL"),
+    )
     provider_top_k: int = Field(default=5, validation_alias=AliasChoices("RAG_LAB_PROVIDER_TOP_K", "PROVIDER_TOP_K"))
+    celery_broker_url: str = Field(
+        default="redis://127.0.0.1:6379/0",
+        validation_alias=AliasChoices("RAG_LAB_CELERY_BROKER_URL", "CELERY_BROKER_URL"),
+    )
+    celery_result_backend: str = Field(
+        default="redis://127.0.0.1:6379/1",
+        validation_alias=AliasChoices("RAG_LAB_CELERY_RESULT_BACKEND", "CELERY_RESULT_BACKEND"),
+    )
+    graph_extraction_concurrency: int = Field(
+        default=3,
+        validation_alias=AliasChoices("RAG_LAB_GRAPH_EXTRACTION_CONCURRENCY", "GRAPH_EXTRACTION_CONCURRENCY"),
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import RowMapping, and_, case, func, insert, or_, select, update
@@ -16,8 +17,9 @@ from app.schemas.knowledge_base import (
     RequiredForActivationDTO,
 )
 from app.services.audit_service import write_audit_log
+from app.services.default_pipeline import build_default_pipeline_definition
 from app.services.permission_service import has_kb_permission, kb_visibility_condition
-from app.tables import kb_member_bindings, knowledge_bases, user_groups, users
+from app.tables import config_revisions, documents, kb_member_bindings, knowledge_bases, user_groups, users
 
 
 class KnowledgeBasePermissionError(Exception):
@@ -30,6 +32,10 @@ class KnowledgeBaseNotFoundError(Exception):
 
 class KnowledgeBaseDisabledError(Exception):
     """知识库已停用，当前写操作不允许继续。"""
+
+
+class KnowledgeBaseIndexCapabilityLockedError(Exception):
+    """知识库已有文档后，索引能力开关不允许通过普通编辑变更。"""
 
 
 class KbMemberBindingNotFoundError(Exception):
@@ -136,6 +142,36 @@ def _ensure_kb_manage_permission(
     _ensure_kb_visible(session, current_user, kb_id)
     if not has_kb_permission(session, current_user, kb_id, "kb.manage"):
         raise KnowledgeBasePermissionError
+
+
+def _ensure_index_capabilities_mutable(
+    session: Session,
+    kb_id: UUID,
+    kb_row: RowMapping,
+    request: KnowledgeBaseUpdateRequest,
+) -> None:
+    """已有文档时锁定 OpenSearch/Neo4j 能力，避免历史版本副本状态被普通编辑改写。"""
+    requested_fields = request.model_fields_set
+    sparse_changed = (
+        "sparseIndexEnabled" in requested_fields
+        and request.sparseIndexEnabled is not None
+        and request.sparseIndexEnabled != kb_row["sparse_index_enabled"]
+    )
+    graph_changed = (
+        "graphIndexEnabled" in requested_fields
+        and request.graphIndexEnabled is not None
+        and request.graphIndexEnabled != kb_row["graph_index_enabled"]
+    )
+    if not sparse_changed and not graph_changed:
+        return
+
+    has_documents = session.execute(
+        select(documents.c.document_id)
+        .where(documents.c.kb_id == kb_id, documents.c.deleted_at.is_(None))
+        .limit(1)
+    ).scalar_one_or_none()
+    if has_documents is not None:
+        raise KnowledgeBaseIndexCapabilityLockedError
 
 
 def _member_subject_name_expression():
@@ -278,7 +314,8 @@ def update_knowledge_base(
 ) -> KnowledgeBaseDTO:
     """更新知识库基础信息；停用知识库只允许读，不允许继续变更。"""
     _ensure_kb_manage_permission(session, current_user, kb_id)
-    ensure_knowledge_base_writable(session, current_user, kb_id)
+    kb_row = ensure_knowledge_base_writable(session, current_user, kb_id)
+    _ensure_index_capabilities_mutable(session, kb_id, kb_row, request)
 
     update_values = {"updated_by": UUID(current_user.user.userId), "updated_at": func.now()}
     requested_fields = request.model_fields_set
@@ -349,18 +386,64 @@ def disable_knowledge_base(
     return _to_dto(row)
 
 
+def enable_knowledge_base(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+) -> KnowledgeBaseDTO:
+    """恢复停用知识库，只改变主状态并保留原有文档、配置和历史记录。"""
+    _ensure_kb_manage_permission(session, current_user, kb_id)
+    _read_visible_kb_row(session, current_user, kb_id)
+
+    row = session.execute(
+        update(knowledge_bases)
+        .where(knowledge_bases.c.kb_id == kb_id)
+        .values(
+            status="active",
+            updated_by=UUID(current_user.user.userId),
+            updated_at=func.now(),
+        )
+        .returning(knowledge_bases)
+    ).mappings().one()
+    write_audit_log(
+        session,
+        current_user,
+        "knowledge_base.enable",
+        "knowledge_base",
+        kb_id,
+        kb_id=kb_id,
+        detail={},
+    )
+    session.commit()
+    return _to_dto(row)
+
+
 def create_knowledge_base(
     session: Session,
     current_user: CurrentUserResponse,
     request: KnowledgeBaseCreateRequest,
 ) -> KnowledgeBaseDTO:
-    """创建知识库基础记录；完整成员绑定和权限矩阵在后续 backlog 落地。"""
+    """创建知识库基础记录，并生成默认 active Revision 供 QA 直接运行。"""
     owner_id = request.ownerId or UUID(current_user.user.userId)
     activation = request.requiredForActivation or RequiredForActivationDTO(
         sparse=request.sparseIndexEnabled,
         graph=False,
     )
     kb_id = uuid4()
+    default_revision_id = uuid4()
+    actor_id = UUID(current_user.user.userId)
+    created_at = datetime.now(UTC)
+    default_pipeline = build_default_pipeline_definition(
+        sparse_index_enabled=request.sparseIndexEnabled,
+        graph_index_enabled=request.graphIndexEnabled,
+    )
+    validation_snapshot = {
+        "valid": True,
+        "errors": [],
+        "warnings": [],
+        "source": "system_default",
+        "validatedAt": created_at.isoformat(),
+    }
 
     row = session.execute(
         insert(knowledge_bases)
@@ -376,8 +459,36 @@ def create_knowledge_base(
             graph_required_for_activation=activation.graph,
             status="active",
             metadata={},
-            created_by=UUID(current_user.user.userId),
-            updated_by=UUID(current_user.user.userId),
+            created_by=actor_id,
+            updated_by=actor_id,
+        )
+        .returning(knowledge_bases)
+    ).mappings().one()
+    session.execute(
+        insert(config_revisions).values(
+            config_revision_id=default_revision_id,
+            kb_id=kb_id,
+            revision_no=1,
+            source_template_id=None,
+            status="active",
+            pipeline_definition=default_pipeline,
+            validation_snapshot=validation_snapshot,
+            remark="system_default",
+            activated_at=created_at,
+            activated_by=actor_id,
+            created_at=created_at,
+            created_by=actor_id,
+            updated_at=created_at,
+            updated_by=actor_id,
+        )
+    )
+    row = session.execute(
+        update(knowledge_bases)
+        .where(knowledge_bases.c.kb_id == kb_id)
+        .values(
+            active_config_revision_id=default_revision_id,
+            updated_at=created_at,
+            updated_by=actor_id,
         )
         .returning(knowledge_bases)
     ).mappings().one()
@@ -389,8 +500,8 @@ def create_knowledge_base(
             subject_id=owner_id,
             kb_role="kb_owner",
             status="active",
-            created_by=UUID(current_user.user.userId),
-            updated_by=UUID(current_user.user.userId),
+            created_by=actor_id,
+            updated_by=actor_id,
         )
     )
     write_audit_log(
@@ -401,6 +512,19 @@ def create_knowledge_base(
         kb_id,
         kb_id=kb_id,
         detail={"ownerId": str(owner_id), "name": request.name},
+    )
+    write_audit_log(
+        session,
+        current_user,
+        "config_revision.create_default",
+        "config_revision",
+        default_revision_id,
+        kb_id=kb_id,
+        detail={
+            "revisionNo": 1,
+            "source": "system_default",
+            "activeConfigRevisionId": str(default_revision_id),
+        },
     )
     session.commit()
     return _to_dto(row)

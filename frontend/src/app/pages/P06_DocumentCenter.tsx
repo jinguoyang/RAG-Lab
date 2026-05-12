@@ -15,6 +15,7 @@ import {
   fetchIndexSyncJobs,
   fetchIngestJobs,
   deleteDocument,
+  downloadDocumentSource,
   rebuildIndexSync,
   runBulkDocumentGovernance,
   uploadDocument,
@@ -63,6 +64,7 @@ export function DocumentCenter() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [downloadingDocumentId, setDownloadingDocumentId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{
     variant: "success" | "info" | "warning" | "error";
     title: string;
@@ -224,6 +226,37 @@ export function DocumentCenter() {
     }
   }
 
+  /**
+   * 触发浏览器下载文件流，后端负责权限校验和 MinIO 对象读取。
+   */
+  function triggerBrowserDownload(blob: Blob, fileName: string) {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleDownloadDocument(documentId: string, documentName: string) {
+    setDownloadingDocumentId(documentId);
+    try {
+      const download = await downloadDocumentSource(kbId, documentId);
+      triggerBrowserDownload(download.blob, download.fileName || documentName);
+      setFeedback({ variant: "success", title: "原文下载已开始", message: `正在下载“${documentName}”。` });
+    } catch (error) {
+      setFeedback({
+        variant: "warning",
+        title: "原文档暂不可下载",
+        message: error instanceof Error ? error.message : "未能从对象存储读取原始文件，请稍后重试或联系管理员。",
+      });
+    } finally {
+      setDownloadingDocumentId(null);
+    }
+  }
+
   async function handleDeleteDocument(documentId: string, documentName: string) {
     const ok = await confirm({
       title: "确认删除文档？",
@@ -349,7 +382,7 @@ export function DocumentCenter() {
             </div>
           ) : (
             <div className="overflow-auto border border-border-cream rounded-xl">
-              <Table>
+              <Table tableClassName="min-w-0 table-fixed">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-12">
@@ -361,10 +394,10 @@ export function DocumentCenter() {
                       />
                     </TableHead>
                     <TableHead>文档名</TableHead>
-                    <TableHead className="whitespace-nowrap">状态</TableHead>
-                    <TableHead className="whitespace-nowrap">密级</TableHead>
-                    <TableHead className="whitespace-nowrap">更新时间</TableHead>
-                    <TableHead className="w-28 text-right whitespace-nowrap">操作</TableHead>
+                    <TableHead className="w-20 whitespace-nowrap">状态</TableHead>
+                    <TableHead className="w-20 whitespace-nowrap">密级</TableHead>
+                    <TableHead className="w-36 whitespace-nowrap">更新时间</TableHead>
+                    <TableHead className="w-36 text-right whitespace-nowrap">操作</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -382,7 +415,9 @@ export function DocumentCenter() {
                           onChange={(event) => toggleDocumentSelection(doc.id, event.target.checked)}
                         />
                       </TableCell>
-                      <TableCell className="font-medium">{doc.name}</TableCell>
+                      <TableCell className="font-medium min-w-0">
+                        <span className="block truncate" title={doc.name}>{doc.name}</span>
+                      </TableCell>
                       <TableCell className="whitespace-nowrap">
                         <StatusBadge status={doc.status} />
                       </TableCell>
@@ -401,6 +436,18 @@ export function DocumentCenter() {
                           }}
                         >
                           <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="原文下载"
+                          disabled={downloadingDocumentId === doc.id}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleDownloadDocument(doc.id, doc.name);
+                          }}
+                        >
+                          <Download className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="ghost"

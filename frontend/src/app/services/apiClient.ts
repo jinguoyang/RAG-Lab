@@ -21,6 +21,11 @@ interface ApiErrorBody {
   message?: unknown;
 }
 
+export interface ApiDownload {
+  blob: Blob;
+  fileName: string | null;
+}
+
 const FIELD_LABELS: Record<string, string> = {
   username: "用户名",
   displayName: "显示名称",
@@ -97,6 +102,16 @@ async function throwApiError(response: Response): Promise<never> {
   throw new Error(formatApiError(response.status, body));
 }
 
+function parseDownloadFileName(contentDisposition: string | null): string | null {
+  if (!contentDisposition) return null;
+  const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    return decodeURIComponent(utf8Match[1]);
+  }
+  const fallbackMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
+  return fallbackMatch?.[1] ?? null;
+}
+
 export async function apiGet<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -109,6 +124,19 @@ export async function apiGet<T>(path: string): Promise<T> {
   }
 
   return response.json() as Promise<T>;
+}
+
+export async function apiDownload(path: string): Promise<ApiDownload> {
+  const response = await fetch(`${API_BASE_URL}${path}`);
+
+  if (!response.ok) {
+    await throwApiError(response);
+  }
+
+  return {
+    blob: await response.blob(),
+    fileName: parseDownloadFileName(response.headers.get("Content-Disposition")),
+  };
 }
 
 export async function apiPostForm<T>(path: string, body: FormData): Promise<T> {

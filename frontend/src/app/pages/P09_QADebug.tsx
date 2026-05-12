@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "../components/rag/Card
 import { Input } from "../components/rag/Input";
 import { Alert } from "../components/rag/Alert";
 import { Badge, StatusBadge } from "../components/rag/Badge";
+import { QAPartialDiagnosticsPanel } from "../components/rag/QAPartialDiagnosticsPanel";
 import {
   Play,
   Settings2,
@@ -19,8 +20,15 @@ import {
   Copy,
 } from "lucide-react";
 import * as Tabs from "@radix-ui/react-tabs";
-import { toQADebugResult } from "../adapters/qaRunAdapter";
+import { toQADebugResult, type QARewriteTraceViewModel } from "../adapters/qaRunAdapter";
 import { createQARun, fetchQARunDetail, fetchQARunStatus } from "../services/qaRunService";
+import {
+  buildReplayOverrideParams,
+  readRewriteEnabled,
+  readStringNumber,
+  resolveReplayChannels,
+} from "../utils/qaReplaySeed";
+import type { QAPartialDiagnostics } from "../utils/qaPartialDiagnostics";
 
 type DebugScenario = "success" | "partial" | "permission";
 
@@ -47,6 +55,7 @@ interface CandidateRecord {
   title: string;
   score: string;
   decision: string;
+  snippet?: string;
 }
 
 interface ScenarioPayload {
@@ -55,6 +64,7 @@ interface ScenarioPayload {
   runMeta: string;
   notice?: { variant: "info" | "warning"; title: string; message: string };
   rewrite: string;
+  rewriteTrace: QARewriteTraceViewModel;
   retrievalCards: { channel: string; summary: string }[];
   candidates: CandidateRecord[];
   citations: {
@@ -63,6 +73,8 @@ interface ScenarioPayload {
     title: string;
     snippet: string;
     meta: string;
+    documentId?: string | null;
+    chunkId?: string | null;
   }[];
   diagnostics: {
     recalled: string;
@@ -71,7 +83,16 @@ interface ScenarioPayload {
     finalContext: string;
     rerankSummary: string;
   };
+  partialDiagnostics: QAPartialDiagnostics;
 }
+
+const NO_PARTIAL_DIAGNOSTICS: QAPartialDiagnostics = {
+  hasPartialIssue: false,
+  summary: "",
+  impact: "",
+  providerErrors: [],
+  affectedSteps: [],
+};
 
 const SCENARIO_MAP: Record<DebugScenario, ScenarioPayload> = {
   success: {
@@ -83,6 +104,14 @@ const SCENARIO_MAP: Record<DebugScenario, ScenarioPayload> = {
     runMeta: "run_88f92a • 1.2 秒 • 428 tokens • 生效版本 rev_042",
     rewrite:
       "Q3 product delays impact risk revenue supply chain Aurora supplier bottleneck",
+    rewriteTrace: {
+      originalQuery: "Q3 产品延期的主要风险是什么？",
+      rewrittenQuery: "Q3 product delays impact risk revenue supply chain Aurora supplier bottleneck",
+      statusLabel: "已改写",
+      providerLabel: "demo",
+      usedOriginalQuery: false,
+      errorMessage: null,
+    },
     retrievalCards: [
       { channel: "Dense", summary: "Top 20 chunks，阈值 0.75" },
       { channel: "Sparse", summary: "Top 15 chunks，命中 Aurora 和 APAC 关键词" },
@@ -136,6 +165,7 @@ const SCENARIO_MAP: Record<DebugScenario, ScenarioPayload> = {
       finalContext: "5",
       rerankSummary: "Graph context 上升到 Top2，噪声 Sparse 命中被压低。",
     },
+    partialDiagnostics: NO_PARTIAL_DIAGNOSTICS,
   },
   partial: {
     status: "partial",
@@ -151,6 +181,14 @@ const SCENARIO_MAP: Record<DebugScenario, ScenarioPayload> = {
         "Dense / Sparse 正常，Graph 检索超时并被降级跳过。原型阶段需要明确区分“部分成功”和“整体失败”。",
     },
     rewrite: "Aurora delay revenue impact Q3 Q4 supply chain risk",
+    rewriteTrace: {
+      originalQuery: "Q3 产品延期的主要风险是什么？",
+      rewrittenQuery: "Aurora delay revenue impact Q3 Q4 supply chain risk",
+      statusLabel: "已改写",
+      providerLabel: "demo",
+      usedOriginalQuery: false,
+      errorMessage: null,
+    },
     retrievalCards: [
       { channel: "Dense", summary: "Top 20 chunks，已完成" },
       { channel: "Sparse", summary: "Top 15 chunks，已完成" },
@@ -196,6 +234,23 @@ const SCENARIO_MAP: Record<DebugScenario, ScenarioPayload> = {
       finalContext: "4",
       rerankSummary: "Graph 失败后只基于文档侧候选重排。",
     },
+    partialDiagnostics: {
+      hasPartialIssue: true,
+      summary: "Graph 检索未完整执行，运行已按降级路径完成。",
+      impact: "图侧关系和根因路径未进入最终上下文，答案更依赖文档 Evidence。",
+      providerErrors: ["graphRetrieval"],
+      affectedSteps: [
+        {
+          stepKey: "graphRetrieval",
+          label: "Graph 检索",
+          status: "partial",
+          errorCode: "PROVIDER_TIMEOUT",
+          errorMessage: "Graph provider 800ms 后超时",
+          reason: "graphProviderTimeout",
+          impact: "图侧关系和根因路径未进入最终上下文，答案更依赖文档 Evidence。",
+        },
+      ],
+    },
   },
   permission: {
     status: "success",
@@ -211,6 +266,14 @@ const SCENARIO_MAP: Record<DebugScenario, ScenarioPayload> = {
         "检索阶段命中候选，但有部分 chunk 因权限不足未进入最终上下文。这个状态应该在原型阶段明确露出。",
     },
     rewrite: "Aurora product delay revenue impact privileged chunks filtered",
+    rewriteTrace: {
+      originalQuery: "Q3 产品延期的主要风险是什么？",
+      rewrittenQuery: "Aurora product delay revenue impact privileged chunks filtered",
+      statusLabel: "已改写",
+      providerLabel: "demo",
+      usedOriginalQuery: false,
+      errorMessage: null,
+    },
     retrievalCards: [
       { channel: "Dense", summary: "Top 20 chunks，其中 1 个机密 chunk 被过滤" },
       { channel: "Sparse", summary: "Top 15 chunks" },
@@ -263,6 +326,7 @@ const SCENARIO_MAP: Record<DebugScenario, ScenarioPayload> = {
       finalContext: "4",
       rerankSummary: "权限裁剪发生在 rerank 之后、生成之前。",
     },
+    partialDiagnostics: NO_PARTIAL_DIAGNOSTICS,
   },
 };
 
@@ -272,29 +336,6 @@ function delay(ms: number): Promise<void> {
 
 function isUuid(value: string | undefined): value is string {
   return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value));
-}
-
-function readBoolean(source: Record<string, unknown> | undefined, key: string, fallback: boolean): boolean {
-  const value = source?.[key];
-  return typeof value === "boolean" ? value : fallback;
-}
-
-function readNestedChannels(source: Record<string, unknown> | undefined) {
-  const channels = source?.channels;
-  if (!channels || typeof channels !== "object" || Array.isArray(channels)) {
-    return { dense: true, sparse: true, graph: true };
-  }
-  const typedChannels = channels as Record<string, unknown>;
-  return {
-    dense: readBoolean(typedChannels, "dense", true),
-    sparse: readBoolean(typedChannels, "sparse", true),
-    graph: readBoolean(typedChannels, "graph", true),
-  };
-}
-
-function readStringNumber(source: Record<string, unknown> | undefined, key: string, fallback: string): string {
-  const value = source?.[key];
-  return typeof value === "number" || typeof value === "string" ? String(value) : fallback;
 }
 
 async function waitForDetailReady(kbId: string, runId: string) {
@@ -321,12 +362,14 @@ export function QADebug() {
 
   const [query, setQuery] = useState(seed.query ?? "");
   const [isRunning, setIsRunning] = useState(false);
-  const [showResults, setShowResults] = useState(Boolean(seed.query));
+  const [isLoadingSourceDetail, setIsLoadingSourceDetail] = useState(false);
+  const [showResults, setShowResults] = useState(false);
   const [scenario, setScenario] = useState<DebugScenario>(seed.scenario ?? "success");
   const [runResult, setRunResult] = useState<ScenarioPayload | null>(null);
+  const [resultSource, setResultSource] = useState<"source" | "rerun" | "demo" | null>(null);
   const [overrideMode, setOverrideMode] = useState(Boolean(seed.sourceRunId));
-  const [rewriteEnabled, setRewriteEnabled] = useState(readBoolean(seed.overrideParams, "rewriteEnabled", true));
-  const [channels, setChannels] = useState(readNestedChannels(seed.overrideParams));
+  const [rewriteEnabled, setRewriteEnabled] = useState(readRewriteEnabled(seed.overrideParams));
+  const [channels, setChannels] = useState(resolveReplayChannels(seed));
   const [rerankerTopN, setRerankerTopN] = useState(readStringNumber(seed.overrideParams, "rerankerTopN", "5"));
   const [feedback, setFeedback] = useState<{
     variant: "success" | "info" | "warning" | "error";
@@ -342,14 +385,71 @@ export function QADebug() {
       : null,
   );
 
-  const result = useMemo(() => runResult ?? SCENARIO_MAP[scenario], [runResult, scenario]);
+  const result = useMemo(() => {
+    if (runResult) {
+      return runResult;
+    }
+    return SCENARIO_MAP[scenario];
+  }, [runResult, scenario]);
+  const rewriteTrace = useMemo<QARewriteTraceViewModel>(() => {
+    if (runResult) {
+      return runResult.rewriteTrace;
+    }
+    return {
+      ...result.rewriteTrace,
+      originalQuery: query || result.rewriteTrace.originalQuery,
+      rewrittenQuery: rewriteEnabled ? result.rewrite : query || result.rewriteTrace.originalQuery,
+      statusLabel: rewriteEnabled ? result.rewriteTrace.statusLabel : "未改写，使用原始问题",
+      usedOriginalQuery: !rewriteEnabled,
+      errorMessage: null,
+    };
+  }, [query, result.rewrite, result.rewriteTrace, rewriteEnabled, runResult]);
 
   useEffect(() => {
     if (!seed.query) return;
     setQuery(seed.query);
     setScenario(seed.scenario ?? "success");
-    setShowResults(true);
+    setRunResult(null);
+    setShowResults(false);
+    setResultSource(null);
   }, [seed.query, seed.scenario]);
+
+  useEffect(() => {
+    if (!kbId || !isUuid(seed.sourceRunId)) {
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingSourceDetail(true);
+    setShowResults(false);
+    setRunResult(null);
+    setResultSource(null);
+    void fetchQARunDetail(kbId, seed.sourceRunId)
+      .then((detail) => {
+        if (cancelled) return;
+        setRunResult(toQADebugResult(detail));
+        setShowResults(true);
+        setResultSource("source");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setShowResults(false);
+        setFeedback({
+          variant: "error",
+          title: "来源运行详情加载失败",
+          message: error instanceof Error ? error.message : "请检查该历史记录是否仍可访问。",
+        });
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingSourceDetail(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [kbId, seed.sourceRunId]);
 
   /**
    * 原型运行逻辑只模拟关键状态切换，
@@ -378,10 +478,11 @@ export function QADebug() {
     setShowResults(false);
     setFeedback(null);
     setRunResult(null);
+    setResultSource(null);
 
     try {
       const effectiveOverrideParams = overrideMode
-        ? { ...(seed.overrideParams ?? {}), rewriteEnabled, channels, rerankerTopN }
+        ? buildReplayOverrideParams({ seed, rewriteEnabled, channels, rerankerTopN })
         : undefined;
       const created = await createQARun(
         kbId || "",
@@ -396,6 +497,7 @@ export function QADebug() {
       setRunResult(nextResult);
       setIsRunning(false);
       setShowResults(true);
+      setResultSource("rerun");
       setFeedback({
         variant: nextResult.status === "partial" ? "warning" : nextResult.status === "failed" ? "error" : "success",
         title: nextResult.status === "partial" ? "运行完成（部分降级）" : nextResult.status === "failed" ? "运行失败" : "运行完成",
@@ -433,9 +535,19 @@ export function QADebug() {
     navigate(`/kb/${kbId}/history`);
   }
 
-  function handleOpenCitation(citationType: "document" | "graph") {
-    if (citationType === "document") {
-      navigate(`/kb/${kbId}/docs/doc-9012`);
+  function handleOpenCitation(citation: ScenarioPayload["citations"][number]) {
+    if (citation.type === "document") {
+      if (!citation.documentId) {
+        setFeedback({
+          variant: "warning",
+          title: "缺少文档定位信息",
+          message: "当前 citation 没有返回 documentId，无法跳转到文档详情。",
+        });
+        return;
+      }
+      navigate(`/kb/${kbId}/docs/${citation.documentId}`, {
+        state: { focusChunkId: citation.chunkId ?? null },
+      });
       return;
     }
 
@@ -549,21 +661,24 @@ export function QADebug() {
               </label>
             </div>
             <div className="p-4 space-y-4 bg-ivory">
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-stone-gray">演示场景</label>
-                <select
-                  className="w-full px-3 py-2 bg-parchment border border-border-cream rounded-md text-sm"
-                  value={scenario}
-                  onChange={(e) => {
-                    setScenario(e.target.value as DebugScenario);
-                    setRunResult(null);
-                  }}
-                >
-                  <option value="success">正常成功</option>
-                  <option value="partial">部分降级成功</option>
-                  <option value="permission">权限裁剪场景</option>
-                </select>
-              </div>
+              {!seed.sourceRunId && (
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-stone-gray">演示场景</label>
+                  <select
+                    className="w-full px-3 py-2 bg-parchment border border-border-cream rounded-md text-sm"
+                    value={scenario}
+                    onChange={(e) => {
+                      setScenario(e.target.value as DebugScenario);
+                      setRunResult(null);
+                      setResultSource("demo");
+                    }}
+                  >
+                    <option value="success">正常成功</option>
+                    <option value="partial">部分降级成功</option>
+                    <option value="permission">权限裁剪场景</option>
+                  </select>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <label className="text-xs font-medium text-stone-gray">问题改写</label>
@@ -635,10 +750,20 @@ export function QADebug() {
         </div>
 
         <div className="flex-1 flex flex-col bg-parchment overflow-hidden">
-          {!isRunning && !showResults && (
+          {!isRunning && !isLoadingSourceDetail && !showResults && (
             <div className="flex-1 flex items-center justify-center text-stone-gray flex-col gap-4">
               <Activity className="w-12 h-12 opacity-20" />
               <p>输入问题后运行调试，即可查看中间链路与诊断信息。</p>
+            </div>
+          )}
+
+          {isLoadingSourceDetail && !showResults && (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="space-y-4 text-center">
+                <div className="w-8 h-8 border-4 border-terracotta border-t-transparent rounded-full animate-spin mx-auto"></div>
+                <p className="text-sm font-medium text-near-black">正在加载来源运行详情...</p>
+                <p className="text-xs text-stone-gray font-mono">run {seed.sourceRunId}</p>
+              </div>
             </div>
           )}
 
@@ -661,6 +786,7 @@ export function QADebug() {
                   {result.notice.message}
                 </Alert>
               )}
+              <QAPartialDiagnosticsPanel diagnostics={result.partialDiagnostics} />
 
               <section className="bg-ivory border border-border-cream rounded-xl overflow-hidden shadow-sm">
                 <div className="p-4 border-b border-border-cream bg-white">
@@ -669,7 +795,9 @@ export function QADebug() {
                     <span className="text-xs text-stone-gray font-mono">{result.runMeta}</span>
                   </div>
                   <div className="flex items-center justify-between gap-4">
-                    <h2 className="font-serif text-xl text-near-black">最终答案</h2>
+                    <h2 className="font-serif text-xl text-near-black">
+                      {resultSource === "source" ? "来源运行详情" : resultSource === "rerun" ? "本次运行结果" : "最终答案"}
+                    </h2>
                     <div className="flex items-center gap-2">
                       <Button variant="ghost" size="sm" onClick={() => handleSaveAction("run")}>
                         <Save className="w-4 h-4 mr-2" /> 保存本次结果
@@ -707,18 +835,32 @@ export function QADebug() {
 
                 <Tabs.Content value="trace" className="p-6 space-y-8 outline-none">
                   <div className="rounded-lg border border-border-cream bg-parchment p-3 text-xs leading-relaxed text-stone-gray">
-                    这里展示的是本次 QARun 实际执行链路。问题改写、检索、融合、权限过滤、生成、引用的拓扑来自 P08 当前 revision；本页覆盖项仅影响本次运行参数。
+                    {resultSource === "source"
+                      ? "这里展示的是来源 QARun 的历史详情快照。你可以在左侧调整参数并重新运行，生成新的复跑结果。"
+                      : "这里展示的是本次 QARun 实际执行链路。问题改写、检索、融合、权限过滤、生成、引用的拓扑来自 P08 当前 revision；本页覆盖项仅影响本次运行参数。"}
                   </div>
                   <div className="relative pl-6 border-l-2 border-border-cream space-y-8">
                     <div className="relative">
                       <div className="absolute w-4 h-4 rounded-full bg-parchment border-2 border-terracotta -left-[35px] top-1"></div>
                       <h3 className="text-sm font-bold text-near-black mb-1">1. 问题改写</h3>
                       <div className="text-xs text-stone-gray mb-2 font-mono">
-                        {rewriteEnabled ? "150ms • prompt v2" : "Skipped • using original query"}
+                        {rewriteTrace.statusLabel} · provider {rewriteTrace.providerLabel}
                       </div>
-                      <div className="bg-parchment p-3 rounded border border-border-cream text-sm text-near-black">
-                        {rewriteEnabled ? result.rewrite : query}
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="bg-parchment p-3 rounded border border-border-cream text-sm text-near-black">
+                          <div className="mb-1 text-xs text-stone-gray">原始问题</div>
+                          {rewriteTrace.originalQuery}
+                        </div>
+                        <div className="bg-parchment p-3 rounded border border-border-cream text-sm text-near-black">
+                          <div className="mb-1 text-xs text-stone-gray">改写后问题</div>
+                          {rewriteTrace.rewrittenQuery}
+                        </div>
                       </div>
+                      {rewriteTrace.errorMessage && (
+                        <div className="mt-2 rounded border border-error-red/20 bg-error-red/10 p-2 text-xs text-error-red">
+                          {rewriteTrace.errorMessage}
+                        </div>
+                      )}
                     </div>
 
                     <div className="relative">
@@ -783,8 +925,13 @@ export function QADebug() {
                               <span className="font-medium text-near-black">{candidate.title}</span>
                             </div>
                             <p className="mt-2 text-sm text-stone-gray">{candidate.decision}</p>
+                            {candidate.snippet && (
+                              <p className="mt-3 rounded border border-border-cream bg-ivory p-3 text-sm leading-relaxed text-olive-gray font-serif">
+                                {candidate.snippet}
+                              </p>
+                            )}
                           </div>
-                          <span className="text-xs font-mono text-olive-gray">score {candidate.score}</span>
+                          <span className="text-xs font-mono text-olive-gray">{candidate.score}</span>
                         </div>
                       </div>
                     ))}
@@ -797,7 +944,7 @@ export function QADebug() {
                       <div
                         key={citation.id}
                         className="p-4 hover:bg-border-cream/20 transition-colors cursor-pointer"
-                        onClick={() => handleOpenCitation(citation.type)}
+                        onClick={() => handleOpenCitation(citation)}
                       >
                         <div className="flex gap-3">
                           <div className="mt-1 bg-terracotta text-white w-6 h-6 rounded flex items-center justify-center text-xs font-bold shrink-0">
@@ -870,6 +1017,23 @@ export function QADebug() {
                     </div>
                   </CardContent>
                 </Card>
+
+                {result.partialDiagnostics.hasPartialIssue && (
+                  <Card>
+                    <CardHeader className="py-3 px-4 bg-parchment border-b border-border-cream">
+                      <CardTitle className="text-sm">降级原因</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-4 text-xs space-y-2">
+                      <p className="text-olive-gray">{result.partialDiagnostics.summary}</p>
+                      {result.partialDiagnostics.affectedSteps.slice(0, 3).map((step) => (
+                        <div key={step.stepKey} className="rounded border border-border-cream bg-parchment p-2">
+                          <div className="font-medium text-near-black">{step.label}</div>
+                          <div className="mt-1 font-mono text-error-red">{step.errorCode || step.status}</div>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
               </div>
             </>
           ) : (
