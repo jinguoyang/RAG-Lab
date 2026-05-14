@@ -6,7 +6,8 @@ import sys
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 ROOT_DIR = BACKEND_ROOT.parent
 FRONTEND_ROOT = ROOT_DIR / "frontend"
-DOCS_ROOT = ROOT_DIR / "docs" / "04-迭代与交付"
+DELIVERY_DOCS_ROOT = ROOT_DIR / "docs" / "04-迭代与交付"
+OPS_DOCS_ROOT = ROOT_DIR / "docs" / "06-发布与运维"
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
@@ -86,10 +87,10 @@ def verify_frontend_v17_evaluation_views() -> None:
 
 def verify_docs_and_backlog_are_updated() -> None:
     """确认调优指南与 Sprint/Release/待办文档同步回填第二阶段状态。"""
-    guide = _read(DOCS_ROOT / "V1.7-RAG调优指南.md")
-    sprint = _read(DOCS_ROOT / "sprints/Sprint-26.md")
-    release = _read(DOCS_ROOT / "releases/V1.7-RAG模块化优化规划.md")
-    backlog = _read(DOCS_ROOT / "产品待办清单.md")
+    guide = _read(OPS_DOCS_ROOT / "V1.7-RAG调优指南.md")
+    sprint = _read(DELIVERY_DOCS_ROOT / "sprints/sprint21-40/Sprint-26.md")
+    release = _read(DELIVERY_DOCS_ROOT / "releases/V1.7-RAG模块化优化规划.md")
+    backlog = _read(DELIVERY_DOCS_ROOT / "产品待办清单.md")
 
     for needle in ["参数字典", "推荐范围", "调参流程", "快照", "评估对比", "优化建议"]:
         _assert_contains(guide, needle, f"调优指南缺少 {needle}")

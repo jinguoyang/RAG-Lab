@@ -66,7 +66,7 @@ def verify_frontend_status_visibility() -> None:
     _assert_contains(adapter_source, "denseIndexStatus", "前端适配器未映射 Dense 状态")
     _assert_contains(adapter_source, "sparseIndexStatus", "前端适配器未映射 Sparse 状态")
     _assert_contains(adapter_source, "graphIndexStatus", "前端适配器未映射 Graph 状态")
-    _assert_contains(p05_source, "索引阶段", "P05 未展示入库索引阶段")
+    _assert_contains(p05_source, "检索与索引", "P05 未展示检索与索引配置状态")
     _assert_contains(p06_source, "indexStages", "P06 未展示入库阶段状态")
     _assert_contains(p07_source, "indexStages", "P07 未展示入库阶段状态")
 

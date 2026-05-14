@@ -17,7 +17,8 @@
 
 - V1.0 至 V1.7 的 Backlog、Epic、Sprint 和 Release 已收口为完成。
 - 最新完成范围是 E22：知识库治理工作流强化，已通过 Sprint 27 至 Sprint 29 补齐治理操作、诊断详情和治理后验证入口。
-- 当前没有进行中的 Sprint；后续新工作应先进入产品待办清单，再建立新的 Sprint 或 Release 计划。
+- 当前已创建 Sprint 30，承接 E25 / V1.8 RAG 应用运行时最小链路，实施状态以 [Sprint 总览](./sprints/README.md) 为准。
+- 后续新工作应先进入产品待办清单，再建立新的 Sprint 或 Release 计划。
 - 发布前仍需在目标测试或预生产环境补齐真实 Provider 网络级复测记录，入口见 [V1.7 Provider 网络级复测记录](../06-发布与运维/V1.7-Provider网络级复测记录.md)。
 
 ## 3. 文档分层
@@ -29,6 +30,7 @@
 - [产品待办清单](./产品待办清单.md)：Backlog 和 Epic 状态源。
 - [Sprint 总览](./sprints/README.md)：当前 Sprint 和历史 Sprint 索引。
 - [Release 总览](./releases/README.md)：Release 状态源。
+- [中长期规划](./中长期规划.md)：路线摘要，不替代 Backlog / Sprint / Release 状态源。
 - [编码规范](./编码规范.md)：开发、命名、注释、验证和 Git 约定。
 - [V1.7 RAG 调优指南](../06-发布与运维/V1.7-RAG调优指南.md)：当前 RAG 参数调优说明。
 
@@ -39,8 +41,8 @@
 - `sprints/sprint1-20/Sprint-01.md` 至 `sprints/sprint1-20/Sprint-20.md`
 - `sprints/sprint21-40/Sprint-21.md` 至 `sprints/sprint21-40/Sprint-29.md`
 - `releases/V1.0-*.md` 至 `releases/V1.7-*.md`
-- [中长期规划](./中长期规划.md)
 - `docs/superpowers/specs/` 和 `docs/superpowers/plans/`
+- [历史任务归档](./历史任务归档.md)：将关键历史 spec/plan 映射到当前 04 目录状态源和验证入口。
 
 历史归档中出现旧计划、旧假设或当时的“待定”字样时，一般保留原貌；只在它会误导当前入口时补充归档说明。
 
