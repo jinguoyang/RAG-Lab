@@ -839,6 +839,9 @@ export function QADebug() {
                       ? "这里展示的是来源 QARun 的历史详情快照。你可以在左侧调整参数并重新运行，生成新的复跑结果。"
                       : "这里展示的是本次 QARun 实际执行链路。问题改写、检索、融合、权限过滤、生成、引用的拓扑来自 P08 当前 revision；本页覆盖项仅影响本次运行参数。"}
                   </div>
+                  <div className="rounded-lg border border-border-cream bg-parchment p-3 text-xs leading-relaxed text-olive-gray">
+                    阶段口径：检索卡片统计通道阈值后的原始候选；候选列表展示 Fusion、Rerank 与权限过滤后的明细；Evidence 编号对应 LLM 最终上下文和回答引用。
+                  </div>
                   <div className="relative pl-6 border-l-2 border-border-cream space-y-8">
                     <div className="relative">
                       <div className="absolute w-4 h-4 rounded-full bg-parchment border-2 border-terracotta -left-[35px] top-1"></div>

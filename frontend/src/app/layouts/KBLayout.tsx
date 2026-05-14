@@ -1,10 +1,18 @@
+import { useEffect, useState } from "react";
 import { Outlet, NavLink, useParams } from "react-router";
 import { LayoutDashboard, FileText, Settings, Stethoscope, History, Network, Shield, ChevronLeft } from "lucide-react";
 import { Button } from "../components/rag/Button";
 import { Badge } from "../components/rag/Badge";
+import { fetchKnowledgeBase } from "../services/knowledgeBaseService";
+import type { KnowledgeBase } from "../types/knowledgeBase";
 
 export function KBLayout() {
   const { kbId } = useParams();
+  const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBase | null>(null);
+  const knowledgeBaseName = knowledgeBase?.name || "知识库";
+  const activeConfigLabel = knowledgeBase?.activeConfigRevisionId
+    ? `生效配置：${knowledgeBase.activeConfigRevisionId}`
+    : "生效配置：未配置";
 
   const navItems = [
     { to: `/kb/${kbId}`, label: "概览", icon: <LayoutDashboard className="w-4 h-4" />, end: true },
@@ -16,6 +24,30 @@ export function KBLayout() {
     { to: `/kb/${kbId}/members`, label: "成员与权限", icon: <Shield className="w-4 h-4" /> },
   ];
 
+  useEffect(() => {
+    if (!kbId) {
+      setKnowledgeBase(null);
+      return;
+    }
+
+    let ignore = false;
+    fetchKnowledgeBase(kbId)
+      .then((kb) => {
+        if (!ignore) {
+          setKnowledgeBase(kb);
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setKnowledgeBase(null);
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [kbId]);
+
   return (
     <div className="flex h-screen bg-parchment">
       {/* Sidebar */}
@@ -26,7 +58,7 @@ export function KBLayout() {
               <ChevronLeft className="w-4 h-4 mr-1" /> 返回平台
             </Button>
           </NavLink>
-          <h1 className="text-xl font-serif text-terracotta truncate" title="财务 Q3 报告">财务 Q3 报告</h1>
+          <h1 className="text-xl font-serif text-terracotta truncate" title={knowledgeBaseName}>{knowledgeBaseName}</h1>
           <p className="text-xs text-stone-gray mt-1">知识库工作区</p>
         </div>
         
@@ -48,9 +80,11 @@ export function KBLayout() {
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <header className="h-14 border-b border-border-cream bg-ivory flex items-center px-6 justify-between shrink-0">
           <div className="flex items-center gap-4">
-            <span className="text-sm font-medium text-near-black">财务 Q3 报告</span>
+            <span className="text-sm font-medium text-near-black truncate max-w-64" title={knowledgeBaseName}>
+              {knowledgeBaseName}
+            </span>
             <div className="flex gap-2">
-              <Badge variant="success">生效配置：rev_042</Badge>
+              <Badge variant={knowledgeBase?.activeConfigRevisionId ? "success" : "warning"}>{activeConfigLabel}</Badge>
               <Badge variant="info">知识库 ID：{kbId}</Badge>
             </div>
           </div>

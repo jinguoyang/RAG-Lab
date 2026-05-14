@@ -1,4 +1,4 @@
-import { apiGet, apiPatchJson, apiPostJson } from "./apiClient";
+import { apiDelete, apiGet, apiPatchJson, apiPostJson } from "./apiClient";
 import type {
   EvaluationSampleDTO,
   EvaluationSamplePage,
@@ -130,6 +130,10 @@ export async function createEvaluationSampleFromRun(
 
 export async function fetchEvaluationSamples(kbId: string): Promise<EvaluationSamplePage> {
   return apiGet<EvaluationSamplePage>(`/knowledge-bases/${kbId}/qa-runs/evaluation-samples?pageNo=1&pageSize=50`);
+}
+
+export async function archiveEvaluationSample(kbId: string, sampleId: string): Promise<void> {
+  return apiDelete(`/knowledge-bases/${kbId}/qa-runs/evaluation-samples/${sampleId}`);
 }
 
 export async function createEvaluationRun(

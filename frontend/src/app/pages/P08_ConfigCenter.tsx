@@ -28,6 +28,7 @@ import {
   Lock,
   Network,
   PlayCircle,
+  RotateCcw,
   Save,
   Search,
   ShieldCheck,
@@ -50,11 +51,17 @@ import {
   validatePipeline,
 } from "../services/configService";
 import type {
+  ConfigRevisionDTO,
   ConfigReleaseRecordDTO,
   PipelineDefinition,
   PipelineValidationResultDTO,
   RevisionRecordViewModel,
 } from "../types/config";
+import {
+  createPipelineDiffItems,
+  getPipelineNode,
+  mergeNodeParams,
+} from "../utils/pipelineDiff";
 
 interface PipelineNode {
   id: string;
@@ -71,6 +78,19 @@ interface PipelineNode {
 
 type NodeParamValue = string | number | boolean;
 type NodeParams = Record<string, NodeParamValue>;
+
+interface ConfigEditorState {
+  selectedTemplate: string;
+  queryRewriteEnabled: boolean;
+  multiQueryEnabled: boolean;
+  rerankEnabled: boolean;
+  retrievalChannels: {
+    dense: boolean;
+    sparse: boolean;
+    graph: boolean;
+  };
+  nodeParams: Record<string, NodeParams>;
+}
 
 interface NodeParameterField {
   key: string;
@@ -180,6 +200,8 @@ const DEFAULT_NODE_PARAMS: Record<string, NodeParams> = {
     enableGraphLinks: true,
   },
 };
+
+const DEFAULT_TEMPLATE_NAME = "标准混合（默认）";
 
 const NODE_PARAMETER_FIELDS: Record<string, NodeParameterField[]> = {
   queryRewrite: [
@@ -339,6 +361,34 @@ function formatNodeParams(nodeId: string, params: NodeParams | undefined): strin
   return NODE_PARAMETER_FIELDS[nodeId]?.map((field) => `${field.label}=${String(params[field.key])}`) ?? [];
 }
 
+/**
+ * 从保存过的 pipelineDefinition 还原页面编辑态，作为回退未保存修改的基线。
+ */
+function createEditorStateFromPipeline(
+  pipelineDefinition: PipelineDefinition | null | undefined,
+): ConfigEditorState {
+  return {
+    selectedTemplate: pipelineDefinition?.templateId || DEFAULT_TEMPLATE_NAME,
+    queryRewriteEnabled: getNodeEnabled(pipelineDefinition, "queryRewrite", true),
+    multiQueryEnabled: getNodeEnabled(pipelineDefinition, "multiQuery", true),
+    rerankEnabled: getNodeEnabled(pipelineDefinition, "rerank", true),
+    retrievalChannels: {
+      dense: getNodeEnabled(pipelineDefinition, "dense", true),
+      sparse: getNodeEnabled(pipelineDefinition, "sparse", true),
+      graph: getNodeEnabled(pipelineDefinition, "graph", true),
+    },
+    nodeParams: mergeNodeParams(DEFAULT_NODE_PARAMS, pipelineDefinition) as Record<string, NodeParams>,
+  };
+}
+
+function getNodeEnabled(
+  pipelineDefinition: PipelineDefinition | null | undefined,
+  nodeId: string,
+  fallback: boolean,
+) {
+  return getPipelineNode(pipelineDefinition, nodeId)?.enabled ?? fallback;
+}
+
 function NodeCard({
   node,
   isSelected,
@@ -383,9 +433,10 @@ function NodeCard({
 export function ConfigCenter() {
   const { kbId = "" } = useParams();
   const [activeTab, setActiveTab] = useState("designer");
+  const [configRevisions, setConfigRevisions] = useState<ConfigRevisionDTO[]>([]);
   const [revisions, setRevisions] = useState<RevisionRecordViewModel[]>([]);
   const [releaseRecords, setReleaseRecords] = useState<ConfigReleaseRecordDTO[]>([]);
-  const [selectedTemplate, setSelectedTemplate] = useState("标准混合（默认）");
+  const [selectedTemplate, setSelectedTemplate] = useState(DEFAULT_TEMPLATE_NAME);
   const [selectedNodeId, setSelectedNodeId] = useState("queryRewrite");
   const [isRevisionDrawerOpen, setIsRevisionDrawerOpen] = useState(false);
   const [pendingActivation, setPendingActivation] = useState<string | null>(null);
@@ -395,7 +446,7 @@ export function ConfigCenter() {
     title: string;
     message: string;
   } | null>(null);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(true);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [loadingRevisions, setLoadingRevisions] = useState(false);
   const [savingRevision, setSavingRevision] = useState(false);
   const [activatingRevision, setActivatingRevision] = useState(false);
@@ -417,7 +468,21 @@ export function ConfigCenter() {
     [revisions],
   );
 
-  async function loadRevisions() {
+  const activeConfigRevision = useMemo(
+    () => configRevisions.find((revision) => revision.status === "active") ?? null,
+    [configRevisions],
+  );
+
+  function applyEditorState(editorState: ConfigEditorState) {
+    setSelectedTemplate(editorState.selectedTemplate);
+    setQueryRewriteEnabled(editorState.queryRewriteEnabled);
+    setMultiQueryEnabled(editorState.multiQueryEnabled);
+    setRerankEnabled(editorState.rerankEnabled);
+    setRetrievalChannels(editorState.retrievalChannels);
+    setNodeParams(editorState.nodeParams);
+  }
+
+  async function loadRevisions({ syncEditorToActive = false } = {}) {
     if (!kbId) return;
     setLoadingRevisions(true);
     try {
@@ -425,8 +490,15 @@ export function ConfigCenter() {
         fetchConfigRevisions(kbId),
         fetchConfigReleaseRecords(kbId),
       ]);
+      setConfigRevisions(page.items);
       setRevisions(page.items.map(toRevisionRecord));
       setReleaseRecords(records);
+      if (syncEditorToActive) {
+        const activeRevisionDto = page.items.find((revision) => revision.status === "active");
+        applyEditorState(createEditorStateFromPipeline(activeRevisionDto?.pipelineDefinition));
+        setHasUnsavedChanges(false);
+        setServerValidation(null);
+      }
     } catch (error) {
       setFeedback({
         variant: "error",
@@ -439,7 +511,7 @@ export function ConfigCenter() {
   }
 
   useEffect(() => {
-    void loadRevisions();
+    void loadRevisions({ syncEditorToActive: true });
   }, [kbId]);
 
   const pipelineNodes = useMemo<PipelineNode[]>(
@@ -655,10 +727,33 @@ export function ConfigCenter() {
     };
   }
 
+  const currentPipelineDefinition = useMemo(
+    () => buildPipelineDefinition(),
+    [selectedTemplate, pipelineNodes, nodeParams],
+  );
+
+  const diffItems = useMemo(
+    () => createPipelineDiffItems(activeConfigRevision?.pipelineDefinition, currentPipelineDefinition),
+    [activeConfigRevision?.pipelineDefinition, currentPipelineDefinition],
+  );
+
+  function handleDiscardUnsavedChanges() {
+    applyEditorState(createEditorStateFromPipeline(activeConfigRevision?.pipelineDefinition));
+    setHasUnsavedChanges(false);
+    setServerValidation(null);
+    setFeedback({
+      variant: "info",
+      title: "未保存修改已回退",
+      message: activeConfigRevision
+        ? `编辑态已恢复到当前生效版本 ${activeRevision}。`
+        : "当前没有生效 Revision，编辑态已恢复为默认 Pipeline。",
+    });
+  }
+
   async function handleValidatePipeline() {
     if (!kbId) return;
     try {
-      const result = await validatePipeline(kbId, buildPipelineDefinition());
+      const result = await validatePipeline(kbId, currentPipelineDefinition);
       setServerValidation(result);
       setFeedback({
         variant: result.valid ? "success" : "error",
@@ -704,7 +799,7 @@ export function ConfigCenter() {
     try {
       const response = await saveConfigRevision(
         kbId,
-        buildPipelineDefinition(),
+        currentPipelineDefinition,
         `基于 ${selectedTemplate} 保存的新 Pipeline revision`,
       );
       setHasUnsavedChanges(false);
@@ -737,7 +832,7 @@ export function ConfigCenter() {
     setActivatingRevision(true);
     try {
       await activateConfigRevision(kbId, pendingActivation);
-      await loadRevisions();
+      await loadRevisions({ syncEditorToActive: true });
       setFeedback({
         variant: "warning",
         title: "生效版本已切换",
@@ -889,6 +984,13 @@ export function ConfigCenter() {
           <>
             <Button variant="outline" onClick={() => setIsRevisionDrawerOpen(true)}>
               <History className="mr-2 h-4 w-4" /> 查看版本历史
+            </Button>
+            <Button
+              variant="outline"
+              disabled={!hasUnsavedChanges}
+              onClick={handleDiscardUnsavedChanges}
+            >
+              <RotateCcw className="mr-2 h-4 w-4" /> 回退修改
             </Button>
             <Button variant="outline" onClick={() => void handleValidatePipeline()}>
               <PlayCircle className="mr-2 h-4 w-4" /> 后端校验
@@ -1046,14 +1148,63 @@ export function ConfigCenter() {
               </Tabs.Content>
 
               <Tabs.Content value="diff" className="outline-none">
-                <div className="rounded-lg border border-border-cream bg-[#fffdfa] p-4 font-mono text-sm space-y-1">
-                  <div className="text-stone-gray">@@ pipelineDefinition.constraintsVersion @@</div>
-                  <div className="pl-4 text-near-black">"mode": "constrained-stage-pipeline"</div>
-                  <div className="pl-4 text-near-black">"stages": ["preprocess", "retrieval", "fusion", "generation", "diagnostics"]</div>
-                  <div className="bg-success-green/10 pl-4 text-success-green">+ "queryRewrite.before": "retrieval"</div>
-                  <div className="bg-success-green/10 pl-4 text-success-green">+ "permissionFilter.locked": true</div>
-                  <div className="bg-success-green/10 pl-4 text-success-green">+ "graph.mustResolveTo": "authorizedChunk"</div>
-                  <div className="bg-error-red/10 pl-4 text-error-red line-through">- "freeFormEdges": true</div>
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-border-cream bg-parchment p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h2 className="font-serif text-lg text-near-black">当前编辑态差异</h2>
+                        <p className="mt-1 text-sm text-stone-gray">
+                          对比基线：{activeConfigRevision ? activeRevision : "暂无生效版本，使用空基线"}。
+                        </p>
+                      </div>
+                      <Badge variant={diffItems.length > 0 ? "warning" : "success"}>
+                        {diffItems.length > 0 ? `${diffItems.length} 项差异` : "无差异"}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {diffItems.length === 0 ? (
+                    <div className="rounded-lg border border-border-cream bg-[#fffdfa] p-4 text-sm text-stone-gray">
+                      当前编辑态与生效版本一致，没有需要保存或回退的字段差异。
+                    </div>
+                  ) : (
+                    <div className="overflow-hidden rounded-lg border border-border-cream bg-[#fffdfa]">
+                      <div className="grid grid-cols-[minmax(180px,1.2fr)_minmax(120px,1fr)_minmax(120px,1fr)] gap-3 border-b border-border-cream bg-parchment px-4 py-3 text-xs font-medium text-stone-gray">
+                        <span>字段路径</span>
+                        <span>生效版本</span>
+                        <span>当前编辑态</span>
+                      </div>
+                      <div className="divide-y divide-border-cream">
+                        {diffItems.map((item) => (
+                          <div
+                            key={item.path}
+                            className="grid grid-cols-[minmax(180px,1.2fr)_minmax(120px,1fr)_minmax(120px,1fr)] gap-3 px-4 py-3 text-sm"
+                          >
+                            <div className="flex min-w-0 items-start gap-2">
+                              <Badge
+                                variant={
+                                  item.kind === "added"
+                                    ? "success"
+                                    : item.kind === "removed"
+                                      ? "error"
+                                      : "info"
+                                }
+                              >
+                                {item.kind === "added" ? "新增" : item.kind === "removed" ? "移除" : "变更"}
+                              </Badge>
+                              <span className="min-w-0 break-all font-mono text-near-black">{item.path}</span>
+                            </div>
+                            <span className="min-w-0 break-all font-mono text-stone-gray">
+                              {item.beforeValue}
+                            </span>
+                            <span className="min-w-0 break-all font-mono text-near-black">
+                              {item.afterValue}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </Tabs.Content>
             </CardContent>

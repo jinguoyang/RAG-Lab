@@ -3,6 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.core.config import get_settings
+from app.core.logging import configure_console_logging
+
+
+configure_console_logging()
 
 
 def create_app() -> FastAPI:

@@ -55,6 +55,7 @@ export function DocumentCenter() {
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
   const [batchOperation, setBatchOperation] = useState<BatchOperation>("reparse");
   const [targetStore, setTargetStore] = useState("milvus");
+  const [indexRebuildTargetStore, setIndexRebuildTargetStore] = useState("neo4j");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | JobStatus>("");
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -207,7 +208,7 @@ export function DocumentCenter() {
 
   async function handleKnowledgeBaseIndexRebuild() {
     const ok = await confirm({
-      title: `重建 ${targetStore} 索引？`,
+      title: `重建 ${indexRebuildTargetStore} 索引？`,
       description: "未选择文档时会按当前知识库 active Chunk 范围重建目标副本。",
       confirmText: "重建索引",
     });
@@ -215,10 +216,10 @@ export function DocumentCenter() {
 
     setLoading(true);
     try {
-      await rebuildIndexSync(kbId, { targetStore });
+      await rebuildIndexSync(kbId, { targetStore: indexRebuildTargetStore });
       const nextJobs = await fetchIndexSyncJobs(kbId);
       setIndexSyncJobs(nextJobs.items);
-      setFeedback({ variant: "success", title: "索引重建已创建", message: `${targetStore} 副本重建作业已写入。` });
+      setFeedback({ variant: "success", title: "索引重建已创建", message: `${indexRebuildTargetStore} 副本重建作业已写入。` });
     } catch (error) {
       setFeedback({ variant: "error", title: "索引重建失败", message: error instanceof Error ? error.message : "请稍后重试。" });
     } finally {
@@ -537,9 +538,21 @@ export function DocumentCenter() {
                 <h3 className="font-serif text-lg text-near-black">索引同步作业</h3>
                 <p className="mt-1 text-sm text-stone-gray">查看目标副本、失败原因，并可重建当前知识库索引。</p>
               </div>
-              <Button variant="ghost" size="sm" disabled={loading} onClick={() => void handleKnowledgeBaseIndexRebuild()} title="重建索引">
-                <Database className="w-4 h-4" />
-              </Button>
+              <div className="flex items-center gap-2">
+                <select
+                  className="px-2 py-1.5 bg-parchment border border-border-cream rounded-md text-xs text-near-black focus:outline-none focus:ring-1 focus:ring-focus-blue"
+                  value={indexRebuildTargetStore}
+                  onChange={(event) => setIndexRebuildTargetStore(event.target.value)}
+                  aria-label="索引重建目标库"
+                >
+                  <option value="neo4j">neo4j</option>
+                  <option value="milvus">milvus</option>
+                  <option value="opensearch">opensearch</option>
+                </select>
+                <Button variant="ghost" size="sm" disabled={loading} onClick={() => void handleKnowledgeBaseIndexRebuild()} title="重建索引">
+                  <Database className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
             <div className="mt-4 space-y-3">
               {indexSyncJobs.length === 0 ? (

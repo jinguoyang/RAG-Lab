@@ -166,7 +166,7 @@ function retrievalCardSummary(
     typeof threshold === "number" ? `阈值 ${threshold}` : null,
   ].filter(Boolean);
 
-  return details.length > 0 ? `${count} 条候选（${details.join(" · ")}）` : `${count} 条候选`;
+  return details.length > 0 ? `${count} 条原始候选（${details.join(" · ")}）` : `${count} 条原始候选`;
 }
 
 function candidateTitle(metadata: Record<string, unknown>, fallback: string): string {
@@ -191,11 +191,14 @@ function candidateScore(candidate: QARunDetailDTO["candidates"][number]): string
   return parts.length > 0 ? parts.join(" · ") : "-";
 }
 
-function candidateDecision(candidate: QARunDetailDTO["candidates"][number]): string {
+function candidateDecision(candidate: QARunDetailDTO["candidates"][number], evidenceIndex?: number): string {
   if (!candidate.isAuthorized) {
     return candidate.dropReason ? `权限/治理裁剪：${candidate.dropReason}` : "权限/治理裁剪";
   }
-  return "权限通过，进入生成上下文候选（来自 permissionFilter 结果）";
+  if (typeof evidenceIndex === "number") {
+    return `权限通过，进入最终上下文，对应 Evidence [${evidenceIndex}]`;
+  }
+  return "权限通过，但当前历史记录未保存对应 Evidence（旧运行可能只保存首条）";
 }
 
 function diagnosticsFromTrace(detail: QARunDetailDTO, diagnostics: Record<string, unknown>, evidenceCount: number) {
@@ -228,6 +231,11 @@ export function toQADebugResult(detail: QARunDetailDTO): QADebugResultViewModel 
       .filter((item) => item.candidateId)
       .map((item) => [item.candidateId as string, item]),
   );
+  const evidenceIndexByCandidateId = new Map(
+    detail.evidence
+      .filter((item) => item.candidateId)
+      .map((item, index) => [item.candidateId as string, index + 1]),
+  );
 
   return {
     status: statusToViewStatus(detail.status),
@@ -256,7 +264,7 @@ export function toQADebugResult(detail: QARunDetailDTO): QADebugResultViewModel 
                   : "Dense",
         title: candidateTitle(candidate.metadata, candidate.chunkId ?? candidate.candidateId),
         score: candidateScore(candidate),
-        decision: candidateDecision(candidate),
+        decision: candidateDecision(candidate, evidenceIndexByCandidateId.get(candidate.candidateId)),
         snippet:
           readString(candidate.metadata, "contentPreview") ??
           evidence?.contentSnapshot ??

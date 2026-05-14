@@ -18,6 +18,7 @@ from app.schemas.qa_run import (
     EvaluationRunDTO,
     EvaluationRunDetailDTO,
     EvaluationRunExportResponse,
+    EvaluationSampleArchiveResponse,
     EvaluationSampleCreateRequest,
     EvaluationSampleDTO,
     QARunCreateRequest,
@@ -36,6 +37,7 @@ from app.schemas.qa_run import (
 from app.services.qa_run_service import (
     QARunCreateConflict,
     QARunPermissionError,
+    archive_evaluation_sample,
     cancel_evaluation_run,
     compare_qa_runs,
     create_evaluation_run,
@@ -135,6 +137,23 @@ def read_evaluation_samples(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PERMISSION_DENIED") from exc
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found.")
+    return response
+
+
+@router.delete("/evaluation-samples/{sample_id}", response_model=EvaluationSampleArchiveResponse)
+def archive_evaluation_sample_endpoint(
+    kb_id: UUID,
+    sample_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> EvaluationSampleArchiveResponse:
+    """将评估样本移出评估集；后端保留 archived 历史记录。"""
+    try:
+        response = archive_evaluation_sample(session, current_user, kb_id, sample_id)
+    except QARunPermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PERMISSION_DENIED") from exc
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evaluation sample not found.")
     return response
 
 

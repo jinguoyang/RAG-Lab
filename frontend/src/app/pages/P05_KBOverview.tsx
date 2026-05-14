@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "../components/rag/Card
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
 import { Button } from "../components/rag/Button";
 import { StatusBadge } from "../components/rag/Badge";
-import { AlertTriangle, FileWarning, PlayCircle, ShieldCheck, Upload, Settings, RefreshCw } from "lucide-react";
+import { AlertTriangle, FileWarning, PlayCircle, ShieldCheck, Upload, Settings } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
 import { fetchKnowledgeBase } from "../services/knowledgeBaseService";
 import type { KnowledgeBase } from "../types/knowledgeBase";
@@ -30,6 +30,31 @@ function governanceActionLabel(action: string): string {
     "index_sync.rebuild": "索引重建",
   };
   return labels[action] ?? action;
+}
+
+type RetrievalIndexRow = {
+  channel: string;
+  provider: string;
+  status: "active" | "inactive";
+};
+
+/**
+ * 构造检索与索引的统一展示行，确保 Dense 与 Milvus 始终绑定呈现。
+ */
+function buildRetrievalIndexRows(knowledgeBase: KnowledgeBase | null): RetrievalIndexRow[] {
+  return [
+    { channel: "Dense", provider: "Milvus", status: "active" },
+    {
+      channel: "Sparse",
+      provider: "OpenSearch",
+      status: knowledgeBase?.sparseIndexEnabled ? "active" : "inactive",
+    },
+    {
+      channel: "Graph",
+      provider: "Neo4j",
+      status: knowledgeBase?.graphIndexEnabled ? "active" : "inactive",
+    },
+  ];
 }
 
 export function KBOverview() {
@@ -283,24 +308,17 @@ export function KBOverview() {
                 <p className="font-medium text-near-black">{knowledgeBase?.activeConfigRevisionId || "未配置"}</p>
               </div>
               <div>
-                <p className="text-xs text-stone-gray mb-1">检索策略</p>
-                <p className="text-near-black">
-                  Dense
-                  {knowledgeBase?.sparseIndexEnabled ? " + Sparse" : ""}
-                  {knowledgeBase?.graphIndexEnabled ? " + Graph" : ""}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-stone-gray mb-1">索引阶段</p>
-                <div className="flex flex-wrap gap-2">
-                  <StatusBadge status="success" />
-                  <span className="text-sm text-stone-gray">Milvus 必写</span>
-                  <span className="text-sm text-stone-gray">
-                    OpenSearch {knowledgeBase?.sparseIndexEnabled ? "启用" : "未启用"}
-                  </span>
-                  <span className="text-sm text-stone-gray">
-                    Neo4j {knowledgeBase?.graphIndexEnabled ? "启用" : "未启用"}
-                  </span>
+                <p className="text-xs text-stone-gray mb-2">检索与索引</p>
+                <div className="divide-y divide-border-cream border-y border-border-cream">
+                  {buildRetrievalIndexRows(knowledgeBase).map((item) => (
+                    <div key={item.channel} className="flex items-center justify-between gap-3 py-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-near-black">{item.channel}</p>
+                        <p className="text-xs text-stone-gray">{item.provider}</p>
+                      </div>
+                      <StatusBadge status={item.status} />
+                    </div>
+                  ))}
                 </div>
               </div>
               <div>
@@ -311,12 +329,6 @@ export function KBOverview() {
                 <p className="text-xs text-stone-gray mb-1">状态</p>
                 <p className="text-near-black">{knowledgeBase?.status || "active"}</p>
               </div>
-              <Button variant="outline" className="w-full mt-4" onClick={() => navigate(`/kb/${kbId}/qa`)}>
-                测试配置
-              </Button>
-              <Button variant="outline" className="w-full" onClick={() => navigate(`/kb/${kbId}/docs`)}>
-                <RefreshCw className="w-4 h-4 mr-2" /> 文档治理
-              </Button>
             </CardContent>
            </Card>
         </div>

@@ -284,6 +284,14 @@ class EvaluationSampleDTO(BaseModel):
     updatedAt: str
 
 
+class EvaluationSampleArchiveResponse(BaseModel):
+    """评估样本归档响应，删除入口采用 archived 状态保留历史审计。"""
+
+    sampleId: str
+    status: str
+    archivedAt: str
+
+
 class EvaluationRunCreateRequest(BaseModel):
     """创建评估运行请求，复用现有评估样本集进行批量回归。"""
 

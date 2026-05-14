@@ -20,8 +20,8 @@ def _assert(condition: bool, message: str) -> None:
 def verify_graph_query_param_does_not_shadow_driver_argument() -> None:
     """Graph 检索不能把业务查询参数命名为 query，避免撞 Neo4j session.run(query=)。"""
     source = _read("app/services/qa_providers.py")
-    _assert("$search_text" in source, "Neo4j Graph 检索 Cypher 应使用 $search_text 参数。")
-    _assert("search_text=query" in source, "Graph retrieve 应把业务查询传为 search_text。")
+    _assert("$search_terms" in source, "Neo4j Graph 检索 Cypher 应使用 $search_terms 参数。")
+    _assert("search_terms=search_terms" in source, "Graph retrieve 应把业务查询拆分后传为 search_terms。")
     _assert(
         "graph_snapshot_id=graph_snapshot_id, query=query" not in source,
         "Graph retrieve 不能继续传 query=query，避免 session.run 参数名冲突。",

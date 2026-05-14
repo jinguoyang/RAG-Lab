@@ -13,6 +13,7 @@ import { ratingToFeedbackStatus, toQAHistoryRecord, toQARewriteTrace, type QAHis
 import { deriveQAPartialDiagnostics } from "../utils/qaPartialDiagnostics";
 import {
   addQARunComment,
+  archiveEvaluationSample,
   createConfigDraftFromQARun,
   createEvaluationRun,
   createOptimizationDraftFromEvaluationRun,
@@ -30,7 +31,7 @@ import {
   updateQARunCollaboration,
   updateQARunFeedback,
 } from "../services/qaRunService";
-import type { EvaluationRunDetailDTO, QARunCollaborationDTO, QARunCompareDTO, QARunDetailDTO } from "../types/qaRun";
+import type { EvaluationRunDetailDTO, EvaluationSampleDTO, QARunCollaborationDTO, QARunCompareDTO, QARunDetailDTO } from "../types/qaRun";
 
 type RatingStatus = "up" | "down" | "none";
 type HistoryRecord = QAHistoryRecordViewModel;
@@ -52,6 +53,8 @@ export function QAHistory() {
   const [selectedCompare, setSelectedCompare] = useState<QARunCompareDTO | null>(null);
   const [commentInput, setCommentInput] = useState("");
   const [evaluationRuns, setEvaluationRuns] = useState<EvaluationRunDetailDTO["run"][]>([]);
+  const [evaluationSamples, setEvaluationSamples] = useState<EvaluationSampleDTO[]>([]);
+  const [isEvaluationSamplesDrawerOpen, setEvaluationSamplesDrawerOpen] = useState(false);
   const [selectedEvaluationRun, setSelectedEvaluationRun] = useState<EvaluationRunDetailDTO | null>(null);
   const [selectedDiff, setSelectedDiff] = useState<{ path: string; before: unknown; after: unknown }[]>([]);
   const [evaluationCount, setEvaluationCount] = useState(0);
@@ -75,10 +78,12 @@ export function QAHistory() {
       try {
         const samples = await fetchEvaluationSamples(kbId);
         setEvaluationCount(samples.total);
+        setEvaluationSamples(samples.items);
         const runPage = await fetchEvaluationRuns(kbId);
         setEvaluationRuns(runPage.items);
       } catch {
         setEvaluationCount(0);
+        setEvaluationSamples([]);
         setEvaluationRuns([]);
       }
     } catch (error) {
@@ -109,6 +114,14 @@ export function QAHistory() {
   }
 
   async function runEvaluationBatch() {
+    if (evaluationCount <= 0) {
+      setFeedback({
+        variant: "warning",
+        title: "暂无评估样本",
+        message: "请先从历史运行详情中加入评估集，再触发评估回归。",
+      });
+      return;
+    }
     setActionLoading("evaluation-create");
     try {
       await createEvaluationRun(kbId, { remark: "P10 手动触发回归" });
@@ -270,9 +283,25 @@ export function QAHistory() {
       await createEvaluationSampleFromRun(kbId, run.id, selectedDetail?.answer ?? run.answer);
       const samples = await fetchEvaluationSamples(kbId);
       setEvaluationCount(samples.total);
+      setEvaluationSamples(samples.items);
       setFeedback({ variant: "success", title: "已加入评估样本", message: `${run.id} 已沉淀为后续回归验证样本。` });
     } catch (error) {
       setFeedback({ variant: "error", title: "加入评估样本失败", message: error instanceof Error ? error.message : "请检查评估样本管理权限。" });
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function removeEvaluationSample(sample: EvaluationSampleDTO) {
+    setActionLoading(`sample-archive-${sample.sampleId}`);
+    try {
+      await archiveEvaluationSample(kbId, sample.sampleId);
+      const samples = await fetchEvaluationSamples(kbId);
+      setEvaluationCount(samples.total);
+      setEvaluationSamples(samples.items);
+      setFeedback({ variant: "success", title: "已移出评估集", message: "该样本已归档，不会参与后续评估回归。" });
+    } catch (error) {
+      setFeedback({ variant: "error", title: "移出评估集失败", message: error instanceof Error ? error.message : "请检查评估样本管理权限。" });
     } finally {
       setActionLoading(null);
     }
@@ -370,7 +399,10 @@ export function QAHistory() {
         <Button variant="outline" onClick={() => void loadHistory(searchTerm)}>
           {loading ? "加载中..." : "搜索"}
         </Button>
-        <Button variant="primary" onClick={() => void runEvaluationBatch()} disabled={actionLoading === "evaluation-create"}>
+        <Button variant="outline" onClick={() => setEvaluationSamplesDrawerOpen(true)}>
+          <BookmarkPlus className="w-4 h-4 mr-2" /> 查看评估集
+        </Button>
+        <Button variant="primary" onClick={() => void runEvaluationBatch()} disabled={actionLoading === "evaluation-create" || evaluationCount <= 0}>
           <PlayCircle className="w-4 h-4 mr-2" /> 触发评估回归
         </Button>
       </div>
@@ -436,7 +468,7 @@ export function QAHistory() {
         </div>
         <div className="max-h-48 overflow-auto space-y-2">
           {evaluationRuns.length === 0 ? (
-            <p className="text-sm text-stone-gray">暂无评估运行，可点击“触发评估回归”创建。</p>
+            <p className="text-sm text-stone-gray">暂无评估运行。请先从历史运行详情中加入评估集，再触发评估回归。</p>
           ) : (
             evaluationRuns.map((run) => (
               <div key={run.evaluationRunId} className="rounded-lg border border-border-cream bg-parchment p-3">
@@ -728,6 +760,47 @@ export function QAHistory() {
             </DrawerSection>
           </>
         )}
+      </Drawer>
+
+      <Drawer
+        isOpen={isEvaluationSamplesDrawerOpen}
+        onClose={() => setEvaluationSamplesDrawerOpen(false)}
+        title="评估样本列表"
+        width="560px"
+      >
+        <DrawerSection title={`当前评估集 · ${evaluationSamples.length} 条`}>
+          <div className="space-y-2">
+            {evaluationSamples.length === 0 ? (
+              <p className="text-sm text-stone-gray">暂无评估样本。打开历史运行详情后，可通过“加入评估集”沉淀回归样本。</p>
+            ) : (
+              evaluationSamples.map((sample) => (
+                <div key={sample.sampleId} className="rounded-lg border border-border-cream bg-parchment p-3">
+                  <div className="space-y-3">
+                    <div className="min-w-0 space-y-1">
+                      <div className="break-words text-sm font-medium text-near-black">
+                        {sample.query}
+                      </div>
+                      <div className="text-xs text-stone-gray">
+                        来源 {sample.sourceRunId ? sample.sourceRunId.slice(0, 8) : "-"} · 状态 {sample.status} · {sample.createdAt}
+                      </div>
+                      <div className="break-words text-xs text-stone-gray">
+                        期望答案：{(sample.expectedAnswer || "未设置，使用来源运行答案作为评估参考。").slice(0, 180)}
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={actionLoading === `sample-archive-${sample.sampleId}`}
+                      onClick={() => void removeEvaluationSample(sample)}
+                    >
+                      移出评估集
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </DrawerSection>
       </Drawer>
 
       <Drawer

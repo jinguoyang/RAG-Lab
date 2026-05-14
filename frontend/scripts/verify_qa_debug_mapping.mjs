@@ -185,11 +185,13 @@ const viewModel = toQADebugResult(makeDetail());
 const rewriteTrace = toQARewriteTrace(makeDetail());
 
 assert(viewModel.retrievalCards[0].summary.includes("阈值过滤 20 条"), "Dense 0 条候选应解释阈值过滤原因。");
+assert(viewModel.retrievalCards[0].summary.includes("原始候选"), "检索卡片应明确候选数属于通道原始候选。");
 assert(viewModel.retrievalCards[1].summary.includes("2 个 query × topK 15"), "Sparse 多 query 时应解释为什么候选数可能超过单 query topK。");
 assert(viewModel.diagnostics.recalled === "15", "总召回量应来自 trace/fusion 输入，而不是候选列表长度。");
 assert(viewModel.diagnostics.finalContext === "5", "最终上下文大小应来自 contextPacking，而不是 evidence 条数。");
 assert(viewModel.diagnostics.filtered === "0", "权限过滤为 0 时不应显示 -0。");
 assert(viewModel.candidates[0].title.includes("#24"), "候选标题应包含 Chunk 位置信息。");
+assert(viewModel.candidates[0].decision.includes("Evidence [1]"), "候选应展示与 Evidence 编号的对应关系。");
 assert(viewModel.candidates[0].snippet.includes("物资采购部"), "候选应显示正文预览。");
 assert(viewModel.citations[0].documentId === "26b2436f-e3d1-4e8a-8e54-7af5f0166ffa", "Citation 应保留真实 documentId 用于跳转。");
 assert(rewriteTrace.originalQuery === "采购职责由哪些组织负责", "问题改写视图应保留原始问题。");
@@ -200,6 +202,7 @@ assert(rewriteTrace.providerLabel === "-", "没有 provider 信息时应显示�
 const qaDebugPageSource = await readFile(qaDebugPagePath, "utf8");
 const qaHistoryPageSource = await readFile(qaHistoryPagePath, "utf8");
 assert(qaDebugPageSource.includes("原始问题") && qaDebugPageSource.includes("改写后问题"), "QA 调试 Trace 应展示原始问题和改写后问题。");
+assert(qaDebugPageSource.includes("阶段口径"), "QA 调试页应解释检索候选、最终上下文和 Evidence 的阶段关系。");
 assert(qaHistoryPageSource.includes("DrawerSection title=\"问题改写\""), "QA 历史详情 Drawer 应包含问题改写区。");
 assert(qaHistoryPageSource.includes("toQARewriteTrace(selectedDetail)"), "QA 历史详情应复用问题改写视图模型。");
 

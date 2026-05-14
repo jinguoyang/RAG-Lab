@@ -618,22 +618,38 @@ class Neo4jGraphRetrievalProvider(GraphRetrievalProvider):
         limit: int,
         access_filter: ChunkAccessFilterContext,
     ) -> list[ProviderCandidate]:
+        search_terms = _graph_query_terms(query)
         cypher = """
         MATCH (e:Entity)-[:SUPPORTED_BY]->(c:ChunkRef)
         WHERE e.kb_id = $kb_id
           AND ($graph_snapshot_id IS NULL OR e.graph_snapshot_id = $graph_snapshot_id)
-          AND toLower(e.name) CONTAINS toLower($search_text)
+          AND ANY(term IN $search_terms WHERE
+            toLower(e.name) CONTAINS term
+            OR ANY(alias IN coalesce(e.aliases, []) WHERE toLower(alias) CONTAINS term)
+            OR toLower(coalesce(c.summary, "")) CONTAINS term
+          )
         RETURN c.chunk_id AS chunk_id, c.summary AS content, e.name AS entity_name, e.entity_key AS entity_key
         LIMIT $limit
         """
-        records = self._run_read(cypher, kb_id=kb_id, graph_snapshot_id=graph_snapshot_id, search_text=query, limit=limit)
+        records = self._run_read(
+            cypher,
+            kb_id=kb_id,
+            graph_snapshot_id=graph_snapshot_id,
+            search_terms=search_terms,
+            limit=limit,
+        )
         return [
             ProviderCandidate(
                 source_type="graph",
                 chunk_id=_parse_uuid(record.get("chunk_id")),
                 raw_score=None,
                 content=record.get("content"),
-                metadata={"entityName": record.get("entity_name"), "entityKey": record.get("entity_key")},
+                metadata={
+                    "entityName": record.get("entity_name"),
+                    "entityKey": record.get("entity_key"),
+                    "graphSnapshotId": str(graph_snapshot_id) if graph_snapshot_id else None,
+                    "queryTerms": search_terms,
+                },
             )
             for record in records
         ]
@@ -1083,6 +1099,28 @@ def _safe_float(value: object) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _graph_query_terms(query: str) -> list[str]:
+    """从自然语言问题生成图检索关键词，避免整句匹配导致实体召回为 0。"""
+    terms: list[str] = []
+    for token in re.findall(r"[\u4e00-\u9fff]+|[A-Za-z0-9_]+", query.lower()):
+        if re.fullmatch(r"[\u4e00-\u9fff]+", token):
+            for size in (4, 3, 2):
+                if len(token) >= size:
+                    terms.extend(token[index : index + size] for index in range(0, len(token) - size + 1))
+        elif len(token) >= 2:
+            terms.append(token)
+
+    ignored_terms = {"通常", "哪些", "哪个", "什么", "如何", "是否", "以及", "由哪", "负责"}
+    seen: set[str] = set()
+    unique_terms: list[str] = []
+    for term in terms:
+        if term in ignored_terms or term in seen:
+            continue
+        seen.add(term)
+        unique_terms.append(term)
+    return unique_terms[:32] or [query.lower()]
 
 
 def _to_milvus_row(payload: dict) -> dict:

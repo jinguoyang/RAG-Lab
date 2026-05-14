@@ -14,6 +14,7 @@ from app.core.config import get_settings
 from app.schemas.auth import CurrentUserResponse
 from app.schemas.qa_run import (
     ConfigRevisionDiffItemDTO,
+    EvaluationSampleArchiveResponse,
     EvaluationSampleCreateRequest,
     EvaluationSampleDTO,
     EvaluationOptimizationDraftResponse,
@@ -1230,56 +1231,54 @@ def _execute_provider_qa_run(
     )
     trace_order += 1
 
-    evidence_id = uuid4()
-    citation_id = uuid4()
-    top_candidate, top_candidate_id = context_pairs[0]
-    content_snapshot = top_candidate.content or "Provider 候选未返回正文，当前仅保留来源摘要。"
-    content_hash = sha256(content_snapshot.encode("utf-8")).hexdigest()
-
-    session.execute(
-        insert(qa_run_evidence).values(
-            evidence_id=evidence_id,
-            run_id=run_id,
-            chunk_id=top_candidate.chunk_id,
-            candidate_id=top_candidate_id,
-            evidence_order=1,
-            content_snapshot=content_snapshot,
-            content_snapshot_hash=content_hash,
-            snapshot_policy="redacted",
-            redaction_status="none",
-            source_snapshot={
-                "sourceType": top_candidate.source_type,
-                **top_candidate.metadata,
-            },
+    for evidence_order, (candidate, candidate_id) in enumerate(context_pairs, start=1):
+        evidence_id = uuid4()
+        content_snapshot = candidate.content or "Provider 候选未返回正文，当前仅保留来源摘要。"
+        content_hash = sha256(content_snapshot.encode("utf-8")).hexdigest()
+        session.execute(
+            insert(qa_run_evidence).values(
+                evidence_id=evidence_id,
+                run_id=run_id,
+                chunk_id=candidate.chunk_id,
+                candidate_id=candidate_id,
+                evidence_order=evidence_order,
+                content_snapshot=content_snapshot,
+                content_snapshot_hash=content_hash,
+                snapshot_policy="redacted",
+                redaction_status="none",
+                source_snapshot={
+                    "sourceType": candidate.source_type,
+                    **candidate.metadata,
+                },
+            )
         )
-    )
-    session.execute(
-        insert(qa_run_citations).values(
-            citation_id=citation_id,
-            run_id=run_id,
-            evidence_id=evidence_id,
-            citation_order=1,
-            label=f"{top_candidate.source_type}#1",
-            location_snapshot={
-                "documentId": top_candidate.metadata.get("documentId"),
-                "documentName": top_candidate.metadata.get("documentName"),
-                "versionId": top_candidate.metadata.get("versionId"),
-                "chunkId": top_candidate.metadata.get("chunkId"),
-                "chunkIndex": top_candidate.metadata.get("chunkIndex"),
-                "pageNo": top_candidate.metadata.get("pageNo"),
-                "section": top_candidate.metadata.get("section"),
-                "matchedChannels": top_candidate.metadata.get("matchedChannels", [top_candidate.source_type]),
-            },
+        session.execute(
+            insert(qa_run_citations).values(
+                citation_id=uuid4(),
+                run_id=run_id,
+                evidence_id=evidence_id,
+                citation_order=evidence_order,
+                label=f"{candidate.source_type}#{evidence_order}",
+                location_snapshot={
+                    "documentId": candidate.metadata.get("documentId"),
+                    "documentName": candidate.metadata.get("documentName"),
+                    "versionId": candidate.metadata.get("versionId"),
+                    "chunkId": candidate.metadata.get("chunkId"),
+                    "chunkIndex": candidate.metadata.get("chunkIndex"),
+                    "pageNo": candidate.metadata.get("pageNo"),
+                    "section": candidate.metadata.get("section"),
+                    "matchedChannels": candidate.metadata.get("matchedChannels", [candidate.source_type]),
+                },
+            )
         )
-    )
     _insert_trace_step(
         session,
         run_id,
         trace_order,
         "citation",
         "success",
-        {"evidenceCount": 1},
-        {"citationCount": 1},
+        {"evidenceCount": len(context_pairs)},
+        {"citationCount": len(context_pairs)},
         {"latencyMs": 0},
         started_at=started_at,
     )
@@ -1294,8 +1293,8 @@ def _execute_provider_qa_run(
             metrics={
                 "latencyMs": int((datetime.now(UTC) - started_at).total_seconds() * 1000),
                 "hitCount": len(fused_candidates),
-                "evidenceCount": 1,
-                "citationCount": 1,
+                "evidenceCount": len(context_pairs),
+                "citationCount": len(context_pairs),
                 "retrievalDiagnostics": {
                     **raw_channel_counts,
                     "fusedCount": len(fused_candidates),
@@ -2147,6 +2146,57 @@ def list_evaluation_samples(
         pageNo=page_no,
         pageSize=page_size,
         total=total,
+    )
+
+
+def archive_evaluation_sample(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    sample_id: UUID,
+) -> EvaluationSampleArchiveResponse | None:
+    """将评估样本移出回归集，使用 archived 状态保留来源和审计信息。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+    _require_permission(session, current_user, kb_id, "kb.evaluation.manage")
+    row = session.execute(
+        select(evaluation_samples)
+        .where(
+            evaluation_samples.c.kb_id == kb_id,
+            evaluation_samples.c.sample_id == sample_id,
+            evaluation_samples.c.deleted_at.is_(None),
+            evaluation_samples.c.status == "active",
+        )
+        .limit(1)
+    ).mappings().first()
+    if row is None:
+        return None
+
+    now = datetime.now(UTC)
+    updated = session.execute(
+        update(evaluation_samples)
+        .where(evaluation_samples.c.sample_id == sample_id)
+        .values(
+            status="archived",
+            updated_at=now,
+            updated_by=UUID(current_user.user.userId),
+        )
+        .returning(evaluation_samples)
+    ).mappings().one()
+    write_audit_log(
+        session,
+        current_user,
+        "evaluation_sample.archive",
+        "evaluation_sample",
+        sample_id,
+        kb_id=kb_id,
+        detail={"previousStatus": row["status"], "status": updated["status"]},
+    )
+    session.commit()
+    return EvaluationSampleArchiveResponse(
+        sampleId=str(updated["sample_id"]),
+        status=updated["status"],
+        archivedAt=now.isoformat(),
     )
 
 

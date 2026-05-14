@@ -289,6 +289,63 @@ def _read_source_bytes(
     return storage_provider.get_object(file_row["object_key"]), file_row
 
 
+def _write_graph_chunk_refs(
+    session: Session,
+    graph_snapshot_id: UUID,
+    graph_items: list[ChunkGraphExtraction],
+) -> None:
+    """将图抽取结果写成 Graph 对象到 Chunk 的回溯摘要。"""
+    session.execute(delete(graph_chunk_refs).where(graph_chunk_refs.c.graph_snapshot_id == graph_snapshot_id))
+    seen: set[tuple[str, str, str | None, str | None]] = set()
+
+    for item in graph_items:
+        for entity in item.entities:
+            key = ("entity_support", entity.chunk_id, entity.entity_key, None)
+            if key in seen:
+                continue
+            seen.add(key)
+            session.execute(
+                insert(graph_chunk_refs).values(
+                    graph_chunk_ref_id=uuid4(),
+                    graph_snapshot_id=graph_snapshot_id,
+                    chunk_id=UUID(entity.chunk_id),
+                    neo4j_node_key=entity.entity_key,
+                    neo4j_relation_key=None,
+                    community_key=None,
+                    ref_type="entity_support",
+                    metadata={
+                        "entityName": entity.name,
+                        "entityType": entity.entity_type,
+                        "aliases": entity.aliases,
+                    },
+                    created_at=func.now(),
+                )
+            )
+
+        for relation in item.relations:
+            key = ("relation_support", relation.chunk_id, relation.source_entity_key, relation.relation_key)
+            if key in seen:
+                continue
+            seen.add(key)
+            session.execute(
+                insert(graph_chunk_refs).values(
+                    graph_chunk_ref_id=uuid4(),
+                    graph_snapshot_id=graph_snapshot_id,
+                    chunk_id=UUID(relation.chunk_id),
+                    neo4j_node_key=relation.source_entity_key,
+                    neo4j_relation_key=relation.relation_key,
+                    community_key=None,
+                    ref_type="relation_support",
+                    metadata={
+                        "sourceEntityKey": relation.source_entity_key,
+                        "targetEntityKey": relation.target_entity_key,
+                        "relationType": relation.relation_type,
+                    },
+                    created_at=func.now(),
+                )
+            )
+
+
 def _create_index_sync_job(
     session: Session,
     kb_row: RowMapping,
@@ -304,6 +361,7 @@ def _create_index_sync_job(
     provider_set: QARunProviders | None = None,
     graph_items: list[ChunkGraphExtraction] | None = None,
     document_ids: list[UUID] | None = None,
+    graph_snapshot_id: UUID | None = None,
 ) -> tuple[UUID, str, str | None]:
     """创建并执行 IndexSyncJob，真实 Provider 成功后才标记 success。"""
     sync_job_id = uuid4()
@@ -336,16 +394,19 @@ def _create_index_sync_job(
         final_error_message = error_message
     else:
         try:
+            resolved_graph_items = graph_items or []
             provider_summary = _run_index_sync_job(
                 provider_set or get_qa_run_providers(),
                 target_store,
                 sync_type,
                 list((provider_payloads or {}).values()),
                 chunk_ids,
-                graph_items or [],
+                resolved_graph_items,
             )
             final_status = status if status != "queued" else "success"
             final_error_message = error_message
+            if target_store == "neo4j" and sync_type != "delete" and final_status == "success" and graph_snapshot_id:
+                _write_graph_chunk_refs(session, graph_snapshot_id, resolved_graph_items)
         except ProviderError as exc:
             provider_summary = {
                 "targetStore": target_store,
@@ -807,6 +868,7 @@ def run_ingest_job(
                     provider_payloads=graph_payloads,
                     provider_set=provider_set,
                     graph_items=graph_items,
+                    graph_snapshot_id=graph_snapshot_id,
                 )
                 stage_timings["graph_index"] = round(time.perf_counter() - stage_started_at, 3)
             else:
@@ -1745,54 +1807,35 @@ def run_bulk_document_governance(
             raise DocumentConflictError("targetStore is required for rebuild_index.")
         if target_store not in {"milvus", "opensearch", "neo4j"}:
             raise DocumentConflictError("Unsupported target store.")
-        condition = (
-            (chunks.c.kb_id == kb_id)
-            & (chunks.c.status == "active")
-            & (document_versions.c.status == "active")
-        )
-        if document_ids:
-            condition = condition & chunks.c.document_id.in_(document_ids)
-        chunk_ids = [
-            row[0]
-            for row in session.execute(
-                select(chunks.c.chunk_id)
-                .select_from(chunks.join(document_versions, chunks.c.version_id == document_versions.c.version_id))
-                .where(condition)
-            )
-        ]
-        status = "success" if chunk_ids else "failed"
-        error_message = None if chunk_ids else "No active chunks found for rebuild scope."
-        sync_job_id = _create_index_sync_job(
-            session,
-            kb_row,
-            current_user,
-            target_store,
-            None,
-            chunk_ids,
-        target_store == "milvus",
-        sync_type="rebuild",
-        status=status,
-        error_message=error_message,
-        document_ids=document_ids or None,
-    )
-        _insert_audit_log(
-            session,
-            current_user,
-            "document.batch_rebuild_index",
-            "index_sync_job",
-            sync_job_id,
-            kb_id,
-            None,
-            {"targetStore": target_store, "documentIds": [str(item) for item in document_ids], "status": status},
-        )
-        session.commit()
+        affected_sync_job_ids: list[str] = []
+        errors: list[str] = []
+        success_count = 0
+        for document_id in document_ids:
+            try:
+                response = rebuild_index_sync(
+                    session,
+                    current_user,
+                    kb_id,
+                    target_store,
+                    document_id=document_id,
+                )
+                if response is None:
+                    errors.append(f"{document_id}: document not found")
+                elif response.status == "failed":
+                    errors.append(f"{document_id}: {response.errorMessage or 'index rebuild failed'}")
+                    affected_sync_job_ids.append(response.syncJobId)
+                else:
+                    success_count += 1
+                    affected_sync_job_ids.append(response.syncJobId)
+            except Exception as exc:
+                errors.append(f"{document_id}: {exc}")
         return BulkDocumentGovernanceResponse(
             operation=operation,
             requestedCount=len(document_ids),
-            successCount=1 if status == "success" else 0,
-            failedCount=0 if status == "success" else 1,
-            affectedIds=[str(sync_job_id)],
-            errors=[] if error_message is None else [error_message],
+            successCount=success_count,
+            failedCount=len(errors),
+            affectedIds=affected_sync_job_ids,
+            errors=errors,
         )
 
     raise DocumentConflictError("Unsupported batch governance operation.")
@@ -2384,7 +2427,33 @@ def rebuild_index_sync(
         )
         for row in rows
     }
+    graph_snapshot_id = uuid4() if target_store == "neo4j" and chunk_ids else None
+    if graph_snapshot_id is not None:
+        provider_payloads = {
+            chunk_id: {**payload, "graphSnapshotId": str(graph_snapshot_id)}
+            for chunk_id, payload in provider_payloads.items()
+        }
     graph_items = provider_set.llm.extract_graph(list(provider_payloads.values())) if target_store == "neo4j" and chunk_ids else []
+    if graph_snapshot_id is not None:
+        session.execute(
+            insert(graph_snapshots).values(
+                graph_snapshot_id=graph_snapshot_id,
+                kb_id=kb_row["kb_id"],
+                source_scope={
+                    "documentIds": [str(document_id)] if document_id else [],
+                    "versionIds": [str(version_id)] if version_id else [],
+                    "syncType": "rebuild",
+                },
+                status="running",
+                neo4j_graph_key=f"neo4j:{graph_snapshot_id}",
+                entity_count=sum(len(item.entities) for item in graph_items),
+                relation_count=sum(len(item.relations) for item in graph_items),
+                community_count=0,
+                job_id=None,
+                created_by=UUID(current_user.user.userId),
+                updated_by=UUID(current_user.user.userId),
+            )
+        )
     sync_job_id, final_status, final_error = _create_index_sync_job(
         session,
         kb_row,
@@ -2400,7 +2469,19 @@ def rebuild_index_sync(
         provider_set=provider_set,
         graph_items=graph_items,
         document_ids=[document_id] if document_id else None,
+        graph_snapshot_id=graph_snapshot_id,
     )
+    if graph_snapshot_id is not None:
+        session.execute(
+            update(graph_snapshots)
+            .where(graph_snapshots.c.graph_snapshot_id == graph_snapshot_id)
+            .values(
+                status="success" if final_status == "success" else "failed",
+                stale_reason=final_error,
+                updated_by=UUID(current_user.user.userId),
+                updated_at=func.now(),
+            )
+        )
     _insert_audit_log(
         session,
         current_user,
