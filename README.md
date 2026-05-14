@@ -35,7 +35,7 @@ rag-lab/
 
 - 当前仓库已落地文档、设计原型、正式前端工程和 FastAPI 后端工程。
 - `frontend/` 从 `screanshot/prototype/` 演进而来，作为正式前端开发入口。
-- `backend/` 承载后端 API、服务层、数据库迁移和本地验证脚本。
+- `backend/` 承载后端 API、服务层、数据库迁移和本地运维脚本。
 - `screanshot/prototype/` 作为设计原型归档保留，不直接承载正式开发。
 
 ## 文档入口
@@ -134,9 +134,6 @@ cd C:\Users\Public\Documents\Code\jin\rag-lab\backend
 conda run -n rag-lab python -m compileall app
 conda run -n rag-lab python -c "from fastapi.testclient import TestClient; from app.main import app; r=TestClient(app).get('/api/v1/health'); print(r.status_code); print(r.json())"
 conda run -n rag-lab python scripts/export_openapi.py
-conda run -n rag-lab python scripts/verify_epic10_release_ops.py
-conda run -n rag-lab python scripts/verify_v17_pipeline_params.py
-conda run -n rag-lab python scripts/verify_v17_pipeline_evaluation.py
 ```
 
 预期结果：
@@ -144,8 +141,7 @@ conda run -n rag-lab python scripts/verify_v17_pipeline_evaluation.py
 - 前端构建成功生成 `dist/`。
 - 后端编译无错误。
 - 健康检查状态码为 `200`，响应中包含 `status`、`app_name`、`version`、`environment`。
-- OpenAPI Schema 可导出，Epic10 发布验收脚本输出通过。
-- V1.7 Pipeline 参数验证和评估闭环验证输出通过。
+- OpenAPI Schema 可导出。
 
 ## 依赖说明
 
@@ -176,7 +172,7 @@ conda run -n rag-lab python scripts/verify_v17_pipeline_evaluation.py
 
 ### 外部依赖落地状态
 
-系统设计建议采用以下外部组件；当前代码已通过 Provider 抽象和本地验证脚本形成可替换链路，真实网络级连通性仍需按环境逐项复测：
+系统设计建议采用以下外部组件；当前代码已通过 Provider 抽象形成可替换链路，真实网络级连通性仍需按环境逐项复测：
 
 - 后端：Python FastAPI
 - 任务框架：Celery + Redis

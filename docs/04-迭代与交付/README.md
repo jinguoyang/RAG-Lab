@@ -19,7 +19,7 @@
 - 最新完成范围是 E22：知识库治理工作流强化，已通过 Sprint 27 至 Sprint 29 补齐治理操作、诊断详情和治理后验证入口。
 - 当前已创建 Sprint 30，承接 E25 / V1.8 RAG 应用运行时最小链路，实施状态以 [Sprint 总览](./sprints/README.md) 为准。
 - 后续新工作应先进入产品待办清单，再建立新的 Sprint 或 Release 计划。
-- 发布前仍需在目标测试或预生产环境补齐真实 Provider 网络级复测记录，入口见 [V1.7 Provider 网络级复测记录](../06-发布与运维/V1.7-Provider网络级复测记录.md)。
+- 发布前仍需在目标测试或预生产环境补齐真实 Provider 网络级复测结论，记录到正式发布记录或 [发布验收与运维手册](../06-发布与运维/发布验收与运维手册.md)。
 
 ## 3. 文档分层
 
@@ -30,9 +30,7 @@
 - [产品待办清单](./产品待办清单.md)：Backlog 和 Epic 状态源。
 - [Sprint 总览](./sprints/README.md)：当前 Sprint 和历史 Sprint 索引。
 - [Release 总览](./releases/README.md)：Release 状态源。
-- [中长期规划](./中长期规划.md)：路线摘要，不替代 Backlog / Sprint / Release 状态源。
 - [编码规范](./编码规范.md)：开发、命名、注释、验证和 Git 约定。
-- [V1.7 RAG 调优指南](../06-发布与运维/V1.7-RAG调优指南.md)：当前 RAG 参数调优说明。
 
 ### 3.2 历史归档
 
@@ -42,7 +40,7 @@
 - `sprints/sprint21-40/Sprint-21.md` 至 `sprints/sprint21-40/Sprint-29.md`
 - `releases/V1.0-*.md` 至 `releases/V1.7-*.md`
 - `docs/superpowers/specs/` 和 `docs/superpowers/plans/`
-- [历史任务归档](./历史任务归档.md)：将关键历史 spec/plan 映射到当前 04 目录状态源和验证入口。
+- 已删除的阶段性 `backend/scripts/verify_*.py` 脚本只保留在历史文档记录中，不再作为当前验证入口。
 
 历史归档中出现旧计划、旧假设或当时的“待定”字样时，一般保留原貌；只在它会误导当前入口时补充归档说明。
 
@@ -52,5 +50,5 @@
 - Backlog 或 Epic 状态变化，只更新 [产品待办清单](./产品待办清单.md)，必要时在总览文档增加链接说明。
 - Sprint 是否进行中或完成，只更新 [Sprint 总览](./sprints/README.md)；单个 Sprint 文档作为执行记录保留。
 - Release 是否完成，只更新 [Release 总览](./releases/README.md)；单个 Release 文档作为范围和验收记录保留。
-- 真实 Provider 网络级复测结果只回填到发布运维记录，不用 local/mock 结果替代真实环境结论。
+- 真实 Provider 网络级复测结果只回填到正式发布记录或发布运维手册，不用 local/mock 结果替代真实环境结论。
 - 新增文档前先确认是否能补充到现有入口；确需新增时，文档开头应说明它是活文档还是历史归档。

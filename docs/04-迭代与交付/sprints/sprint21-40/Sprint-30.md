@@ -23,7 +23,7 @@
 - 支持 `POST /api/v1/app-runtime/chat-messages` blocking 调用。
 - 每次外部调用创建会话、消息和调用审计记录，并关联到一次 QARun。
 - App Runtime 输出只返回安全的 answer、citations、usage、metadata 和 `runId`，完整 Trace 仍在平台内部查看。
-- 建立最小验证脚本，覆盖成功调用、无效 key、停用应用和无可运行配置。
+- 建立最小接口抽样验证，覆盖成功调用、无效 key、停用应用和无可运行配置。
 
 ## 4. 计划事项
 
@@ -33,7 +33,7 @@
 | S30-002 | B-134 | 实现 App Runtime blocking 对话接口，复用现有 QARun 执行链路 | P0 | 2d | Codex | Ready |
 | S30-003 | B-135 | 建立外部 Conversation、Message 和 Invocation 记录，并关联 QARun | P0 | 1.5d | Codex | Ready |
 | S30-004 | B-136 | 实现 App API Key 鉴权、禁用、轮换审计和最小调用来源记录 | P0 | 1.5d | Codex | Ready |
-| S30-005 | B-137 | 建立 RAG 应用运行时最小验证脚本 | P0 | 1d | Codex | Ready |
+| S30-005 | B-137 | 建立 RAG 应用运行时最小接口抽样验证 | P0 | 1d | Codex | Ready |
 | S30-006 | B-145 | 补齐 App Runtime 权限裁剪、跨知识库隔离和 Citation 安全回归 | P0 | 1d | Codex | Ready |
 
 ## 5. 验收标准
@@ -55,12 +55,12 @@
 
 - 后端编译：`conda run -n rag-lab python -m compileall app`
 - OpenAPI 导出：`conda run -n rag-lab python scripts/export_openapi.py`
-- Sprint 30 验证：`conda run -n rag-lab python scripts/verify_sprint30_rag_app_runtime.py`
-- 权限回归：`conda run -n rag-lab python scripts/verify_sprint29_governance_validation.py`
+- App Runtime 接口抽样：通过 FastAPI TestClient 或接口联调覆盖成功调用、无效 key、停用应用和无可运行配置。
+- 权限回归：抽样确认被治理排除或无权限 Chunk 不进入外部 answer、evidence 或 citations。
 - 前端构建（如本 Sprint 改前端）：`npm run build`
 - 空白检查：`git diff --check`
 
 ## 8. 执行记录
 
-- 当前仅创建 Sprint 计划，尚未实施代码和验证脚本。
+- 当前仅创建 Sprint 计划，尚未实施代码和接口抽样验证。
 - Sprint 执行完成后，应将 B-133 至 B-137、B-145 的状态回写到 [产品待办清单](../../产品待办清单.md)。

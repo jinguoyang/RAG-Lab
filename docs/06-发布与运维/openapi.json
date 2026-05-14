@@ -3163,7 +3163,7 @@
           "documents"
         ],
         "summary": "Reparse Document Endpoint",
-        "description": "创建重解析版本和作业，并执行本地解析 Worker。",
+        "description": "创建重解析版本和 queued 作业，并投递后台 Worker。",
         "operationId": "reparse_document_endpoint_api_v1_knowledge_bases__kb_id__documents__document_id__reparse_post",
         "parameters": [
           {
@@ -3369,6 +3369,74 @@
                 "schema": {
                   "$ref": "#/components/schemas/DocumentDeleteResponse"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/documents/{document_id}/download": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Download Document Endpoint",
+        "description": "下载当前 active version 的原始文件，文件缺失时返回可展示提示。",
+        "operationId": "download_document_endpoint_api_v1_knowledge_bases__kb_id__documents__document_id__download_get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           },
@@ -4152,6 +4220,23 @@
               "minimum": 1,
               "default": 20,
               "title": "Pagesize"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Documentid"
             }
           },
           {
@@ -5272,6 +5357,76 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PageResponse_EvaluationSampleDTO_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/qa-runs/evaluation-samples/{sample_id}": {
+      "delete": {
+        "tags": [
+          "qa-runs"
+        ],
+        "summary": "Archive Evaluation Sample Endpoint",
+        "description": "将评估样本移出评估集；后端保留 archived 历史记录。",
+        "operationId": "archive_evaluation_sample_endpoint_api_v1_knowledge_bases__kb_id__qa_runs_evaluation_samples__sample_id__delete",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "sample_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Sample Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationSampleArchiveResponse"
                 }
               }
             }
@@ -9654,6 +9809,30 @@
         ],
         "title": "EvaluationRunExportResponse",
         "description": "评估运行导出响应。"
+      },
+      "EvaluationSampleArchiveResponse": {
+        "properties": {
+          "sampleId": {
+            "type": "string",
+            "title": "Sampleid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "archivedAt": {
+            "type": "string",
+            "title": "Archivedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sampleId",
+          "status",
+          "archivedAt"
+        ],
+        "title": "EvaluationSampleArchiveResponse",
+        "description": "评估样本归档响应，删除入口采用 archived 状态保留历史审计。"
       },
       "EvaluationSampleCreateRequest": {
         "properties": {

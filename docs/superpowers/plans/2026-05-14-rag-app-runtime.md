@@ -15,7 +15,7 @@
 **Files:**
 - Modify: `backend/app/tables.py`
 - Create: `backend/migrations/versions/0014_create_rag_app_runtime_tables.py`
-- Test: `backend/scripts/verify_sprint30_rag_app_runtime.py`
+- Test: FastAPI TestClient 接口抽样、`python -m compileall app`、`scripts/export_openapi.py`
 
 - [ ] Add `rag_apps`, `rag_app_api_keys`, `app_conversations`, `app_messages` and `app_invocations` tables using `snake_case` fields from `docs/03-系统设计/数据模型设计.md`.
 - [ ] Add Alembic migration with indexes for `rag_apps(kb_id, status, created_at)`, `rag_app_api_keys(key_hash)`, `app_conversations(app_id, end_user_id, updated_at)`, `app_messages(conversation_id, created_at)`, `app_invocations(app_id, status, created_at)` and `app_invocations(qa_run_id)`.
@@ -50,14 +50,13 @@
 ### Task 4: Verification
 
 **Files:**
-- Create: `backend/scripts/verify_sprint30_rag_app_runtime.py`
 - Modify: `docs/06-发布与运维/openapi.json` only if OpenAPI export is part of the implementation pass.
 
-- [ ] Verify successful blocking chat creates an App Conversation, two App Messages, one Invocation and one linked QARun.
-- [ ] Verify invalid/revoked API Key returns `APP_API_KEY_INVALID`.
-- [ ] Verify disabled App returns `RAG_APP_DISABLED`.
-- [ ] Verify missing runnable revision returns `RAG_APP_NO_RUNNABLE_REVISION`.
-- [ ] Verify external response citations only come from authorized Evidence.
+- [ ] Use FastAPI TestClient or local interface calls to verify successful blocking chat creates an App Conversation, two App Messages, one Invocation and one linked QARun.
+- [ ] Use FastAPI TestClient or local interface calls to verify invalid/revoked API Key returns `APP_API_KEY_INVALID`.
+- [ ] Use FastAPI TestClient or local interface calls to verify disabled App returns `RAG_APP_DISABLED`.
+- [ ] Use FastAPI TestClient or local interface calls to verify missing runnable revision returns `RAG_APP_NO_RUNNABLE_REVISION`.
+- [ ] Use FastAPI TestClient or local interface calls to verify external response citations only come from authorized Evidence.
 - [ ] Run `conda run -n rag-lab python scripts/export_openapi.py`.
 - [ ] Run `git diff --check`.
 
