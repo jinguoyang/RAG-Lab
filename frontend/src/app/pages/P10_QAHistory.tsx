@@ -32,6 +32,8 @@ import {
   updateQARunFeedback,
 } from "../services/qaRunService";
 import type { EvaluationRunDetailDTO, EvaluationSampleDTO, QARunCollaborationDTO, QARunCompareDTO, QARunDetailDTO } from "../types/qaRun";
+import { fetchTokenUsage, fetchCostSummary } from "../services/observabilityService";
+import type { TokenUsageResponse, CostSummaryResponse } from "../types/observability";
 
 type RatingStatus = "up" | "down" | "none";
 type HistoryRecord = QAHistoryRecordViewModel;
@@ -65,6 +67,8 @@ export function QAHistory() {
     title: string;
     message: string;
   } | null>(null);
+  const [tokenUsage, setTokenUsage] = useState<TokenUsageResponse | null>(null);
+  const [costSummary, setCostSummary] = useState<CostSummaryResponse | null>(null);
 
   async function loadHistory(keyword = searchTerm) {
     if (!kbId) return;
@@ -85,6 +89,17 @@ export function QAHistory() {
         setEvaluationCount(0);
         setEvaluationSamples([]);
         setEvaluationRuns([]);
+      }
+      try {
+        const [usage, cost] = await Promise.all([
+          fetchTokenUsage(kbId),
+          fetchCostSummary(kbId),
+        ]);
+        setTokenUsage(usage);
+        setCostSummary(cost);
+      } catch {
+        setTokenUsage(null);
+        setCostSummary(null);
       }
     } catch (error) {
       setFeedback({
@@ -459,6 +474,65 @@ export function QAHistory() {
             ))}
           </TableBody>
         </Table>
+      </div>
+
+      <div className="shrink-0 border border-border-cream rounded-xl p-4 bg-ivory space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-near-black">观测概览</h3>
+          <Badge variant="default">{tokenUsage?.runCount ?? 0} 次运行</Badge>
+        </div>
+        {tokenUsage && costSummary ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-3 gap-4 text-sm">
+              <div className="rounded-lg border border-border-cream bg-parchment p-3">
+                <div className="text-stone-gray">总 Token</div>
+                <div className="text-lg font-medium text-near-black">{tokenUsage.totalTokens.toLocaleString()}</div>
+                <div className="text-xs text-stone-gray">
+                  输入 {tokenUsage.totalInputTokens.toLocaleString()} / 输出 {tokenUsage.totalOutputTokens.toLocaleString()}
+                </div>
+              </div>
+              <div className="rounded-lg border border-border-cream bg-parchment p-3">
+                <div className="text-stone-gray">估算成本</div>
+                <div className="text-lg font-medium text-near-black">
+                  {costSummary.estimatedCostUsd != null ? `$${costSummary.estimatedCostUsd.toFixed(4)}` : "-"}
+                </div>
+                <div className="text-xs text-stone-gray truncate" title={costSummary.pricingNote}>{costSummary.pricingNote}</div>
+              </div>
+              <div className="rounded-lg border border-border-cream bg-parchment p-3">
+                <div className="text-stone-gray">运行次数</div>
+                <div className="text-lg font-medium text-near-black">{tokenUsage.runCount}</div>
+              </div>
+            </div>
+            {tokenUsage.steps.length > 0 && (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>阶段</TableHead>
+                    <TableHead>调用次数</TableHead>
+                    <TableHead>输入 Token</TableHead>
+                    <TableHead>输出 Token</TableHead>
+                    <TableHead>总 Token</TableHead>
+                    <TableHead>平均延迟</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {tokenUsage.steps.map((step) => (
+                    <TableRow key={step.stepKey}>
+                      <TableCell className="font-medium">{step.stepKey}</TableCell>
+                      <TableCell>{step.totalCalls}</TableCell>
+                      <TableCell>{step.totalInputTokens.toLocaleString()}</TableCell>
+                      <TableCell>{step.totalOutputTokens.toLocaleString()}</TableCell>
+                      <TableCell>{step.totalTokens.toLocaleString()}</TableCell>
+                      <TableCell>{step.avgLatencyMs != null ? `${step.avgLatencyMs} ms` : "-"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-stone-gray">暂无观测数据。运行 QA 调试后将自动聚合 Token 消耗和成本估算。</p>
+        )}
       </div>
 
       <div className="shrink-0 border border-border-cream rounded-xl p-4 bg-ivory space-y-3">

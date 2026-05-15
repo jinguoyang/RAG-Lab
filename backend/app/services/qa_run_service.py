@@ -1163,6 +1163,7 @@ def _execute_provider_qa_run(
             reranked_candidates = fused_candidates[: pipeline_params["rerankTopN"]]
             rerank_status = "skipped"
             rerank_error = None
+            rerank_usage = {}
         else:
             reranked_candidates = provider_set.rerank.rerank(rewritten_query, fused_candidates, pipeline_params["rerankTopN"])
             rerank_usage = getattr(provider_set.rerank, "last_usage", {})

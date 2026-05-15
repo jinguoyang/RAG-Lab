@@ -40,7 +40,7 @@ def _raise_observability_error(exc: Exception) -> None:
     raise exc
 
 
-@router.get("/observability/metrics", response_model=RuntimeMetricsResponse)
+@router.get("/observability/metrics", response_model=RuntimeMetricsResponse, summary="运行指标汇总")
 def read_runtime_metrics(
     kb_id: UUID,
     current_user: CurrentUserResponse = Depends(get_current_user),
@@ -56,7 +56,7 @@ def read_runtime_metrics(
     return response
 
 
-@router.get("/observability/slow-links", response_model=SlowLinkDiagnosticsResponse)
+@router.get("/observability/slow-links", response_model=SlowLinkDiagnosticsResponse, summary="慢链路诊断")
 def read_slow_links(
     kb_id: UUID,
     threshold_ms: Annotated[int, Query(alias="thresholdMs", ge=1)] = 1500,
@@ -70,7 +70,7 @@ def read_slow_links(
     return response
 
 
-@router.get("/observability/error-summary", response_model=ErrorSummaryResponse)
+@router.get("/observability/error-summary", response_model=ErrorSummaryResponse, summary="错误摘要")
 def read_error_summary(
     kb_id: UUID,
     current_user: CurrentUserResponse = Depends(get_current_user),
@@ -83,7 +83,7 @@ def read_error_summary(
     return response
 
 
-@router.get("/observability/health-panel", response_model=HealthPanelResponse)
+@router.get("/observability/health-panel", response_model=HealthPanelResponse, summary="健康面板")
 def read_health_panel(
     kb_id: UUID,
     current_user: CurrentUserResponse = Depends(get_current_user),
@@ -96,7 +96,7 @@ def read_health_panel(
     return response
 
 
-@router.get("/backup-drills", response_model=list[BackupDrillDTO])
+@router.get("/backup-drills", response_model=list[BackupDrillDTO], summary="备份恢复演练列表")
 def read_backup_drills(
     kb_id: UUID,
     current_user: CurrentUserResponse = Depends(get_current_user),
@@ -109,7 +109,7 @@ def read_backup_drills(
     return response
 
 
-@router.post("/backup-drills", response_model=BackupDrillDTO, status_code=status.HTTP_201_CREATED)
+@router.post("/backup-drills", response_model=BackupDrillDTO, status_code=status.HTTP_201_CREATED, summary="回填报备演练")
 def create_backup_drill_endpoint(
     kb_id: UUID,
     request: BackupDrillCreateRequest,
@@ -126,7 +126,7 @@ def create_backup_drill_endpoint(
     return response
 
 
-@router.get("/backup-drills/{drill_id}", response_model=BackupDrillDTO)
+@router.get("/backup-drills/{drill_id}", response_model=BackupDrillDTO, summary="演练详情")
 def read_backup_drill(
     kb_id: UUID,
     drill_id: UUID,
@@ -140,7 +140,7 @@ def read_backup_drill(
     return response
 
 
-@router.get("/observability/token-usage", response_model=TokenUsageResponse)
+@router.get("/observability/token-usage", response_model=TokenUsageResponse, summary="Token 消耗汇总")
 def read_token_usage(
     kb_id: UUID,
     current_user: CurrentUserResponse = Depends(get_current_user),
@@ -156,7 +156,7 @@ def read_token_usage(
     return response
 
 
-@router.get("/observability/cost-summary", response_model=CostSummaryResponse)
+@router.get("/observability/cost-summary", response_model=CostSummaryResponse, summary="成本估算汇总")
 def read_cost_summary(
     kb_id: UUID,
     current_user: CurrentUserResponse = Depends(get_current_user),

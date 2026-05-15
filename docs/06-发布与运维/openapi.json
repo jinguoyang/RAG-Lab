@@ -2412,7 +2412,7 @@
         "tags": [
           "observability"
         ],
-        "summary": "Read Runtime Metrics",
+        "summary": "运行指标汇总",
         "description": "查询 QARun、IngestJob 和 Provider Trace 的关键运行指标。",
         "operationId": "read_runtime_metrics_api_v1_knowledge_bases__kb_id__observability_metrics_get",
         "parameters": [
@@ -2472,7 +2472,7 @@
         "tags": [
           "observability"
         ],
-        "summary": "Read Slow Links",
+        "summary": "慢链路诊断",
         "description": "查询慢链路诊断，定位检索、rerank、生成、权限裁剪或文档处理阶段。",
         "operationId": "read_slow_links_api_v1_knowledge_bases__kb_id__observability_slow_links_get",
         "parameters": [
@@ -2543,7 +2543,7 @@
         "tags": [
           "observability"
         ],
-        "summary": "Read Error Summary",
+        "summary": "错误摘要",
         "description": "查询 QARun、Provider Trace、IngestJob 和副本同步错误摘要。",
         "operationId": "read_error_summary_api_v1_knowledge_bases__kb_id__observability_error_summary_get",
         "parameters": [
@@ -2603,7 +2603,7 @@
         "tags": [
           "observability"
         ],
-        "summary": "Read Health Panel",
+        "summary": "健康面板",
         "description": "返回组合健康面板，供运维或知识库负责人快速排障。",
         "operationId": "read_health_panel_api_v1_knowledge_bases__kb_id__observability_health_panel_get",
         "parameters": [
@@ -2663,7 +2663,7 @@
         "tags": [
           "observability"
         ],
-        "summary": "Read Backup Drills",
+        "summary": "备份恢复演练列表",
         "description": "列出备份恢复演练记录。",
         "operationId": "read_backup_drills_api_v1_knowledge_bases__kb_id__backup_drills_get",
         "parameters": [
@@ -2725,7 +2725,7 @@
         "tags": [
           "observability"
         ],
-        "summary": "Create Backup Drill Endpoint",
+        "summary": "回填报备演练",
         "description": "回填一次备份恢复演练结果。",
         "operationId": "create_backup_drill_endpoint_api_v1_knowledge_bases__kb_id__backup_drills_post",
         "parameters": [
@@ -2795,7 +2795,7 @@
         "tags": [
           "observability"
         ],
-        "summary": "Read Backup Drill",
+        "summary": "演练详情",
         "description": "读取单次备份恢复演练详情。",
         "operationId": "read_backup_drill_api_v1_knowledge_bases__kb_id__backup_drills__drill_id__get",
         "parameters": [
@@ -2843,6 +2843,126 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BackupDrillDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/observability/token-usage": {
+      "get": {
+        "tags": [
+          "observability"
+        ],
+        "summary": "Token 消耗汇总",
+        "description": "查询知识库维度的 Token 消耗汇总，按 Provider 阶段聚合。",
+        "operationId": "read_token_usage_api_v1_knowledge_bases__kb_id__observability_token_usage_get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenUsageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/observability/cost-summary": {
+      "get": {
+        "tags": [
+          "observability"
+        ],
+        "summary": "成本估算汇总",
+        "description": "查询知识库维度的成本估算汇总，基于 Token 消耗和模型定价。",
+        "operationId": "read_cost_summary_api_v1_knowledge_bases__kb_id__observability_cost_summary_get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostSummaryResponse"
                 }
               }
             }
@@ -8500,6 +8620,56 @@
         "title": "ConfigTemplateDTO",
         "description": "配置模板摘要。"
       },
+      "CostSummaryResponse": {
+        "properties": {
+          "kbId": {
+            "type": "string",
+            "title": "Kbid"
+          },
+          "totalInputTokens": {
+            "type": "integer",
+            "title": "Totalinputtokens"
+          },
+          "totalOutputTokens": {
+            "type": "integer",
+            "title": "Totaloutputtokens"
+          },
+          "totalTokens": {
+            "type": "integer",
+            "title": "Totaltokens"
+          },
+          "runCount": {
+            "type": "integer",
+            "title": "Runcount"
+          },
+          "estimatedCostUsd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimatedcostusd"
+          },
+          "pricingNote": {
+            "type": "string",
+            "title": "Pricingnote"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kbId",
+          "totalInputTokens",
+          "totalOutputTokens",
+          "totalTokens",
+          "runCount",
+          "pricingNote"
+        ],
+        "title": "CostSummaryResponse",
+        "description": "成本估算汇总，基于 Token 消耗和模型定价。"
+      },
       "CurrentUserResponse": {
         "properties": {
           "user": {
@@ -13458,6 +13628,115 @@
         ],
         "title": "StoredFileDTO",
         "description": "上传文件元数据摘要，开发期仅返回可追踪的对象引用信息。"
+      },
+      "TokenUsageResponse": {
+        "properties": {
+          "kbId": {
+            "type": "string",
+            "title": "Kbid"
+          },
+          "totalInputTokens": {
+            "type": "integer",
+            "title": "Totalinputtokens"
+          },
+          "totalOutputTokens": {
+            "type": "integer",
+            "title": "Totaloutputtokens"
+          },
+          "totalTokens": {
+            "type": "integer",
+            "title": "Totaltokens"
+          },
+          "runCount": {
+            "type": "integer",
+            "title": "Runcount"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/TokenUsageSummaryDTO"
+            },
+            "type": "array",
+            "title": "Steps"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kbId",
+          "totalInputTokens",
+          "totalOutputTokens",
+          "totalTokens",
+          "runCount",
+          "steps"
+        ],
+        "title": "TokenUsageResponse",
+        "description": "知识库维度的 Token 消耗汇总。"
+      },
+      "TokenUsageSummaryDTO": {
+        "properties": {
+          "stepKey": {
+            "type": "string",
+            "title": "Stepkey"
+          },
+          "totalCalls": {
+            "type": "integer",
+            "title": "Totalcalls"
+          },
+          "totalInputTokens": {
+            "type": "integer",
+            "title": "Totalinputtokens"
+          },
+          "totalOutputTokens": {
+            "type": "integer",
+            "title": "Totaloutputtokens"
+          },
+          "totalTokens": {
+            "type": "integer",
+            "title": "Totaltokens"
+          },
+          "avgInputTokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avginputtokens"
+          },
+          "avgOutputTokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avgoutputtokens"
+          },
+          "avgLatencyMs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avglatencyms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stepKey",
+          "totalCalls",
+          "totalInputTokens",
+          "totalOutputTokens",
+          "totalTokens"
+        ],
+        "title": "TokenUsageSummaryDTO",
+        "description": "Token 消耗汇总，按 Provider 阶段聚合。"
       },
       "UserCreateRequest": {
         "properties": {
