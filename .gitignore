@@ -39,5 +39,8 @@ env/
 .superpowers/
 .worktrees/
 
+# Claude Code local settings
+.claude/
+
 # examples doc
 docs/examples/
