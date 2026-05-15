@@ -117,3 +117,39 @@ class BackupDrillDTO(BaseModel):
     actorId: str | None
     auditLogId: str
     createdAt: str
+
+
+class TokenUsageSummaryDTO(BaseModel):
+    """Token 消耗汇总，按 Provider 阶段聚合。"""
+
+    stepKey: str
+    totalCalls: int
+    totalInputTokens: int
+    totalOutputTokens: int
+    totalTokens: int
+    avgInputTokens: int | None = None
+    avgOutputTokens: int | None = None
+    avgLatencyMs: int | None = None
+
+
+class TokenUsageResponse(BaseModel):
+    """知识库维度的 Token 消耗汇总。"""
+
+    kbId: str
+    totalInputTokens: int
+    totalOutputTokens: int
+    totalTokens: int
+    runCount: int
+    steps: list[TokenUsageSummaryDTO]
+
+
+class CostSummaryResponse(BaseModel):
+    """成本估算汇总，基于 Token 消耗和模型定价。"""
+
+    kbId: str
+    totalInputTokens: int
+    totalOutputTokens: int
+    totalTokens: int
+    runCount: int
+    estimatedCostUsd: float | None = None
+    pricingNote: str

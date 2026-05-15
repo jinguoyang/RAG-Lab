@@ -10,19 +10,23 @@ from app.schemas.auth import CurrentUserResponse
 from app.schemas.observability import (
     BackupDrillCreateRequest,
     BackupDrillDTO,
+    CostSummaryResponse,
     ErrorSummaryResponse,
     HealthPanelResponse,
     RuntimeMetricsResponse,
     SlowLinkDiagnosticsResponse,
+    TokenUsageResponse,
 )
 from app.services.observability_service import (
     ObservabilityPermissionError,
     create_backup_drill,
     get_backup_drill,
+    get_cost_summary,
     get_error_summary,
     get_health_panel,
     get_runtime_metrics,
     get_slow_link_diagnostics,
+    get_token_usage,
     list_backup_drills,
 )
 
@@ -133,4 +137,36 @@ def read_backup_drill(
     response = get_backup_drill(session, current_user, kb_id, drill_id)
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backup drill not found.")
+    return response
+
+
+@router.get("/observability/token-usage", response_model=TokenUsageResponse)
+def read_token_usage(
+    kb_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> TokenUsageResponse:
+    """查询知识库维度的 Token 消耗汇总，按 Provider 阶段聚合。"""
+    try:
+        response = get_token_usage(session, current_user, kb_id)
+    except Exception as exc:
+        _raise_observability_error(exc)
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found.")
+    return response
+
+
+@router.get("/observability/cost-summary", response_model=CostSummaryResponse)
+def read_cost_summary(
+    kb_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> CostSummaryResponse:
+    """查询知识库维度的成本估算汇总，基于 Token 消耗和模型定价。"""
+    try:
+        response = get_cost_summary(session, current_user, kb_id)
+    except Exception as exc:
+        _raise_observability_error(exc)
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found.")
     return response

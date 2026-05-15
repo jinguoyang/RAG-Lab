@@ -3,6 +3,7 @@ from decimal import Decimal
 from hashlib import sha256
 from copy import deepcopy
 import json
+import logging
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -11,6 +12,7 @@ from sqlalchemy import RowMapping, func, insert, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.services.langfuse_client import get_langfuse
 from app.schemas.auth import CurrentUserResponse
 from app.schemas.qa_run import (
     ConfigRevisionDiffItemDTO,
@@ -66,6 +68,28 @@ from app.tables import (
 from app.services.qa_providers import ProviderCandidate, ProviderError, QARunProviders, get_qa_run_providers
 from app.services.permission_service import build_chunk_access_filter_context, has_kb_permission
 from app.services.knowledge_base_service import KnowledgeBaseDisabledError
+
+
+logger = logging.getLogger(__name__)
+
+
+def _safe_langfuse_call(fn, *args, **kwargs):
+    """包装 Langfuse SDK 调用，异常只记 warning，不中断 QA Run 主流程。"""
+    try:
+        return fn(*args, **kwargs)
+    except Exception:
+        logger.warning("Langfuse call failed: %s", fn.__name__ if hasattr(fn, "__name__") else fn, exc_info=True)
+        return None
+
+
+def _safe_langfuse_method(target, method_name: str, *args, **kwargs):
+    """安全调用 Langfuse trace/span 方法，兼容 trace 创建失败后的 None。"""
+    if target is None:
+        return None
+    method = getattr(target, method_name, None)
+    if method is None:
+        return None
+    return _safe_langfuse_call(method, *args, **kwargs)
 
 
 class QARunCreateConflict(ValueError):
@@ -841,6 +865,17 @@ def _execute_provider_qa_run(
     graph_snapshot_id = _resolve_graph_snapshot_id(session, kb_id)
     trace_order = 1
     provider_errors: list[str] = []
+    aggregated_tokens: dict[str, int] = {"inputTokens": 0, "outputTokens": 0, "totalTokens": 0}
+
+    langfuse = get_langfuse()
+    lf_trace = _safe_langfuse_call(
+        langfuse.trace,
+        name="qa_run",
+        input={"query": query, "kbId": str(kb_id)},
+        metadata={"runId": str(run_id), "configRevisionId": str(revision_row["config_revision_id"])},
+        session_id=str(kb_id),
+        user_id=current_user.user.userId,
+    )
 
     _insert_trace_step(
         session,
@@ -871,6 +906,19 @@ def _execute_provider_qa_run(
     else:
         try:
             rewritten_query = provider_set.llm.rewrite_query(query)
+            llm_usage = getattr(provider_set.llm, "last_usage", {})
+            for key in ("inputTokens", "outputTokens", "totalTokens"):
+                aggregated_tokens[key] += llm_usage.get(key, 0)
+            _safe_langfuse_method(
+                lf_trace,
+                "generation",
+                name="queryRewrite",
+                input=query,
+                output=rewritten_query,
+                model=llm_usage.get("model"),
+                usage={"input": llm_usage.get("inputTokens"), "output": llm_usage.get("outputTokens"), "total": llm_usage.get("totalTokens")},
+                metadata={"provider": settings.llm_provider},
+            )
             _insert_trace_step(
                 session,
                 run_id,
@@ -879,7 +927,7 @@ def _execute_provider_qa_run(
                 "success",
                 {"query": query},
                 {"rewrittenQuery": rewritten_query},
-                {"provider": settings.llm_provider},
+                {"provider": settings.llm_provider, **llm_usage},
                 started_at=started_at,
             )
         except ProviderError as exc:
@@ -932,6 +980,19 @@ def _execute_provider_qa_run(
 
     try:
         embedding = provider_set.embedding.embed_query(rewritten_query)
+        embedding_usage = getattr(provider_set.embedding, "last_usage", {})
+        for key in ("inputTokens", "outputTokens", "totalTokens"):
+            aggregated_tokens[key] += embedding_usage.get(key, 0)
+        _safe_langfuse_method(
+            lf_trace,
+            "generation",
+            name="embedding",
+            input=rewritten_query,
+            output={"dimension": len(embedding)},
+            model=embedding_usage.get("model"),
+            usage={"input": embedding_usage.get("inputTokens"), "total": embedding_usage.get("totalTokens")},
+            metadata={"provider": settings.embedding_provider},
+        )
         _insert_trace_step(
             session,
             run_id,
@@ -940,7 +1001,7 @@ def _execute_provider_qa_run(
             "success",
             {"query": rewritten_query},
             {"vectorReady": True, "dimension": len(embedding)},
-            {"provider": settings.embedding_provider},
+            {"provider": settings.embedding_provider, **embedding_usage},
             started_at=started_at,
         )
         trace_order += 1
@@ -1023,6 +1084,14 @@ def _execute_provider_qa_run(
                         )
                     )
             before_threshold_count = len(channel_candidates)
+            _safe_langfuse_method(
+                lf_trace,
+                "span",
+                name=step_key,
+                input={"query": rewritten_query, "channel": channel},
+                output={"candidateCount": len(channel_candidates)},
+                metadata={"provider": provider_name},
+            )
             channel_candidates = _filter_candidates_by_score_threshold(
                 channel_candidates,
                 pipeline_params["retrievalScoreThreshold"],
@@ -1096,6 +1165,17 @@ def _execute_provider_qa_run(
             rerank_error = None
         else:
             reranked_candidates = provider_set.rerank.rerank(rewritten_query, fused_candidates, pipeline_params["rerankTopN"])
+            rerank_usage = getattr(provider_set.rerank, "last_usage", {})
+            for key in ("inputTokens", "outputTokens", "totalTokens"):
+                aggregated_tokens[key] += rerank_usage.get(key, 0)
+            _safe_langfuse_method(
+                lf_trace,
+                "span",
+                name="rerank",
+                input={"query": rewritten_query, "candidateCount": len(fused_candidates)},
+                output={"candidateCount": len(reranked_candidates)},
+                metadata={"provider": settings.rerank_provider, "usage": rerank_usage},
+            )
             reranked_candidates = _filter_candidates_by_score_threshold(
                 reranked_candidates,
                 {"dense": pipeline_params["rerank"]["scoreThreshold"], "sparse": pipeline_params["rerank"]["scoreThreshold"], "graph": pipeline_params["rerank"]["scoreThreshold"]},
@@ -1106,6 +1186,7 @@ def _execute_provider_qa_run(
         reranked_candidates = fused_candidates[: pipeline_params["rerankTopN"]]
         rerank_status = "partial"
         rerank_error = str(exc)
+        rerank_usage = {}
         provider_errors.append("rerank")
     _insert_trace_step(
         session,
@@ -1119,6 +1200,7 @@ def _execute_provider_qa_run(
             "provider": settings.rerank_provider,
             "topN": pipeline_params["rerankTopN"],
             "scoreThreshold": pipeline_params["rerank"]["scoreThreshold"],
+            **rerank_usage,
         },
         error_code="PROVIDER_ERROR" if rerank_error else None,
         error_message=rerank_error,
@@ -1166,6 +1248,7 @@ def _execute_provider_qa_run(
                     "hitCount": 0,
                     "evidenceCount": 0,
                     "citationCount": 0,
+                    "tokenUsage": aggregated_tokens,
                     "retrievalDiagnostics": {
                         **raw_channel_counts,
                         "fusedCount": len(fused_candidates),
@@ -1179,6 +1262,17 @@ def _execute_provider_qa_run(
                 updated_at=datetime.now(UTC),
             )
         )
+        _safe_langfuse_method(
+            lf_trace,
+            "update",
+            output={"answer": "当前用户没有可用于回答的授权证据。", "status": "failed"},
+            usage={
+                "input": aggregated_tokens["inputTokens"],
+                "output": aggregated_tokens["outputTokens"],
+                "total": aggregated_tokens["totalTokens"],
+            },
+        )
+        _safe_langfuse_call(langfuse.flush)
         return
 
     context_pairs = _limit_candidate_pairs_by_context_tokens(
@@ -1205,12 +1299,26 @@ def _execute_provider_qa_run(
             temperature=pipeline_params["temperature"],
             max_context_tokens=pipeline_params["maxContextTokens"],
         )
+        generation_usage = getattr(provider_set.llm, "last_usage", {})
+        for key in ("inputTokens", "outputTokens", "totalTokens"):
+            aggregated_tokens[key] += generation_usage.get(key, 0)
+        _safe_langfuse_method(
+            lf_trace,
+            "generation",
+            name="generation",
+            input={"query": query, "evidenceCount": len(context_candidates)},
+            output=answer[:200],
+            model=generation_usage.get("model"),
+            usage={"input": generation_usage.get("inputTokens"), "output": generation_usage.get("outputTokens"), "total": generation_usage.get("totalTokens")},
+            metadata={"provider": settings.llm_provider, "temperature": pipeline_params["temperature"]},
+        )
         generation_status = "success"
         generation_error = None
     except ProviderError as exc:
         answer = f"Provider 生成失败，返回候选摘要供调试：{query}"
         generation_status = "partial"
         generation_error = str(exc)
+        generation_usage = {}
         provider_errors.append("generation")
     _insert_trace_step(
         session,
@@ -1224,6 +1332,7 @@ def _execute_provider_qa_run(
             "provider": settings.llm_provider,
             "temperature": pipeline_params["temperature"],
             "maxContextTokens": pipeline_params["maxContextTokens"],
+            **generation_usage,
         },
         error_code="PROVIDER_ERROR" if generation_error else None,
         error_message=generation_error,
@@ -1295,6 +1404,7 @@ def _execute_provider_qa_run(
                 "hitCount": len(fused_candidates),
                 "evidenceCount": len(context_pairs),
                 "citationCount": len(context_pairs),
+                "tokenUsage": aggregated_tokens,
                 "retrievalDiagnostics": {
                     **raw_channel_counts,
                     "fusedCount": len(fused_candidates),
@@ -1308,6 +1418,17 @@ def _execute_provider_qa_run(
             updated_at=datetime.now(UTC),
         )
     )
+    _safe_langfuse_method(
+        lf_trace,
+        "update",
+        output={"answer": answer[:200], "status": "partial" if provider_errors else "success"},
+        usage={
+            "input": aggregated_tokens["inputTokens"],
+            "output": aggregated_tokens["outputTokens"],
+            "total": aggregated_tokens["totalTokens"],
+        },
+    )
+    _safe_langfuse_call(langfuse.flush)
 
 
 def create_qa_run(

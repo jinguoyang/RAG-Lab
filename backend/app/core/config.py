@@ -146,6 +146,22 @@ class Settings(BaseSettings):
         default=3,
         validation_alias=AliasChoices("RAG_LAB_GRAPH_EXTRACTION_CONCURRENCY", "GRAPH_EXTRACTION_CONCURRENCY"),
     )
+    langfuse_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("RAG_LAB_LANGFUSE_ENABLED", "LANGFUSE_ENABLED"),
+    )
+    langfuse_host: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("RAG_LAB_LANGFUSE_HOST", "LANGFUSE_HOST"),
+    )
+    langfuse_public_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("RAG_LAB_LANGFUSE_PUBLIC_KEY", "LANGFUSE_PUBLIC_KEY"),
+    )
+    langfuse_secret_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("RAG_LAB_LANGFUSE_SECRET_KEY", "LANGFUSE_SECRET_KEY"),
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",

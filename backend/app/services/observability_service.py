@@ -11,6 +11,7 @@ from app.schemas.observability import (
     BackupDrillCreateRequest,
     BackupDrillDTO,
     CompensationStatusDTO,
+    CostSummaryResponse,
     ErrorSummaryItemDTO,
     ErrorSummaryResponse,
     HealthPanelResponse,
@@ -19,6 +20,8 @@ from app.schemas.observability import (
     RuntimeMetricsResponse,
     SlowLinkDTO,
     SlowLinkDiagnosticsResponse,
+    TokenUsageResponse,
+    TokenUsageSummaryDTO,
 )
 from app.services.audit_service import write_audit_log
 from app.services.permission_service import has_kb_permission
@@ -483,3 +486,106 @@ def get_backup_drill(
         .limit(1)
     ).mappings().first()
     return _to_backup_drill_dto(row) if row else None
+
+
+_TOKEN_STEP_KEYS = {"queryRewrite", "embedding", "rerank", "generation"}
+
+
+def get_token_usage(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+) -> TokenUsageResponse | None:
+    """汇总知识库维度的 Token 消耗，从 qa_runs.metrics.tokenUsage 和 qa_run_trace_steps.metrics 聚合。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+
+    rows = session.execute(
+        select(
+            qa_runs.c.run_id,
+            qa_run_trace_steps.c.step_key,
+            qa_run_trace_steps.c.metrics.label("step_metrics"),
+        )
+        .join(qa_run_trace_steps, qa_runs.c.run_id == qa_run_trace_steps.c.run_id)
+        .where(
+            qa_runs.c.kb_id == kb_id,
+            qa_run_trace_steps.c.step_key.in_(_TOKEN_STEP_KEYS),
+            qa_run_trace_steps.c.status == "success",
+        )
+    ).mappings().all()
+
+    step_agg: dict[str, dict[str, int]] = defaultdict(lambda: {"totalCalls": 0, "totalInputTokens": 0, "totalOutputTokens": 0, "totalTokens": 0, "latencyMs": 0})
+    total_input = 0
+    total_output = 0
+    total_tokens = 0
+    run_ids: set[str] = set()
+
+    for row in rows:
+        step_metrics = row["step_metrics"] or {}
+        run_id = str(row.get("run_id", ""))
+        if run_id:
+            run_ids.add(run_id)
+        step_key = row["step_key"]
+        agg = step_agg[step_key]
+        agg["totalCalls"] += 1
+        inp = step_metrics.get("inputTokens", 0)
+        out = step_metrics.get("outputTokens", 0)
+        tot = step_metrics.get("totalTokens", 0)
+        agg["totalInputTokens"] += inp
+        agg["totalOutputTokens"] += out
+        agg["totalTokens"] += tot
+        agg["latencyMs"] += step_metrics.get("latencyMs", 0)
+        total_input += inp
+        total_output += out
+        total_tokens += tot
+
+    steps = []
+    for step_key in _TOKEN_STEP_KEYS:
+        agg = step_agg.get(step_key)
+        if not agg or agg["totalCalls"] == 0:
+            continue
+        steps.append(TokenUsageSummaryDTO(
+            stepKey=step_key,
+            totalCalls=agg["totalCalls"],
+            totalInputTokens=agg["totalInputTokens"],
+            totalOutputTokens=agg["totalOutputTokens"],
+            totalTokens=agg["totalTokens"],
+            avgInputTokens=agg["totalInputTokens"] // agg["totalCalls"],
+            avgOutputTokens=agg["totalOutputTokens"] // agg["totalCalls"],
+            avgLatencyMs=agg["latencyMs"] // agg["totalCalls"],
+        ))
+
+    return TokenUsageResponse(
+        kbId=str(kb_id),
+        totalInputTokens=total_input,
+        totalOutputTokens=total_output,
+        totalTokens=total_tokens,
+        runCount=len(run_ids),
+        steps=steps,
+    )
+
+
+def get_cost_summary(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+) -> CostSummaryResponse | None:
+    """基于 Token 消耗估算成本，使用公开模型定价（GPT-4o-mini 参考价）。"""
+    token_usage = get_token_usage(session, current_user, kb_id)
+    if token_usage is None:
+        return None
+
+    # GPT-4o-mini 参考定价：$0.15/1M input, $0.60/1M output
+    input_cost = token_usage.totalInputTokens * 0.15 / 1_000_000
+    output_cost = token_usage.totalOutputTokens * 0.60 / 1_000_000
+    estimated_cost = input_cost + output_cost
+
+    return CostSummaryResponse(
+        kbId=str(kb_id),
+        totalInputTokens=token_usage.totalInputTokens,
+        totalOutputTokens=token_usage.totalOutputTokens,
+        totalTokens=token_usage.totalTokens,
+        runCount=token_usage.runCount,
+        estimatedCostUsd=round(estimated_cost, 6),
+        pricingNote="基于 GPT-4o-mini 参考定价（$0.15/1M input, $0.60/1M output），实际成本以 Provider 计费为准。",
+    )

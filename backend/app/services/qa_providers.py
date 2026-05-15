@@ -80,10 +80,12 @@ class HttpEmbeddingProvider(EmbeddingProvider):
         self._endpoint = settings.embedding_endpoint
         self._api_key = settings.embedding_api_key
         self._model = settings.embedding_model
+        self.last_usage: dict = {}
 
     def embed_query(self, query: str) -> list[float]:
         import httpx
 
+        self.last_usage = {}
         headers = {"Content-Type": "application/json"}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
@@ -98,6 +100,13 @@ class HttpEmbeddingProvider(EmbeddingProvider):
         except httpx.HTTPError as exc:
             raise ProviderError("Embedding provider request failed.") from exc
         payload = response.json()
+        usage = payload.get("usage")
+        if isinstance(usage, dict):
+            self.last_usage = {
+                "inputTokens": usage.get("prompt_tokens", 0),
+                "totalTokens": usage.get("total_tokens", 0),
+                "model": self._model,
+            }
         try:
             return [float(value) for value in payload["data"][0]["embedding"]]
         except (KeyError, IndexError, TypeError, ValueError) as exc:
@@ -765,10 +774,12 @@ class HttpRerankProvider(RerankProvider):
         self._endpoint = settings.rerank_endpoint
         self._api_key = settings.rerank_api_key
         self._model = settings.rerank_model
+        self.last_usage: dict = {}
 
     def rerank(self, query: str, candidates: list[ProviderCandidate], limit: int) -> list[ProviderCandidate]:
         import httpx
 
+        self.last_usage = {}
         headers = {"Content-Type": "application/json"}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
@@ -788,6 +799,13 @@ class HttpRerankProvider(RerankProvider):
         except httpx.HTTPError as exc:
             raise ProviderError("Rerank provider request failed.") from exc
         payload = response.json()
+        usage = payload.get("usage")
+        if isinstance(usage, dict):
+            self.last_usage = {
+                "inputTokens": usage.get("prompt_tokens", usage.get("total_tokens", 0)),
+                "totalTokens": usage.get("total_tokens", 0),
+                "model": self._model,
+            }
         results = payload.get("results", [])
         reranked: list[ProviderCandidate] = []
         for result in results:
@@ -874,6 +892,7 @@ class HttpLlmProvider(LlmProvider):
         self._model = settings.llm_model
         self._graph_extraction_concurrency = max(1, min(8, getattr(settings, "graph_extraction_concurrency", 3)))
         self.last_graph_extraction_errors: list[dict] = []
+        self.last_usage: dict = {}
 
     def rewrite_query(self, query: str) -> str:
         content = self._chat(
@@ -990,6 +1009,7 @@ class HttpLlmProvider(LlmProvider):
     def _chat(self, messages: list[dict[str, str]], temperature: float | None = None) -> str:
         import httpx
 
+        self.last_usage = {}
         headers = {"Content-Type": "application/json"}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
@@ -1004,6 +1024,14 @@ class HttpLlmProvider(LlmProvider):
         except httpx.HTTPError as exc:
             raise ProviderError("LLM provider request failed.") from exc
         payload = response.json()
+        usage = payload.get("usage")
+        if isinstance(usage, dict):
+            self.last_usage = {
+                "inputTokens": usage.get("prompt_tokens", 0),
+                "outputTokens": usage.get("completion_tokens", 0),
+                "totalTokens": usage.get("total_tokens", 0),
+                "model": self._model,
+            }
         try:
             return str(payload["choices"][0]["message"]["content"])
         except (KeyError, IndexError, TypeError) as exc:
