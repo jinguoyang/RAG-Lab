@@ -118,6 +118,20 @@ def _metric_latency(row: RowMapping) -> int | None:
     return int(value) if isinstance(value, (int, float)) else None
 
 
+def _trace_step_latency_ms(row: RowMapping) -> int | None:
+    """优先读取 Trace 指标延迟；缺失时从步骤起止时间计算，避免把未知延迟展示为 0。"""
+    metrics = row.get("step_metrics") or {}
+    if isinstance(metrics, dict):
+        value = metrics.get("latencyMs")
+        if isinstance(value, (int, float)):
+            return max(0, int(value))
+    started_at = row.get("started_at")
+    ended_at = row.get("ended_at")
+    if started_at is None or ended_at is None:
+        return None
+    return max(0, int((ended_at - started_at).total_seconds() * 1000))
+
+
 def _runtime_bucket(name: str, rows: list[RowMapping], latencies: list[int]) -> RuntimeMetricBucketDTO:
     """构造 QARun 或 IngestJob 指标桶。"""
     return RuntimeMetricBucketDTO(
@@ -505,6 +519,8 @@ def get_token_usage(
             qa_runs.c.run_id,
             qa_run_trace_steps.c.step_key,
             qa_run_trace_steps.c.metrics.label("step_metrics"),
+            qa_run_trace_steps.c.started_at,
+            qa_run_trace_steps.c.ended_at,
         )
         .join(qa_run_trace_steps, qa_runs.c.run_id == qa_run_trace_steps.c.run_id)
         .where(
@@ -514,7 +530,16 @@ def get_token_usage(
         )
     ).mappings().all()
 
-    step_agg: dict[str, dict[str, int]] = defaultdict(lambda: {"totalCalls": 0, "totalInputTokens": 0, "totalOutputTokens": 0, "totalTokens": 0, "latencyMs": 0})
+    step_agg: dict[str, dict[str, int]] = defaultdict(
+        lambda: {
+            "totalCalls": 0,
+            "totalInputTokens": 0,
+            "totalOutputTokens": 0,
+            "totalTokens": 0,
+            "latencyMs": 0,
+            "latencyCount": 0,
+        }
+    )
     total_input = 0
     total_output = 0
     total_tokens = 0
@@ -534,7 +559,10 @@ def get_token_usage(
         agg["totalInputTokens"] += inp
         agg["totalOutputTokens"] += out
         agg["totalTokens"] += tot
-        agg["latencyMs"] += step_metrics.get("latencyMs", 0)
+        latency = _trace_step_latency_ms(row)
+        if latency is not None:
+            agg["latencyMs"] += latency
+            agg["latencyCount"] += 1
         total_input += inp
         total_output += out
         total_tokens += tot
@@ -552,7 +580,7 @@ def get_token_usage(
             totalTokens=agg["totalTokens"],
             avgInputTokens=agg["totalInputTokens"] // agg["totalCalls"],
             avgOutputTokens=agg["totalOutputTokens"] // agg["totalCalls"],
-            avgLatencyMs=agg["latencyMs"] // agg["totalCalls"],
+            avgLatencyMs=agg["latencyMs"] // agg["latencyCount"] if agg["latencyCount"] else None,
         ))
 
     return TokenUsageResponse(

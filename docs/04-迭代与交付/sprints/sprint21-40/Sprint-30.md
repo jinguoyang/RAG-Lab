@@ -29,12 +29,12 @@
 
 | 编号 | Backlog | 标题 | 优先级 | 预估 | 负责人 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| S30-001 | B-133 | 实现 RAG 应用定义、API Key hash 存储和管理端最小接口 | P0 | 2d | Codex | Ready |
-| S30-002 | B-134 | 实现 App Runtime blocking 对话接口，复用现有 QARun 执行链路 | P0 | 2d | Codex | Ready |
-| S30-003 | B-135 | 建立外部 Conversation、Message 和 Invocation 记录，并关联 QARun | P0 | 1.5d | Codex | Ready |
-| S30-004 | B-136 | 实现 App API Key 鉴权、禁用、轮换审计和最小调用来源记录 | P0 | 1.5d | Codex | Ready |
-| S30-005 | B-137 | 建立 RAG 应用运行时最小接口抽样验证 | P0 | 1d | Codex | Ready |
-| S30-006 | B-145 | 补齐 App Runtime 权限裁剪、跨知识库隔离和 Citation 安全回归 | P0 | 1d | Codex | Ready |
+| S30-001 | B-133 | 实现 RAG 应用定义、API Key hash 存储和管理端最小接口 | P0 | 2d | Codex | Done |
+| S30-002 | B-134 | 实现 App Runtime blocking 对话接口，复用现有 QARun 执行链路 | P0 | 2d | Codex | Done |
+| S30-003 | B-135 | 建立外部 Conversation、Message 和 Invocation 记录，并关联 QARun | P0 | 1.5d | Codex | Done |
+| S30-004 | B-136 | 实现 App API Key 鉴权、禁用、轮换审计和最小调用来源记录 | P0 | 1.5d | Codex | Done |
+| S30-005 | B-137 | 建立 RAG 应用运行时最小接口抽样验证 | P0 | 1d | Codex | Done |
+| S30-006 | B-145 | 补齐 App Runtime 权限裁剪、跨知识库隔离和 Citation 安全回归 | P0 | 1d | Codex | Done |
 
 ## 5. 验收标准
 
@@ -62,5 +62,7 @@
 
 ## 8. 执行记录
 
-- 当前仅创建 Sprint 计划，尚未实施代码和接口抽样验证。
-- Sprint 执行完成后，应将 B-133 至 B-137、B-145 的状态回写到 [产品待办清单](../../产品待办清单.md)。
+- 已完成 RAG App 数据模型、API Key hash 存储、管理端最小接口、App Runtime blocking 对话接口、会话/消息/调用审计和 QARun 关联。
+- 已完成接口抽样验证：有效 key 返回 `answer`、`citations`、`conversationId`、`messageId`、`runId`、`usage`；无效 key、撤销 key、停用应用、缺少 active revision、跨 App conversation 隔离和治理排除 Chunk 不进入 Citation 均已覆盖。
+- 状态已回写到 [产品待办清单](../../产品待办清单.md)，对应 B-133 至 B-137、B-142、B-145 为 Done。
+- 验证命令：`conda run -n rag-lab python scripts/verify_app_runtime_smoke.py`、`conda run -n rag-lab python -m compileall app scripts/verify_app_runtime_smoke.py`、`conda run -n rag-lab python scripts/export_openapi.py`、`git diff --check`。

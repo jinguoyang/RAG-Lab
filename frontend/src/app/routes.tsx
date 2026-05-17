@@ -14,6 +14,7 @@ import { QADebug } from "./pages/P09_QADebug";
 import { QAHistory } from "./pages/P10_QAHistory";
 import { GraphSearchAnalysis } from "./pages/P11_GraphSearchAnalysis";
 import { MembersAndPermissions } from "./pages/P12_MembersAndPermissions";
+import { RagAppManagement } from "./pages/P13_RagAppManagement";
 
 export const router = createBrowserRouter([
   { path: "/login", Component: Login },
@@ -24,6 +25,7 @@ export const router = createBrowserRouter([
       { index: true, Component: PlatformHome },
       { path: "users", Component: UserManagement },
       { path: "groups", Component: UserGroupManagement },
+      { path: "rag-apps", Component: RagAppManagement },
     ],
   },
   {

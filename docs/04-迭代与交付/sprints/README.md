@@ -4,10 +4,12 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 
 ## 1. 当前状态
 
-- 当前 Sprint：Sprint 30，主题为 V1.8 RAG 应用运行时最小链路，已创建计划，待实施。
+- 当前 Sprint：Sprint 35，主题为前端动作驱动的真实数据验收硬化，进行中。
 - Sprint 01 至 Sprint 26 已完成，对应 V1.0 至 V1.7。
 - Sprint 27 至 Sprint 29 已完成 E22 知识库治理工作流强化范围：P05 支持治理问题定位和治理后验证摘要，P06 支持批量治理和索引同步作业，P07 支持 Chunk 治理标记、索引重建和作业查看。
-- Sprint 30 承接 E25 的第一轮交付：RAG 应用定义、App API Key、blocking 对话接口、会话/消息/调用记录和最小接口抽样验证。
+- Sprint 30 已完成 E25 的第一轮交付：RAG 应用定义、App API Key、blocking 对话接口、会话/消息/调用记录和最小接口抽样验证。
+- Sprint 31 已完成 P13 RAG App 管理端入口、API Key 管理、调用记录和会话摘要；Sprint 32 已完成 App Runtime 安全边界设计和真实 Provider 轻量网络级复测；Sprint 33 至 Sprint 34 已完成 V1.8 后续计划，覆盖生产化能力、治理回流与架构预留评估。
+- Sprint 35 已启动，聚焦前端真实动作触发 App Runtime、反馈回流、调用审计、QA 历史回溯和真实 Provider 端到端验收硬化。
 - 后续新增工作应先进入 [产品待办清单](../产品待办清单.md)，再建立新的 Sprint 文档。
 
 ## 2. 历史 Sprint 索引
@@ -20,7 +22,12 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 | Sprint 19-22 | V1.4 / V1.5 | 真实入库、多副本写入、真实检索、回放复跑 | Done | `sprint1-20/Sprint-19.md` 至 `sprint21-40/Sprint-22.md` |
 | Sprint 23-26 | V1.6 / V1.7 | 真实 RAG 端到端闭环、模块化调优、评估对比 | Done | `sprint21-40/Sprint-23.md` 至 `sprint21-40/Sprint-26.md` |
 | Sprint 27-29 | 内部增强 | 知识库治理工作流、诊断可操作化、治理后验证 | Done | `sprint21-40/Sprint-27.md` 至 `sprint21-40/Sprint-29.md` |
-| Sprint 30 | V1.8 | RAG 应用运行时最小链路 | Ready | `sprint21-40/Sprint-30.md` |
+| Sprint 30 | V1.8 | RAG 应用运行时最小链路 | Done | `sprint21-40/Sprint-30.md` |
+| Sprint 31 | V1.8 | RAG App 管理端与调用可见性 | Done | `sprint21-40/Sprint-31.md` |
+| Sprint 32 | V1.8 | App Runtime 安全边界与真实 Provider 复测 | Done | `sprint21-40/Sprint-32.md` |
+| Sprint 33 | V1.8 | App Runtime 生产化能力 | Done | `sprint21-40/Sprint-33.md` |
+| Sprint 34 | V1.8 | App Runtime 治理回流与输入能力评估 | Done | `sprint21-40/Sprint-34.md` |
+| Sprint 35 | 内部增强 | 前端动作驱动的真实数据验收硬化 | In Progress | `sprint21-40/Sprint-35.md` |
 
 ## 3. 单个 Sprint 文档约定
 

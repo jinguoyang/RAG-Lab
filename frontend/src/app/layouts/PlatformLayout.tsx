@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from "react-router";
-import { Users, Building, LogOut, Book } from "lucide-react";
+import { Users, Building, LogOut, Book, Rocket } from "lucide-react";
 import { Button } from "../components/rag/Button";
 
 export function PlatformLayout() {
@@ -31,6 +31,12 @@ export function PlatformLayout() {
             className={({isActive}) => `flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${isActive ? 'bg-parchment text-terracotta' : 'text-near-black hover:bg-parchment'}`}
           >
             <Building className="w-4 h-4" /> 用户组
+          </NavLink>
+          <NavLink
+            to="/rag-apps"
+            className={({isActive}) => `flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${isActive ? 'bg-parchment text-terracotta' : 'text-near-black hover:bg-parchment'}`}
+          >
+            <Rocket className="w-4 h-4" /> RAG 应用
           </NavLink>
         </nav>
 

@@ -17,9 +17,9 @@
 
 - V1.0 至 V1.7 的 Backlog、Epic、Sprint 和 Release 已收口为完成。
 - 最新完成范围是 E22：知识库治理工作流强化，已通过 Sprint 27 至 Sprint 29 补齐治理操作、诊断详情和治理后验证入口。
-- 当前已创建 Sprint 30，承接 E25 / V1.8 RAG 应用运行时最小链路，实施状态以 [Sprint 总览](./sprints/README.md) 为准。
+- 当前已完成 Sprint 30 至 Sprint 34，承接 E25 / V1.8 RAG 应用化封装，实施状态以 [Sprint 总览](./sprints/README.md) 为准。
 - 后续新工作应先进入产品待办清单，再建立新的 Sprint 或 Release 计划。
-- 发布前仍需在目标测试或预生产环境补齐真实 Provider 网络级复测结论，记录到正式发布记录或 [发布验收与运维手册](../06-发布与运维/发布验收与运维手册.md)。
+- V1.8 Sprint 32 已补齐当前环境的真实 Provider 网络级复测结论，记录见 [V1.8 Provider 网络级复测记录](../06-发布与运维/V1.8-Provider网络级复测记录.md)；切换测试或预生产环境后必须重新执行并回填。
 
 ## 3. 文档分层
 

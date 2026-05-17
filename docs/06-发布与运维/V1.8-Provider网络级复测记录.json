@@ -1,0 +1,88 @@
+{
+  "status": "success",
+  "note": "local_provider/blocked does not mean the real provider network retest passed.",
+  "results": [
+    {
+      "name": "embedding",
+      "provider": "http",
+      "status": "success",
+      "latencyMs": 969,
+      "detail": "Real provider network probe succeeded.",
+      "evidence": {
+        "model": "text-embedding-v2",
+        "dimension": 1536,
+        "usage": {
+          "inputTokens": 5,
+          "totalTokens": 5,
+          "model": "text-embedding-v2"
+        }
+      }
+    },
+    {
+      "name": "milvus",
+      "provider": "milvus",
+      "status": "success",
+      "latencyMs": 1615,
+      "detail": "Real provider network probe succeeded.",
+      "evidence": {
+        "collection": "default",
+        "collectionExists": true
+      }
+    },
+    {
+      "name": "opensearch",
+      "provider": "opensearch",
+      "status": "success",
+      "latencyMs": 383,
+      "detail": "Real provider network probe succeeded.",
+      "evidence": {
+        "clusterName": "docker-cluster",
+        "index": "rag-lab",
+        "indexExists": true
+      }
+    },
+    {
+      "name": "neo4j",
+      "provider": "neo4j",
+      "status": "success",
+      "latencyMs": 546,
+      "detail": "Real provider network probe succeeded.",
+      "evidence": {
+        "database": "neo4j"
+      }
+    },
+    {
+      "name": "llm",
+      "provider": "http",
+      "status": "success",
+      "latencyMs": 11569,
+      "detail": "Real provider network probe succeeded.",
+      "evidence": {
+        "model": "qwen3.5-flash",
+        "answerLength": 4,
+        "usage": {
+          "inputTokens": 47,
+          "outputTokens": 1385,
+          "totalTokens": 1432,
+          "model": "qwen3.5-flash"
+        }
+      }
+    },
+    {
+      "name": "rerank",
+      "provider": "http",
+      "status": "success",
+      "latencyMs": 528,
+      "detail": "Real provider network probe succeeded.",
+      "evidence": {
+        "model": "qwen3-rerank",
+        "resultCount": 1,
+        "usage": {
+          "inputTokens": 36,
+          "totalTokens": 36,
+          "model": "qwen3-rerank"
+        }
+      }
+    }
+  ]
+}

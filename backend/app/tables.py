@@ -426,6 +426,83 @@ qa_run_citations = sa.Table(
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
 )
 
+rag_apps = sa.Table(
+    "rag_apps",
+    metadata,
+    sa.Column("app_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("kb_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("default_config_revision_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("name", sa.String(length=128), nullable=False),
+    sa.Column("description", sa.Text(), nullable=True),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("output_policy", postgresql.JSONB(), nullable=False),
+    sa.Column("metadata", postgresql.JSONB(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("deleted_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
+rag_app_api_keys = sa.Table(
+    "rag_app_api_keys",
+    metadata,
+    sa.Column("api_key_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("app_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("key_hash", sa.String(length=128), nullable=False),
+    sa.Column("key_prefix", sa.String(length=16), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("revoked_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
+app_conversations = sa.Table(
+    "app_conversations",
+    metadata,
+    sa.Column("conversation_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("app_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("end_user_id", sa.String(length=128), nullable=True),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("metadata", postgresql.JSONB(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+)
+
+app_messages = sa.Table(
+    "app_messages",
+    metadata,
+    sa.Column("message_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("conversation_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("role", sa.String(length=16), nullable=False),
+    sa.Column("content", sa.Text(), nullable=False),
+    sa.Column("qa_run_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("metadata", postgresql.JSONB(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+)
+
+app_invocations = sa.Table(
+    "app_invocations",
+    metadata,
+    sa.Column("invocation_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("app_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("api_key_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("conversation_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("message_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("qa_run_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("error_code", sa.String(length=64), nullable=True),
+    sa.Column("latency_ms", sa.Integer(), nullable=True),
+    sa.Column("request_summary", postgresql.JSONB(), nullable=False),
+    sa.Column("response_summary", postgresql.JSONB(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+)
+
 evaluation_samples = sa.Table(
     "evaluation_samples",
     metadata,

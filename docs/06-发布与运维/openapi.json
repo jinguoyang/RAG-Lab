@@ -7503,10 +7503,1445 @@
           }
         }
       }
+    },
+    "/api/v1/rag-apps": {
+      "get": {
+        "tags": [
+          "rag-apps"
+        ],
+        "summary": "Read Rag Apps",
+        "description": "分页返回当前用户可见的 RAG App。",
+        "operationId": "read_rag_apps_api_v1_rag_apps_get",
+        "parameters": [
+          {
+            "name": "pageNo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Pageno"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Pagesize"
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Keyword"
+            }
+          },
+          {
+            "name": "kbId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kbid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "active",
+                    "disabled",
+                    "archived"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageResponse_RagAppDTO_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "rag-apps"
+        ],
+        "summary": "Create Rag App Endpoint",
+        "description": "创建 RAG App，绑定知识库和可选默认配置版本。",
+        "operationId": "create_rag_app_endpoint_api_v1_rag_apps_post",
+        "parameters": [
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RagAppCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagAppDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/rag-apps/{app_id}": {
+      "get": {
+        "tags": [
+          "rag-apps"
+        ],
+        "summary": "Read Rag App",
+        "description": "读取单个 RAG App 详情。",
+        "operationId": "read_rag_app_api_v1_rag_apps__app_id__get",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagAppDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "rag-apps"
+        ],
+        "summary": "Update Rag App Endpoint",
+        "description": "更新 RAG App 基础信息、状态和默认配置绑定。",
+        "operationId": "update_rag_app_endpoint_api_v1_rag_apps__app_id__patch",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RagAppUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagAppDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/rag-apps/{app_id}/stats": {
+      "get": {
+        "tags": [
+          "rag-apps"
+        ],
+        "summary": "Read Rag App Stats",
+        "description": "读取应用级调用统计摘要。",
+        "operationId": "read_rag_app_stats_api_v1_rag_apps__app_id__stats_get",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppInvocationStatsDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/rag-apps/{app_id}/api-keys": {
+      "get": {
+        "tags": [
+          "rag-apps"
+        ],
+        "summary": "Read Rag App Api Keys",
+        "description": "列出应用 API Key 摘要，永不返回明文。",
+        "operationId": "read_rag_app_api_keys_api_v1_rag_apps__app_id__api_keys_get",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RagAppApiKeyDTO"
+                  },
+                  "title": "Response Read Rag App Api Keys Api V1 Rag Apps  App Id  Api Keys Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "rag-apps"
+        ],
+        "summary": "Create Rag App Api Key Endpoint",
+        "description": "生成 App API Key；明文只在本响应返回一次。",
+        "operationId": "create_rag_app_api_key_endpoint_api_v1_rag_apps__app_id__api_keys_post",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RagAppApiKeyCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagAppApiKeyCreateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/rag-apps/{app_id}/api-keys/{api_key_id}/revoke": {
+      "post": {
+        "tags": [
+          "rag-apps"
+        ],
+        "summary": "Revoke Rag App Api Key Endpoint",
+        "description": "禁用 App API Key，保留摘要和审计记录。",
+        "operationId": "revoke_rag_app_api_key_endpoint_api_v1_rag_apps__app_id__api_keys__api_key_id__revoke_post",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "api_key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Api Key Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagAppApiKeyRevokeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/rag-apps/{app_id}/invocations": {
+      "get": {
+        "tags": [
+          "rag-apps"
+        ],
+        "summary": "Read Rag App Invocations",
+        "description": "分页查看应用调用审计摘要。",
+        "operationId": "read_rag_app_invocations_api_v1_rag_apps__app_id__invocations_get",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "pageNo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Pageno"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Pagesize"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "success",
+                    "failed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageResponse_AppInvocationDTO_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/rag-apps/{app_id}/conversations/{conversation_id}": {
+      "get": {
+        "tags": [
+          "rag-apps"
+        ],
+        "summary": "Read Rag App Conversation",
+        "description": "读取应用会话详情和消息时间线。",
+        "operationId": "read_rag_app_conversation_api_v1_rag_apps__app_id__conversations__conversation_id__get",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppConversationDetailDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app-runtime/chat-messages": {
+      "post": {
+        "tags": [
+          "app-runtime"
+        ],
+        "summary": "Create App Runtime Chat Message",
+        "description": "通过 App API Key 执行对话；streaming 以 SSE 兼容输出。",
+        "operationId": "create_app_runtime_chat_message_api_v1_app_runtime_chat_messages_post",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppRuntimeChatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppRuntimeChatResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app-runtime/messages/{message_id}/feedback": {
+      "post": {
+        "tags": [
+          "app-runtime"
+        ],
+        "summary": "Create App Runtime Feedback",
+        "description": "接收外部回答质量反馈，回流到 QARun 和可选 EvaluationSample。",
+        "operationId": "create_app_runtime_feedback_api_v1_app_runtime_messages__message_id__feedback_post",
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppRuntimeFeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppRuntimeFeedbackResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AppConversationDetailDTO": {
+        "properties": {
+          "conversationId": {
+            "type": "string",
+            "title": "Conversationid"
+          },
+          "appId": {
+            "type": "string",
+            "title": "Appid"
+          },
+          "endUserId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enduserid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "updatedAt": {
+            "type": "string",
+            "title": "Updatedat"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/AppMessageDTO"
+            },
+            "type": "array",
+            "title": "Messages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversationId",
+          "appId",
+          "status",
+          "metadata",
+          "createdAt",
+          "updatedAt",
+          "messages"
+        ],
+        "title": "AppConversationDetailDTO",
+        "description": "App Conversation 详情，包含按时间排序的消息列表。"
+      },
+      "AppInvocationDTO": {
+        "properties": {
+          "invocationId": {
+            "type": "string",
+            "title": "Invocationid"
+          },
+          "appId": {
+            "type": "string",
+            "title": "Appid"
+          },
+          "apiKeyId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apikeyid"
+          },
+          "conversationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversationid"
+          },
+          "messageId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Messageid"
+          },
+          "qaRunId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qarunid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "errorCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errorcode"
+          },
+          "latencyMs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latencyms"
+          },
+          "requestSummary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Requestsummary"
+          },
+          "responseSummary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Responsesummary"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "invocationId",
+          "appId",
+          "status",
+          "requestSummary",
+          "responseSummary",
+          "createdAt"
+        ],
+        "title": "AppInvocationDTO",
+        "description": "App Runtime 调用审计摘要，供管理端列表展示。"
+      },
+      "AppInvocationStatsDTO": {
+        "properties": {
+          "appId": {
+            "type": "string",
+            "title": "Appid"
+          },
+          "totalInvocations": {
+            "type": "integer",
+            "title": "Totalinvocations"
+          },
+          "successInvocations": {
+            "type": "integer",
+            "title": "Successinvocations"
+          },
+          "failedInvocations": {
+            "type": "integer",
+            "title": "Failedinvocations"
+          },
+          "quotaExceededInvocations": {
+            "type": "integer",
+            "title": "Quotaexceededinvocations"
+          },
+          "noEvidenceInvocations": {
+            "type": "integer",
+            "title": "Noevidenceinvocations"
+          },
+          "averageLatencyMs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Averagelatencyms"
+          },
+          "failureRate": {
+            "type": "number",
+            "title": "Failurerate"
+          },
+          "noEvidenceRate": {
+            "type": "number",
+            "title": "Noevidencerate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "appId",
+          "totalInvocations",
+          "successInvocations",
+          "failedInvocations",
+          "quotaExceededInvocations",
+          "noEvidenceInvocations",
+          "averageLatencyMs",
+          "failureRate",
+          "noEvidenceRate"
+        ],
+        "title": "AppInvocationStatsDTO",
+        "description": "应用维度调用统计摘要，用于 P13 或观测模块展示。"
+      },
+      "AppMessageDTO": {
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "title": "Messageid"
+          },
+          "conversationId": {
+            "type": "string",
+            "title": "Conversationid"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "qaRunId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qarunid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "messageId",
+          "conversationId",
+          "role",
+          "content",
+          "status",
+          "metadata",
+          "createdAt"
+        ],
+        "title": "AppMessageDTO",
+        "description": "App Conversation 下的单条消息，只读用于管理端追溯。"
+      },
+      "AppRuntimeChatRequest": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Query"
+          },
+          "conversationId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversationid"
+          },
+          "endUserId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enduserid"
+          },
+          "inputs": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inputs"
+          },
+          "responseMode": {
+            "type": "string",
+            "pattern": "^(blocking|streaming)$",
+            "title": "Responsemode",
+            "default": "blocking"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "AppRuntimeChatRequest",
+        "description": "外部 Web 应用对话请求，支持 blocking 和兼容式 SSE streaming。"
+      },
+      "AppRuntimeChatResponse": {
+        "properties": {
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "conversationId": {
+            "type": "string",
+            "title": "Conversationid"
+          },
+          "messageId": {
+            "type": "string",
+            "title": "Messageid"
+          },
+          "runId": {
+            "type": "string",
+            "title": "Runid"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/AppRuntimeCitationDTO"
+            },
+            "type": "array",
+            "title": "Citations"
+          },
+          "usage": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Usage"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer",
+          "conversationId",
+          "messageId",
+          "runId",
+          "citations",
+          "usage",
+          "metadata"
+        ],
+        "title": "AppRuntimeChatResponse",
+        "description": "App Runtime blocking 对话响应，只暴露安全摘要。"
+      },
+      "AppRuntimeCitationDTO": {
+        "properties": {
+          "citationId": {
+            "type": "string",
+            "title": "Citationid"
+          },
+          "evidenceId": {
+            "type": "string",
+            "title": "Evidenceid"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "locationSnapshot": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Locationsnapshot"
+          }
+        },
+        "type": "object",
+        "required": [
+          "citationId",
+          "evidenceId",
+          "locationSnapshot"
+        ],
+        "title": "AppRuntimeCitationDTO",
+        "description": "外部响应中的安全 Citation 摘要。"
+      },
+      "AppRuntimeFeedbackRequest": {
+        "properties": {
+          "feedbackStatus": {
+            "type": "string",
+            "pattern": "^(correct|partiallyCorrect|partially_correct|wrong|citationError|citation_error|noEvidence|no_evidence)$",
+            "title": "Feedbackstatus"
+          },
+          "failureType": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failuretype"
+          },
+          "feedbackNote": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedbacknote"
+          },
+          "createEvaluationSample": {
+            "type": "boolean",
+            "title": "Createevaluationsample",
+            "default": false
+          },
+          "expectedAnswer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectedanswer"
+          },
+          "expectedEvidence": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectedevidence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "feedbackStatus"
+        ],
+        "title": "AppRuntimeFeedbackRequest",
+        "description": "外部回答质量反馈；只允许回流到当前 App 的助手消息。"
+      },
+      "AppRuntimeFeedbackResponse": {
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "title": "Messageid"
+          },
+          "runId": {
+            "type": "string",
+            "title": "Runid"
+          },
+          "feedbackStatus": {
+            "type": "string",
+            "title": "Feedbackstatus"
+          },
+          "failureType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failuretype"
+          },
+          "feedbackNote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedbacknote"
+          },
+          "evaluationSampleId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluationsampleid"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "messageId",
+          "runId",
+          "feedbackStatus",
+          "failureType",
+          "feedbackNote",
+          "createdAt"
+        ],
+        "title": "AppRuntimeFeedbackResponse",
+        "description": "外部反馈回流结果，不返回 Trace 或 Evidence 正文。"
+      },
       "AuditExportResponse": {
         "properties": {
           "format": {
@@ -11419,6 +12854,37 @@
         "title": "KnowledgeBaseUpdateRequest",
         "description": "更新知识库基础信息请求；未传字段保持原值不变。"
       },
+      "PageResponse_AppInvocationDTO_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AppInvocationDTO"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "pageNo": {
+            "type": "integer",
+            "title": "Pageno"
+          },
+          "pageSize": {
+            "type": "integer",
+            "title": "Pagesize"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "pageNo",
+          "pageSize",
+          "total"
+        ],
+        "title": "PageResponse[AppInvocationDTO]"
+      },
       "PageResponse_AuditLogDTO_": {
         "properties": {
           "items": {
@@ -11790,6 +13256,37 @@
           "total"
         ],
         "title": "PageResponse[QARunListItemDTO]"
+      },
+      "PageResponse_RagAppDTO_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RagAppDTO"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "pageNo": {
+            "type": "integer",
+            "title": "Pageno"
+          },
+          "pageSize": {
+            "type": "integer",
+            "title": "Pagesize"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "pageNo",
+          "pageSize",
+          "total"
+        ],
+        "title": "PageResponse[RagAppDTO]"
       },
       "PageResponse_UserGroupSummaryDTO_": {
         "properties": {
@@ -13391,6 +14888,355 @@
         ],
         "title": "QARunTraceStepDTO",
         "description": "Executed Pipeline Trace 步骤摘要。"
+      },
+      "RagAppApiKeyCreateRequest": {
+        "properties": {
+          "expiresAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiresat"
+          }
+        },
+        "type": "object",
+        "title": "RagAppApiKeyCreateRequest",
+        "description": "生成 App API Key 请求，明文只在创建响应中返回一次。"
+      },
+      "RagAppApiKeyCreateResponse": {
+        "properties": {
+          "apiKey": {
+            "type": "string",
+            "title": "Apikey"
+          },
+          "item": {
+            "$ref": "#/components/schemas/RagAppApiKeyDTO"
+          }
+        },
+        "type": "object",
+        "required": [
+          "apiKey",
+          "item"
+        ],
+        "title": "RagAppApiKeyCreateResponse",
+        "description": "生成 App API Key 响应，包含一次性明文。"
+      },
+      "RagAppApiKeyDTO": {
+        "properties": {
+          "apiKeyId": {
+            "type": "string",
+            "title": "Apikeyid"
+          },
+          "appId": {
+            "type": "string",
+            "title": "Appid"
+          },
+          "keyPrefix": {
+            "type": "string",
+            "title": "Keyprefix"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "expiresAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiresat"
+          },
+          "lastUsedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastusedat"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "revokedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revokedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "apiKeyId",
+          "appId",
+          "keyPrefix",
+          "status",
+          "createdAt"
+        ],
+        "title": "RagAppApiKeyDTO",
+        "description": "App API Key 摘要；列表和详情永远不返回明文。"
+      },
+      "RagAppApiKeyRevokeResponse": {
+        "properties": {
+          "apiKeyId": {
+            "type": "string",
+            "title": "Apikeyid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "revokedAt": {
+            "type": "string",
+            "title": "Revokedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "apiKeyId",
+          "status",
+          "revokedAt"
+        ],
+        "title": "RagAppApiKeyRevokeResponse",
+        "description": "禁用 App API Key 响应。"
+      },
+      "RagAppCreateRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "kbId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Kbid"
+          },
+          "defaultConfigRevisionId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Defaultconfigrevisionid"
+          },
+          "outputPolicy": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outputpolicy"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "kbId"
+        ],
+        "title": "RagAppCreateRequest",
+        "description": "创建 RAG App 请求；应用只保存 KB 和配置绑定，不复制 Pipeline。"
+      },
+      "RagAppDTO": {
+        "properties": {
+          "appId": {
+            "type": "string",
+            "title": "Appid"
+          },
+          "kbId": {
+            "type": "string",
+            "title": "Kbid"
+          },
+          "defaultConfigRevisionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Defaultconfigrevisionid"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "outputPolicy": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Outputpolicy"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "updatedAt": {
+            "type": "string",
+            "title": "Updatedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "appId",
+          "kbId",
+          "name",
+          "status",
+          "outputPolicy",
+          "metadata",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "RagAppDTO",
+        "description": "RAG App 管理端摘要，接口层统一使用 camelCase 字段。"
+      },
+      "RagAppUpdateRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "defaultConfigRevisionId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Defaultconfigrevisionid"
+          },
+          "outputPolicy": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outputpolicy"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(active|disabled|archived)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "title": "RagAppUpdateRequest",
+        "description": "更新 RAG App 基础信息；未传字段保持原值不变。"
       },
       "RequiredForActivationDTO": {
         "properties": {

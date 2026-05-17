@@ -1,4 +1,4 @@
-const API_BASE_URL = "/api/v1";
+export const API_BASE_URL = "/api/v1";
 
 interface ApiErrorField {
   field?: unknown;
@@ -166,6 +166,48 @@ export async function apiPostJson<T>(path: string, body: unknown): Promise<T> {
   }
 
   return response.json() as Promise<T>;
+}
+
+export async function apiPostJsonWithHeaders<T>(
+  path: string,
+  body: unknown,
+  headers: Record<string, string>,
+): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...headers,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    await throwApiError(response);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+export async function apiPostJsonStreamWithHeaders(
+  path: string,
+  body: unknown,
+  headers: Record<string, string>,
+): Promise<Response> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...headers,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    await throwApiError(response);
+  }
+
+  return response;
 }
 
 export async function apiPatchJson<T>(path: string, body: unknown): Promise<T> {

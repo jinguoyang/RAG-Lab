@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useLocation, useNavigate, useParams } from "react-router";
 import { BookmarkPlus, Copy, Eye, FileDown, GitCompare, PlayCircle, Search, Sparkles, ThumbsDown, ThumbsUp } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
@@ -44,7 +44,11 @@ type HistoryRecord = QAHistoryRecordViewModel;
  */
 export function QAHistory() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { kbId = "" } = useParams();
+  const targetRunId = useMemo(() => {
+    return new URLSearchParams(location.search).get("runId");
+  }, [location.search]);
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [feedbackFilter, setFeedbackFilter] = useState("");
@@ -69,6 +73,7 @@ export function QAHistory() {
   } | null>(null);
   const [tokenUsage, setTokenUsage] = useState<TokenUsageResponse | null>(null);
   const [costSummary, setCostSummary] = useState<CostSummaryResponse | null>(null);
+  const [openedTargetRunId, setOpenedTargetRunId] = useState<string | null>(null);
 
   async function loadHistory(keyword = searchTerm) {
     if (!kbId) return;
@@ -194,8 +199,16 @@ export function QAHistory() {
   }
 
   useEffect(() => {
-    void loadHistory("");
-  }, [kbId]);
+    void loadHistory(targetRunId ?? "");
+  }, [kbId, targetRunId]);
+
+  useEffect(() => {
+    if (!targetRunId || openedTargetRunId === targetRunId) return;
+    const matchedRun = history.find((run) => run.id === targetRunId);
+    if (!matchedRun) return;
+    setOpenedTargetRunId(targetRunId);
+    void openRun(matchedRun);
+  }, [history, openedTargetRunId, targetRunId]);
 
   const sameQueryRuns = useMemo(() => {
     if (!selectedRun) return [];

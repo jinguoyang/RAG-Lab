@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.routes.audit_logs import router as audit_logs_router
+from app.api.routes.app_runtime import router as app_runtime_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.config import revision_router as config_revision_router
 from app.api.routes.config import template_router as config_template_router
@@ -10,6 +11,7 @@ from app.api.routes.health import router as health_router
 from app.api.routes.knowledge_bases import router as knowledge_bases_router
 from app.api.routes.observability import router as observability_router
 from app.api.routes.qa_runs import router as qa_runs_router
+from app.api.routes.rag_apps import router as rag_apps_router
 from app.api.routes.users_groups import groups_router, users_router
 
 api_router = APIRouter()
@@ -30,3 +32,5 @@ api_router.include_router(config_template_router)
 api_router.include_router(config_revision_router)
 api_router.include_router(qa_runs_router)
 api_router.include_router(graph_router)
+api_router.include_router(rag_apps_router)
+api_router.include_router(app_runtime_router)
