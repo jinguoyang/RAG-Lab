@@ -1,13 +1,5 @@
 export type AppRuntimeResponseMode = "blocking" | "streaming";
-export type AppRuntimeFeedbackStatus =
-  | "correct"
-  | "partiallyCorrect"
-  | "partially_correct"
-  | "wrong"
-  | "citationError"
-  | "citation_error"
-  | "noEvidence"
-  | "no_evidence";
+export type AppRuntimeFeedbackStatus = string;
 
 export interface AppRuntimeChatRequest {
   query: string;

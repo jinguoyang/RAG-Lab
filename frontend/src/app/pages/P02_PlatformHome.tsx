@@ -17,6 +17,7 @@ import {
 } from "../components/ui/dialog";
 import { Edit3, Power, Plus, Search } from "lucide-react";
 import { toKnowledgeBaseCard } from "../adapters/knowledgeBaseAdapter";
+import { chooseActiveDictionaryValue, dictionaryItemsToOptions, fetchDictionaryItemsWithFallback } from "../services/dictionaryService";
 import {
   createKnowledgeBase,
   disableKnowledgeBase,
@@ -25,6 +26,7 @@ import {
   updateKnowledgeBase,
 } from "../services/knowledgeBaseService";
 import { fetchDocuments } from "../services/documentService";
+import type { DictionaryItemDTO } from "../types/dictionary";
 import type { KnowledgeBase, KnowledgeBaseCreateRequest } from "../types/knowledgeBase";
 
 interface KnowledgeBaseFormState {
@@ -95,6 +97,8 @@ export function PlatformHome() {
   const [form, setForm] = useState<KnowledgeBaseFormState>(EMPTY_FORM);
   const [indexCapabilityLocked, setIndexCapabilityLocked] = useState(false);
   const [indexCapabilityLockLoading, setIndexCapabilityLockLoading] = useState(false);
+  const [securityLevelItems, setSecurityLevelItems] = useState<DictionaryItemDTO[]>([]);
+  const [securityLevelOptions, setSecurityLevelOptions] = useState(dictionaryItemsToOptions([]));
 
   const kbCards = useMemo(() => knowledgeBases.map(toKnowledgeBaseCard), [knowledgeBases]);
   const indexCapabilityControlsDisabled = indexCapabilityLocked || indexCapabilityLockLoading;
@@ -125,10 +129,24 @@ export function PlatformHome() {
     };
   }, [keyword, loadKnowledgeBases]);
 
+  useEffect(() => {
+    void fetchDictionaryItemsWithFallback("security_level").then((items) => {
+      setSecurityLevelItems(items);
+      setSecurityLevelOptions(dictionaryItemsToOptions(items));
+      setForm((current) => ({
+        ...current,
+        defaultSecurityLevel: chooseActiveDictionaryValue(items, current.defaultSecurityLevel, "public"),
+      }));
+    });
+  }, []);
+
   const openCreateDialog = () => {
     setDialogMode("create");
     setEditingKb(null);
-    setForm(EMPTY_FORM);
+    setForm({
+      ...EMPTY_FORM,
+      defaultSecurityLevel: chooseActiveDictionaryValue(securityLevelItems, EMPTY_FORM.defaultSecurityLevel, "public"),
+    });
     setIndexCapabilityLocked(false);
     setIndexCapabilityLockLoading(false);
     setIsDialogOpen(true);
@@ -138,7 +156,13 @@ export function PlatformHome() {
     event.stopPropagation();
     setDialogMode("edit");
     setEditingKb(kb);
-    setForm(toFormState(kb));
+    setForm((() => {
+      const nextForm = toFormState(kb);
+      return {
+        ...nextForm,
+        defaultSecurityLevel: chooseActiveDictionaryValue(securityLevelItems, nextForm.defaultSecurityLevel, "public"),
+      };
+    })());
     setIndexCapabilityLocked(false);
     setIndexCapabilityLockLoading(true);
     setIsDialogOpen(true);
@@ -197,7 +221,12 @@ export function PlatformHome() {
       await disableKnowledgeBase(kb.kbId);
       await loadKnowledgeBases(keyword);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "知识库停用失败。");
+      const message = error instanceof Error ? error.message : "知识库停用失败。";
+      setErrorMessage(
+        message.includes("KB_HAS_ACTIVE_RAG_APPS")
+          ? "该知识库仍有关联的启用应用。请先在应用中心停用相关应用，再停用知识库。"
+          : message,
+      );
     }
   };
 
@@ -294,8 +323,10 @@ export function PlatformHome() {
               >
                 <CardHeader className="pb-2">
                   <div className="flex justify-between items-start gap-3">
-                    <CardTitle>{kbCard.name}</CardTitle>
-                    <StatusBadge status={kbCard.status} />
+                    <CardTitle className="line-clamp-2 h-12 min-w-0 flex-1 break-words leading-6">
+                      {kbCard.name}
+                    </CardTitle>
+                    <StatusBadge status={kbCard.status} className="shrink-0" />
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -305,9 +336,6 @@ export function PlatformHome() {
                   <div className="text-xs text-stone-gray mt-1">最近更新：{kbCard.updatedAtLabel}</div>
                 </CardContent>
                 <CardFooter className="pt-2 gap-2">
-                  <Button variant="ghost" size="sm" className="flex-1 justify-center">
-                    进入工作区
-                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
@@ -366,10 +394,17 @@ export function PlatformHome() {
                 </label>
                 <label className="grid gap-2 text-sm text-near-black">
                   默认密级
-                  <Input
+                  <select
                     value={form.defaultSecurityLevel}
                     onChange={(event) => setForm({ ...form, defaultSecurityLevel: event.target.value })}
-                  />
+                    className="h-10 rounded-[10px] border border-border-warm bg-white px-3 text-sm text-near-black outline-none focus:ring-2 focus:ring-focus-blue"
+                  >
+                    {securityLevelOptions.map((option) => (
+                      <option key={option.value} value={option.value} disabled={option.disabled}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               </div>
 

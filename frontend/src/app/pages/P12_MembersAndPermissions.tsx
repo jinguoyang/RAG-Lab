@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
@@ -7,6 +7,7 @@ import { Input } from "../components/rag/Input";
 import { Alert } from "../components/rag/Alert";
 import { useConfirmDialog } from "../components/rag/ConfirmDialog";
 import { ChevronLeft, ChevronRight, RefreshCw, Search, ShieldAlert, Trash2, UserPlus } from "lucide-react";
+import { dictionaryLabel, fetchDictionaryItemsWithFallback } from "../services/dictionaryService";
 import {
   createKbMember,
   deleteKbMember,
@@ -24,6 +25,7 @@ import type {
   KbRole,
   PermissionSummary,
 } from "../types/knowledgeBase";
+import type { DictionaryItemDTO } from "../types/dictionary";
 
 const ROLE_LABELS: Record<KbRole, string> = {
   kb_owner: "知识库管理员",
@@ -37,7 +39,7 @@ const SUBJECT_TYPE_LABELS: Record<KbMemberSubjectType, string> = {
   group: "用户组",
 };
 
-const ROLE_OPTIONS = Object.entries(ROLE_LABELS) as Array<[KbRole, string]>;
+const FALLBACK_ROLE_OPTIONS = Object.entries(ROLE_LABELS) as Array<[KbRole, string]>;
 const PAGE_SIZE = 10;
 
 function formatDate(value: string): string {
@@ -77,11 +79,22 @@ export function MembersAndPermissions() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [kbRoleItems, setKbRoleItems] = useState<DictionaryItemDTO[]>([]);
 
   const canManageMembers = summary?.permissions.includes("kb.member.manage") ?? false;
   const totalPages = Math.max(1, Math.ceil(totalMembers / PAGE_SIZE));
   const pageStart = totalMembers === 0 ? 0 : (pageNo - 1) * PAGE_SIZE + 1;
   const pageEnd = Math.min(pageNo * PAGE_SIZE, totalMembers);
+  const roleOptions = useMemo(
+    () => kbRoleItems.length > 0
+      ? kbRoleItems.map((item) => [item.code as KbRole, item.name] as [KbRole, string])
+      : FALLBACK_ROLE_OPTIONS,
+    [kbRoleItems],
+  );
+  const roleLabel = useCallback(
+    (role: KbRole) => dictionaryLabel(kbRoleItems, role, ROLE_LABELS[role] || role),
+    [kbRoleItems],
+  );
 
   const loadMembers = useCallback(async () => {
     if (!kbId) {
@@ -115,6 +128,10 @@ export function MembersAndPermissions() {
   useEffect(() => {
     void loadMembers();
   }, [loadMembers]);
+
+  useEffect(() => {
+    void fetchDictionaryItemsWithFallback("kb_role").then(setKbRoleItems);
+  }, []);
 
   useEffect(() => {
     if (!kbId || !canManageMembers) {
@@ -239,7 +256,7 @@ export function MembersAndPermissions() {
           <br />
           类型：{SUBJECT_TYPE_LABELS[member.subjectType]}
           <br />
-          当前角色：{ROLE_LABELS[member.kbRole]}
+          当前角色：{roleLabel(member.kbRole)}
         </>
       ),
       confirmText: "确认移除",
@@ -295,7 +312,7 @@ export function MembersAndPermissions() {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 shrink-0">
         <div className="bg-ivory border border-border-cream rounded-lg p-4">
           <p className="text-xs text-stone-gray mb-1">当前角色</p>
-          <p className="text-sm font-medium text-near-black">{summary?.roles.map((role) => ROLE_LABELS[role as KbRole] || role).join(" / ") || "无"}</p>
+          <p className="text-sm font-medium text-near-black">{summary?.roles.map((role) => roleLabel(role as KbRole)).join(" / ") || "无"}</p>
         </div>
         <div className="bg-ivory border border-border-cream rounded-lg p-4">
           <p className="text-xs text-stone-gray mb-1">成员管理</p>
@@ -409,7 +426,7 @@ export function MembersAndPermissions() {
             onChange={(event) => setKbRole(event.target.value as KbRole)}
             className="h-10 px-3 bg-white border border-border-cream rounded-md text-sm text-near-black focus:outline-none"
           >
-            {ROLE_OPTIONS.map(([value, label]) => (
+            {roleOptions.map(([value, label]) => (
               <option key={value} value={value}>{label}</option>
             ))}
           </select>
@@ -443,7 +460,7 @@ export function MembersAndPermissions() {
           className="px-3 py-2 bg-ivory border border-border-cream rounded-md text-sm text-near-black focus:outline-none"
         >
           <option value="">全部角色</option>
-          {ROLE_OPTIONS.map(([value, label]) => (
+          {roleOptions.map(([value, label]) => (
             <option key={value} value={value}>{label}</option>
           ))}
         </select>
@@ -494,12 +511,12 @@ export function MembersAndPermissions() {
                       disabled={isSaving}
                       className="px-2 py-1 bg-white border border-border-cream rounded-md text-sm text-near-black focus:outline-none"
                     >
-                      {ROLE_OPTIONS.map(([value, label]) => (
+                      {roleOptions.map(([value, label]) => (
                         <option key={value} value={value}>{label}</option>
                       ))}
                     </select>
                   ) : (
-                    ROLE_LABELS[member.kbRole]
+                    roleLabel(member.kbRole)
                   )}
                 </TableCell>
                 <TableCell className="text-stone-gray">{member.subjectType === "group" ? "用户组绑定" : "直接绑定"}</TableCell>

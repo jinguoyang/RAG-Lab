@@ -1,10 +1,10 @@
 import { Outlet, NavLink } from "react-router";
-import { Users, Building, LogOut, Book, Rocket } from "lucide-react";
+import { Users, Building, LogOut, Book, Rocket, ListTree } from "lucide-react";
 import { Button } from "../components/rag/Button";
 
 export function PlatformLayout() {
   return (
-    <div className="flex h-screen bg-parchment">
+    <div className="flex h-screen overflow-hidden bg-parchment">
       {/* Sidebar */}
       <aside className="w-64 bg-ivory border-r border-border-cream flex flex-col">
         <div className="p-4 border-b border-border-cream">
@@ -36,7 +36,13 @@ export function PlatformLayout() {
             to="/rag-apps"
             className={({isActive}) => `flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${isActive ? 'bg-parchment text-terracotta' : 'text-near-black hover:bg-parchment'}`}
           >
-            <Rocket className="w-4 h-4" /> RAG 应用
+            <Rocket className="w-4 h-4" /> 应用中心
+          </NavLink>
+          <NavLink
+            to="/dictionaries"
+            className={({isActive}) => `flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${isActive ? 'bg-parchment text-terracotta' : 'text-near-black hover:bg-parchment'}`}
+          >
+            <ListTree className="w-4 h-4" /> 字典管理
           </NavLink>
         </nav>
 
@@ -63,7 +69,7 @@ export function PlatformLayout() {
         <header className="h-14 border-b border-border-cream bg-ivory flex items-center px-6 justify-between shrink-0">
           <div className="text-sm text-stone-gray">平台管理</div>
         </header>
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 min-h-0 overflow-auto">
           <Outlet />
         </div>
       </main>

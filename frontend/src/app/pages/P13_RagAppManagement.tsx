@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { NavLink } from "react-router";
 import {
   Copy,
-  Eye,
+  FileText,
   KeyRound,
   Pencil,
   PlayCircle,
@@ -11,12 +11,14 @@ import {
   RotateCcw,
   Search,
   ShieldOff,
+  Trash2,
   X,
 } from "lucide-react";
 import { Alert } from "../components/rag/Alert";
 import { Badge } from "../components/rag/Badge";
 import { Button } from "../components/rag/Button";
 import { useConfirmDialog } from "../components/rag/ConfirmDialog";
+import { Drawer, DrawerSection } from "../components/rag/Drawer";
 import { Input } from "../components/rag/Input";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/rag/Table";
@@ -36,20 +38,23 @@ import {
   streamChatWithAppRuntime,
   submitAppRuntimeFeedback,
 } from "../services/appRuntimeService";
+import { chooseActiveDictionaryValue, fetchDictionaryItemsWithFallback } from "../services/dictionaryService";
 import {
   createRagApp,
   createRagAppApiKey,
+  deleteRagApp,
+  deleteRagAppApiKey,
   getRagAppConversationDetail,
   getRagAppInvocationStats,
   listRagAppApiKeys,
   listRagAppInvocations,
   listRagApps,
-  revokeRagAppApiKey,
   updateRagApp,
 } from "../services/ragAppService";
 import type { ConfigRevisionDTO } from "../types/config";
 import type { KnowledgeBase } from "../types/knowledgeBase";
 import type { AppRuntimeChatResponse, AppRuntimeSseEvent } from "../types/appRuntime";
+import type { DictionaryItemDTO } from "../types/dictionary";
 import type {
   AppInvocationDTO,
   AppInvocationStatsDTO,
@@ -75,6 +80,7 @@ const STATUS_OPTIONS: Array<{ value: "" | RagAppStatus; label: string }> = [
 
 const INVOCATION_STATUS_OPTIONS: Array<{ value: "" | AppInvocationStatus; label: string }> = [
   { value: "", label: "全部调用" },
+  { value: "running", label: "运行中" },
   { value: "success", label: "成功" },
   { value: "failed", label: "失败" },
 ];
@@ -136,6 +142,7 @@ export function RagAppManagement() {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [activeTab, setActiveTab] = useState<DetailTab>("overview");
   const [isAppFormOpen, setIsAppFormOpen] = useState(false);
+  const [isApiDocDrawerOpen, setIsApiDocDrawerOpen] = useState(false);
   const [editingAppId, setEditingAppId] = useState<string | null>(null);
   const [appForm, setAppForm] = useState(EMPTY_APP_FORM);
   const [createdPlainApiKey, setCreatedPlainApiKey] = useState<string | null>(null);
@@ -145,8 +152,10 @@ export function RagAppManagement() {
   const [runtimeMode, setRuntimeMode] = useState<"blocking" | "streaming">("blocking");
   const [runtimeResult, setRuntimeResult] = useState<AppRuntimeChatResponse | null>(null);
   const [runtimeEvents, setRuntimeEvents] = useState<AppRuntimeSseEvent[]>([]);
+  const [runtimeFeedbackStatus, setRuntimeFeedbackStatus] = useState("wrong");
   const [runtimeFeedbackNote, setRuntimeFeedbackNote] = useState("");
   const [isRuntimeRunning, setIsRuntimeRunning] = useState(false);
+  const [feedbackStatusItems, setFeedbackStatusItems] = useState<DictionaryItemDTO[]>([]);
 
   const appRows = useMemo(() => apps.map(toRagAppViewModel), [apps]);
   const selectedAppView = selectedApp ? toRagAppViewModel(selectedApp) : null;
@@ -218,6 +227,13 @@ export function RagAppManagement() {
   useEffect(() => {
     void loadApps();
   }, [loadApps]);
+
+  useEffect(() => {
+    void fetchDictionaryItemsWithFallback("feedback_status").then((items) => {
+      setFeedbackStatusItems(items);
+      setRuntimeFeedbackStatus((current) => chooseActiveDictionaryValue(items, current, "wrong"));
+    });
+  }, []);
 
   useEffect(() => {
     if (selectedApp) {
@@ -347,6 +363,33 @@ export function RagAppManagement() {
     }
   };
 
+  const handleDeleteApp = async (app: RagAppDTO) => {
+    const confirmed = await confirmDialog({
+      title: "确认删除应用",
+      description: "删除后，该应用会从列表中移除，外部 App Runtime 调用会被拒绝；历史调用和 QARun 不会被删除。",
+      detail: app.name,
+      confirmText: "删除应用",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
+
+    setIsSaving(true);
+    try {
+      await deleteRagApp(app.appId);
+      setSelectedApp((current) => (current?.appId === app.appId ? null : current));
+      setFeedback({ variant: "success", title: "应用已删除", message: `${app.name} 已从应用列表移除。` });
+      await loadApps();
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "应用删除失败",
+        message: error instanceof Error ? error.message : "请刷新后重试。",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleCreateApiKey = async () => {
     if (!selectedApp) return;
     setIsSaving(true);
@@ -373,26 +416,26 @@ export function RagAppManagement() {
     setCreatedPlainApiKey(null);
   };
 
-  const handleRevokeApiKey = async (key: RagAppApiKeyDTO) => {
+  const handleDeleteApiKey = async (key: RagAppApiKeyDTO) => {
     if (!selectedApp) return;
     const confirmed = await confirmDialog({
-      title: "确认撤销 API Key",
-      description: "撤销后使用该 Key 的外部调用将返回 APP_API_KEY_INVALID。",
+      title: "确认删除 API Key",
+      description: "删除后使用该 Key 的外部调用将返回 APP_API_KEY_INVALID，调用审计会保留但不再关联该 Key。",
       detail: `Key 前缀：${key.keyPrefix}`,
-      confirmText: "撤销 Key",
+      confirmText: "删除 Key",
       variant: "destructive",
     });
     if (!confirmed) return;
 
     setIsSaving(true);
     try {
-      await revokeRagAppApiKey(selectedApp.appId, key.apiKeyId);
-      setFeedback({ variant: "success", title: "API Key 已撤销", message: `${key.keyPrefix} 已不可用于外部调用。` });
+      await deleteRagAppApiKey(selectedApp.appId, key.apiKeyId);
+      setFeedback({ variant: "success", title: "API Key 已删除", message: `${key.keyPrefix} 已不可用于外部调用。` });
       await loadAppDetail(selectedApp);
     } catch (error) {
       setFeedback({
         variant: "error",
-        title: "撤销失败",
+        title: "删除失败",
         message: error instanceof Error ? error.message : "请刷新后重试。",
       });
     } finally {
@@ -452,9 +495,9 @@ export function RagAppManagement() {
     setIsRuntimeRunning(true);
     try {
       const response = await submitAppRuntimeFeedback(runtimeApiKey, runtimeResult.messageId, {
-        feedbackStatus: "wrong",
-        failureType: "manual_review_required",
-        feedbackNote: runtimeFeedbackNote || "P13 试运行人工反馈：需要复核。",
+        feedbackStatus: runtimeFeedbackStatus,
+        failureType: ["wrong", "citation_error", "no_evidence", "partially_correct"].includes(runtimeFeedbackStatus) ? "manual_review_required" : null,
+        feedbackNote: runtimeFeedbackNote || "P13 试运行人工反馈。",
         createEvaluationSample: true,
       });
       setFeedback({
@@ -495,12 +538,15 @@ export function RagAppManagement() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <PageHeader
-        title="RAG 应用管理"
+        title="应用中心"
         description="将治理后的知识库和配置版本发布为外部可调用应用。"
         actions={
           <>
             <Button variant="outline" onClick={() => void loadApps()} disabled={isLoadingApps}>
               <RefreshCw className="mr-2 h-4 w-4" /> 刷新
+            </Button>
+            <Button variant="outline" onClick={() => setIsApiDocDrawerOpen(true)} disabled={!selectedApp}>
+              <FileText className="mr-2 h-4 w-4" /> 调用文档
             </Button>
             <Button variant="primary" onClick={openCreateForm}>
               <Plus className="mr-2 h-4 w-4" /> 创建应用
@@ -561,33 +607,34 @@ export function RagAppManagement() {
               </Button>
             </div>
 
-            <Table tableClassName="min-w-[900px]">
+            <Table tableClassName="min-w-[760px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>应用</TableHead>
                   <TableHead>知识库</TableHead>
-                  <TableHead>默认配置</TableHead>
+                  <TableHead>检索配置</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>更新时间</TableHead>
-                  <TableHead>操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoadingApps && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-stone-gray">加载中...</TableCell>
+                    <TableCell colSpan={5} className="text-stone-gray">加载中...</TableCell>
                   </TableRow>
                 )}
                 {!isLoadingApps && appRows.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-stone-gray">暂无 RAG 应用</TableCell>
+                    <TableCell colSpan={5} className="text-stone-gray">暂无 RAG 应用</TableCell>
                   </TableRow>
                 )}
                 {!isLoadingApps && appRows.map((app) => (
                   <TableRow key={app.id} onClick={() => setSelectedApp(apps.find((item) => item.appId === app.id) ?? null)}>
                     <TableCell>
                       <div className="font-medium text-near-black">{app.name}</div>
-                      <div className="max-w-[260px] truncate text-xs text-stone-gray" title={app.description}>{app.description}</div>
+                      {app.description && (
+                        <div className="max-w-[260px] truncate text-xs text-stone-gray" title={app.description}>{app.description}</div>
+                      )}
                     </TableCell>
                     <TableCell>{selectedKnowledgeBaseName(knowledgeBases, app.kbId)}</TableCell>
                     <TableCell className="max-w-[180px] truncate" title={app.defaultRevisionLabel}>{app.defaultRevisionLabel}</TableCell>
@@ -595,23 +642,6 @@ export function RagAppManagement() {
                       <Badge variant={statusBadgeVariant(app.status)}>{app.statusLabel}</Badge>
                     </TableCell>
                     <TableCell>{app.updatedAtLabel}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button variant="ghost" size="sm" onClick={(event) => {
-                          event.stopPropagation();
-                          setSelectedApp(apps.find((item) => item.appId === app.id) ?? null);
-                        }}>
-                          <Eye className="mr-1 h-3 w-3" /> 查看
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={(event) => {
-                          event.stopPropagation();
-                          const sourceApp = apps.find((item) => item.appId === app.id);
-                          if (sourceApp) openEditForm(sourceApp);
-                        }}>
-                          <Pencil className="mr-1 h-3 w-3" /> 编辑
-                        </Button>
-                      </div>
-                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -654,13 +684,21 @@ export function RagAppManagement() {
                       <Pencil className="mr-1 h-3 w-3" /> 编辑
                     </Button>
                     <Button
-                      variant={selectedApp.status === "active" ? "destructive" : "primary"}
+                      variant={selectedApp.status === "active" ? "outline" : "primary"}
                       size="sm"
                       disabled={isSaving}
                       onClick={() => void handleToggleAppStatus(selectedApp)}
                     >
                       {selectedApp.status === "active" ? <ShieldOff className="mr-1 h-3 w-3" /> : <RotateCcw className="mr-1 h-3 w-3" />}
                       {selectedApp.status === "active" ? "停用应用" : "启用应用"}
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={isSaving}
+                      onClick={() => void handleDeleteApp(selectedApp)}
+                    >
+                      <Trash2 className="mr-1 h-3 w-3" /> 删除应用
                     </Button>
                   </div>
                 </div>
@@ -683,14 +721,16 @@ export function RagAppManagement() {
                       </button>
                     ))}
                   </div>
-                  <div className="max-h-[560px] overflow-auto p-4">
+                  <div className="max-h-[calc(100vh-250px)] overflow-auto p-4">
                     {isLoadingDetail && <p className="text-sm text-stone-gray">详情加载中...</p>}
                     {!isLoadingDetail && activeTab === "overview" && (
                       <div className="space-y-3 text-sm">
-                        <div>
-                          <p className="text-xs text-stone-gray">描述</p>
-                          <p className="mt-1 text-near-black">{selectedApp.description || "未填写描述"}</p>
-                        </div>
+                        {selectedApp.description?.trim() && (
+                          <div>
+                            <p className="text-xs text-stone-gray">描述</p>
+                            <p className="mt-1 text-near-black">{selectedApp.description}</p>
+                          </div>
+                        )}
                         <div className="grid grid-cols-2 gap-3">
                           <div className="rounded-lg border border-border-cream bg-parchment p-3">
                             <p className="text-xs text-stone-gray">API Key</p>
@@ -705,11 +745,13 @@ export function RagAppManagement() {
                           <p className="text-xs text-stone-gray">调用统计</p>
                           <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-stone-gray">
                             <span>总调用：{invocationStats?.totalInvocations ?? 0}</span>
+                            <span>运行中：{invocationStats?.runningInvocations ?? 0}</span>
                             <span>成功：{invocationStats?.successInvocations ?? 0}</span>
                             <span>失败：{invocationStats?.failedInvocations ?? 0}</span>
                             <span>平均延迟：{invocationStats?.averageLatencyMs == null ? "-" : `${invocationStats.averageLatencyMs}ms`}</span>
                             <span>无证据率：{(((invocationStats?.noEvidenceRate ?? 0) * 100)).toFixed(1)}%</span>
                             <span>限流：{invocationStats?.quotaExceededInvocations ?? 0}</span>
+                            <span>并发拒绝：{invocationStats?.concurrencyExceededInvocations ?? 0}</span>
                           </div>
                         </div>
                         <div className="space-y-3 rounded-lg border border-border-cream bg-parchment p-3">
@@ -748,6 +790,17 @@ export function RagAppManagement() {
                               <div className="text-near-black">{runtimeResult.answer || "无回答内容"}</div>
                               <div className="font-mono text-stone-gray">runId: {runtimeResult.runId}</div>
                               <div className="text-stone-gray">Citation：{runtimeResult.citations.length} · messageId：{shortId(runtimeResult.messageId)}</div>
+                              <select
+                                value={runtimeFeedbackStatus}
+                                onChange={(event) => setRuntimeFeedbackStatus(event.target.value)}
+                                className="h-8 w-full rounded-md border border-border-cream bg-parchment px-2 text-xs text-near-black focus:outline-none"
+                              >
+                                {feedbackStatusItems.map((item) => (
+                                  <option key={item.code} value={item.code} disabled={item.status !== "active"}>
+                                    {item.name}
+                                  </option>
+                                ))}
+                              </select>
                               <textarea
                                 value={runtimeFeedbackNote}
                                 onChange={(event) => setRuntimeFeedbackNote(event.target.value)}
@@ -756,7 +809,7 @@ export function RagAppManagement() {
                                 className="w-full rounded-md border border-border-cream bg-parchment px-2 py-1 text-xs text-near-black focus:outline-none"
                               />
                               <Button variant="outline" size="sm" disabled={isRuntimeRunning} onClick={() => void handleSubmitRuntimeFeedback()}>
-                                提交负反馈并加入评估集
+                                提交反馈并加入评估集
                               </Button>
                             </div>
                           )}
@@ -814,9 +867,9 @@ export function RagAppManagement() {
                                   {key.status === "active" ? (
                                     <Button variant="ghost" size="sm" disabled={isSaving} onClick={() => {
                                       const sourceKey = apiKeys.find((item) => item.apiKeyId === key.id);
-                                      if (sourceKey) void handleRevokeApiKey(sourceKey);
+                                      if (sourceKey) void handleDeleteApiKey(sourceKey);
                                     }}>
-                                      撤销
+                                      删除 Key
                                     </Button>
                                   ) : (
                                     <span className="text-stone-gray">-</span>
@@ -967,6 +1020,73 @@ export function RagAppManagement() {
         </div>
       </div>
 
+      <Drawer
+        isOpen={isApiDocDrawerOpen && Boolean(selectedApp)}
+        onClose={() => setIsApiDocDrawerOpen(false)}
+        title="API 调用文档"
+        width="640px"
+      >
+        {selectedApp && (
+          <>
+            <DrawerSection title="调用入口">
+              <div className="space-y-3 text-sm text-stone-gray">
+                <p>当前应用：<span className="font-medium text-near-black">{selectedApp.name}</span></p>
+                <p className="font-mono text-xs break-all">appId: {selectedApp.appId}</p>
+                <div className="rounded-lg border border-border-cream bg-parchment p-3 font-mono text-xs text-near-black">
+                  POST /api/v1/app-runtime/chat-messages
+                </div>
+                <p>请求头使用 <span className="font-mono">Authorization: Bearer &lt;app_api_key&gt;</span>。API Key 明文只在生成时显示一次，外部应用应保存到服务端安全配置。</p>
+              </div>
+            </DrawerSection>
+            <DrawerSection title="blocking 示例">
+              <pre className="overflow-auto rounded-lg border border-border-cream bg-parchment p-3 text-xs text-near-black">
+{`$headers = @{ Authorization = "Bearer <app_api_key>" }
+$body = @{
+  query = "请基于知识库回答这个问题"
+  endUserId = "external-user-001"
+  responseMode = "blocking"
+} | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/app-runtime/chat-messages" -Headers $headers -ContentType "application/json" -Body $body`}
+              </pre>
+            </DrawerSection>
+            <DrawerSection title="streaming 与反馈">
+              <div className="space-y-3 text-sm text-stone-gray">
+                <p>将 <span className="font-mono">responseMode</span> 设为 <span className="font-mono">streaming</span> 时返回 SSE，事件包括 <span className="font-mono">answer_delta</span>、<span className="font-mono">citation</span>、<span className="font-mono">usage</span> 和 <span className="font-mono">done</span>。</p>
+                <div className="rounded-lg border border-border-cream bg-parchment p-3 font-mono text-xs text-near-black">
+                  POST /api/v1/app-runtime/messages/&lt;message_id&gt;/feedback
+                </div>
+                <p>反馈可写回关联 QARun，并可选择沉淀为评估样本；外部响应不会暴露 Trace、Evidence 正文或内部配置。</p>
+              </div>
+            </DrawerSection>
+            <DrawerSection title="返回字段与错误码">
+              <div className="space-y-3 text-sm text-stone-gray">
+                <p>成功响应包含 <span className="font-mono">answer</span>、<span className="font-mono">citations</span>、<span className="font-mono">conversationId</span>、<span className="font-mono">messageId</span>、<span className="font-mono">runId</span>、<span className="font-mono">usage</span> 和 <span className="font-mono">metadata</span>。</p>
+                <div className="grid grid-cols-1 gap-2 text-xs">
+                  {[
+                    ["APP_API_KEY_INVALID", "401，Key 无效、过期或已删除"],
+                    ["RAG_APP_DISABLED", "409，应用已停用"],
+                    ["RAG_APP_NO_RUNNABLE_REVISION", "409，应用没有可运行配置"],
+                    ["RAG_APP_QUOTA_EXCEEDED", "429，超过短窗口限流或日配额"],
+                    ["RAG_APP_CONCURRENCY_EXCEEDED", "429，超过 maxConcurrent 并发上限"],
+                  ].map(([code, description]) => (
+                    <div key={code} className="rounded-md border border-border-cream bg-parchment p-2">
+                      <span className="font-mono text-near-black">{code}</span>
+                      <span className="ml-2 text-stone-gray">{description}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </DrawerSection>
+            <DrawerSection title="运行治理">
+              <div className="space-y-2 text-sm text-stone-gray">
+                <p>调用进入 Runtime 后会先生成 running 调用记录，完成后更新为成功或失败。P13 的调用记录页可以刷新查看运行中请求。</p>
+                <p>应用可通过 <span className="font-mono">metadata.runtimeLimits.maxConcurrent</span> 配置并发上限。V1.9 采用直接打回策略，不排队等待。</p>
+              </div>
+            </DrawerSection>
+          </>
+        )}
+      </Drawer>
+
       {isAppFormOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-4">
           <div className="w-full max-w-2xl rounded-lg border border-border-warm bg-ivory shadow-[0_24px_80px_rgba(20,20,19,0.18)]">
@@ -1011,13 +1131,13 @@ export function RagAppManagement() {
               </label>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <label className="space-y-2 text-sm">
-                  <span className="text-stone-gray">默认配置版本</span>
+                  <span className="text-stone-gray">检索配置</span>
                   <select
                     value={appForm.defaultConfigRevisionId}
                     onChange={(event) => setAppForm((current) => ({ ...current, defaultConfigRevisionId: event.target.value }))}
                     className="h-10 w-full rounded-md border border-border-cream bg-white px-3 text-sm text-near-black focus:outline-none"
                   >
-                    <option value="">跟随知识库 active revision</option>
+                    <option value="">跟随知识库</option>
                     {configRevisions.map((revision) => (
                       <option key={revision.configRevisionId} value={revision.configRevisionId}>
                         {revisionLabel(revision)}

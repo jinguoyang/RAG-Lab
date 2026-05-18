@@ -1,4 +1,4 @@
-import { apiGet, apiPatchJson, apiPostJson } from "./apiClient";
+import { apiDelete, apiGet, apiPatchJson, apiPostJson } from "./apiClient";
 import type {
   AppInvocationListParams,
   AppInvocationPage,
@@ -7,7 +7,6 @@ import type {
   RagAppApiKeyCreateRequest,
   RagAppApiKeyCreateResponse,
   RagAppApiKeyDTO,
-  RagAppApiKeyRevokeResponse,
   RagAppCreateRequest,
   RagAppDTO,
   RagAppListParams,
@@ -47,6 +46,10 @@ export async function updateRagApp(appId: string, payload: RagAppUpdateRequest):
   return apiPatchJson<RagAppDTO>(`/rag-apps/${appId}`, payload);
 }
 
+export async function deleteRagApp(appId: string): Promise<void> {
+  return apiDelete(`/rag-apps/${appId}`);
+}
+
 export async function listRagAppApiKeys(appId: string): Promise<RagAppApiKeyDTO[]> {
   return apiGet<RagAppApiKeyDTO[]>(`/rag-apps/${appId}/api-keys`);
 }
@@ -58,11 +61,11 @@ export async function createRagAppApiKey(
   return apiPostJson<RagAppApiKeyCreateResponse>(`/rag-apps/${appId}/api-keys`, payload);
 }
 
-export async function revokeRagAppApiKey(
+export async function deleteRagAppApiKey(
   appId: string,
   apiKeyId: string,
-): Promise<RagAppApiKeyRevokeResponse> {
-  return apiPostJson<RagAppApiKeyRevokeResponse>(`/rag-apps/${appId}/api-keys/${apiKeyId}/revoke`, {});
+): Promise<void> {
+  return apiDelete(`/rag-apps/${appId}/api-keys/${apiKeyId}`);
 }
 
 export async function listRagAppInvocations(

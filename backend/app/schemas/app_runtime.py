@@ -47,7 +47,7 @@ class AppRuntimeChatResponse(BaseModel):
 class AppRuntimeFeedbackRequest(BaseModel):
     """外部回答质量反馈；只允许回流到当前 App 的助手消息。"""
 
-    feedbackStatus: str = Field(pattern="^(correct|partiallyCorrect|partially_correct|wrong|citationError|citation_error|noEvidence|no_evidence)$")
+    feedbackStatus: str = Field(min_length=1, max_length=64)
     failureType: str | None = Field(default=None, max_length=64)
     feedbackNote: str | None = Field(default=None, max_length=1000)
     createEvaluationSample: bool = False

@@ -9,6 +9,7 @@ from app.core.database import get_db_session
 from app.schemas.app_runtime import AppRuntimeChatRequest, AppRuntimeChatResponse, AppRuntimeFeedbackRequest, AppRuntimeFeedbackResponse
 from app.services.app_runtime_service import (
     AppRuntimeAuthError,
+    AppRuntimeConcurrencyExceededError,
     AppRuntimeConflictError,
     AppRuntimeNotFoundError,
     AppRuntimeQuotaExceededError,
@@ -37,8 +38,8 @@ def _raise_runtime_error(exc: Exception) -> None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="APP_API_KEY_INVALID") from exc
     if isinstance(exc, AppRuntimeNotFoundError):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="RESOURCE_NOT_FOUND") from exc
-    if isinstance(exc, AppRuntimeQuotaExceededError):
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="RAG_APP_QUOTA_EXCEEDED") from exc
+    if isinstance(exc, (AppRuntimeQuotaExceededError, AppRuntimeConcurrencyExceededError)):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
     if isinstance(exc, AppRuntimeConflictError):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if isinstance(exc, QARunCreateConflict):

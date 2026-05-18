@@ -3,6 +3,41 @@ from sqlalchemy.dialects import postgresql
 
 metadata = sa.MetaData()
 
+system_dict_types = sa.Table(
+    "system_dict_types",
+    metadata,
+    sa.Column("dict_type_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("code", sa.String(length=64), nullable=False),
+    sa.Column("name", sa.String(length=128), nullable=False),
+    sa.Column("description", sa.Text(), nullable=True),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("deleted_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
+system_dict_items = sa.Table(
+    "system_dict_items",
+    metadata,
+    sa.Column("dict_item_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("dict_type_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("code", sa.String(length=64), nullable=False),
+    sa.Column("name", sa.String(length=128), nullable=False),
+    sa.Column("description", sa.Text(), nullable=True),
+    sa.Column("sort_order", sa.Integer(), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("extra", postgresql.JSONB(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("deleted_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
 users = sa.Table(
     "users",
     metadata,

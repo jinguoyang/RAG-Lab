@@ -22,8 +22,9 @@ const appRuntimeServiceSource = await readFile(appRuntimeServicePath, "utf8");
 
 for (const [needle, message] of [
   ["createRagApp", "P13 创建应用动作必须调用 RAG App 管理服务。"],
+  ["deleteRagApp", "P13 删除应用动作必须调用 RAG App 管理服务。"],
   ["createRagAppApiKey", "P13 生成 Key 动作必须调用 API Key 创建接口。"],
-  ["revokeRagAppApiKey", "P13 撤销 Key 动作必须调用 API Key 撤销接口。"],
+  ["deleteRagAppApiKey", "P13 删除 Key 动作必须调用 API Key 删除接口。"],
   ["chatWithAppRuntime", "P13 blocking 试运行必须调用 App Runtime 接口。"],
   ["streamChatWithAppRuntime", "P13 streaming 试运行必须调用 App Runtime 接口。"],
   ["submitAppRuntimeFeedback", "P13 反馈动作必须调用 Runtime 反馈接口。"],
@@ -33,9 +34,19 @@ for (const [needle, message] of [
   assertIncludes(pageSource, needle, message);
 }
 
-for (const label of ["创建应用", "生成 Key", "试运行", "提交负反馈并加入评估集", "撤销", "查看详情"]) {
+for (const label of ["创建应用", "生成 Key", "试运行", "提交负反馈并加入评估集", "删除 Key", "删除应用", "查看详情"]) {
   assertIncludes(pageSource, label, `P13 必须提供 ${label} 前端动作。`);
 }
+
+for (const label of ["调用文档", "运行中", "并发拒绝"]) {
+  assertIncludes(pageSource, label, `P13 必须提供 ${label} 运行治理信息。`);
+}
+
+for (const forbidden of ["撤销", "未填写描述", "默认配置", "跟随知识库 active revision"]) {
+  assert(!pageSource.includes(forbidden), `P13 不应继续展示旧文案 ${forbidden}。`);
+}
+
+assertIncludes(ragAppServiceSource, "apiDelete", "RAG App service 删除动作必须复用 apiDelete。");
 
 for (const endpoint of [
   "/rag-apps",

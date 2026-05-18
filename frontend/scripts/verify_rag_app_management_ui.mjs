@@ -39,16 +39,17 @@ async function verifyServiceContract() {
     "listRagApps",
     "createRagApp",
     "updateRagApp",
+    "deleteRagApp",
     "listRagAppApiKeys",
     "createRagAppApiKey",
-    "revokeRagAppApiKey",
+    "deleteRagAppApiKey",
     "listRagAppInvocations",
     "getRagAppInvocationStats",
     "getRagAppConversationDetail",
   ]) {
     assert(source.includes(`function ${exportName}`), `ragAppService 必须导出 ${exportName}。`);
   }
-  assert(source.includes("apiGet") && source.includes("apiPostJson") && source.includes("apiPatchJson"), "服务必须复用现有 apiClient。");
+  assert(source.includes("apiGet") && source.includes("apiPostJson") && source.includes("apiPatchJson") && source.includes("apiDelete"), "服务必须复用现有 apiClient。");
   assert(!source.includes("localStorage") && !source.includes("sessionStorage"), "服务层不得持久化 API Key 明文。");
 }
 
@@ -73,22 +74,23 @@ async function verifyAdapterBehavior() {
     updatedAt: "2026-05-15T00:00:00Z",
   });
   assert(app.statusLabel === "启用", "RAG App active 状态应显示为启用。");
-  assert(app.defaultRevisionLabel === "跟随知识库 active revision", "缺省默认配置应显示跟随知识库 active revision。");
+  assert(app.defaultRevisionLabel === "跟随知识库", "缺省检索配置应显示跟随知识库。");
+  assert(app.description === "", "未填写描述时不应生成占位描述。");
 
   const key = toRagAppApiKeyViewModel({
     apiKeyId: "key-1",
     appId: "app-1",
     keyPrefix: "rlak_xxxxxxxx",
-    status: "revoked",
+    status: "active",
     expiresAt: null,
     lastUsedAt: null,
     createdAt: "2026-05-15T00:00:00Z",
-    revokedAt: "2026-05-15T00:00:00Z",
+    revokedAt: null,
   });
-  assert(key.statusLabel === "已撤销", "撤销 Key 应显示为已撤销。");
+  assert(key.statusLabel === "启用", "活跃 Key 应显示为启用。");
   assert(key.expiresAtLabel === "永不过期", "无过期时间应显示为永不过期。");
 
-  const invocation = toAppInvocationViewModel({
+  const invocationDto = {
     invocationId: "inv-1",
     appId: "app-1",
     apiKeyId: "key-1",
@@ -101,9 +103,20 @@ async function verifyAdapterBehavior() {
     requestSummary: { queryLength: 12 },
     responseSummary: {},
     createdAt: "2026-05-15T00:00:00Z",
-  });
+  };
+  const invocation = toAppInvocationViewModel(invocationDto);
   assert(invocation.statusLabel === "失败", "失败调用应显示为失败。");
   assert(invocation.errorLabel === "RAG_APP_DISABLED", "错误码必须保留原始 code。");
+
+  const runningInvocation = toAppInvocationViewModel({
+    ...invocationDto,
+    invocationId: "inv-running",
+    status: "running",
+    errorCode: null,
+    latencyMs: null,
+  });
+  assert(runningInvocation.statusLabel === "运行中", "运行中调用应显示为运行中。");
+  assert(runningInvocation.latencyLabel === "运行中", "运行中调用延迟应提示运行中。");
 
   const conversations = groupInvocationsByConversation([
     { ...invocation, status: "failed", invocationId: "inv-1" },
@@ -118,7 +131,7 @@ async function verifyRouteAndPage() {
   assert(existsSync(pagePath), "必须创建 P13_RagAppManagement.tsx。");
   assert(routeSource.includes("P13_RagAppManagement"), "路由必须注册 P13_RagAppManagement。");
   assert(routeSource.includes('path: "rag-apps"'), "平台路由必须包含 /rag-apps。");
-  assert(layoutSource.includes("RAG 应用"), "平台导航必须包含 RAG 应用入口。");
+  assert(layoutSource.includes("应用中心"), "平台导航必须显示应用中心入口。");
 }
 
 async function verifyPlaintextKeyGuard() {
@@ -138,6 +151,17 @@ async function verifyRuntimeTrialPanel() {
   assert(pageSource.includes("runtimeApiKey"), "P13 试运行 API Key 必须只保存在页面内存状态。");
   assert(pageSource.includes("keyExpiresAt"), "P13 生成 API Key 时必须支持过期时间输入。");
   assert(pageSource.includes("调用统计"), "P13 必须展示应用级调用统计。");
+  assert(pageSource.includes("runningInvocations"), "P13 调用统计必须展示运行中调用数量。");
+  assert(pageSource.includes("concurrencyExceededInvocations"), "P13 调用统计必须展示并发拒绝次数。");
+  assert(pageSource.includes("调用文档"), "P13 必须在页头提供调用文档入口。");
+  assert(pageSource.includes("isApiDocDrawerOpen"), "P13 必须使用弹出层状态展示 API 调用文档。");
+  assert(pageSource.includes("RAG_APP_CONCURRENCY_EXCEEDED"), "P13 API 文档必须说明并发超限错误。");
+  assert(pageSource.includes("删除应用"), "P13 必须提供删除应用动作。");
+  assert(pageSource.includes("删除 Key"), "P13 必须提供物理删除 Key 动作。");
+  assert(!pageSource.includes("未填写描述"), "P13 不应展示未填写描述占位文案。");
+  assert(!pageSource.includes("默认配置"), "P13 展示文案应改为检索配置。");
+  assert(!pageSource.includes("跟随知识库 active revision"), "P13 应使用跟随知识库短文案。");
+  assert(!pageSource.includes("撤销"), "P13 不应保留 API Key 撤销文案。");
 }
 
 async function verifyQARunDeepLink() {

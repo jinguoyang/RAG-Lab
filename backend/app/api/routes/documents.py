@@ -29,6 +29,7 @@ from app.schemas.document import (
     IndexSyncRebuildRequest,
     IngestJobDTO,
 )
+from app.services.dictionary_service import DictionaryValidationError
 from app.services.document_service import (
     DocumentConflictError,
     DocumentIngestEnqueueError,
@@ -79,6 +80,8 @@ def _raise_document_error(exc: Exception) -> None:
         ) from exc
     if isinstance(exc, DocumentConflictError):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if isinstance(exc, DictionaryValidationError):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     raise exc
 
 
@@ -123,7 +126,7 @@ async def upload_document(
             name=name,
             security_level=security_level,
         )
-    except (KnowledgeBaseDisabledError, DocumentPermissionError, DocumentConflictError, DocumentIngestEnqueueError) as exc:
+    except (KnowledgeBaseDisabledError, DocumentPermissionError, DocumentConflictError, DocumentIngestEnqueueError, DictionaryValidationError) as exc:
         _raise_document_error(exc)
     except ObjectStorageError as exc:
         raise HTTPException(

@@ -118,9 +118,11 @@ class AppInvocationStatsDTO(BaseModel):
 
     appId: str
     totalInvocations: int
+    runningInvocations: int
     successInvocations: int
     failedInvocations: int
     quotaExceededInvocations: int
+    concurrencyExceededInvocations: int
     noEvidenceInvocations: int
     averageLatencyMs: int | None
     failureRate: float

@@ -2,7 +2,7 @@ import type { PageResponse } from "./knowledgeBase";
 
 export type RagAppStatus = "active" | "disabled" | "archived";
 export type RagAppApiKeyStatus = "active" | "revoked";
-export type AppInvocationStatus = "success" | "failed";
+export type AppInvocationStatus = "running" | "success" | "failed";
 
 export interface RagAppDTO {
   appId: string;
@@ -82,9 +82,11 @@ export type AppInvocationPage = PageResponse<AppInvocationDTO>;
 export interface AppInvocationStatsDTO {
   appId: string;
   totalInvocations: number;
+  runningInvocations: number;
   successInvocations: number;
   failedInvocations: number;
   quotaExceededInvocations: number;
+  concurrencyExceededInvocations: number;
   noEvidenceInvocations: number;
   averageLatencyMs: number | null;
   failureRate: number;

@@ -5,6 +5,7 @@ from app.api.routes.app_runtime import router as app_runtime_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.config import revision_router as config_revision_router
 from app.api.routes.config import template_router as config_template_router
+from app.api.routes.dictionaries import router as dictionaries_router
 from app.api.routes.documents import chunk_router, index_sync_router, ingest_job_router, router as documents_router
 from app.api.routes.graph import router as graph_router
 from app.api.routes.health import router as health_router
@@ -20,6 +21,7 @@ api_router = APIRouter()
 api_router.include_router(auth_router)
 api_router.include_router(health_router)
 api_router.include_router(audit_logs_router)
+api_router.include_router(dictionaries_router)
 api_router.include_router(users_router)
 api_router.include_router(groups_router)
 api_router.include_router(knowledge_bases_router)

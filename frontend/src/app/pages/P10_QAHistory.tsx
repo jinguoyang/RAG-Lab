@@ -11,6 +11,7 @@ import { Drawer, DrawerSection } from "../components/rag/Drawer";
 import { QAPartialDiagnosticsPanel } from "../components/rag/QAPartialDiagnosticsPanel";
 import { ratingToFeedbackStatus, toQAHistoryRecord, toQARewriteTrace, type QAHistoryRecordViewModel } from "../adapters/qaRunAdapter";
 import { deriveQAPartialDiagnostics } from "../utils/qaPartialDiagnostics";
+import { dictionaryLabel, fetchDictionaryItemsWithFallback } from "../services/dictionaryService";
 import {
   addQARunComment,
   archiveEvaluationSample,
@@ -34,6 +35,7 @@ import {
 import type { EvaluationRunDetailDTO, EvaluationSampleDTO, QARunCollaborationDTO, QARunCompareDTO, QARunDetailDTO } from "../types/qaRun";
 import { fetchTokenUsage, fetchCostSummary } from "../services/observabilityService";
 import type { TokenUsageResponse, CostSummaryResponse } from "../types/observability";
+import type { DictionaryItemDTO } from "../types/dictionary";
 
 type RatingStatus = "up" | "down" | "none";
 type HistoryRecord = QAHistoryRecordViewModel;
@@ -74,6 +76,7 @@ export function QAHistory() {
   const [tokenUsage, setTokenUsage] = useState<TokenUsageResponse | null>(null);
   const [costSummary, setCostSummary] = useState<CostSummaryResponse | null>(null);
   const [openedTargetRunId, setOpenedTargetRunId] = useState<string | null>(null);
+  const [feedbackStatusItems, setFeedbackStatusItems] = useState<DictionaryItemDTO[]>([]);
 
   async function loadHistory(keyword = searchTerm) {
     if (!kbId) return;
@@ -201,6 +204,10 @@ export function QAHistory() {
   useEffect(() => {
     void loadHistory(targetRunId ?? "");
   }, [kbId, targetRunId]);
+
+  useEffect(() => {
+    void fetchDictionaryItemsWithFallback("feedback_status").then(setFeedbackStatusItems);
+  }, []);
 
   useEffect(() => {
     if (!targetRunId || openedTargetRunId === targetRunId) return;
@@ -407,11 +414,11 @@ export function QAHistory() {
           onChange={(e) => setFeedbackFilter(e.target.value)}
         >
           <option value="">全部反馈</option>
-          <option value="correct">正确</option>
-          <option value="wrong">错误</option>
-          <option value="citation_error">引用错误</option>
-          <option value="no_evidence">无证据</option>
-          <option value="unrated">未标注</option>
+          {feedbackStatusItems.map((item) => (
+            <option key={item.code} value={item.code} disabled={item.status !== "active"}>
+              {item.name}
+            </option>
+          ))}
         </select>
         <select
           className="px-3 py-2 bg-ivory border border-border-cream rounded-md text-sm text-near-black focus:outline-none"
@@ -470,6 +477,7 @@ export function QAHistory() {
                     {run.rating === "up" && <ThumbsUp className="w-4 h-4 text-success-green fill-success-green/20" />}
                     {run.rating === "down" && <ThumbsDown className="w-4 h-4 text-error-red fill-error-red/20" />}
                     {run.rating === "none" && <span className="text-stone-gray">-</span>}
+                    <span className="text-xs text-stone-gray">{dictionaryLabel(feedbackStatusItems, run.feedbackStatus, run.feedbackStatus)}</span>
                   </div>
                 </TableCell>
                 <TableCell className="text-stone-gray">{run.failureType}</TableCell>
@@ -686,6 +694,9 @@ export function QAHistory() {
                   >
                     <ThumbsDown className="w-4 h-4 mr-2" /> 错误 / 不满意
                   </Button>
+                </div>
+                <div className="rounded-lg border border-border-cream bg-parchment p-3 text-sm text-stone-gray">
+                  反馈状态：{dictionaryLabel(feedbackStatusItems, selectedDetail?.feedbackStatus || selectedRun.feedbackStatus, selectedDetail?.feedbackStatus || selectedRun.feedbackStatus)}
                 </div>
                 <div className="rounded-lg border border-border-cream bg-parchment p-3 text-sm text-stone-gray">
                   失败类型：{selectedDetail?.failureType || selectedRun.failureType}

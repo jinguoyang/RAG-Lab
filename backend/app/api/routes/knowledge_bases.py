@@ -23,8 +23,10 @@ from app.schemas.permission import (
     EffectivePermissionSimulationResponse,
     PermissionSummaryDTO,
 )
+from app.services.dictionary_service import DictionaryValidationError
 from app.services.permission_service import get_kb_permission_summary, simulate_effective_permission
 from app.services.knowledge_base_service import (
+    KnowledgeBaseActiveRagAppsError,
     KnowledgeBaseIndexCapabilityLockedError,
     KbMemberBindingConflictError,
     KbMemberBindingNotFoundError,
@@ -75,6 +77,8 @@ def _raise_member_error(exc: Exception) -> None:
             status_code=status.HTTP_409_CONFLICT,
             detail="Member subject already has an active binding in this knowledge base.",
         ) from exc
+    if isinstance(exc, DictionaryValidationError):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     raise exc
 
 
@@ -100,6 +104,13 @@ def _raise_kb_management_error(exc: Exception) -> None:
             status_code=status.HTTP_409_CONFLICT,
             detail="KB_INDEX_CAPABILITY_LOCKED: index capabilities cannot be changed after documents are uploaded.",
         ) from exc
+    if isinstance(exc, KnowledgeBaseActiveRagAppsError):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="KB_HAS_ACTIVE_RAG_APPS",
+        ) from exc
+    if isinstance(exc, DictionaryValidationError):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     raise exc
 
 
@@ -124,6 +135,8 @@ def create_knowledge_base_endpoint(
     """创建知识库基础记录，供 E1 平台工作台联调使用。"""
     try:
         return create_knowledge_base(session, current_user, request)
+    except DictionaryValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except IntegrityError as exc:
         session.rollback()
         raise HTTPException(

@@ -45,6 +45,7 @@ from app.tables import (
     users,
 )
 from app.services.chunk_payload import build_chunk_index_payload
+from app.services.dictionary_service import require_active_dict_item
 from app.services.document_parsing import DocumentParseError, parse_document
 from app.services.object_storage import ObjectStorageProvider, get_object_storage_provider
 from app.services.graph_service import mark_graph_snapshots_stale
@@ -1212,6 +1213,10 @@ def create_document_upload(
     if kb_row["status"] == "disabled":
         raise KnowledgeBaseDisabledError
     _ensure_permission(session, current_user, kb_id, "kb.document.upload")
+    resolved_security_level = security_level or kb_row["default_security_level"]
+    require_active_dict_item(session, "security_level", resolved_security_level, "securityLevel")
+    require_active_dict_item(session, "document_source_type", "upload", "sourceType")
+    require_active_dict_item(session, "file_role", "source", "fileRole")
 
     settings = get_settings()
     actor_id = UUID(current_user.user.userId)
@@ -1254,7 +1259,7 @@ def create_document_upload(
                 kb_id=kb_id,
                 name=document_name,
                 source_type="upload",
-                security_level=security_level or kb_row["default_security_level"],
+                security_level=resolved_security_level,
                 status="active",
                 metadata={},
                 created_by=actor_id,

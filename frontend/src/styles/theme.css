@@ -141,10 +141,19 @@
   body {
     @apply bg-parchment text-near-black;
     font-family: var(--font-sans);
+    height: 100%;
+    overflow: hidden;
   }
 
   html {
     font-size: var(--font-size);
+    height: 100%;
+    overflow: hidden;
+  }
+
+  #root {
+    height: 100%;
+    overflow: hidden;
   }
 
   /* Headings use serif - as per RAG platform spec */

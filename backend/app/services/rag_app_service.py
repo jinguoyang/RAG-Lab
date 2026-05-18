@@ -3,7 +3,7 @@ from hashlib import sha256
 import secrets
 from uuid import UUID, uuid4
 
-from sqlalchemy import RowMapping, func, insert, or_, select, update
+from sqlalchemy import RowMapping, delete, func, insert, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.schemas.auth import CurrentUserResponse
@@ -16,7 +16,6 @@ from app.schemas.rag_app import (
     RagAppApiKeyCreateRequest,
     RagAppApiKeyCreateResponse,
     RagAppApiKeyDTO,
-    RagAppApiKeyRevokeResponse,
     RagAppCreateRequest,
     RagAppDTO,
     RagAppUpdateRequest,
@@ -191,6 +190,36 @@ def _read_writable_kb_row(
     return row
 
 
+def _read_manageable_kb_row(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+) -> RowMapping:
+    """读取可见且当前用户可管理的知识库；允许停用 KB 下的收口动作。"""
+    row = session.execute(
+        select(knowledge_bases)
+        .where(kb_visibility_condition(current_user), knowledge_bases.c.kb_id == kb_id)
+        .limit(1)
+    ).mappings().first()
+    if row is None:
+        raise RagAppNotFoundError
+    _ensure_app_manage_permission(session, current_user, kb_id)
+    return row
+
+
+def _ensure_kb_allows_app_update(
+    kb_row: RowMapping,
+    requested_fields: set[str],
+    request: RagAppUpdateRequest,
+) -> None:
+    """停用 KB 下只允许停用或归档应用，避免无法收口的状态死锁。"""
+    if kb_row["status"] != "disabled":
+        return
+    if requested_fields == {"status"} and request.status in {"disabled", "archived"}:
+        return
+    raise RagAppConflictError("KB_DISABLED")
+
+
 def _ensure_runnable_revision(
     session: Session,
     kb_id: UUID,
@@ -312,9 +341,9 @@ def update_rag_app(
 ) -> RagAppDTO:
     """更新 RAG App 基础信息和默认配置绑定。"""
     app_row = _read_visible_app_row(session, current_user, app_id)
-    _read_writable_kb_row(session, current_user, app_row["kb_id"])
-
     requested_fields = request.model_fields_set
+    kb_row = _read_manageable_kb_row(session, current_user, app_row["kb_id"])
+    _ensure_kb_allows_app_update(kb_row, requested_fields, request)
     if "defaultConfigRevisionId" in requested_fields:
         _ensure_runnable_revision(session, app_row["kb_id"], request.defaultConfigRevisionId)
 
@@ -354,6 +383,39 @@ def update_rag_app(
     return _to_app_dto(row)
 
 
+def delete_rag_app(
+    session: Session,
+    current_user: CurrentUserResponse,
+    app_id: UUID,
+) -> None:
+    """逻辑删除 RAG App，使其从管理列表和 Runtime 鉴权中消失。"""
+    app_row = _read_visible_app_row(session, current_user, app_id)
+    _ensure_app_manage_permission(session, current_user, app_row["kb_id"])
+    actor_id = UUID(current_user.user.userId)
+    now = datetime.now(UTC)
+    session.execute(
+        update(rag_apps)
+        .where(rag_apps.c.app_id == app_id, rag_apps.c.deleted_at.is_(None))
+        .values(
+            status="archived",
+            deleted_at=now,
+            deleted_by=actor_id,
+            updated_at=now,
+            updated_by=actor_id,
+        )
+    )
+    write_audit_log(
+        session,
+        current_user,
+        "rag_app.delete",
+        "rag_app",
+        app_id,
+        kb_id=app_row["kb_id"],
+        detail={"name": app_row["name"]},
+    )
+    session.commit()
+
+
 def list_rag_app_api_keys(
     session: Session,
     current_user: CurrentUserResponse,
@@ -364,7 +426,7 @@ def list_rag_app_api_keys(
     _ensure_app_manage_permission(session, current_user, app_row["kb_id"])
     rows = session.execute(
         select(rag_app_api_keys)
-        .where(rag_app_api_keys.c.app_id == app_id)
+        .where(rag_app_api_keys.c.app_id == app_id, rag_app_api_keys.c.status == "active")
         .order_by(rag_app_api_keys.c.created_at.desc())
     ).mappings()
     return [_to_api_key_dto(row) for row in rows]
@@ -416,47 +478,46 @@ def create_rag_app_api_key(
     return RagAppApiKeyCreateResponse(apiKey=plain_key, item=_to_api_key_dto(row))
 
 
-def revoke_rag_app_api_key(
+def delete_rag_app_api_key(
     session: Session,
     current_user: CurrentUserResponse,
     app_id: UUID,
     api_key_id: UUID,
-) -> RagAppApiKeyRevokeResponse:
-    """禁用应用 API Key，保留摘要和审计线索。"""
+) -> None:
+    """物理删除应用 API Key，并解除调用审计中的 Key 外键引用。"""
     app_row = _read_visible_app_row(session, current_user, app_id)
     _ensure_app_manage_permission(session, current_user, app_row["kb_id"])
-    now = datetime.now(UTC)
-    row = session.execute(
-        update(rag_app_api_keys)
+    key_row = session.execute(
+        select(rag_app_api_keys)
         .where(
             rag_app_api_keys.c.app_id == app_id,
             rag_app_api_keys.c.api_key_id == api_key_id,
         )
-        .values(
-            status="revoked",
-            revoked_at=now,
-            revoked_by=UUID(current_user.user.userId),
-        )
-        .returning(rag_app_api_keys)
     ).mappings().first()
-    if row is None:
+    if key_row is None:
         session.rollback()
         raise RagAppApiKeyNotFoundError
+    session.execute(
+        update(app_invocations)
+        .where(app_invocations.c.api_key_id == api_key_id)
+        .values(api_key_id=None)
+    )
+    session.execute(
+        delete(rag_app_api_keys).where(
+            rag_app_api_keys.c.app_id == app_id,
+            rag_app_api_keys.c.api_key_id == api_key_id,
+        )
+    )
     write_audit_log(
         session,
         current_user,
-        "rag_app_api_key.revoke",
+        "rag_app_api_key.delete",
         "rag_app_api_key",
         api_key_id,
         kb_id=app_row["kb_id"],
-        detail={"appId": str(app_id)},
+        detail={"appId": str(app_id), "keyPrefix": key_row["key_prefix"]},
     )
     session.commit()
-    return RagAppApiKeyRevokeResponse(
-        apiKeyId=str(row["api_key_id"]),
-        status=row["status"],
-        revokedAt=now.isoformat(),
-    )
 
 
 def list_rag_app_invocations(
@@ -500,9 +561,11 @@ def get_rag_app_invocation_stats(
     _ensure_app_manage_permission(session, current_user, app_row["kb_id"])
     rows = list(session.execute(select(app_invocations).where(app_invocations.c.app_id == app_id)).mappings())
     total = len(rows)
+    running_count = sum(1 for row in rows if row["status"] == "running")
     success_count = sum(1 for row in rows if row["status"] == "success")
     failed_count = sum(1 for row in rows if row["status"] == "failed")
     quota_count = sum(1 for row in rows if row["error_code"] == "RAG_APP_QUOTA_EXCEEDED")
+    concurrency_count = sum(1 for row in rows if row["error_code"] == "RAG_APP_CONCURRENCY_EXCEEDED")
     latencies = [row["latency_ms"] for row in rows if row["latency_ms"] is not None]
     no_evidence_count = 0
     for row in rows:
@@ -512,9 +575,11 @@ def get_rag_app_invocation_stats(
     return AppInvocationStatsDTO(
         appId=str(app_id),
         totalInvocations=total,
+        runningInvocations=running_count,
         successInvocations=success_count,
         failedInvocations=failed_count,
         quotaExceededInvocations=quota_count,
+        concurrencyExceededInvocations=concurrency_count,
         noEvidenceInvocations=no_evidence_count,
         averageLatencyMs=int(sum(latencies) / len(latencies)) if latencies else None,
         failureRate=round(failed_count / total, 4) if total else 0,

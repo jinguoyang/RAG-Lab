@@ -10,6 +10,7 @@ import { Badge, StatusBadge } from "../components/rag/Badge";
 import { Drawer, DrawerSection } from "../components/rag/Drawer";
 import { useConfirmDialog } from "../components/rag/ConfirmDialog";
 import { formatIndexStageStatus, toDocumentRow, toIngestJobView } from "../adapters/documentAdapter";
+import { chooseActiveDictionaryValue, dictionaryItemsToOptions, dictionaryLabel, fetchDictionaryItemsWithFallback } from "../services/dictionaryService";
 import {
   fetchDocuments,
   fetchIndexSyncJobs,
@@ -21,6 +22,7 @@ import {
   uploadDocument,
 } from "../services/documentService";
 import type { BulkDocumentGovernanceRequest, DocumentDTO, IndexStageViewModel, IndexSyncJobDTO, IngestJobDTO, JobStatus } from "../types/document";
+import type { DictionaryItemDTO } from "../types/dictionary";
 
 const DOCUMENT_PAGE_SIZE = 10;
 type BatchOperation = BulkDocumentGovernanceRequest["operation"];
@@ -63,6 +65,7 @@ export function DocumentCenter() {
   const [uploadName, setUploadName] = useState("");
   const [uploadLevel, setUploadLevel] = useState("public");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [securityLevelItems, setSecurityLevelItems] = useState<DictionaryItemDTO[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [downloadingDocumentId, setDownloadingDocumentId] = useState<string | null>(null);
@@ -102,8 +105,16 @@ export function DocumentCenter() {
     void loadData("", 1);
   }, [kbId]);
 
+  useEffect(() => {
+    void fetchDictionaryItemsWithFallback("security_level").then((items) => {
+      setSecurityLevelItems(items);
+      setUploadLevel((current) => chooseActiveDictionaryValue(items, current, "public"));
+    });
+  }, []);
+
   const rows = useMemo(() => documents.map(toDocumentRow), [documents]);
   const jobRows = useMemo(() => jobs.map(toIngestJobView), [jobs]);
+  const securityLevelOptions = useMemo(() => dictionaryItemsToOptions(securityLevelItems), [securityLevelItems]);
   const filteredRows = useMemo(
     () => rows.filter((row) => !statusFilter || row.status === statusFilter),
     [rows, statusFilter],
@@ -423,7 +434,7 @@ export function DocumentCenter() {
                         <StatusBadge status={doc.status} />
                       </TableCell>
                       <TableCell className="whitespace-nowrap">
-                        <Badge variant="default">{doc.securityLevel}</Badge>
+                        <Badge variant="default">{dictionaryLabel(securityLevelItems, doc.securityLevel, doc.securityLevel)}</Badge>
                       </TableCell>
                       <TableCell className="whitespace-nowrap">{doc.updatedAtLabel}</TableCell>
                       <TableCell className="text-right whitespace-nowrap">
@@ -606,9 +617,11 @@ export function DocumentCenter() {
                 value={uploadLevel}
                 onChange={(event) => setUploadLevel(event.target.value)}
               >
-                <option value="public">公开</option>
-                <option value="internal">内部</option>
-                <option value="confidential">机密</option>
+                {securityLevelOptions.map((option) => (
+                  <option key={option.value} value={option.value} disabled={option.disabled}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
           </div>

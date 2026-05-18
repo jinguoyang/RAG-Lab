@@ -18,6 +18,7 @@ from app.schemas.user_group import (
     UserSummaryDTO,
     UserUpdateRequest,
 )
+from app.services.dictionary_service import require_active_dict_item
 from app.tables import user_group_members, user_groups, users
 
 
@@ -153,6 +154,8 @@ def create_user(
 ) -> UserSummaryDTO:
     """创建平台用户；认证凭据仍由开发期占位登录或后续认证模块负责。"""
     _ensure_platform_user_manage(current_user)
+    require_active_dict_item(session, "platform_role", request.platformRole, "platformRole")
+    require_active_dict_item(session, "security_level", request.securityLevel, "securityLevel")
     actor_id = _actor_id(current_user)
     try:
         row = session.execute(
@@ -202,6 +205,10 @@ def update_user(
 ) -> UserSummaryDTO:
     """更新用户基础资料，保持 user_id 与 username 稳定。"""
     _ensure_platform_user_manage(current_user)
+    if request.platformRole is not None:
+        require_active_dict_item(session, "platform_role", request.platformRole, "platformRole")
+    if request.securityLevel is not None:
+        require_active_dict_item(session, "security_level", request.securityLevel, "securityLevel")
     values = request.model_dump(exclude_unset=True)
     column_values: dict[str, object] = {}
     field_map = {

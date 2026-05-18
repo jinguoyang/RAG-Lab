@@ -34,6 +34,7 @@ from app.schemas.qa_run import (
     QARunReplayContextDTO,
     QARunStatusDTO,
 )
+from app.services.dictionary_service import DictionaryValidationError
 from app.services.qa_run_service import (
     QARunCreateConflict,
     QARunPermissionError,
@@ -94,6 +95,8 @@ def read_qa_runs(
     except QARunPermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PERMISSION_DENIED") from exc
     except QARunCreateConflict as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except DictionaryValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found.")

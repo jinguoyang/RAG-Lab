@@ -18,6 +18,7 @@ from app.schemas.user_group import (
     UserSummaryDTO,
     UserUpdateRequest,
 )
+from app.services.dictionary_service import DictionaryValidationError
 from app.services.user_group_service import (
     PlatformUserPermissionError,
     UserGroupConflictError,
@@ -51,6 +52,8 @@ def _raise_user_group_error(exc: Exception) -> None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User or group not found.") from exc
     if isinstance(exc, UserGroupConflictError):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User or group conflicts with active data.") from exc
+    if isinstance(exc, DictionaryValidationError):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     raise exc
 
 

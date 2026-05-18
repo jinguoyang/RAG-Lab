@@ -22,7 +22,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 from app.core.database import get_session_factory  # noqa: E402
 from app.main import create_app  # noqa: E402
-from app.services import qa_run_service  # noqa: E402
+from app.services import app_runtime_service, qa_run_service  # noqa: E402
 from app.services.qa_providers import (  # noqa: E402
     IdentityRerankProvider,
     LocalEmbeddingProvider,
@@ -39,6 +39,7 @@ from app.tables import (  # noqa: E402
     document_versions,
     documents,
     knowledge_bases,
+    rag_app_api_keys,
     stored_files,
 )
 
@@ -102,6 +103,55 @@ def _read_invocation_error_count(app_id: str, error_code: str) -> int:
         ).scalar_one()
     finally:
         session.close()
+
+
+def _read_invocation_count_by_status(app_id: str, status: str) -> int:
+    """按状态读取调用记录数量，验证 running 记录的生命周期。"""
+    session = get_session_factory()()
+    try:
+        return session.execute(
+            sa.select(sa.func.count())
+            .select_from(app_invocations)
+            .where(
+                app_invocations.c.app_id == UUID(app_id),
+                app_invocations.c.status == status,
+            )
+        ).scalar_one()
+    finally:
+        session.close()
+
+
+def _read_api_key_row_count(api_key: str) -> int:
+    """按明文 Key 的 hash 确认物理删除后不再保留 Key 行。"""
+    session = get_session_factory()()
+    try:
+        return session.execute(
+            sa.select(sa.func.count())
+            .select_from(rag_app_api_keys)
+            .where(rag_app_api_keys.c.key_hash == sha256(api_key.encode("utf-8")).hexdigest())
+        ).scalar_one()
+    finally:
+        session.close()
+
+
+def _read_invocation_count_for_api_key(api_key_id: str) -> int:
+    """确认删除 Key 时会解除调用审计中的 Key 外键引用。"""
+    session = get_session_factory()()
+    try:
+        return session.execute(
+            sa.select(sa.func.count())
+            .select_from(app_invocations)
+            .where(app_invocations.c.api_key_id == UUID(api_key_id))
+        ).scalar_one()
+    finally:
+        session.close()
+
+
+def _assert_runtime_invocation_is_running(app_id: str) -> None:
+    """在 QARun 创建前确认 Runtime 已写入 running invocation。"""
+    running_count = _read_invocation_count_by_status(app_id, "running")
+    if running_count < 1:
+        raise AssertionError("running invocation was not visible before QARun execution")
 
 
 def _seed_chunks(kb_id: UUID) -> tuple[UUID, UUID]:
@@ -265,12 +315,27 @@ def main() -> None:
     )
     _assert_status(invalid_response, 401, "invalid key")
 
-    valid_response = client.post(
-        "/api/v1/app-runtime/chat-messages",
-        headers={"Authorization": f"Bearer {api_key}"},
-        json={"query": "What is the smoke evidence?", "endUserId": f"smoke-{suffix}"},
-    )
+    original_create_qa_run = app_runtime_service.create_qa_run
+
+    def create_qa_run_with_running_assertion(*args, **kwargs):
+        """确认 Runtime 调用开始即创建 running 审计记录，再执行真实 QARun。"""
+        _assert_runtime_invocation_is_running(app_id)
+        return original_create_qa_run(*args, **kwargs)
+
+    app_runtime_service.create_qa_run = create_qa_run_with_running_assertion
+    try:
+        valid_response = client.post(
+            "/api/v1/app-runtime/chat-messages",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={"query": "What is the smoke evidence?", "endUserId": f"smoke-{suffix}"},
+        )
+    finally:
+        app_runtime_service.create_qa_run = original_create_qa_run
     _assert_status(valid_response, 200, "valid chat")
+    if _read_invocation_count_by_status(app_id, "running") != 0:
+        raise AssertionError("running invocation was not finalized after successful chat")
+    if _read_invocation_count_by_status(app_id, "success") < 1:
+        raise AssertionError("successful chat did not finalize invocation as success")
     payload = valid_response.json()
     required_fields = {"answer", "citations", "conversationId", "messageId", "runId", "usage"}
     missing_fields = required_fields - set(payload)
@@ -351,6 +416,60 @@ def main() -> None:
     if _read_invocation_error_count(limited_app_id, "RAG_APP_QUOTA_EXCEEDED") < 1:
         raise AssertionError("rate limited invocation was not written to audit table")
 
+    concurrent_app_response = client.post(
+        "/api/v1/rag-apps",
+        headers=ADMIN_HEADERS,
+        json={
+            "kbId": str(kb_id),
+            "name": f"runtime-smoke-concurrent-{suffix}",
+            "metadata": {"runtimeLimits": {"maxConcurrent": 1}},
+        },
+    )
+    _assert_status(concurrent_app_response, 201, "create concurrency limited rag app")
+    concurrent_app_id = concurrent_app_response.json()["appId"]
+    concurrent_key_response = client.post(
+        f"/api/v1/rag-apps/{concurrent_app_id}/api-keys",
+        headers=ADMIN_HEADERS,
+        json={"name": "smoke-concurrent"},
+    )
+    _assert_status(concurrent_key_response, 201, "create concurrency limited key")
+    concurrent_key = concurrent_key_response.json()["apiKey"]
+    session = get_session_factory()()
+    try:
+        session.execute(
+            insert(app_invocations).values(
+                invocation_id=uuid4(),
+                app_id=UUID(concurrent_app_id),
+                api_key_id=UUID(concurrent_key_response.json()["item"]["apiKeyId"]),
+                status="running",
+                error_code=None,
+                latency_ms=None,
+                request_summary={"fixture": "running-concurrency-slot"},
+                response_summary={},
+                created_at=datetime.now(UTC),
+            )
+        )
+        session.commit()
+    finally:
+        session.close()
+    concurrent_rejected_response = client.post(
+        "/api/v1/app-runtime/chat-messages",
+        headers={"Authorization": f"Bearer {concurrent_key}"},
+        json={"query": "should be rejected by maxConcurrent"},
+    )
+    _assert_status(concurrent_rejected_response, 429, "concurrency limited call")
+    if concurrent_rejected_response.json().get("detail") != "RAG_APP_CONCURRENCY_EXCEEDED":
+        raise AssertionError(f"concurrency limit detail mismatch: {concurrent_rejected_response.text}")
+    if _read_invocation_error_count(concurrent_app_id, "RAG_APP_CONCURRENCY_EXCEEDED") < 1:
+        raise AssertionError("concurrency limited invocation was not written to audit table")
+    concurrent_stats_response = client.get(f"/api/v1/rag-apps/{concurrent_app_id}/stats", headers=ADMIN_HEADERS)
+    _assert_status(concurrent_stats_response, 200, "concurrency app stats")
+    concurrent_stats_payload = concurrent_stats_response.json()
+    if concurrent_stats_payload.get("runningInvocations", 0) < 1:
+        raise AssertionError(f"stats did not include running invocations: {concurrent_stats_response.text}")
+    if concurrent_stats_payload.get("concurrencyExceededInvocations", 0) < 1:
+        raise AssertionError(f"stats did not include concurrency rejects: {concurrent_stats_response.text}")
+
     second_app_response = client.post(
         "/api/v1/rag-apps",
         headers=ADMIN_HEADERS,
@@ -415,14 +534,19 @@ def main() -> None:
     finally:
         session.close()
 
-    revoke_response = client.post(f"/api/v1/rag-apps/{app_id}/api-keys/{key_response.json()['item']['apiKeyId']}/revoke", headers=ADMIN_HEADERS)
-    _assert_status(revoke_response, 200, "revoke key")
-    revoked_response = client.post(
+    api_key_id = key_response.json()["item"]["apiKeyId"]
+    delete_key_response = client.delete(f"/api/v1/rag-apps/{app_id}/api-keys/{api_key_id}", headers=ADMIN_HEADERS)
+    _assert_status(delete_key_response, 204, "delete key")
+    if _read_api_key_row_count(api_key) != 0:
+        raise AssertionError("deleted API Key row is still stored")
+    if _read_invocation_count_for_api_key(api_key_id) != 0:
+        raise AssertionError("deleted API Key is still referenced by invocation audit records")
+    deleted_key_response = client.post(
         "/api/v1/app-runtime/chat-messages",
         headers={"Authorization": f"Bearer {api_key}"},
-        json={"query": "revoked key?"},
+        json={"query": "deleted key?"},
     )
-    _assert_status(revoked_response, 401, "revoked key")
+    _assert_status(deleted_key_response, 401, "deleted key")
     print("app-runtime smoke passed")
 
 

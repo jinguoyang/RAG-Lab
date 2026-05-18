@@ -55,6 +55,7 @@ export interface QAHistoryRecordViewModel {
   time: string;
   rev: string;
   rating: "up" | "down" | "none";
+  feedbackStatus: string;
   hasOverrides: boolean;
   failureType: string;
   answer: string;
@@ -312,6 +313,7 @@ export function toQAHistoryRecord(run: QARunListItemDTO): QAHistoryRecordViewMod
     time: formatDateTime(run.createdAt),
     rev: `rev ${run.configRevisionId.slice(0, 8)}`,
     rating: feedbackToRating(run.feedbackStatus),
+    feedbackStatus: run.feedbackStatus,
     hasOverrides: run.hasOverride,
     failureType: run.failureType || (run.status === "failed" ? "运行失败" : run.status === "partial" ? "部分降级" : "无"),
     answer: run.answer || "暂无回答。",

@@ -16,7 +16,6 @@ from app.schemas.rag_app import (
     RagAppApiKeyCreateRequest,
     RagAppApiKeyCreateResponse,
     RagAppApiKeyDTO,
-    RagAppApiKeyRevokeResponse,
     RagAppCreateRequest,
     RagAppDTO,
     RagAppUpdateRequest,
@@ -28,13 +27,14 @@ from app.services.rag_app_service import (
     RagAppPermissionError,
     create_rag_app,
     create_rag_app_api_key,
+    delete_rag_app,
+    delete_rag_app_api_key,
     get_rag_app,
     get_rag_app_conversation_detail,
     get_rag_app_invocation_stats,
     list_rag_app_api_keys,
     list_rag_app_invocations,
     list_rag_apps,
-    revoke_rag_app_api_key,
     update_rag_app,
 )
 
@@ -92,6 +92,19 @@ def read_rag_app(
     """读取单个 RAG App 详情。"""
     try:
         return get_rag_app(session, current_user, app_id)
+    except Exception as exc:
+        _raise_rag_app_error(exc)
+
+
+@router.delete("/{app_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_rag_app_endpoint(
+    app_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> None:
+    """逻辑删除 RAG App；历史调用和 QARun 保持只读可追溯。"""
+    try:
+        delete_rag_app(session, current_user, app_id)
     except Exception as exc:
         _raise_rag_app_error(exc)
 
@@ -160,16 +173,16 @@ def create_rag_app_api_key_endpoint(
         _raise_rag_app_error(exc)
 
 
-@router.post("/{app_id}/api-keys/{api_key_id}/revoke", response_model=RagAppApiKeyRevokeResponse)
-def revoke_rag_app_api_key_endpoint(
+@router.delete("/{app_id}/api-keys/{api_key_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_rag_app_api_key_endpoint(
     app_id: UUID,
     api_key_id: UUID,
     current_user: CurrentUserResponse = Depends(get_current_user),
     session: Session = Depends(get_db_session),
-) -> RagAppApiKeyRevokeResponse:
-    """禁用 App API Key，保留摘要和审计记录。"""
+) -> None:
+    """物理删除 App API Key；调用审计保留但解除 Key 关联。"""
     try:
-        return revoke_rag_app_api_key(session, current_user, app_id, api_key_id)
+        delete_rag_app_api_key(session, current_user, app_id, api_key_id)
     except Exception as exc:
         _raise_rag_app_error(exc)
 
@@ -179,7 +192,7 @@ def read_rag_app_invocations(
     app_id: UUID,
     page_no: Annotated[int, Query(alias="pageNo", ge=1)] = 1,
     page_size: Annotated[int, Query(alias="pageSize", ge=1, le=100)] = 20,
-    status_filter: Annotated[Literal["success", "failed"] | None, Query(alias="status")] = None,
+    status_filter: Annotated[Literal["running", "success", "failed"] | None, Query(alias="status")] = None,
     current_user: CurrentUserResponse = Depends(get_current_user),
     session: Session = Depends(get_db_session),
 ) -> PageResponse[AppInvocationDTO]:

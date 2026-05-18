@@ -48,6 +48,7 @@ from app.schemas.qa_run import (
 from app.schemas.common import PageResponse
 from app.schemas.config import ConfigRevisionDTO
 from app.services.audit_service import write_audit_log
+from app.services.dictionary_service import require_active_dict_item
 from app.tables import (
     chunks,
     chunk_access_filters,
@@ -364,10 +365,7 @@ def _limit_candidate_pairs_by_context_tokens(
 
 def _normalize_feedback_status(value: str) -> str:
     """兼容前端 camelCase 和数据库 snake_case 的反馈状态。"""
-    normalized = FEEDBACK_STATUS_MAP.get(value)
-    if normalized is None:
-        raise QARunCreateConflict("Invalid feedback status.")
-    return normalized
+    return FEEDBACK_STATUS_MAP.get(value, value)
 
 
 def _is_platform_admin(current_user: CurrentUserResponse) -> bool:
@@ -1842,6 +1840,7 @@ def update_qa_run_feedback(
         metrics.pop("failureType", None)
     updated_at = datetime.now(UTC)
     feedback_status = _normalize_feedback_status(request.feedbackStatus)
+    require_active_dict_item(session, "feedback_status", feedback_status, "feedbackStatus")
     updated = session.execute(
         update(qa_runs)
         .where(qa_runs.c.run_id == run_id)

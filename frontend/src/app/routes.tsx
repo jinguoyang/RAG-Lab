@@ -15,6 +15,7 @@ import { QAHistory } from "./pages/P10_QAHistory";
 import { GraphSearchAnalysis } from "./pages/P11_GraphSearchAnalysis";
 import { MembersAndPermissions } from "./pages/P12_MembersAndPermissions";
 import { RagAppManagement } from "./pages/P13_RagAppManagement";
+import { DictionaryManagement } from "./pages/P14_DictionaryManagement";
 
 export const router = createBrowserRouter([
   { path: "/login", Component: Login },
@@ -26,6 +27,7 @@ export const router = createBrowserRouter([
       { path: "users", Component: UserManagement },
       { path: "groups", Component: UserGroupManagement },
       { path: "rag-apps", Component: RagAppManagement },
+      { path: "dictionaries", Component: DictionaryManagement },
     ],
   },
   {

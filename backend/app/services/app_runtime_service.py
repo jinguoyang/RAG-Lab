@@ -17,6 +17,7 @@ from app.schemas.app_runtime import (
 )
 from app.schemas.auth import CurrentUserResponse, UserDTO
 from app.schemas.qa_run import QARunCreateRequest
+from app.services.dictionary_service import require_active_dict_item
 from app.services.qa_run_service import QARunCreateConflict, create_qa_run, get_qa_run_detail
 from app.tables import (
     app_conversations,
@@ -47,6 +48,10 @@ class AppRuntimeConflictError(ValueError):
 
 class AppRuntimeQuotaExceededError(ValueError):
     """App Runtime 调用超过应用级短窗口限流或日配额。"""
+
+
+class AppRuntimeConcurrencyExceededError(ValueError):
+    """App Runtime 同时运行调用超过应用级并发上限。"""
 
 
 FEEDBACK_STATUS_MAP = {
@@ -207,7 +212,7 @@ def _positive_limit(value: object) -> int | None:
     return limit if limit > 0 else None
 
 
-def _runtime_limits(app_row: RowMapping) -> tuple[int | None, int | None]:
+def _runtime_limits(app_row: RowMapping) -> tuple[int | None, int | None, int | None]:
     """从 outputPolicy 或 metadata 读取最小生产化限流配置。"""
     output_policy = app_row["output_policy"] or {}
     metadata = app_row["metadata"] or {}
@@ -218,7 +223,8 @@ def _runtime_limits(app_row: RowMapping) -> tuple[int | None, int | None]:
         limits.update(metadata["runtimeLimits"])
     minute_limit = _positive_limit(limits.get("minuteLimit") or limits.get("requestsPerMinute"))
     daily_quota = _positive_limit(limits.get("dailyQuota") or limits.get("dailyRequestQuota"))
-    return minute_limit, daily_quota
+    max_concurrent = _positive_limit(limits.get("maxConcurrent"))
+    return minute_limit, daily_quota, max_concurrent
 
 
 def _count_invocations_since(
@@ -234,6 +240,15 @@ def _count_invocations_since(
     return session.execute(select(func.count()).select_from(app_invocations).where(condition)).scalar_one()
 
 
+def _count_running_invocations(session: Session, app_id: UUID) -> int:
+    """统计当前应用仍处于 running 的调用，用于轻量并发保护。"""
+    return session.execute(
+        select(func.count())
+        .select_from(app_invocations)
+        .where(app_invocations.c.app_id == app_id, app_invocations.c.status == "running")
+    ).scalar_one()
+
+
 def _assert_runtime_quota(
     session: Session,
     app_row: RowMapping,
@@ -243,7 +258,7 @@ def _assert_runtime_quota(
     started_counter: float,
 ) -> None:
     """在创建 QARun 前执行应用级限流和日配额检查。"""
-    minute_limit, daily_quota = _runtime_limits(app_row)
+    minute_limit, daily_quota, _ = _runtime_limits(app_row)
     quota_exceeded = False
     if minute_limit is not None:
         minute_count = _count_invocations_since(session, app_row["app_id"], now - timedelta(minutes=1))
@@ -263,6 +278,32 @@ def _assert_runtime_quota(
             "RAG_APP_QUOTA_EXCEEDED",
         )
         raise AppRuntimeQuotaExceededError("RAG_APP_QUOTA_EXCEEDED")
+
+
+def _assert_runtime_concurrency(
+    session: Session,
+    app_row: RowMapping,
+    key_row: RowMapping,
+    request: AppRuntimeChatRequest,
+    now: datetime,
+    started_counter: float,
+) -> None:
+    """在创建 running invocation 前检查应用级同时运行上限。"""
+    _, _, max_concurrent = _runtime_limits(app_row)
+    if max_concurrent is None:
+        return
+    if _count_running_invocations(session, app_row["app_id"]) < max_concurrent:
+        return
+    _insert_failed_invocation_for_known_app(
+        session,
+        app_row,
+        key_row,
+        request,
+        now,
+        started_counter,
+        "RAG_APP_CONCURRENCY_EXCEEDED",
+    )
+    raise AppRuntimeConcurrencyExceededError("RAG_APP_CONCURRENCY_EXCEEDED")
 
 
 def _resolve_runtime_context(
@@ -289,6 +330,7 @@ def _resolve_runtime_context(
         _insert_failed_invocation_for_known_app(session, app_row, key_row, request, now, started_counter, "KB_DISABLED")
         raise AppRuntimeConflictError("KB_DISABLED")
     _assert_runtime_quota(session, app_row, key_row, request, now, started_counter)
+    _assert_runtime_concurrency(session, app_row, key_row, request, now, started_counter)
     try:
         revision_id = _read_revision_id(session, app_row, kb_row)
         actor = _read_runtime_actor(session, app_row, kb_row)
@@ -362,11 +404,39 @@ def _insert_message(
     ).mappings().one()
 
 
-def _insert_invocation(
+def _insert_running_invocation(
     session: Session,
     context: _RuntimeContext,
     request: AppRuntimeChatRequest,
     started_at: datetime,
+) -> UUID:
+    """调用被接受后立即写入 running 审计记录，便于管理端监控进行中请求。"""
+    invocation_id = uuid4()
+    session.execute(
+        insert(app_invocations).values(
+            invocation_id=invocation_id,
+            app_id=context.app_row["app_id"],
+            api_key_id=context.key_row["api_key_id"],
+            status="running",
+            error_code=None,
+            latency_ms=None,
+            request_summary={
+                "queryLength": len(request.query),
+                "hasConversationId": request.conversationId is not None,
+                "hasInputs": bool(request.inputs),
+                "responseMode": request.responseMode,
+            },
+            response_summary={},
+            created_at=started_at,
+        )
+    )
+    session.commit()
+    return invocation_id
+
+
+def _finalize_invocation(
+    session: Session,
+    invocation_id: UUID,
     started_counter: float,
     status: str,
     error_code: str | None = None,
@@ -375,27 +445,19 @@ def _insert_invocation(
     qa_run_id: UUID | None = None,
     response_summary: dict | None = None,
 ) -> None:
-    """记录 App Runtime 调用摘要；正文与密钥不进入审计摘要。"""
+    """将 running invocation 收口为最终状态，保留原始创建时间用于列表排序。"""
     latency_ms = int((perf_counter() - started_counter) * 1000)
     session.execute(
-        insert(app_invocations).values(
-            invocation_id=uuid4(),
-            app_id=context.app_row["app_id"],
-            api_key_id=context.key_row["api_key_id"],
+        update(app_invocations)
+        .where(app_invocations.c.invocation_id == invocation_id)
+        .values(
             conversation_id=conversation_id,
             message_id=message_id,
             qa_run_id=qa_run_id,
             status=status,
             error_code=error_code,
             latency_ms=latency_ms,
-            request_summary={
-                "queryLength": len(request.query),
-                "hasConversationId": request.conversationId is not None,
-                "hasInputs": bool(request.inputs),
-                "responseMode": request.responseMode,
-            },
             response_summary=response_summary or {},
-            created_at=started_at,
         )
     )
 
@@ -420,23 +482,23 @@ def chat_with_app_runtime(
     started_at = datetime.now(UTC)
     started_counter = perf_counter()
     context = _resolve_runtime_context(session, api_key, request, started_at, started_counter)
-    conversation_row = _get_or_create_conversation(session, context.app_row["app_id"], request, started_at)
-    _insert_message(
-        session,
-        conversation_row["conversation_id"],
-        "user",
-        request.query,
-        "success",
-        started_at,
-        metadata={"hasInputs": bool(request.inputs)},
-    )
-    session.execute(
-        update(rag_app_api_keys)
-        .where(rag_app_api_keys.c.api_key_id == context.key_row["api_key_id"])
-        .values(last_used_at=started_at)
-    )
-
+    invocation_id = _insert_running_invocation(session, context, request, started_at)
     try:
+        conversation_row = _get_or_create_conversation(session, context.app_row["app_id"], request, started_at)
+        _insert_message(
+            session,
+            conversation_row["conversation_id"],
+            "user",
+            request.query,
+            "success",
+            started_at,
+            metadata={"hasInputs": bool(request.inputs)},
+        )
+        session.execute(
+            update(rag_app_api_keys)
+            .where(rag_app_api_keys.c.api_key_id == context.key_row["api_key_id"])
+            .values(last_used_at=started_at)
+        )
         qa_response = create_qa_run(
             session,
             context.actor,
@@ -453,83 +515,102 @@ def chat_with_app_runtime(
                 },
             ),
         )
+        if qa_response is None:
+            raise AppRuntimeConflictError("RAG_APP_KB_NOT_FOUND")
+
+        detail = get_qa_run_detail(
+            session,
+            context.actor,
+            context.kb_row["kb_id"],
+            UUID(qa_response.runId),
+            include_trace=False,
+            include_candidates=False,
+        )
+        if detail is None:
+            raise AppRuntimeConflictError("QA_RUN_NOT_FOUND")
+
+        assistant_message_row = _insert_message(
+            session,
+            conversation_row["conversation_id"],
+            "assistant",
+            detail.answer or "",
+            "success" if detail.status in {"success", "partial"} else "failed",
+            datetime.now(UTC),
+            qa_run_id=UUID(detail.runId),
+            metadata={"runStatus": detail.status, "citationCount": len(detail.citations)},
+        )
+        session.execute(
+            update(app_conversations)
+            .where(app_conversations.c.conversation_id == conversation_row["conversation_id"])
+            .values(updated_at=datetime.now(UTC))
+        )
+
+        usage = _to_response_usage(detail.metrics or {})
+        _finalize_invocation(
+            session,
+            invocation_id,
+            started_counter,
+            status="success",
+            conversation_id=conversation_row["conversation_id"],
+            message_id=assistant_message_row["message_id"],
+            qa_run_id=UUID(detail.runId),
+            response_summary={
+                "runStatus": detail.status,
+                "answerLength": len(detail.answer or ""),
+                "citationCount": len(detail.citations),
+            },
+        )
+        session.commit()
+
+        return AppRuntimeChatResponse(
+            answer=detail.answer or "",
+            conversationId=str(conversation_row["conversation_id"]),
+            messageId=str(assistant_message_row["message_id"]),
+            runId=detail.runId,
+            citations=[
+                AppRuntimeCitationDTO(
+                    citationId=item.citationId,
+                    evidenceId=item.evidenceId,
+                    label=item.label,
+                    locationSnapshot=item.locationSnapshot,
+                )
+                for item in detail.citations
+            ],
+            usage=usage,
+            metadata={
+                "appId": str(context.app_row["app_id"]),
+                "kbId": str(context.kb_row["kb_id"]),
+                "configRevisionId": str(context.revision_id),
+                "runStatus": detail.status,
+                "responseMode": request.responseMode,
+            },
+        )
     except QARunCreateConflict:
         session.rollback()
-        _insert_invocation(session, context, request, started_at, started_counter, status="failed", error_code="QA_RUN_CONFLICT")
+        _finalize_invocation(session, invocation_id, started_counter, status="failed", error_code="QA_RUN_CONFLICT")
         session.commit()
         raise
-    if qa_response is None:
-        raise AppRuntimeConflictError("RAG_APP_KB_NOT_FOUND")
-
-    detail = get_qa_run_detail(
-        session,
-        context.actor,
-        context.kb_row["kb_id"],
-        UUID(qa_response.runId),
-        include_trace=False,
-        include_candidates=False,
-    )
-    if detail is None:
-        raise AppRuntimeConflictError("QA_RUN_NOT_FOUND")
-
-    assistant_message_row = _insert_message(
-        session,
-        conversation_row["conversation_id"],
-        "assistant",
-        detail.answer or "",
-        "success" if detail.status in {"success", "partial"} else "failed",
-        datetime.now(UTC),
-        qa_run_id=UUID(detail.runId),
-        metadata={"runStatus": detail.status, "citationCount": len(detail.citations)},
-    )
-    session.execute(
-        update(app_conversations)
-        .where(app_conversations.c.conversation_id == conversation_row["conversation_id"])
-        .values(updated_at=datetime.now(UTC))
-    )
-
-    usage = _to_response_usage(detail.metrics or {})
-    _insert_invocation(
-        session,
-        context,
-        request,
-        started_at,
-        started_counter,
-        status="success",
-        conversation_id=conversation_row["conversation_id"],
-        message_id=assistant_message_row["message_id"],
-        qa_run_id=UUID(detail.runId),
-        response_summary={
-            "runStatus": detail.status,
-            "answerLength": len(detail.answer or ""),
-            "citationCount": len(detail.citations),
-        },
-    )
-    session.commit()
-
-    return AppRuntimeChatResponse(
-        answer=detail.answer or "",
-        conversationId=str(conversation_row["conversation_id"]),
-        messageId=str(assistant_message_row["message_id"]),
-        runId=detail.runId,
-        citations=[
-            AppRuntimeCitationDTO(
-                citationId=item.citationId,
-                evidenceId=item.evidenceId,
-                label=item.label,
-                locationSnapshot=item.locationSnapshot,
-            )
-            for item in detail.citations
-        ],
-        usage=usage,
-        metadata={
-            "appId": str(context.app_row["app_id"]),
-            "kbId": str(context.kb_row["kb_id"]),
-            "configRevisionId": str(context.revision_id),
-            "runStatus": detail.status,
-            "responseMode": request.responseMode,
-        },
-    )
+    except AppRuntimeNotFoundError:
+        session.rollback()
+        _finalize_invocation(session, invocation_id, started_counter, status="failed", error_code="RESOURCE_NOT_FOUND")
+        session.commit()
+        raise
+    except AppRuntimeConflictError as exc:
+        session.rollback()
+        _finalize_invocation(
+            session,
+            invocation_id,
+            started_counter,
+            status="failed",
+            error_code=str(exc) or "APP_RUNTIME_CONFLICT",
+        )
+        session.commit()
+        raise
+    except Exception:
+        session.rollback()
+        _finalize_invocation(session, invocation_id, started_counter, status="failed", error_code="APP_RUNTIME_FAILED")
+        session.commit()
+        raise
 
 
 def iter_chat_sse_events(response: AppRuntimeChatResponse):
@@ -555,10 +636,7 @@ def iter_chat_sse_events(response: AppRuntimeChatResponse):
 
 def _normalize_feedback_status(value: str) -> str:
     """兼容外部 camelCase 和内部 snake_case 反馈枚举。"""
-    normalized = FEEDBACK_STATUS_MAP.get(value)
-    if normalized is None:
-        raise AppRuntimeConflictError("INVALID_FEEDBACK_STATUS")
-    return normalized
+    return FEEDBACK_STATUS_MAP.get(value, value)
 
 
 def _read_feedback_message(
@@ -656,6 +734,10 @@ def submit_app_runtime_feedback(
     )
     message_row, run_row = _read_feedback_message(session, app_row["app_id"], message_id)
     feedback_status = _normalize_feedback_status(request.feedbackStatus)
+    try:
+        require_active_dict_item(session, "feedback_status", feedback_status, "feedbackStatus")
+    except ValueError as exc:
+        raise AppRuntimeConflictError("INVALID_FEEDBACK_STATUS") from exc
     metrics = dict(run_row["metrics"] or {})
     if request.failureType:
         metrics["failureType"] = request.failureType

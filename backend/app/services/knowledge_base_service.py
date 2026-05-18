@@ -16,10 +16,11 @@ from app.schemas.knowledge_base import (
     KnowledgeBaseUpdateRequest,
     RequiredForActivationDTO,
 )
+from app.services.dictionary_service import require_active_dict_item
 from app.services.audit_service import write_audit_log
 from app.services.default_pipeline import build_default_pipeline_definition
 from app.services.permission_service import has_kb_permission, kb_visibility_condition
-from app.tables import config_revisions, documents, kb_member_bindings, knowledge_bases, user_groups, users
+from app.tables import config_revisions, documents, kb_member_bindings, knowledge_bases, rag_apps, user_groups, users
 
 
 class KnowledgeBasePermissionError(Exception):
@@ -36,6 +37,10 @@ class KnowledgeBaseDisabledError(Exception):
 
 class KnowledgeBaseIndexCapabilityLockedError(Exception):
     """知识库已有文档后，索引能力开关不允许通过普通编辑变更。"""
+
+
+class KnowledgeBaseActiveRagAppsError(Exception):
+    """知识库仍绑定启用中的 RAG App，不能直接停用。"""
 
 
 class KbMemberBindingNotFoundError(Exception):
@@ -316,6 +321,8 @@ def update_knowledge_base(
     _ensure_kb_manage_permission(session, current_user, kb_id)
     kb_row = ensure_knowledge_base_writable(session, current_user, kb_id)
     _ensure_index_capabilities_mutable(session, kb_id, kb_row, request)
+    if request.defaultSecurityLevel is not None:
+        require_active_dict_item(session, "security_level", request.defaultSecurityLevel, "defaultSecurityLevel")
 
     update_values = {"updated_by": UUID(current_user.user.userId), "updated_at": func.now()}
     requested_fields = request.model_fields_set
@@ -362,6 +369,17 @@ def disable_knowledge_base(
     """停用知识库时仅更新状态，保留文档、配置和 QA 历史用于追溯。"""
     _ensure_kb_manage_permission(session, current_user, kb_id)
     ensure_knowledge_base_writable(session, current_user, kb_id)
+    active_app_count = session.execute(
+        select(func.count())
+        .select_from(rag_apps)
+        .where(
+            rag_apps.c.kb_id == kb_id,
+            rag_apps.c.status == "active",
+            rag_apps.c.deleted_at.is_(None),
+        )
+    ).scalar_one()
+    if active_app_count > 0:
+        raise KnowledgeBaseActiveRagAppsError
 
     row = session.execute(
         update(knowledge_bases)
@@ -424,6 +442,7 @@ def create_knowledge_base(
     request: KnowledgeBaseCreateRequest,
 ) -> KnowledgeBaseDTO:
     """创建知识库基础记录，并生成默认 active Revision 供 QA 直接运行。"""
+    require_active_dict_item(session, "security_level", request.defaultSecurityLevel, "defaultSecurityLevel")
     owner_id = request.ownerId or UUID(current_user.user.userId)
     activation = request.requiredForActivation or RequiredForActivationDTO(
         sparse=request.sparseIndexEnabled,
@@ -685,6 +704,7 @@ def create_kb_member(
     _ensure_member_manage_permission(session, current_user, kb_id)
     ensure_knowledge_base_writable(session, current_user, kb_id)
     _ensure_subject_exists(session, request)
+    require_active_dict_item(session, "kb_role", request.kbRole, "kbRole")
 
     duplicate = session.execute(
         select(kb_member_bindings.c.binding_id)
@@ -758,6 +778,7 @@ def update_kb_member_role(
     """修改知识库成员角色，不改变绑定主体和历史创建信息。"""
     _ensure_member_manage_permission(session, current_user, kb_id)
     ensure_knowledge_base_writable(session, current_user, kb_id)
+    require_active_dict_item(session, "kb_role", request.kbRole, "kbRole")
     result = session.execute(
         update(kb_member_bindings)
         .where(

@@ -22,6 +22,7 @@ export const RAG_APP_API_KEY_STATUS_LABELS = {
 } as const;
 
 export const APP_INVOCATION_STATUS_LABELS = {
+  running: "运行中",
   success: "成功",
   failed: "失败",
 } as const;
@@ -55,11 +56,11 @@ export function toRagAppViewModel(app: RagAppDTO): RagAppViewModel {
   return {
     id: app.appId,
     name: app.name,
-    description: app.description || "未填写描述",
+    description: app.description?.trim() ?? "",
     kbId: app.kbId,
     defaultRevisionLabel: app.defaultConfigRevisionId
       ? shortId(app.defaultConfigRevisionId, 12)
-      : "跟随知识库 active revision",
+      : "跟随知识库",
     status: app.status,
     statusLabel: RAG_APP_STATUS_LABELS[app.status] ?? app.status,
     updatedAtLabel: formatDateTime(app.updatedAt),
@@ -87,7 +88,7 @@ export function toAppInvocationViewModel(invocation: AppInvocationDTO): AppInvoc
     status: invocation.status,
     statusLabel: APP_INVOCATION_STATUS_LABELS[invocation.status] ?? invocation.status,
     errorLabel: errorCode ? `${errorCode}` : "-",
-    latencyLabel: invocation.latencyMs == null ? "-" : `${invocation.latencyMs}ms`,
+    latencyLabel: invocation.status === "running" ? "运行中" : invocation.latencyMs == null ? "-" : `${invocation.latencyMs}ms`,
     conversationId: invocation.conversationId,
     messageId: invocation.messageId,
     qaRunId: invocation.qaRunId,

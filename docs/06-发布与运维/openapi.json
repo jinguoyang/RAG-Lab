@@ -7815,6 +7815,57 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "rag-apps"
+        ],
+        "summary": "Delete Rag App Endpoint",
+        "description": "逻辑删除 RAG App；历史调用和 QARun 保持只读可追溯。",
+        "operationId": "delete_rag_app_endpoint_api_v1_rag_apps__app_id__delete",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/rag-apps/{app_id}/stats": {
@@ -8009,76 +8060,6 @@
         }
       }
     },
-    "/api/v1/rag-apps/{app_id}/api-keys/{api_key_id}/revoke": {
-      "post": {
-        "tags": [
-          "rag-apps"
-        ],
-        "summary": "Revoke Rag App Api Key Endpoint",
-        "description": "禁用 App API Key，保留摘要和审计记录。",
-        "operationId": "revoke_rag_app_api_key_endpoint_api_v1_rag_apps__app_id__api_keys__api_key_id__revoke_post",
-        "parameters": [
-          {
-            "name": "app_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "App Id"
-            }
-          },
-          {
-            "name": "api_key_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Api Key Id"
-            }
-          },
-          {
-            "name": "X-Dev-User",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Dev-User"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RagAppApiKeyRevokeResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/rag-apps/{app_id}/invocations": {
       "get": {
         "tags": [
@@ -8129,6 +8110,7 @@
               "anyOf": [
                 {
                   "enum": [
+                    "running",
                     "success",
                     "failed"
                   ],
@@ -8381,6 +8363,297 @@
           }
         }
       }
+    },
+    "/api/v1/rag-apps/{app_id}/api-keys/{api_key_id}": {
+      "delete": {
+        "tags": [
+          "rag-apps"
+        ],
+        "summary": "Delete Rag App Api Key Endpoint",
+        "description": "物理删除 App API Key；调用审计保留但解除 Key 关联。",
+        "operationId": "delete_rag_app_api_key_endpoint_api_v1_rag_apps__app_id__api_keys__api_key_id__delete",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "api_key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Api Key Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dictionaries": {
+      "get": {
+        "tags": [
+          "dictionaries"
+        ],
+        "summary": "Read Dictionary Types",
+        "description": "返回系统字典类型列表。",
+        "operationId": "read_dictionary_types_api_v1_dictionaries_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DictionaryTypeDTO"
+                  },
+                  "type": "array",
+                  "title": "Response Read Dictionary Types Api V1 Dictionaries Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dictionaries/{type_code}/items": {
+      "get": {
+        "tags": [
+          "dictionaries"
+        ],
+        "summary": "Read Dictionary Items",
+        "description": "按类型返回字典项；默认只返回 active 项供页面下拉使用。",
+        "operationId": "read_dictionary_items_api_v1_dictionaries__type_code__items_get",
+        "parameters": [
+          {
+            "name": "type_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Type Code"
+            }
+          },
+          {
+            "name": "activeOnly",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Activeonly"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DictionaryItemDTO"
+                  },
+                  "type": "array",
+                  "title": "Response Read Dictionary Items Api V1 Dictionaries  Type Code  Items Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "dictionaries"
+        ],
+        "summary": "Create Dictionary Item Endpoint",
+        "description": "创建字典项。",
+        "operationId": "create_dictionary_item_endpoint_api_v1_dictionaries__type_code__items_post",
+        "parameters": [
+          {
+            "name": "type_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Type Code"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DictionaryItemCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DictionaryItemDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dictionaries/{type_code}/items/{item_code}": {
+      "patch": {
+        "tags": [
+          "dictionaries"
+        ],
+        "summary": "Update Dictionary Item Endpoint",
+        "description": "更新字典项；code 不允许变更。",
+        "operationId": "update_dictionary_item_endpoint_api_v1_dictionaries__type_code__items__item_code__patch",
+        "parameters": [
+          {
+            "name": "type_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Type Code"
+            }
+          },
+          {
+            "name": "item_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Code"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DictionaryItemUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DictionaryItemDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -8561,6 +8834,10 @@
             "type": "integer",
             "title": "Totalinvocations"
           },
+          "runningInvocations": {
+            "type": "integer",
+            "title": "Runninginvocations"
+          },
           "successInvocations": {
             "type": "integer",
             "title": "Successinvocations"
@@ -8572,6 +8849,10 @@
           "quotaExceededInvocations": {
             "type": "integer",
             "title": "Quotaexceededinvocations"
+          },
+          "concurrencyExceededInvocations": {
+            "type": "integer",
+            "title": "Concurrencyexceededinvocations"
           },
           "noEvidenceInvocations": {
             "type": "integer",
@@ -8601,9 +8882,11 @@
         "required": [
           "appId",
           "totalInvocations",
+          "runningInvocations",
           "successInvocations",
           "failedInvocations",
           "quotaExceededInvocations",
+          "concurrencyExceededInvocations",
           "noEvidenceInvocations",
           "averageLatencyMs",
           "failureRate",
@@ -16058,6 +16341,233 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "DictionaryTypeDTO": {
+        "properties": {
+          "dictTypeId": {
+            "type": "string",
+            "title": "Dicttypeid"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled"
+            ],
+            "title": "Status"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "updatedAt": {
+            "type": "string",
+            "title": "Updatedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dictTypeId",
+          "code",
+          "name",
+          "description",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "DictionaryTypeDTO",
+        "description": "系统字典类型，供平台字典管理页展示。"
+      },
+      "DictionaryItemDTO": {
+        "properties": {
+          "dictItemId": {
+            "type": "string",
+            "title": "Dictitemid"
+          },
+          "typeCode": {
+            "type": "string",
+            "title": "Typecode"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "sortOrder": {
+            "type": "integer",
+            "title": "Sortorder"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled"
+            ],
+            "title": "Status"
+          },
+          "extra": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Extra"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "updatedAt": {
+            "type": "string",
+            "title": "Updatedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dictItemId",
+          "typeCode",
+          "code",
+          "name",
+          "description",
+          "sortOrder",
+          "status",
+          "extra",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "DictionaryItemDTO",
+        "description": "系统字典项，前端下拉和标签展示统一消费该 DTO。"
+      },
+      "DictionaryItemCreateRequest": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Code"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "sortOrder": {
+            "type": "integer",
+            "title": "Sortorder",
+            "default": 0
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled"
+            ],
+            "title": "Status",
+            "default": "active"
+          },
+          "extra": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Extra"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "name"
+        ],
+        "title": "DictionaryItemCreateRequest",
+        "description": "创建字典项请求；角色类字典的 code 会在服务层按白名单收口。"
+      },
+      "DictionaryItemUpdateRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "sortOrder": {
+            "type": "integer",
+            "title": "Sortorder"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled"
+            ],
+            "title": "Status"
+          },
+          "extra": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Extra"
+          }
+        },
+        "type": "object",
+        "title": "DictionaryItemUpdateRequest",
+        "description": "更新字典项请求；不允许修改 code，避免破坏历史业务引用。"
       }
     }
   }

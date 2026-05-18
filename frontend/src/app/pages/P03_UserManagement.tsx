@@ -7,8 +7,10 @@ import { Alert } from "../components/rag/Alert";
 import { Badge } from "../components/rag/Badge";
 import { useConfirmDialog } from "../components/rag/ConfirmDialog";
 import { ChevronLeft, ChevronRight, Pencil, RefreshCw, Save, Search, UserPlus, X } from "lucide-react";
+import { chooseActiveDictionaryValue, dictionaryItemsToOptions, dictionaryLabel, fetchDictionaryBundle } from "../services/dictionaryService";
 import { createUser, disableUser, fetchUsers, updateUser, updateUserStatus } from "../services/userGroupService";
 import type { PlatformRole, UserSummary } from "../types/userGroup";
+import type { DictionaryItemDTO } from "../types/dictionary";
 
 const PAGE_SIZE = 10;
 
@@ -50,6 +52,7 @@ export function UserManagement() {
     displayName: "",
     email: "",
     platformRole: "platform_user" as PlatformRole,
+    securityLevel: "public",
   });
   const [editingUser, setEditingUser] = useState<UserSummary | null>(null);
   const [userEditForm, setUserEditForm] = useState({
@@ -58,8 +61,12 @@ export function UserManagement() {
     platformRole: "platform_user" as PlatformRole,
     securityLevel: "public",
   });
+  const [platformRoleItems, setPlatformRoleItems] = useState<DictionaryItemDTO[]>([]);
+  const [securityLevelItems, setSecurityLevelItems] = useState<DictionaryItemDTO[]>([]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const platformRoleOptions = dictionaryItemsToOptions(platformRoleItems);
+  const securityLevelOptions = dictionaryItemsToOptions(securityLevelItems);
 
   const loadUsers = useCallback(async () => {
     setIsLoading(true);
@@ -81,6 +88,23 @@ export function UserManagement() {
   useEffect(() => {
     void loadUsers();
   }, [loadUsers]);
+
+  useEffect(() => {
+    void fetchDictionaryBundle(["platform_role", "security_level"]).then((bundle) => {
+      setPlatformRoleItems(bundle.platform_role);
+      setSecurityLevelItems(bundle.security_level);
+      setNewUser((current) => ({
+        ...current,
+        platformRole: chooseActiveDictionaryValue(bundle.platform_role, current.platformRole, "platform_user") as PlatformRole,
+        securityLevel: chooseActiveDictionaryValue(bundle.security_level, current.securityLevel, "public"),
+      }));
+      setUserEditForm((current) => ({
+        ...current,
+        platformRole: chooseActiveDictionaryValue(bundle.platform_role, current.platformRole, "platform_user") as PlatformRole,
+        securityLevel: chooseActiveDictionaryValue(bundle.security_level, current.securityLevel, "public"),
+      }));
+    });
+  }, []);
 
   const handleSearch = () => {
     const nextKeyword = keyword.trim();
@@ -109,9 +133,15 @@ export function UserManagement() {
         displayName: newUser.displayName.trim(),
         email: email || null,
         platformRole: newUser.platformRole,
-        securityLevel: "public",
+        securityLevel: newUser.securityLevel,
       });
-      setNewUser({ username: "", displayName: "", email: "", platformRole: "platform_user" });
+      setNewUser({
+        username: "",
+        displayName: "",
+        email: "",
+        platformRole: chooseActiveDictionaryValue(platformRoleItems, "platform_user", "platform_user") as PlatformRole,
+        securityLevel: chooseActiveDictionaryValue(securityLevelItems, "public", "public"),
+      });
       setPageNo(1);
       setQueryKeyword("");
       setKeyword("");
@@ -135,8 +165,8 @@ export function UserManagement() {
     setUserEditForm({
       displayName: user.displayName,
       email: user.email ?? "",
-      platformRole: user.platformRole,
-      securityLevel: user.securityLevel,
+      platformRole: chooseActiveDictionaryValue(platformRoleItems, user.platformRole, "platform_user") as PlatformRole,
+      securityLevel: chooseActiveDictionaryValue(securityLevelItems, user.securityLevel, "public"),
     });
     setFeedback(null);
   };
@@ -243,7 +273,7 @@ export function UserManagement() {
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-[180px_220px_minmax(240px,1fr)_180px_auto] gap-3 rounded-lg border border-border-cream bg-ivory p-4">
+      <div className="grid grid-cols-1 xl:grid-cols-[160px_200px_minmax(220px,1fr)_160px_140px_auto] gap-3 rounded-lg border border-border-cream bg-ivory p-4">
         <Input
           value={newUser.username}
           onChange={(event) => setNewUser((current) => ({ ...current, username: event.target.value }))}
@@ -267,8 +297,22 @@ export function UserManagement() {
           onChange={(event) => setNewUser((current) => ({ ...current, platformRole: event.target.value as PlatformRole }))}
           className="h-10 rounded-md border border-border-cream bg-white px-3 text-sm text-near-black focus:outline-none"
         >
-          <option value="platform_user">平台用户</option>
-          <option value="platform_admin">平台管理员</option>
+          {platformRoleOptions.map((option) => (
+            <option key={option.value} value={option.value} disabled={option.disabled}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={newUser.securityLevel}
+          onChange={(event) => setNewUser((current) => ({ ...current, securityLevel: event.target.value }))}
+          className="h-10 rounded-md border border-border-cream bg-white px-3 text-sm text-near-black focus:outline-none"
+        >
+          {securityLevelOptions.map((option) => (
+            <option key={option.value} value={option.value} disabled={option.disabled}>
+              {option.label}
+            </option>
+          ))}
         </select>
         <Button variant="primary" onClick={handleCreateUser} disabled={isSaving}>
           <UserPlus className="w-4 h-4 mr-2" /> 新增
@@ -304,15 +348,23 @@ export function UserManagement() {
               onChange={(event) => setUserEditForm((current) => ({ ...current, platformRole: event.target.value as PlatformRole }))}
               className="h-10 rounded-md border border-border-cream bg-white px-3 text-sm text-near-black focus:outline-none"
             >
-              <option value="platform_user">平台用户</option>
-              <option value="platform_admin">平台管理员</option>
+              {platformRoleOptions.map((option) => (
+                <option key={option.value} value={option.value} disabled={option.disabled}>
+                  {option.label}
+                </option>
+              ))}
             </select>
-            <Input
+            <select
               value={userEditForm.securityLevel}
               onChange={(event) => setUserEditForm((current) => ({ ...current, securityLevel: event.target.value }))}
-              placeholder="密级"
-              className="bg-white"
-            />
+              className="h-10 rounded-md border border-border-cream bg-white px-3 text-sm text-near-black focus:outline-none"
+            >
+              {securityLevelOptions.map((option) => (
+                <option key={option.value} value={option.value} disabled={option.disabled}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
             <Button variant="primary" onClick={() => void handleSaveUser()} disabled={isSaving}>
               <Save className="w-4 h-4 mr-2" /> 保存
             </Button>
@@ -370,10 +422,10 @@ export function UserManagement() {
               <TableCell>{user.email || "-"}</TableCell>
               <TableCell>
                 <Badge variant={user.platformRole === "platform_admin" ? "active" : "default"}>
-                  {ROLE_LABELS[user.platformRole]}
+                  {dictionaryLabel(platformRoleItems, user.platformRole, ROLE_LABELS[user.platformRole])}
                 </Badge>
               </TableCell>
-              <TableCell>{user.securityLevel}</TableCell>
+              <TableCell>{dictionaryLabel(securityLevelItems, user.securityLevel, user.securityLevel)}</TableCell>
               <TableCell>
                 <Badge variant={user.status === "active" ? "success" : "inactive"}>
                   {user.status === "active" ? "启用" : "禁用"}
