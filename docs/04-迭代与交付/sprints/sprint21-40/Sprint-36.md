@@ -30,17 +30,17 @@
 
 | 编号 | Backlog | 标题 | 优先级 | 预估 | 负责人 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| S36-001 | B-162 | 设计并创建数据库迁移脚本 | P0 | 1d | Codex | Todo |
-| S36-002 | B-163 | 实现文档库上传 API | P0 | 1.5d | Codex | Todo |
-| S36-003 | B-164 | 实现文档库列表/详情 API | P0 | 1d | Codex | Todo |
-| S36-004 | B-165 | 对象存储路径适配 | P0 | 0.5d | Codex | Todo |
-| S36-005 | B-166 | 文档库首页前端页面（P15） | P0 | 2d | Codex | Todo |
-| S36-006 | B-167 | 文档详情页基础版（P16） | P0 | 1d | Codex | Todo |
-| S36-007 | B-168 | 文档解析服务重构 | P0 | 2d | Codex | Todo |
-| S36-008 | B-169 | Celery 任务：文档库解析 | P0 | 1d | Codex | Todo |
-| S36-009 | B-170 | PDF 在线预览组件 | P0 | 1d | Codex | Todo |
-| S36-010 | B-171 | Markdown 在线预览组件 | P0 | 0.5d | Codex | Todo |
-| S36-011 | B-186 | Sprint 36 最小验收脚本 | P1 | 0.5d | Codex | Todo |
+| S36-001 | B-162 | 设计并创建数据库迁移脚本 | P0 | 1d | Codex | Done |
+| S36-002 | B-163 | 实现文档库上传 API | P0 | 1.5d | Codex | Done |
+| S36-003 | B-164 | 实现文档库列表/详情 API | P0 | 1d | Codex | Done |
+| S36-004 | B-165 | 对象存储路径适配 | P0 | 0.5d | Codex | Done |
+| S36-005 | B-166 | 文档库首页前端页面（P15） | P0 | 2d | Codex | Done |
+| S36-006 | B-167 | 文档详情页基础版（P16） | P0 | 1d | Codex | Done |
+| S36-007 | B-168 | 文档解析服务重构 | P0 | 2d | Codex | Done |
+| S36-008 | B-169 | Celery 任务：文档库解析 | P0 | 1d | Codex | Done |
+| S36-009 | B-170 | PDF 在线预览组件 | P0 | 1d | Codex | Done |
+| S36-010 | B-171 | Markdown 在线预览组件 | P0 | 0.5d | Codex | Done |
+| S36-011 | B-186 | Sprint 36 最小验收脚本 | P1 | 0.5d | Codex | Done |
 
 ## 5. 验收标准
 
@@ -75,4 +75,41 @@
 
 ## 8. 执行记录
 
-待执行。
+### 2026-05-19 Sprint 36 全量实现
+
+**后端变更：**
+
+- `backend/migrations/versions/0017_create_document_library_tables.py` — 新增迁移：documents 添加 owner_id、kb_id 改为可空；新建 document_kb_bindings 和 library_parse_jobs 表；历史文档 owner_id 回填为 created_by。
+- `backend/app/tables.py` — 新增 document_kb_bindings、library_parse_jobs 表定义；documents 表新增 owner_id 列、kb_id 改为 nullable。
+- `backend/app/schemas/library.py` — 新增文档库 DTO：LibraryDocumentDTO、LibraryDocumentVersionDTO、LibraryParseJobDTO、LibraryDocumentUploadResponse、LibraryDocumentDetailDTO 等。
+- `backend/app/services/library_service.py` — 新增文档库服务：上传（存储路径 `users/{user_id}/library/{doc_id}/`）、列表（owner_id 分页）、详情（owner 校验）、更新、下载、解析作业管理、文本提取执行器。
+- `backend/app/api/routes/library.py` — 新增文档库 API 路由：GET/POST /library/documents、GET/PATCH /library/documents/{id}、GET /download、GET /parse-jobs。
+- `backend/app/api/router.py` — 注册 library_router。
+- `backend/app/worker.py` — 新增 Celery 任务 `library_parse.run`。
+
+**前端变更：**
+
+- `frontend/src/app/types/library.ts` — 新增文档库类型定义。
+- `frontend/src/app/services/libraryService.ts` — 新增文档库 API 客户端。
+- `frontend/src/app/pages/P15_Library.tsx` — 文档库首页：列表、搜索、状态筛选、上传抽屉、分页、下载。
+- `frontend/src/app/pages/P16_LibraryDetail.tsx` — 文档详情页：元数据、解析状态、PDF/Markdown/TXT 预览。
+- `frontend/src/app/components/rag/PdfPreview.tsx` — PDF 在线预览组件（iframe 方案）。
+- `frontend/src/app/components/rag/MarkdownPreview.tsx` — Markdown 在线预览组件（轻量正则渲染）。
+- `frontend/src/app/routes.tsx` — 新增 /library 和 /library/:docId 路由。
+- `frontend/src/app/layouts/PlatformLayout.tsx` — 侧边栏新增"文档库"导航。
+
+**验收脚本：**
+
+- `backend/scripts/verify_library_upload.py` — 验证上传 API、DTO、表定义。
+- `backend/scripts/verify_library_crud.py` — 验证 CRUD 路由、服务、kb_id nullable。
+- `backend/scripts/verify_library_parsing.py` — 验证解析服务、Celery 任务注册、parse_document 集成。
+
+**验证结果：**
+
+- 后端编译检查：通过
+- 前端构建：通过
+- verify_library_upload.py：通过
+- verify_library_crud.py：通过
+- verify_library_parsing.py：通过
+- OpenAPI 导出：library 路由已包含
+- git diff --check：无空白错误

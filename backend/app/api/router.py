@@ -10,6 +10,7 @@ from app.api.routes.documents import chunk_router, index_sync_router, ingest_job
 from app.api.routes.graph import router as graph_router
 from app.api.routes.health import router as health_router
 from app.api.routes.knowledge_bases import router as knowledge_bases_router
+from app.api.routes.library import router as library_router
 from app.api.routes.observability import router as observability_router
 from app.api.routes.qa_runs import router as qa_runs_router
 from app.api.routes.rag_apps import router as rag_apps_router
@@ -36,3 +37,4 @@ api_router.include_router(qa_runs_router)
 api_router.include_router(graph_router)
 api_router.include_router(rag_apps_router)
 api_router.include_router(app_runtime_router)
+api_router.include_router(library_router)

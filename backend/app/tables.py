@@ -222,7 +222,8 @@ documents = sa.Table(
     "documents",
     metadata,
     sa.Column("document_id", postgresql.UUID(as_uuid=True), primary_key=True),
-    sa.Column("kb_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("kb_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("owner_id", postgresql.UUID(as_uuid=True), nullable=True),
     sa.Column("name", sa.String(length=255), nullable=False),
     sa.Column("source_type", sa.String(length=32), nullable=False),
     sa.Column("security_level", sa.String(length=32), nullable=False),
@@ -235,6 +236,42 @@ documents = sa.Table(
     sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
     sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
     sa.Column("deleted_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
+document_kb_bindings = sa.Table(
+    "document_kb_bindings",
+    metadata,
+    sa.Column("binding_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("document_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("kb_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("version_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("chunk_size", sa.Integer(), nullable=False),
+    sa.Column("chunk_overlap", sa.Integer(), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("chunk_count", sa.Integer(), nullable=False),
+    sa.Column("error_code", sa.String(length=64), nullable=True),
+    sa.Column("error_message", sa.Text(), nullable=True),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
+library_parse_jobs = sa.Table(
+    "library_parse_jobs",
+    metadata,
+    sa.Column("job_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("document_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("version_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("job_type", sa.String(length=32), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("progress", sa.Integer(), nullable=False),
+    sa.Column("error_code", sa.String(length=64), nullable=True),
+    sa.Column("error_message", sa.Text(), nullable=True),
+    sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
 )
 
 document_versions = sa.Table(

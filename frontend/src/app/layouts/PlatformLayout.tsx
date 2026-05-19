@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from "react-router";
-import { Users, Building, LogOut, Book, Rocket, ListTree } from "lucide-react";
+import { Users, Building, LogOut, Book, Rocket, ListTree, FolderOpen } from "lucide-react";
 import { Button } from "../components/rag/Button";
 
 export function PlatformLayout() {
@@ -43,6 +43,12 @@ export function PlatformLayout() {
             className={({isActive}) => `flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${isActive ? 'bg-parchment text-terracotta' : 'text-near-black hover:bg-parchment'}`}
           >
             <ListTree className="w-4 h-4" /> 字典管理
+          </NavLink>
+          <NavLink
+            to="/library"
+            className={({isActive}) => `flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${isActive ? 'bg-parchment text-terracotta' : 'text-near-black hover:bg-parchment'}`}
+          >
+            <FolderOpen className="w-4 h-4" /> 文档库
           </NavLink>
         </nav>
 

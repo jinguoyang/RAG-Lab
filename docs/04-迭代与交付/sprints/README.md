@@ -5,7 +5,8 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 ## 1. 当前状态
 
 - Sprint 35 已完成，主题为前端动作驱动的真实数据验收硬化，所有 Backlog（B-146、B-150 至 B-155）已 Done。
-- Sprint 36 至 Sprint 38 已规划，主题为 E28 文档库功能，范围见 [E28 文档库功能实施计划](../plans/2026-05-19-e28-document-library.md)。
+- Sprint 36 已完成，主题为文档库基础框架与文档解析，实现数据库迁移、上传/列表/详情 API、P15/P16 前端页面、PDF/Markdown 预览组件和验收脚本。
+- Sprint 37 至 Sprint 38 已规划，主题为 E28 文档库后续功能，范围见 [E28 文档库功能实施计划](../plans/2026-05-19-e28-document-library.md)。
 - 下一版本为 V1.9，计划承接 E23 图快照保留与配置治理、E24 文档解析能力增强；E27 RAG App 运行治理与接入可见性已完成。E28 文档库功能作为后续文档库 V1.0 规划进入 Sprint 36 至 Sprint 38。
 - Sprint 01 至 Sprint 26 已完成，对应 V1.0 至 V1.7。
 - Sprint 27 至 Sprint 29 已完成 E22 知识库治理工作流强化范围：P05 支持治理问题定位和治理后验证摘要，P06 支持批量治理和索引同步作业，P07 支持 Chunk 治理标记、索引重建和作业查看。
@@ -31,7 +32,7 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 | Sprint 33 | V1.8 | App Runtime 生产化能力 | Done | `sprint21-40/Sprint-33.md` |
 | Sprint 34 | V1.8 | App Runtime 治理回流与输入能力评估 | Done | `sprint21-40/Sprint-34.md` |
 | Sprint 35 | V1.8 收尾 | 前端动作驱动的真实数据验收硬化 | Done | `sprint21-40/Sprint-35.md` |
-| Sprint 36 | 文档库 V1.0 | 文档库基础模型、上传、文本提取和 PDF/Markdown 预览 | Planned | `sprint21-40/Sprint-36.md` |
+| Sprint 36 | 文档库 V1.0 | 文档库基础模型、上传、文本提取和 PDF/Markdown 预览 | Done | `sprint21-40/Sprint-36.md` |
 | Sprint 37 | 文档库 V1.0 | 文档预览完善、知识库绑定和绑定后切块向量化 | Planned | `sprint21-40/Sprint-37.md` |
 | Sprint 38 | 文档库 V1.0 | 权限收口、批量操作、大文件体验、错误处理和测试覆盖 | Planned | `sprint21-40/Sprint-38.md` |
 
