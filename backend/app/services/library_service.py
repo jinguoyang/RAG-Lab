@@ -108,8 +108,11 @@ def _ensure_owner(
     session: Session,
     current_user: CurrentUserResponse,
     document_id: UUID,
+    permission_code: str = "library.document.read",
 ) -> RowMapping:
-    """校验文档属于当前用户，否则抛出异常。"""
+    """校验文档存在且当前用户有权限访问，否则抛出异常。"""
+    from app.services.permission_service import has_library_permission
+
     row = session.execute(
         select(documents)
         .where(
@@ -120,7 +123,11 @@ def _ensure_owner(
     ).mappings().first()
     if row is None:
         raise LibraryDocumentNotFoundError
-    if str(row["owner_id"]) != current_user.user.userId:
+
+    owner_id = row["owner_id"]
+    if owner_id is not None and not has_library_permission(
+        session, current_user, permission_code, document_owner_id=UUID(str(owner_id)),
+    ):
         raise LibraryPermissionError
     return row
 
