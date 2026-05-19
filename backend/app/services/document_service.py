@@ -570,6 +570,16 @@ def _update_ingest_progress(
     session.commit()
 
 
+class _DictAsObj:
+    """Wrap a dict so downstream code can use attribute access (chunk.content)."""
+
+    def __init__(self, d: dict):
+        self._d = d
+
+    def __getattr__(self, name: str):
+        return self._d.get(name)
+
+
 def run_ingest_job(
     session: Session,
     current_user: CurrentUserResponse,
@@ -631,8 +641,36 @@ def run_ingest_job(
     )
 
     try:
-        parsed_document = parse_document(file_name, file_row["mime_type"] if file_row else None, source_bytes or b"")
-        parsed_chunks = parsed_document.chunks
+        # Check if we can reuse parsed chunks from library
+        parsed_chunks_from_library = None
+        if document_row.get("source_type") == "library_bind":
+            library_doc_id_str = (document_row.get("metadata") or {}).get("library_document_id")
+            if library_doc_id_str:
+                library_doc_id = UUID(library_doc_id_str)
+                lib_version = session.execute(
+                    select(document_versions)
+                    .where(
+                        document_versions.c.document_id == library_doc_id,
+                        document_versions.c.deleted_at.is_(None),
+                    )
+                    .order_by(document_versions.c.version_no.desc())
+                    .limit(1)
+                ).mappings().first()
+                if lib_version:
+                    lib_meta = lib_version.get("metadata") or {}
+                    if lib_meta.get("parsed_chunks"):
+                        parsed_chunks_from_library = lib_meta["parsed_chunks"]
+
+        if parsed_chunks_from_library:
+            # Reuse library parsed chunks (convert dicts to objects with attribute access)
+            parsed_chunks = [_DictAsObj(d) for d in parsed_chunks_from_library]
+            parser_name = "library_reuse"
+            parser_version = "library_reuse"
+        else:
+            parsed_document = parse_document(file_name, file_row["mime_type"] if file_row else None, source_bytes or b"")
+            parsed_chunks = parsed_document.chunks
+            parser_name = parsed_document.parser_name
+            parser_version = parsed_document.parser_version
         stage_timings["parse"] = round(time.perf_counter() - stage_started_at, 3)
         old_chunk_ids = [
             row[0]
@@ -939,8 +977,8 @@ def run_ingest_job(
                     f"{item['targetStore']}: {item['errorMessage']}" for item in index_errors
                 ) if index_errors else None,
                 metadata={
-                    "parserName": parsed_document.parser_name,
-                    "parserVersion": parsed_document.parser_version,
+                    "parserName": parser_name,
+                    "parserVersion": parser_version,
                     "sourceFileName": file_name,
                     "embeddingProvider": get_settings().embedding_provider,
                     "embeddingModel": get_settings().embedding_model,
@@ -965,8 +1003,8 @@ def run_ingest_job(
                 result_summary={
                     "chunkCount": len(chunk_rows),
                     "tokenCount": total_tokens,
-                    "parserName": parsed_document.parser_name,
-                    "parserVersion": parsed_document.parser_version,
+                    "parserName": parser_name,
+                    "parserVersion": parser_version,
                     "embeddingProvider": get_settings().embedding_provider,
                     "embeddingModel": get_settings().embedding_model,
                     "indexErrors": index_errors,
