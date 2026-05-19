@@ -1,0 +1,35 @@
+"""知识库绑定相关 DTO。"""
+from pydantic import BaseModel
+
+
+class LibraryBindingDTO(BaseModel):
+    """文档库绑定到知识库的绑定记录。"""
+    bindingId: str
+    documentId: str
+    documentName: str
+    kbId: str
+    versionId: str
+    chunkSize: int
+    chunkOverlap: int
+    status: str
+    chunkCount: int
+    errorCode: str | None = None
+    errorMessage: str | None = None
+    createdAt: str
+    createdBy: str | None = None
+
+
+class LibraryBindRequest(BaseModel):
+    """绑定请求。"""
+    documentIds: list[str]
+
+
+class LibraryBindResponse(BaseModel):
+    """绑定响应。"""
+    bindings: list[LibraryBindingDTO]
+
+
+class LibraryUnbindResponse(BaseModel):
+    """解绑响应。"""
+    bindingId: str
+    status: str
