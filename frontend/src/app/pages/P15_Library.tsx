@@ -1,19 +1,22 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import { Search, Upload, Download, FileText, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Upload, Download, FileText, ChevronLeft, ChevronRight, Trash2, RefreshCw, Power } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
 import { Input } from "../components/rag/Input";
 import { Alert } from "../components/rag/Alert";
 import { Badge, StatusBadge } from "../components/rag/Badge";
+import { Card, CardContent } from "../components/rag/Card";
 import { chooseActiveDictionaryValue, dictionaryItemsToOptions, fetchDictionaryItemsWithFallback } from "../services/dictionaryService";
 import {
   fetchLibraryDocuments,
-  uploadLibraryDocument,
+  uploadLibraryDocumentWithProgress,
   downloadLibraryDocument,
+  fetchLibraryStats,
+  batchAction,
 } from "../services/libraryService";
-import type { LibraryDocumentDTO, LibraryParseJobStatus } from "../types/library";
+import type { LibraryDocumentDTO, LibraryParseJobStatus, LibraryStatsResponse, UploadProgress } from "../types/library";
 import type { DictionaryItemDTO } from "../types/dictionary";
 
 const PAGE_SIZE = 20;
@@ -52,6 +55,22 @@ export function Library() {
     message: string;
   } | null>(null);
 
+  const [stats, setStats] = useState<LibraryStatsResponse | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
+
+  const loadStats = useCallback(async () => {
+    try {
+      const data = await fetchLibraryStats();
+      setStats(data);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    void loadStats();
+  }, [loadStats]);
+
   async function loadData(keyword = searchTerm, nextPageNo = pageNo) {
     setLoading(true);
     try {
@@ -64,6 +83,7 @@ export function Library() {
       setDocuments(page.items);
       setTotal(page.total);
       setPageNo(page.pageNo);
+      void loadStats();
     } catch (error) {
       setFeedback({
         variant: "error",
@@ -98,12 +118,16 @@ export function Library() {
       return;
     }
     setUploading(true);
+    setUploadProgress(null);
     try {
-      await uploadLibraryDocument(selectedFile, uploadName, uploadLevel);
+      const upload = uploadLibraryDocumentWithProgress(selectedFile, uploadName, uploadLevel);
+      upload.onProgress((progress) => setUploadProgress(progress));
+      await upload.promise;
       setFeedback({ variant: "success", title: "上传成功", message: "文档已上传，文本提取任务已创建。" });
       setSelectedFile(null);
       setUploadName("");
       setIsUploadOpen(false);
+      setUploadProgress(null);
       await loadData(searchTerm, 1);
     } catch (error) {
       setFeedback({
@@ -113,6 +137,7 @@ export function Library() {
       });
     } finally {
       setUploading(false);
+      setUploadProgress(null);
     }
   }
 
@@ -136,6 +161,33 @@ export function Library() {
         title: "下载失败",
         message: error instanceof Error ? error.message : "请稍后重试。",
       });
+    }
+  }
+
+  async function handleBatchAction(action: "delete" | "reparse" | "disable") {
+    if (selectedIds.size === 0) return;
+    const actionLabel = { delete: "删除", reparse: "重新解析", disable: "停用" }[action];
+    if (!confirm(`确定要${actionLabel}选中的 ${selectedIds.size} 个文档吗？`)) return;
+
+    setBatchLoading(true);
+    try {
+      const result = await batchAction(Array.from(selectedIds), action);
+      setFeedback({
+        variant: result.failed.length > 0 ? "warning" : "success",
+        title: `批量${actionLabel}完成`,
+        message: `成功 ${result.summary.succeeded} 个，失败 ${result.summary.failed} 个`,
+      });
+      setSelectedIds(new Set());
+      await loadData(searchTerm, pageNo);
+      await loadStats();
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: `批量${actionLabel}失败`,
+        message: error instanceof Error ? error.message : "请稍后重试。",
+      });
+    } finally {
+      setBatchLoading(false);
     }
   }
 
@@ -164,6 +216,30 @@ export function Library() {
           </Alert>
         )}
 
+        {/* 统计卡片 */}
+        {stats && (
+          <div className="grid grid-cols-3 gap-4">
+            <Card className="cursor-pointer hover:border-terracotta transition-colors" onClick={() => { setStatusFilter(""); void loadData("", 1); }}>
+              <CardContent className="py-4">
+                <div className="text-2xl font-semibold text-near-black">{stats.totalDocuments}</div>
+                <div className="text-sm text-stone-gray">总文档数</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-4">
+                <div className="text-2xl font-semibold text-near-black">{stats.todayUploads}</div>
+                <div className="text-sm text-stone-gray">今日上传</div>
+              </CardContent>
+            </Card>
+            <Card className="cursor-pointer hover:border-terracotta transition-colors" onClick={() => { setStatusFilter("active"); void loadData("", 1); }}>
+              <CardContent className="py-4">
+                <div className="text-2xl font-semibold text-amber-600">{stats.pendingParse}</div>
+                <div className="text-sm text-stone-gray">待解析</div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         {/* 搜索和筛选 */}
         <div className="flex items-center gap-4">
           <div className="flex-1 max-w-md">
@@ -190,6 +266,22 @@ export function Library() {
           </Button>
         </div>
 
+        {/* 批量操作栏 */}
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-3 p-3 bg-parchment rounded-lg border border-border-cream">
+            <span className="text-sm text-near-black">已选 {selectedIds.size} 个文档</span>
+            <Button variant="ghost" size="sm" disabled={batchLoading} onClick={() => void handleBatchAction("reparse")}>
+              <RefreshCw className="w-4 h-4 mr-1" /> 重新解析
+            </Button>
+            <Button variant="ghost" size="sm" disabled={batchLoading} onClick={() => void handleBatchAction("disable")}>
+              <Power className="w-4 h-4 mr-1" /> 停用
+            </Button>
+            <Button variant="ghost" size="sm" disabled={batchLoading} onClick={() => void handleBatchAction("delete")} className="text-red-600 hover:text-red-700">
+              <Trash2 className="w-4 h-4 mr-1" /> 删除
+            </Button>
+          </div>
+        )}
+
         {/* 文档列表 */}
         {loading ? (
           <div className="text-center py-12 text-stone-gray">加载中...</div>
@@ -204,6 +296,20 @@ export function Library() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.size === documents.length && documents.length > 0}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedIds(new Set(documents.map((d) => d.documentId)));
+                        } else {
+                          setSelectedIds(new Set());
+                        }
+                      }}
+                      className="h-4 w-4 accent-terracotta"
+                    />
+                  </TableHead>
                   <TableHead>文档名称</TableHead>
                   <TableHead>密级</TableHead>
                   <TableHead>状态</TableHead>
@@ -218,6 +324,20 @@ export function Library() {
                     key={doc.documentId}
                     onClick={() => navigate(`/library/${doc.documentId}`)}
                   >
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(doc.documentId)}
+                        onChange={(e) => {
+                          const next = new Set(selectedIds);
+                          if (e.target.checked) next.add(doc.documentId);
+                          else next.delete(doc.documentId);
+                          setSelectedIds(next);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="h-4 w-4 accent-terracotta"
+                      />
+                    </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <FileText className="w-4 h-4 text-stone-gray" />
@@ -329,6 +449,20 @@ export function Library() {
                 </select>
               </div>
             </div>
+            {uploading && uploadProgress && (
+              <div className="px-6 pb-2 space-y-2">
+                <div className="flex justify-between text-sm text-stone-gray">
+                  <span>上传中: {selectedFile?.name}</span>
+                  <span>{uploadProgress.percent}% ({formatFileSize(uploadProgress.loaded)}/{formatFileSize(uploadProgress.total)})</span>
+                </div>
+                <div className="w-full bg-border-cream rounded-full h-2">
+                  <div
+                    className="bg-terracotta h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${uploadProgress.percent}%` }}
+                  />
+                </div>
+              </div>
+            )}
             <div className="p-6 border-t border-border-cream flex items-center gap-3">
               <Button variant="secondary" className="flex-1" onClick={() => setIsUploadOpen(false)}>
                 取消
