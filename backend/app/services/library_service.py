@@ -691,6 +691,53 @@ def batch_action(
     }
 
 
+def get_library_stats(
+    session: Session,
+    current_user: CurrentUserResponse,
+) -> dict:
+    """获取当前用户的文档库统计数据。"""
+    owner_id = UUID(current_user.user.userId)
+    today_start = sa.text("date_trunc('day', now())")
+
+    total_documents = session.execute(
+        select(func.count())
+        .select_from(documents)
+        .where(
+            documents.c.owner_id == owner_id,
+            documents.c.source_type == "upload",
+            documents.c.deleted_at.is_(None),
+        )
+    ).scalar_one()
+
+    today_uploads = session.execute(
+        select(func.count())
+        .select_from(documents)
+        .where(
+            documents.c.owner_id == owner_id,
+            documents.c.source_type == "upload",
+            documents.c.deleted_at.is_(None),
+            documents.c.created_at >= today_start,
+        )
+    ).scalar_one()
+
+    pending_parse = session.execute(
+        select(func.count())
+        .select_from(library_parse_jobs)
+        .join(documents, library_parse_jobs.c.document_id == documents.c.document_id)
+        .where(
+            library_parse_jobs.c.status.in_(["pending", "running", "queued"]),
+            documents.c.owner_id == owner_id,
+            documents.c.deleted_at.is_(None),
+        )
+    ).scalar_one()
+
+    return {
+        "totalDocuments": total_documents,
+        "todayUploads": today_uploads,
+        "pendingParse": pending_parse,
+    }
+
+
 def get_document_text(
     session: Session,
     current_user: CurrentUserResponse,

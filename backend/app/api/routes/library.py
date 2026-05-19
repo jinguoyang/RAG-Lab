@@ -21,6 +21,7 @@ from app.schemas.library import (
     LibraryFullTextResponse,
     LibraryParseJobDTO,
     LibraryParsedChunksResponse,
+    LibraryStatsResponse,
     LibraryTextPreviewResponse,
 )
 from app.services.library_service import (
@@ -32,6 +33,7 @@ from app.services.library_service import (
     get_library_document_detail,
     get_library_document_source_download,
     get_library_parse_jobs,
+    get_library_stats,
     get_document_text,
     get_document_usage,
     list_library_documents,
@@ -110,6 +112,19 @@ def batch_actions(
     try:
         result = batch_action(db, current_user, body.documentIds, body.action)
         return BatchActionResponse(**result)
+    except Exception as exc:
+        _raise_library_error(exc)
+        raise  # unreachable
+
+
+@router.get("/stats", response_model=LibraryStatsResponse)
+def get_stats(
+    current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db_session)],
+) -> LibraryStatsResponse:
+    """获取当前用户的文档库统计。"""
+    try:
+        return LibraryStatsResponse(**get_library_stats(db, current_user))
     except Exception as exc:
         _raise_library_error(exc)
         raise  # unreachable

@@ -147,3 +147,10 @@ class BatchActionResponse(BaseModel):
     succeeded: list[str]
     failed: list[BatchActionFailedItem]
     summary: BatchActionSummary
+
+
+class LibraryStatsResponse(BaseModel):
+    """文档库统计响应。"""
+    totalDocuments: int
+    todayUploads: int
+    pendingParse: int
