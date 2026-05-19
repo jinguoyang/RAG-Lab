@@ -464,3 +464,48 @@ def build_chunk_access_filter_context(
         filter_hash=filter_hash,
         allowed=allowed,
     )
+
+
+def has_library_permission(
+    session: Session,
+    current_user: CurrentUserResponse,
+    permission_code: str,
+    document_owner_id: UUID | None = None,
+) -> bool:
+    """判断当前用户是否具备文档库权限。
+
+    规则：
+    1. 平台管理员自动通过
+    2. 拥有 library.document.admin 权限则通过
+    3. 拥有对应权限码 且 (无 owner 要求 或 是文档 owner) 则通过
+    """
+    user_id = _user_id(current_user)
+
+    # 管理员自动通过
+    if current_user.user.platformRole == "admin":
+        return True
+
+    # 解析平台角色权限
+    platform_allowed, platform_denied = _role_permissions(
+        session, "platform", {current_user.user.platformRole},
+    )
+
+    # admin 权限码可绕过 owner 限制
+    if "library.document.admin" in platform_allowed and "library.document.admin" not in platform_denied:
+        return True
+
+    # 检查目标权限码
+    if permission_code in platform_denied:
+        return False
+    if permission_code not in platform_allowed:
+        return False
+
+    # 对于需要 owner 检查的权限
+    if document_owner_id is not None and permission_code in {
+        "library.document.read",
+        "library.document.update",
+        "library.document.delete",
+    }:
+        return user_id == document_owner_id
+
+    return True
