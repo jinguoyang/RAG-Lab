@@ -514,15 +514,57 @@ def run_library_parse_job_by_id(job_id: UUID) -> dict:
             _mark_job_failed(session, job_id, "FILE_READ_FAILED", "Cannot read file from storage.")
             return {"error": "FILE_READ_FAILED"}
 
-        try:
-            parsed = parse_document(
-                file_name=file_row["file_name"],
-                mime_type=file_row["mime_type"],
-                file_bytes=file_bytes,
-            )
-        except DocumentParseError as exc:
-            _mark_job_failed(session, job_id, exc.error_code, str(exc))
-            return {"error": exc.error_code}
+        # 带重试的解析逻辑
+        import time
+
+        max_retries = 3
+        retry_delays = [5, 15, 45]  # 指数退避
+        parsed = None
+        last_error = None
+
+        for attempt in range(max_retries + 1):
+            try:
+                parsed = parse_document(
+                    file_name=file_row["file_name"],
+                    mime_type=file_row["mime_type"],
+                    file_bytes=file_bytes,
+                )
+                break  # 成功，退出重试循环
+            except DocumentParseError as exc:
+                last_error = exc
+                if attempt < max_retries:
+                    # 更新 job 进度，记录重试信息
+                    session.execute(
+                        update(library_parse_jobs)
+                        .where(library_parse_jobs.c.job_id == job_id)
+                        .values(
+                            progress=int((attempt + 1) / (max_retries + 1) * 50),
+                            error_message=f"重试 {attempt + 1}/{max_retries}: {exc}",
+                        )
+                    )
+                    session.commit()
+                    time.sleep(retry_delays[attempt])
+                else:
+                    # 最终失败
+                    error_detail = {
+                        "type": "parse_error",
+                        "file": file_row["file_name"],
+                        "fileSize": file_row["file_size"],
+                        "retryCount": max_retries,
+                        "errorCode": exc.error_code,
+                        "suggestion": _get_error_suggestion(exc.error_code),
+                    }
+                    _mark_job_failed(session, job_id, exc.error_code, str(exc), error_detail)
+                    return {"error": exc.error_code}
+
+        if parsed is None:
+            _mark_job_failed(session, job_id, "UNKNOWN", "解析失败", {
+                "type": "unknown",
+                "file": file_row["file_name"],
+                "retryCount": max_retries,
+                "suggestion": "请联系管理员",
+            })
+            return {"error": "UNKNOWN"}
 
         # 生成纯文本预览
         full_text = "\n\n".join(chunk.content for chunk in parsed.chunks)
@@ -830,16 +872,37 @@ def get_document_usage(
     }
 
 
-def _mark_job_failed(session: Session, job_id: UUID, error_code: str, error_message: str) -> None:
+def _get_error_suggestion(error_code: str) -> str:
+    """根据错误码返回用户友好的建议。"""
+    suggestions = {
+        "PARSE_TIMEOUT": "请尝试拆分文件或联系管理员",
+        "UNSUPPORTED_FORMAT": "请检查文件格式是否受支持",
+        "FILE_CORRUPTED": "请重新上传文件",
+        "STORAGE_ERROR": "存储服务异常，请稍后重试",
+    }
+    return suggestions.get(error_code, "请联系管理员")
+
+
+def _mark_job_failed(
+    session: Session,
+    job_id: UUID,
+    error_code: str,
+    error_message: str,
+    error_detail: dict | None = None,
+) -> None:
+    values = {
+        "status": "failed",
+        "error_code": error_code,
+        "error_message": error_message,
+        "finished_at": sa.func.now(),
+    }
+    if error_detail is not None:
+        values["error_detail"] = error_detail
+
     session.execute(
         update(library_parse_jobs)
         .where(library_parse_jobs.c.job_id == job_id)
-        .values(
-            status="failed",
-            error_code=error_code,
-            error_message=error_message,
-            finished_at=sa.func.now(),
-        )
+        .values(**values)
     )
     # 同步更新 version 状态
     job = session.execute(
