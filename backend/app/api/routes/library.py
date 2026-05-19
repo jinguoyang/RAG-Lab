@@ -1,6 +1,6 @@
 """文档库 API 路由。"""
 
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import quote
 from uuid import UUID
 
@@ -168,7 +168,7 @@ def get_document_text_route(
     document_id: UUID,
     current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db_session)],
-    mode: str = Query(default="preview", pattern="^(preview|full|chunks)$"),
+    mode: Literal["preview", "full", "chunks"] = Query(default="preview"),
 ) -> LibraryTextPreviewResponse | LibraryFullTextResponse | LibraryParsedChunksResponse:
     """获取文档文本内容，支持 preview/full/chunks 三种模式。"""
     try:

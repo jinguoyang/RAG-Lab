@@ -1,6 +1,7 @@
 """文档库服务：文档上传、列表、详情和文本提取作业管理。"""
 
 from dataclasses import dataclass
+from typing import Literal
 from hashlib import sha256
 from pathlib import PurePath
 from uuid import UUID, uuid4
@@ -494,7 +495,7 @@ def get_document_text(
     session: Session,
     current_user: CurrentUserResponse,
     document_id: UUID,
-    mode: str = "preview",
+    mode: Literal["preview", "full", "chunks"] = "preview",
 ) -> LibraryTextPreviewResponse | LibraryFullTextResponse | LibraryParsedChunksResponse:
     """获取文档的文本内容，支持 preview/full/chunks 三种模式。"""
     _ensure_owner(session, current_user, document_id)
