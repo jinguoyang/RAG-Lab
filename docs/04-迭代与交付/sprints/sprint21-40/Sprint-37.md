@@ -6,7 +6,7 @@
 - Sprint 主题：文档库功能 - Phase 2 预览完善 + Phase 3 知识库绑定
 - 涉及 Epic：E28 文档库功能
 - 建议版本：文档库 V1.0
-- 时间范围：待定
+- 时间范围：2026-05-19
 - 目标：完善在线预览能力（Word、TXT），实现文档与知识库的多对多关联，支持从文档库添加文档到知识库，实现删除级联和重试机制。
 - 设计文档：`docs/04-迭代与交付/plans/2026-05-19-sprint37-binding-preview.md`
 
@@ -35,17 +35,17 @@
 
 | 编号 | Backlog | 标题 | 优先级 | 预估 | 负责人 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| S37-000 | B-187 | 文本预览 API（preview/full/chunks） | P0 | 0.5d | Codex | Todo |
-| S37-001 | B-172 | TXT 在线预览组件 | P1 | 0.5d | Codex | Todo |
-| S37-002 | B-173 | Word 在线预览（mammoth.js） | P1 | 1d | Codex | Todo |
-| S37-003 | B-188 | 解析结果存储改造（parsed_chunks[]） | P0 | 1d | Codex | Todo |
-| S37-004 | B-176 | 绑定服务、绑定/解绑 API | P0 | 1.5d | Codex | Todo |
-| S37-005 | B-189 | KB ingest 解析复用 | P0 | 1d | Codex | Todo |
-| S37-006 | B-177 | P06 知识库文档中心改造（从文档库添加） | P0 | 1.5d | Codex | Todo |
-| S37-007 | B-190 | 文档删除 API（级联清理） | P0 | 1d | Codex | Todo |
-| S37-008 | B-191 | 重试机制（解析重试 + 绑定重试） | P0 | 1d | Codex | Todo |
-| S37-009 | B-179 | 文档使用情况 API + P16 展示 | P1 | 0.5d | Codex | Todo |
-| S37-010 | B-186 | 绑定链路验收脚本 | P1 | 0.5d | Codex | Todo |
+| S37-000 | B-187 | 文本预览 API（preview/full/chunks） | P0 | 0.5d | Codex | Done |
+| S37-001 | B-172 | TXT 在线预览组件 | P1 | 0.5d | Codex | Done |
+| S37-002 | B-173 | Word 在线预览（mammoth.js） | P1 | 1d | Codex | Done |
+| S37-003 | B-188 | 解析结果存储改造（parsed_chunks[]） | P0 | 1d | Codex | Done |
+| S37-004 | B-176 | 绑定服务、绑定/解绑 API | P0 | 1.5d | Codex | Done |
+| S37-005 | B-189 | KB ingest 解析复用 | P0 | 1d | Codex | Done |
+| S37-006 | B-177 | P06 知识库文档中心改造（从文档库添加） | P0 | 1.5d | Codex | Done |
+| S37-007 | B-190 | 文档删除 API（级联清理） | P0 | 1d | Codex | Done |
+| S37-008 | B-191 | 重试机制（解析重试 + 绑定重试） | P0 | 1d | Codex | Done |
+| S37-009 | B-179 | 文档使用情况 API + P16 展示 | P1 | 0.5d | Codex | Done |
+| S37-010 | B-186 | 绑定链路验收脚本 | P1 | 0.5d | Codex | Done |
 
 **总预估：10d**
 
@@ -92,4 +92,18 @@
 
 ## 8. 执行记录
 
-待执行。
+- 执行日期：2026-05-19
+- 执行方式：Subagent-Driven Development，11 个任务全部完成
+- 关键提交：
+  - `5c754ab9` 文本预览 API（S37-000）
+  - `0fb7b207` 解析结果存储改造（S37-003）
+  - `2f22eafd` 绑定服务 + 绑定/解绑 API（S37-004）
+  - `b2e83da1` KB ingest 解析复用（S37-005）
+  - `a615c63e` 文档删除 API 级联清理（S37-007）
+  - `6f1beb36` 重试机制（S37-008）
+  - `d47f857f` 文档使用情况 API（S37-009）
+  - `3d981140` TXT 在线预览组件（S37-001）
+  - `1af2d71c` DOCX 在线预览 mammoth.js（S37-002）
+  - `19014eae` P06 从文档库添加 + P16 改造（S37-006）
+  - `a6d069f2` 绑定链路验收脚本（S37-010）
+- 验收结果：全部通过（verify_sprint37_e2e: PASS，后端编译通过，前端构建通过）
