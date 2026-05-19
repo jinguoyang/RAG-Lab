@@ -17,8 +17,12 @@ from app.schemas.library import (
     LibraryDocumentDetailDTO,
     LibraryDocumentUploadResponse,
     LibraryDocumentVersionDTO,
+    LibraryFullTextResponse,
     LibraryParseJobDTO,
+    LibraryParsedChunkDTO,
+    LibraryParsedChunksResponse,
     LibraryStoredFileDTO,
+    LibraryTextPreviewResponse,
 )
 from app.tables import (
     document_versions,
@@ -484,6 +488,60 @@ def run_library_parse_job_by_id(job_id: UUID) -> dict:
         raise
     finally:
         session.close()
+
+
+def get_document_text(
+    session: Session,
+    current_user: CurrentUserResponse,
+    document_id: UUID,
+    mode: str = "preview",
+) -> LibraryTextPreviewResponse | LibraryFullTextResponse | LibraryParsedChunksResponse:
+    """获取文档的文本内容，支持 preview/full/chunks 三种模式。"""
+    _ensure_owner(session, current_user, document_id)
+
+    ver_row = session.execute(
+        select(document_versions)
+        .where(document_versions.c.document_id == document_id)
+        .order_by(document_versions.c.version_no.desc())
+        .limit(1)
+    ).mappings().first()
+
+    if ver_row is None:
+        raise LibraryDocumentNotFoundError
+
+    metadata = ver_row["metadata"] or {}
+    preview_text = metadata.get("preview_text", "")
+    full_text_length = metadata.get("full_text_length", len(preview_text))
+    parsed_chunks_raw = metadata.get("parsed_chunks", [])
+
+    if mode == "chunks":
+        chunks = [
+            LibraryParsedChunkDTO(
+                content=chunk.get("content", ""),
+                tokenCount=chunk.get("token_count", 0),
+                section=chunk.get("section"),
+                pageNo=chunk.get("page_no"),
+                startOffset=chunk.get("start_offset"),
+                endOffset=chunk.get("end_offset"),
+            )
+            for chunk in parsed_chunks_raw
+        ]
+        return LibraryParsedChunksResponse(chunks=chunks)
+
+    if mode == "full":
+        if parsed_chunks_raw:
+            text = "\n\n".join(chunk.get("content", "") for chunk in parsed_chunks_raw)
+        else:
+            text = preview_text
+        return LibraryFullTextResponse(text=text)
+
+    # mode == "preview" (default)
+    truncated = len(preview_text) < full_text_length
+    return LibraryTextPreviewResponse(
+        text=preview_text,
+        truncated=truncated,
+        fullLength=full_text_length,
+    )
 
 
 def _mark_job_failed(session: Session, job_id: UUID, error_code: str, error_message: str) -> None:

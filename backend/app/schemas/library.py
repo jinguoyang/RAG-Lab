@@ -77,3 +77,30 @@ class LibraryDocumentUpdateRequest(BaseModel):
 
     name: str | None = None
     status: str | None = None
+
+
+class LibraryTextPreviewResponse(BaseModel):
+    """文本预览响应。"""
+    text: str
+    truncated: bool
+    fullLength: int
+
+
+class LibraryParsedChunkDTO(BaseModel):
+    """解析后的分块数据。"""
+    content: str
+    tokenCount: int
+    section: str | None = None
+    pageNo: int | None = None
+    startOffset: int | None = None
+    endOffset: int | None = None
+
+
+class LibraryFullTextResponse(BaseModel):
+    """完整文本响应。"""
+    text: str
+
+
+class LibraryParsedChunksResponse(BaseModel):
+    """结构化解析分块响应。"""
+    chunks: list[LibraryParsedChunkDTO]

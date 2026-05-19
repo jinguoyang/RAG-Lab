@@ -16,7 +16,10 @@ from app.schemas.library import (
     LibraryDocumentDetailDTO,
     LibraryDocumentUpdateRequest,
     LibraryDocumentUploadResponse,
+    LibraryFullTextResponse,
     LibraryParseJobDTO,
+    LibraryParsedChunksResponse,
+    LibraryTextPreviewResponse,
 )
 from app.services.library_service import (
     LibraryDocumentNotFoundError,
@@ -25,6 +28,7 @@ from app.services.library_service import (
     get_library_document_detail,
     get_library_document_source_download,
     get_library_parse_jobs,
+    get_document_text,
     list_library_documents,
     update_library_document,
 )
@@ -151,6 +155,24 @@ def list_parse_jobs(
     """获取文档的解析作业列表。"""
     try:
         return get_library_parse_jobs(db, current_user, document_id)
+    except Exception as exc:
+        _raise_library_error(exc)
+        raise  # unreachable
+
+
+@router.get(
+    "/{document_id}/text",
+    response_model=LibraryTextPreviewResponse | LibraryFullTextResponse | LibraryParsedChunksResponse,
+)
+def get_document_text_route(
+    document_id: UUID,
+    current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db_session)],
+    mode: str = Query(default="preview", pattern="^(preview|full|chunks)$"),
+) -> LibraryTextPreviewResponse | LibraryFullTextResponse | LibraryParsedChunksResponse:
+    """获取文档文本内容，支持 preview/full/chunks 三种模式。"""
+    try:
+        return get_document_text(db, current_user, document_id, mode)
     except Exception as exc:
         _raise_library_error(exc)
         raise  # unreachable
