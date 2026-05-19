@@ -29,6 +29,7 @@ from app.tables import (
     document_kb_bindings,
     document_versions,
     documents,
+    knowledge_bases,
     library_parse_jobs,
     stored_files,
     users,
@@ -677,6 +678,44 @@ def get_document_text(
         truncated=truncated,
         fullLength=full_text_length,
     )
+
+
+def get_document_usage(
+    session: Session,
+    current_user: CurrentUserResponse,
+    document_id: UUID,
+) -> dict:
+    """查询文档绑定的所有知识库。"""
+    _ensure_owner(session, current_user, document_id)
+
+    rows = session.execute(
+        select(
+            document_kb_bindings.c.binding_id,
+            document_kb_bindings.c.kb_id,
+            document_kb_bindings.c.status,
+            document_kb_bindings.c.chunk_count,
+            document_kb_bindings.c.created_at,
+            knowledge_bases.c.name.label("kb_name"),
+        )
+        .join(knowledge_bases, knowledge_bases.c.kb_id == document_kb_bindings.c.kb_id)
+        .where(document_kb_bindings.c.document_id == document_id)
+        .order_by(document_kb_bindings.c.created_at.desc())
+    ).mappings().all()
+
+    return {
+        "documentId": str(document_id),
+        "usages": [
+            {
+                "bindingId": str(row["binding_id"]),
+                "kbId": str(row["kb_id"]),
+                "kbName": row["kb_name"],
+                "status": row["status"],
+                "chunkCount": row["chunk_count"],
+                "createdAt": row["created_at"].isoformat(),
+            }
+            for row in rows
+        ],
+    }
 
 
 def _mark_job_failed(session: Session, job_id: UUID, error_code: str, error_message: str) -> None:

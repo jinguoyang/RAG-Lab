@@ -30,6 +30,7 @@ from app.services.library_service import (
     get_library_document_source_download,
     get_library_parse_jobs,
     get_document_text,
+    get_document_usage,
     list_library_documents,
     retry_library_parse,
     update_library_document,
@@ -185,6 +186,20 @@ def retry_parse(
     """重新触发文档解析。"""
     try:
         return retry_library_parse(db, current_user, document_id)
+    except Exception as exc:
+        _raise_library_error(exc)
+        raise  # unreachable
+
+
+@router.get("/{document_id}/usage")
+def get_document_usage_route(
+    document_id: UUID,
+    current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db_session)],
+) -> dict:
+    """查询文档绑定的所有知识库。"""
+    try:
+        return get_document_usage(db, current_user, document_id)
     except Exception as exc:
         _raise_library_error(exc)
         raise  # unreachable

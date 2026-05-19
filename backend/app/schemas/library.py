@@ -104,3 +104,19 @@ class LibraryFullTextResponse(BaseModel):
 class LibraryParsedChunksResponse(BaseModel):
     """结构化解析分块响应。"""
     chunks: list[LibraryParsedChunkDTO]
+
+
+class LibraryDocumentUsageDTO(BaseModel):
+    """文档使用情况：绑定的知识库列表。"""
+    bindingId: str
+    kbId: str
+    kbName: str
+    status: str
+    chunkCount: int
+    createdAt: str
+
+
+class LibraryDocumentUsageResponse(BaseModel):
+    """文档使用情况响应。"""
+    documentId: str
+    usages: list[LibraryDocumentUsageDTO]
