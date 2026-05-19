@@ -7,18 +7,23 @@ import { Badge, StatusBadge } from "../components/rag/Badge";
 import { Alert } from "../components/rag/Alert";
 import { PdfPreview } from "../components/rag/PdfPreview";
 import { MarkdownPreview } from "../components/rag/MarkdownPreview";
+import { TextPreview } from "../components/rag/TextPreview";
+import { DocxPreview } from "../components/rag/DocxPreview";
 import {
   fetchLibraryDocumentDetail,
   downloadLibraryDocument,
   fetchLibraryParseJobs,
+  fetchDocumentUsage,
+  retryLibraryParse,
 } from "../services/libraryService";
-import type { LibraryDocumentDetailDTO, LibraryParseJobDTO } from "../types/library";
+import type { LibraryDocumentDetailDTO, LibraryParseJobDTO, LibraryDocumentUsageResponse, LibraryDocumentUsageDTO } from "../types/library";
 
-function getPreviewType(fileName: string): "pdf" | "markdown" | "text" | "unsupported" {
+function getPreviewType(fileName: string): "pdf" | "markdown" | "text" | "docx" | "unsupported" {
   const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
   if (ext === "pdf") return "pdf";
   if (ext === "md" || ext === "markdown") return "markdown";
   if (ext === "txt") return "text";
+  if (ext === "docx") return "docx";
   return "unsupported";
 }
 
@@ -33,9 +38,8 @@ export function LibraryDetail() {
   const { docId = "" } = useParams();
   const [detail, setDetail] = useState<LibraryDocumentDetailDTO | null>(null);
   const [parseJobs, setParseJobs] = useState<LibraryParseJobDTO[]>([]);
+  const [usages, setUsages] = useState<LibraryDocumentUsageDTO[]>([]);
   const [loading, setLoading] = useState(true);
-  const [previewText, setPreviewText] = useState<string | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
   const [feedback, setFeedback] = useState<{
     variant: "success" | "info" | "warning" | "error";
     title: string;
@@ -52,10 +56,8 @@ export function LibraryDetail() {
       setDetail(detailData);
       setParseJobs(jobsData);
 
-      // 如果解析成功，加载预览文本
-      if (detailData.activeVersion?.parseStatus === "success") {
-        void loadPreviewText();
-      }
+      // 加载使用情况
+      void loadUsage();
     } catch (error) {
       setFeedback({
         variant: "error",
@@ -67,18 +69,30 @@ export function LibraryDetail() {
     }
   }
 
-  async function loadPreviewText() {
-    setPreviewLoading(true);
+  async function loadUsage() {
     try {
-      const result = await downloadLibraryDocument(docId);
-      const text = await result.blob.text();
-      // 截取前 5000 字符作为预览
-      setPreviewText(text.length > 5000 ? text.slice(0, 5000) + "\n\n[...预览截断]" : text);
+      const usageData = await fetchDocumentUsage(docId);
+      setUsages(usageData.usages);
     } catch {
-      // 预览加载失败不影响主页面
-      setPreviewText(null);
-    } finally {
-      setPreviewLoading(false);
+      // 使用情况加载失败不影响主页面
+    }
+  }
+
+  async function handleRetry() {
+    try {
+      await retryLibraryParse(docId);
+      setFeedback({
+        variant: "info",
+        title: "重试已触发",
+        message: "解析作业已重新排队，请稍后刷新。",
+      });
+      await loadData();
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "重试失败",
+        message: error instanceof Error ? error.message : "请稍后重试。",
+      });
     }
   }
 
@@ -238,19 +252,20 @@ export function LibraryDetail() {
                     ? "文本提取失败，无法预览"
                     : "等待文本提取完成"}
               </p>
+              {version?.parseStatus === "failed" && (
+                <Button variant="secondary" className="mt-4" onClick={() => void handleRetry()}>
+                  <RefreshCw className="w-4 h-4 mr-2" /> 重试解析
+                </Button>
+              )}
             </div>
           ) : previewType === "pdf" ? (
             <PdfPreview documentId={docId} fileName={doc.name} />
+          ) : previewType === "docx" ? (
+            <DocxPreview documentId={docId} />
           ) : previewType === "markdown" ? (
-            <MarkdownPreview content={previewText ?? ""} loading={previewLoading} />
+            <MarkdownPreview content="" loading={false} />
           ) : previewType === "text" ? (
-            <div className="bg-white border border-border-cream rounded-md p-4 max-h-[500px] overflow-auto">
-              {previewLoading ? (
-                <p className="text-stone-gray text-sm">加载预览中...</p>
-              ) : (
-                <pre className="text-sm text-near-black whitespace-pre-wrap font-mono">{previewText ?? "无预览内容"}</pre>
-              )}
-            </div>
+            <TextPreview documentId={docId} />
           ) : (
             <div className="text-center py-12">
               <FileText className="w-12 h-12 mx-auto text-stone-gray mb-4" />
@@ -258,6 +273,24 @@ export function LibraryDetail() {
             </div>
           )}
         </div>
+
+        {/* 绑定的知识库 */}
+        {usages.length > 0 && (
+          <div className="bg-ivory border border-border-cream rounded-[12px] p-6">
+            <h2 className="font-serif text-near-black mb-4">绑定的知识库</h2>
+            <div className="space-y-3">
+              {usages.map((usage) => (
+                <div key={usage.bindingId} className="rounded-lg border border-border-cream bg-parchment p-4 flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="font-medium text-near-black truncate">{usage.kbName}</p>
+                    <p className="text-xs text-stone-gray mt-1">分块数: {usage.chunkCount} | 创建时间: {new Date(usage.createdAt).toLocaleString("zh-CN")}</p>
+                  </div>
+                  <Badge variant={usage.status === "active" ? "success" : "default"}>{usage.status}</Badge>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

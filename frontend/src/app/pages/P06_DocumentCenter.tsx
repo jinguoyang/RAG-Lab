@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Search, Upload, Download, FileWarning, Eye, ChevronLeft, ChevronRight, Database, RefreshCw, Trash2 } from "lucide-react";
+import { Search, Upload, Download, FileWarning, Eye, ChevronLeft, ChevronRight, Database, RefreshCw, Trash2, FolderOpen } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
@@ -21,7 +21,9 @@ import {
   runBulkDocumentGovernance,
   uploadDocument,
 } from "../services/documentService";
+import { fetchLibraryDocuments, bindDocumentsToKB } from "../services/libraryService";
 import type { BulkDocumentGovernanceRequest, DocumentDTO, IndexStageViewModel, IndexSyncJobDTO, IngestJobDTO, JobStatus } from "../types/document";
+import type { LibraryDocumentDTO } from "../types/library";
 import type { DictionaryItemDTO } from "../types/dictionary";
 
 const DOCUMENT_PAGE_SIZE = 10;
@@ -74,6 +76,12 @@ export function DocumentCenter() {
     title: string;
     message: string;
   } | null>(null);
+  const [showLibraryPicker, setShowLibraryPicker] = useState(false);
+  const [libraryDocs, setLibraryDocs] = useState<LibraryDocumentDTO[]>([]);
+  const [libraryTotal, setLibraryTotal] = useState(0);
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [bindingLoading, setBindingLoading] = useState(false);
 
   async function loadData(keyword = searchTerm, nextPageNo = pageNo) {
     if (!kbId) return;
@@ -297,6 +305,55 @@ export function DocumentCenter() {
     }
   }
 
+  async function loadLibraryDocs() {
+    setLibraryLoading(true);
+    try {
+      const page = await fetchLibraryDocuments({ pageSize: 100 });
+      setLibraryDocs(page.items);
+      setLibraryTotal(page.total);
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "文档库加载失败",
+        message: error instanceof Error ? error.message : "请检查后端服务。",
+      });
+    } finally {
+      setLibraryLoading(false);
+    }
+  }
+
+  function handleOpenLibraryPicker() {
+    setSelectedDocIds([]);
+    setShowLibraryPicker(true);
+    void loadLibraryDocs();
+  }
+
+  async function handleBind() {
+    if (selectedDocIds.length === 0) {
+      setFeedback({ variant: "warning", title: "请选择文档", message: "请至少选择一个文档库文档。" });
+      return;
+    }
+    setBindingLoading(true);
+    try {
+      const result = await bindDocumentsToKB(kbId, selectedDocIds);
+      setFeedback({
+        variant: "success",
+        title: "绑定成功",
+        message: `已绑定 ${result.bindings.length} 个文档到当前知识库。`,
+      });
+      setShowLibraryPicker(false);
+      await loadData(searchTerm, 1);
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "绑定失败",
+        message: error instanceof Error ? error.message : "请稍后重试。",
+      });
+    } finally {
+      setBindingLoading(false);
+    }
+  }
+
   const totalPages = Math.max(1, Math.ceil(documentTotal / DOCUMENT_PAGE_SIZE));
   const currentPageSelected = filteredRows.length > 0 && filteredRows.every((row) => selectedDocumentIds.includes(row.id));
 
@@ -309,6 +366,9 @@ export function DocumentCenter() {
           <>
             <Button variant="outline" disabled>
               <Download className="w-4 h-4 mr-2" /> 导出筛选结果
+            </Button>
+            <Button variant="outline" onClick={handleOpenLibraryPicker}>
+              <FolderOpen className="w-4 h-4 mr-2" /> 从文档库添加
             </Button>
             <Button variant="primary" onClick={() => setIsUploadOpen(true)}>
               <Upload className="w-4 h-4 mr-2" /> 上传文档
@@ -637,6 +697,62 @@ export function DocumentCenter() {
           </div>
         </DrawerSection>
       </Drawer>
+
+      {/* 文档库选择弹窗 */}
+      {showLibraryPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/30" onClick={() => setShowLibraryPicker(false)} />
+          <div className="relative bg-ivory border border-border-cream rounded-xl shadow-lg w-full max-w-2xl max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border-cream">
+              <h2 className="font-serif text-lg text-near-black">从文档库添加</h2>
+              <Button variant="ghost" size="sm" onClick={() => setShowLibraryPicker(false)}>
+                <span className="text-stone-gray text-lg">&times;</span>
+              </Button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-auto p-4">
+              {libraryLoading ? (
+                <p className="text-center text-stone-gray py-8">加载中...</p>
+              ) : libraryDocs.length === 0 ? (
+                <p className="text-center text-stone-gray py-8">文档库暂无文档</p>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-sm text-stone-gray mb-3">共 {libraryTotal} 个文档库文档，已选 {selectedDocIds.length} 个</p>
+                  {libraryDocs.map((doc) => (
+                    <label
+                      key={doc.documentId}
+                      className="flex items-center gap-3 p-3 rounded-lg border border-border-cream bg-parchment cursor-pointer hover:bg-border-cream/30"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedDocIds.includes(doc.documentId)}
+                        onChange={(event) => {
+                          setSelectedDocIds((current) =>
+                            event.target.checked
+                              ? [...current, doc.documentId]
+                              : current.filter((id) => id !== doc.documentId)
+                          );
+                        }}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-near-black truncate">{doc.name}</p>
+                        <p className="text-xs text-stone-gray">{doc.sourceType} | {doc.securityLevel}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 px-6 py-4 border-t border-border-cream">
+              <Button variant="ghost" onClick={() => setShowLibraryPicker(false)}>
+                取消
+              </Button>
+              <Button variant="primary" disabled={bindingLoading || selectedDocIds.length === 0} onClick={() => void handleBind()}>
+                {bindingLoading ? "绑定中..." : `绑定选中文档 (${selectedDocIds.length})`}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
