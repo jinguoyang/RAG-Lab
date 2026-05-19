@@ -12,6 +12,8 @@ from app.core.database import get_db_session
 from app.schemas.auth import CurrentUserResponse
 from app.schemas.common import PageResponse
 from app.schemas.library import (
+    BatchActionRequest,
+    BatchActionResponse,
     LibraryDocumentDTO,
     LibraryDocumentDetailDTO,
     LibraryDocumentUpdateRequest,
@@ -24,6 +26,7 @@ from app.schemas.library import (
 from app.services.library_service import (
     LibraryDocumentNotFoundError,
     LibraryPermissionError,
+    batch_action,
     create_library_upload,
     delete_library_document,
     get_library_document_detail,
@@ -92,6 +95,21 @@ def upload_document(
             name=name,
             security_level=securityLevel,
         )
+    except Exception as exc:
+        _raise_library_error(exc)
+        raise  # unreachable
+
+
+@router.post("/batch-actions", response_model=BatchActionResponse)
+def batch_actions(
+    body: BatchActionRequest,
+    current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db_session)],
+) -> BatchActionResponse:
+    """批量操作文档：删除、重新解析、停用。"""
+    try:
+        result = batch_action(db, current_user, body.documentIds, body.action)
+        return BatchActionResponse(**result)
     except Exception as exc:
         _raise_library_error(exc)
         raise  # unreachable

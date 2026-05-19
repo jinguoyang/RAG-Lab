@@ -633,6 +633,64 @@ def retry_library_parse(
     return {"jobId": str(job_id), "status": "queued"}
 
 
+def batch_action(
+    session: Session,
+    current_user: CurrentUserResponse,
+    document_ids: list[str],
+    action: str,
+) -> dict:
+    """批量操作文档：delete / reparse / disable。逐个检查权限，部分执行。"""
+    succeeded: list[str] = []
+    failed: list[dict] = []
+
+    for doc_id_str in document_ids:
+        try:
+            doc_id = UUID(doc_id_str)
+        except ValueError:
+            failed.append({"documentId": doc_id_str, "error": "INVALID_ID", "message": "无效的文档 ID"})
+            continue
+
+        try:
+            if action == "delete":
+                delete_library_document(session, current_user, doc_id)
+            elif action == "reparse":
+                retry_library_parse(session, current_user, doc_id)
+            elif action == "disable":
+                _ensure_owner(session, current_user, doc_id, "library.document.update")
+                row = session.execute(
+                    select(documents).where(documents.c.document_id == doc_id)
+                ).mappings().first()
+                if row and row["status"] != "active":
+                    raise LibraryPermissionError
+                session.execute(
+                    update(documents)
+                    .where(documents.c.document_id == doc_id)
+                    .values(
+                        status="disabled",
+                        updated_by=UUID(current_user.user.userId),
+                        updated_at=func.now(),
+                    )
+                )
+                session.commit()
+            succeeded.append(doc_id_str)
+        except LibraryPermissionError:
+            failed.append({"documentId": doc_id_str, "error": "PERMISSION_DENIED", "message": "无权限操作该文档"})
+        except LibraryDocumentNotFoundError:
+            failed.append({"documentId": doc_id_str, "error": "NOT_FOUND", "message": "文档不存在"})
+        except Exception:
+            failed.append({"documentId": doc_id_str, "error": "UNKNOWN", "message": "操作失败，请稍后重试"})
+
+    return {
+        "succeeded": succeeded,
+        "failed": failed,
+        "summary": {
+            "total": len(document_ids),
+            "succeeded": len(succeeded),
+            "failed": len(failed),
+        },
+    }
+
+
 def get_document_text(
     session: Session,
     current_user: CurrentUserResponse,

@@ -1,5 +1,5 @@
-from pydantic import BaseModel
-from pydantic import Field
+from typing import Literal
+from pydantic import BaseModel, Field
 
 
 class LibraryDocumentDTO(BaseModel):
@@ -120,3 +120,30 @@ class LibraryDocumentUsageResponse(BaseModel):
     """文档使用情况响应。"""
     documentId: str
     usages: list[LibraryDocumentUsageDTO]
+
+
+class BatchActionRequest(BaseModel):
+    """批量操作请求。"""
+    documentIds: list[str] = Field(..., min_length=1, max_length=100)
+    action: Literal["delete", "reparse", "disable"]
+
+
+class BatchActionFailedItem(BaseModel):
+    """批量操作失败项。"""
+    documentId: str
+    error: str
+    message: str
+
+
+class BatchActionSummary(BaseModel):
+    """批量操作汇总。"""
+    total: int
+    succeeded: int
+    failed: int
+
+
+class BatchActionResponse(BaseModel):
+    """批量操作响应。"""
+    succeeded: list[str]
+    failed: list[BatchActionFailedItem]
+    summary: BatchActionSummary
