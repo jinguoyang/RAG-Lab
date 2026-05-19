@@ -17,7 +17,7 @@
 
 - V1.0 至 V1.8 的 Backlog、Epic、Sprint 和 Release 已收口为完成。
 - V1.8 通过 Sprint 30 至 Sprint 35 完成 RAG 应用化封装（E25）和前端验收硬化（E26），所有 P0/P1 Backlog 已 Done。
-- 下一版本为 V1.9，计划承接 E23 图快照保留与配置治理、E24 文档解析能力增强；E27 RAG App 运行治理与接入可见性已完成并纳入 V1.9 范围。
+- 下一版本为 V1.9，计划承接 E23 图快照保留与配置治理、E24 文档解析能力增强；E27 RAG App 运行治理与接入可见性已完成并纳入 V1.9 范围。E28 文档库功能已进入 Sprint 36 至 Sprint 38 规划，计划见 [E28 文档库功能实施计划](./plans/2026-05-19-e28-document-library.md)。
 - 后续新工作应先进入产品待办清单，再建立新的 Sprint 或 Release 计划。
 - V1.8 Sprint 32 已补齐当前环境的真实 Provider 网络级复测结论，记录见 [V1.8 Provider 网络级复测记录](../06-发布与运维/V1.8-Provider网络级复测记录.md)；切换测试或预生产环境后必须重新执行并回填。
 
@@ -37,7 +37,7 @@
 这些文档保留历史计划、执行证据和验收口径，通常不再反复同步状态：
 
 - `sprints/sprint1-20/Sprint-01.md` 至 `sprints/sprint1-20/Sprint-20.md`
-- `sprints/sprint21-40/Sprint-21.md` 至 `sprints/sprint21-40/Sprint-29.md`
+- `sprints/sprint21-40/Sprint-21.md` 至 `sprints/sprint21-40/Sprint-38.md`
 - `releases/V1.0-*.md` 至 `releases/V1.7-*.md`
 - `docs/04-迭代与交付/specs/` 和 `docs/04-迭代与交付/plans/`
 - 已删除的阶段性 `backend/scripts/verify_*.py` 脚本只保留在历史文档记录中，不再作为当前验证入口。
