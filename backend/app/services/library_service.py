@@ -448,6 +448,18 @@ def run_library_parse_job_by_id(job_id: UUID) -> dict:
         preview_text = full_text[:2000] if len(full_text) > 2000 else full_text
         token_count = sum(chunk.token_count for chunk in parsed.chunks)
 
+        # Store structured chunk results for KB ingest reuse
+        structured_chunks = []
+        for chunk in parsed.chunks:
+            structured_chunks.append({
+                "content": chunk.content,
+                "token_count": chunk.token_count,
+                "section": getattr(chunk, "section", None),
+                "page_no": getattr(chunk, "page_no", None),
+                "start_offset": getattr(chunk, "start_offset", None),
+                "end_offset": getattr(chunk, "end_offset", None),
+            })
+
         # 更新 version 的 metadata，保存解析结果
         session.execute(
             update(document_versions)
@@ -462,6 +474,7 @@ def run_library_parse_job_by_id(job_id: UUID) -> dict:
                     "parser_version": parsed.parser_version,
                     "preview_text": preview_text,
                     "full_text_length": len(full_text),
+                    "parsed_chunks": structured_chunks,
                 },
                 updated_by=None,
             )
