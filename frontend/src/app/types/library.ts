@@ -62,3 +62,38 @@ export interface LibraryDocumentDetailDTO {
 }
 
 export type LibraryDocumentPage = PageResponse<LibraryDocumentDTO>;
+
+export interface LibraryTextPreviewResponse {
+  text: string;
+  truncated: boolean;
+  fullLength: number;
+}
+
+export interface LibraryFullTextResponse {
+  text: string;
+}
+
+export interface LibraryParsedChunkDTO {
+  content: string;
+  tokenCount: number;
+  section?: string;
+  pageNo?: number;
+}
+
+export interface LibraryParsedChunksResponse {
+  chunks: LibraryParsedChunkDTO[];
+}
+
+export interface LibraryDocumentUsageDTO {
+  bindingId: string;
+  kbId: string;
+  kbName: string;
+  status: string;
+  chunkCount: number;
+  createdAt: string;
+}
+
+export interface LibraryDocumentUsageResponse {
+  documentId: string;
+  usages: LibraryDocumentUsageDTO[];
+}

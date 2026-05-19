@@ -1,11 +1,15 @@
-import { apiDownload, apiGet, apiPatchJson, apiPostForm } from "./apiClient";
+import { apiDelete, apiDownload, apiGet, apiPatchJson, apiPostForm, apiPostJson } from "./apiClient";
 import type { ApiDownload } from "./apiClient";
 import type {
   LibraryDocumentDTO,
   LibraryDocumentDetailDTO,
   LibraryDocumentPage,
   LibraryDocumentUploadResponse,
+  LibraryDocumentUsageResponse,
+  LibraryFullTextResponse,
   LibraryParseJobDTO,
+  LibraryParsedChunksResponse,
+  LibraryTextPreviewResponse,
 } from "../types/library";
 
 interface FetchLibraryDocumentsParams {
@@ -70,4 +74,56 @@ export async function fetchLibraryParseJobs(
   documentId: string,
 ): Promise<LibraryParseJobDTO[]> {
   return apiGet<LibraryParseJobDTO[]>(`/library/documents/${documentId}/parse-jobs`);
+}
+
+export async function fetchDocumentText(
+  documentId: string,
+  mode: "preview" | "full" | "chunks" = "preview",
+): Promise<LibraryTextPreviewResponse | LibraryFullTextResponse | LibraryParsedChunksResponse> {
+  return apiGet(`/library/documents/${documentId}/text?mode=${mode}`);
+}
+
+export async function fetchDocumentUsage(
+  documentId: string,
+): Promise<LibraryDocumentUsageResponse> {
+  return apiGet(`/library/documents/${documentId}/usage`);
+}
+
+export async function deleteLibraryDocument(
+  documentId: string,
+): Promise<void> {
+  return apiDelete(`/library/documents/${documentId}`);
+}
+
+export async function retryLibraryParse(
+  documentId: string,
+): Promise<{ jobId: string; status: string }> {
+  return apiPostJson(`/library/documents/${documentId}/parse-retry`, {});
+}
+
+export async function bindDocumentsToKB(
+  kbId: string,
+  documentIds: string[],
+): Promise<{ bindings: Array<{ bindingId: string; documentId: string; status: string }> }> {
+  return apiPostJson(`/knowledge-bases/${kbId}/library-bindings`, { documentIds });
+}
+
+export async function listKBBindings(
+  kbId: string,
+): Promise<Array<{ bindingId: string; documentId: string; documentName: string; status: string; chunkCount: number }>> {
+  return apiGet(`/knowledge-bases/${kbId}/library-bindings`);
+}
+
+export async function unbindDocument(
+  kbId: string,
+  bindingId: string,
+): Promise<void> {
+  return apiDelete(`/knowledge-bases/${kbId}/library-bindings/${bindingId}`);
+}
+
+export async function retryBinding(
+  kbId: string,
+  bindingId: string,
+): Promise<{ bindingId: string; status: string }> {
+  return apiPostJson(`/knowledge-bases/${kbId}/library-bindings/${bindingId}/retry`, {});
 }
