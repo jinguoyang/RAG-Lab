@@ -24,7 +24,16 @@ def upgrade() -> None:
         sa.Column("error_detail", postgresql.JSONB(), nullable=True),
     )
 
-    # 2. 插入权限码
+    # 2. 扩展 permissions.scope 约束，允许 'library'
+    op.execute("""
+        ALTER TABLE permissions DROP CONSTRAINT IF EXISTS ck_permissions_scope
+    """)
+    op.execute("""
+        ALTER TABLE permissions ADD CONSTRAINT ck_permissions_scope
+        CHECK (scope IN ('platform', 'kb', 'document', 'chunk', 'library'))
+    """)
+
+    # 3. 插入权限码
     op.execute("""
         INSERT INTO permissions (permission_id, permission_code, scope, name, description, status, created_at, updated_at)
         VALUES
@@ -36,17 +45,17 @@ def upgrade() -> None:
         ON CONFLICT DO NOTHING
     """)
 
-    # 3. 平台管理员绑定 library.document.admin
+    # 4. 平台管理员绑定 library.document.admin
     op.execute("""
         INSERT INTO role_permission_bindings (role_permission_id, role_scope, role_code, permission_code, effect, status, created_at, updated_at)
-        SELECT gen_random_uuid(), 'platform', 'admin', 'library.document.admin', 'allow', 'active', now(), now()
+        SELECT gen_random_uuid(), 'platform', 'platform_admin', 'library.document.admin', 'allow', 'active', now(), now()
         WHERE NOT EXISTS (
             SELECT 1 FROM role_permission_bindings
-            WHERE role_scope = 'platform' AND role_code = 'admin' AND permission_code = 'library.document.admin'
+            WHERE role_scope = 'platform' AND role_code = 'platform_admin' AND permission_code = 'library.document.admin'
         )
     """)
 
-    # 4. 普通用户绑定 read + create
+    # 5. 普通用户绑定 read + create
     op.execute("""
         INSERT INTO role_permission_bindings (role_permission_id, role_scope, role_code, permission_code, effect, status, created_at, updated_at)
         SELECT gen_random_uuid(), 'platform', role_code, perm_code, 'allow', 'active', now(), now()
@@ -65,5 +74,13 @@ def downgrade() -> None:
     """)
     op.execute("""
         DELETE FROM permissions WHERE permission_code LIKE 'library.document.%'
+    """)
+    # 恢复原始 scope 约束
+    op.execute("""
+        ALTER TABLE permissions DROP CONSTRAINT IF EXISTS ck_permissions_scope
+    """)
+    op.execute("""
+        ALTER TABLE permissions ADD CONSTRAINT ck_permissions_scope
+        CHECK (scope IN ('platform', 'kb', 'document', 'chunk'))
     """)
     op.drop_column("library_parse_jobs", "error_detail")
