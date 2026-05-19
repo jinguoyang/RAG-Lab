@@ -268,6 +268,7 @@ library_parse_jobs = sa.Table(
     sa.Column("progress", sa.Integer(), nullable=False),
     sa.Column("error_code", sa.String(length=64), nullable=True),
     sa.Column("error_message", sa.Text(), nullable=True),
+    sa.Column("error_detail", postgresql.JSONB(), nullable=True),
     sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
     sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
