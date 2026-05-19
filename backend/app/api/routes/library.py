@@ -25,6 +25,7 @@ from app.services.library_service import (
     LibraryDocumentNotFoundError,
     LibraryPermissionError,
     create_library_upload,
+    delete_library_document,
     get_library_document_detail,
     get_library_document_source_download,
     get_library_parse_jobs,
@@ -118,6 +119,20 @@ def update_document(
     """更新文档库文档的基本字段。"""
     try:
         return update_library_document(db, current_user, document_id, body.name, body.status)
+    except Exception as exc:
+        _raise_library_error(exc)
+        raise  # unreachable
+
+
+@router.delete("/{document_id}")
+def delete_document(
+    document_id: UUID,
+    current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db_session)],
+) -> dict:
+    """删除文档库文档（软删除），级联清理所有知识库绑定。"""
+    try:
+        return delete_library_document(db, current_user, document_id)
     except Exception as exc:
         _raise_library_error(exc)
         raise  # unreachable

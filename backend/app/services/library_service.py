@@ -26,6 +26,7 @@ from app.schemas.library import (
     LibraryTextPreviewResponse,
 )
 from app.tables import (
+    document_kb_bindings,
     document_versions,
     documents,
     library_parse_jobs,
@@ -368,6 +369,78 @@ def update_library_document(
 
     session.commit()
     return _to_document_dto(row)
+
+
+def delete_library_document(
+    session: Session,
+    current_user: CurrentUserResponse,
+    document_id: UUID,
+) -> dict:
+    """软删除文档并级联清理所有绑定。"""
+    _ensure_owner(session, current_user, document_id)
+    user_id = UUID(current_user.user.userId)
+
+    # 1. Soft delete the document
+    session.execute(
+        update(documents)
+        .where(documents.c.document_id == document_id)
+        .values(
+            status="archived",
+            deleted_at=func.now(),
+            deleted_by=user_id,
+            updated_at=func.now(),
+            updated_by=user_id,
+        )
+    )
+
+    # 2. Find all active bindings
+    active_bindings = list(
+        session.execute(
+            select(document_kb_bindings)
+            .where(
+                document_kb_bindings.c.document_id == document_id,
+                document_kb_bindings.c.status.in_(["active", "processing", "pending"]),
+            )
+        ).mappings()
+    )
+
+    # 3. Unbind each one
+    unbound_count = 0
+    for binding in active_bindings:
+        # Get KB-side document_id from the binding's version_id
+        kb_doc_id = session.execute(
+            select(document_versions.c.document_id)
+            .where(document_versions.c.version_id == binding["version_id"])
+            .limit(1)
+        ).scalar()
+
+        # Mark binding as disabled
+        session.execute(
+            update(document_kb_bindings)
+            .where(document_kb_bindings.c.binding_id == binding["binding_id"])
+            .values(status="disabled", updated_by=user_id, updated_at=func.now())
+        )
+
+        # Clean up KB-side document using existing delete_document
+        if kb_doc_id:
+            from app.services.document_service import delete_document as _delete_kb_doc
+
+            try:
+                _delete_kb_doc(
+                    session, current_user, binding["kb_id"], kb_doc_id,
+                    confirm_impact=True, reason="library_cascade_delete",
+                )
+            except Exception:
+                pass  # Best-effort cleanup
+
+        unbound_count += 1
+
+    session.commit()
+
+    return {
+        "documentId": str(document_id),
+        "unboundCount": unbound_count,
+    }
 
 
 def get_library_parse_jobs(
