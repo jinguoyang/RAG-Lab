@@ -263,7 +263,7 @@ export function LibraryDetail() {
           ) : previewType === "docx" ? (
             <DocxPreview documentId={docId} />
           ) : previewType === "markdown" ? (
-            <MarkdownPreview content="" loading={false} />
+            <TextPreview documentId={docId} />
           ) : previewType === "text" ? (
             <TextPreview documentId={docId} />
           ) : (

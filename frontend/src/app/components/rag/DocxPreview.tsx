@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import mammoth from "mammoth";
+import DOMPurify from "dompurify";
 import { downloadLibraryDocument } from "../../services/libraryService";
 
 interface DocxPreviewProps {
@@ -24,7 +25,7 @@ export function DocxPreview({ documentId }: DocxPreviewProps) {
         const result = await mammoth.convertToHtml({ arrayBuffer });
 
         if (!cancelled) {
-          setHtml(result.value);
+          setHtml(DOMPurify.sanitize(result.value));
         }
       } catch (err) {
         if (!cancelled) {

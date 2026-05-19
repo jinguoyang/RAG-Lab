@@ -86,7 +86,7 @@ def admin_user():
             username="admin",
             displayName="Admin User",
             email="admin@example.com",
-            platformRole="admin",
+            platformRole="platform_admin",
             securityLevel="internal",
             status="active",
         ),

@@ -482,7 +482,7 @@ def has_library_permission(
     user_id = _user_id(current_user)
 
     # 管理员自动通过
-    if current_user.user.platformRole == "admin":
+    if current_user.user.platformRole == "platform_admin":
         return True
 
     # 解析平台角色权限

@@ -269,7 +269,8 @@ def list_library_documents(
         documents.c.deleted_at.is_(None),
     ]
     if keyword:
-        where_clauses.append(documents.c.name.ilike(f"%{keyword}%"))
+        safe = keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        where_clauses.append(documents.c.name.ilike(f"%{safe}%", escape="\\"))
     if status_filter:
         where_clauses.append(documents.c.status == status_filter)
 
@@ -359,7 +360,7 @@ def update_library_document(
     doc_status: str | None = None,
 ) -> LibraryDocumentDTO:
     """更新文档库文档的基本字段。"""
-    _ensure_owner(session, current_user, document_id)
+    _ensure_owner(session, current_user, document_id, "library.document.update")
     actor_id = UUID(current_user.user.userId)
 
     values: dict = {"updated_by": actor_id}
@@ -652,7 +653,7 @@ def retry_library_parse(
             job_id=job_id,
             document_id=document_id,
             version_id=version_row["version_id"],
-            job_type="reparse",
+            job_type="reparse_library",
             status="queued",
             progress=0,
             created_by=user_id,

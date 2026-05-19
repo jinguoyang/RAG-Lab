@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import type { LibraryTextPreviewResponse } from "../../types/library";
 import { fetchDocumentText } from "../../services/libraryService";
@@ -15,7 +15,7 @@ export function TextPreview({ documentId, initialData }: TextPreviewProps) {
   const [expanded, setExpanded] = useState(false);
 
   // Load preview data on first render if not provided
-  useState(() => {
+  useEffect(() => {
     if (!data) {
       fetchDocumentText(documentId, "preview")
         .then((result) => {
@@ -23,7 +23,7 @@ export function TextPreview({ documentId, initialData }: TextPreviewProps) {
         })
         .catch(() => {});
     }
-  });
+  }, []);
 
   const handleExpand = async () => {
     if (expanded) {
