@@ -97,3 +97,39 @@ export interface LibraryDocumentUsageResponse {
   documentId: string;
   usages: LibraryDocumentUsageDTO[];
 }
+
+export interface LibraryStatsResponse {
+  totalDocuments: number;
+  todayUploads: number;
+  pendingParse: number;
+}
+
+export interface BatchActionFailedItem {
+  documentId: string;
+  error: string;
+  message: string;
+}
+
+export interface BatchActionSummary {
+  total: number;
+  succeeded: number;
+  failed: number;
+}
+
+export interface BatchActionResponse {
+  succeeded: string[];
+  failed: BatchActionFailedItem[];
+  summary: BatchActionSummary;
+}
+
+export interface UploadProgress {
+  loaded: number;
+  total: number;
+  percent: number;
+}
+
+export interface UploadWithProgressResult {
+  promise: Promise<LibraryDocumentUploadResponse>;
+  cancel: () => void;
+  onProgress: (callback: (progress: UploadProgress) => void) => void;
+}

@@ -1,6 +1,8 @@
-import { apiDelete, apiDownload, apiGet, apiPatchJson, apiPostForm, apiPostJson } from "./apiClient";
+import { apiDelete, apiDownload, apiGet, apiPatchJson, apiPostJson } from "./apiClient";
+import { API_BASE_URL } from "./apiClient";
 import type { ApiDownload } from "./apiClient";
 import type {
+  BatchActionResponse,
   LibraryDocumentDTO,
   LibraryDocumentDetailDTO,
   LibraryDocumentPage,
@@ -9,7 +11,10 @@ import type {
   LibraryFullTextResponse,
   LibraryParseJobDTO,
   LibraryParsedChunksResponse,
+  LibraryStatsResponse,
   LibraryTextPreviewResponse,
+  UploadProgress,
+  UploadWithProgressResult,
 } from "../types/library";
 
 interface FetchLibraryDocumentsParams {
@@ -36,11 +41,11 @@ export async function fetchLibraryDocuments({
   return apiGet<LibraryDocumentPage>(`/library/documents?${params.toString()}`);
 }
 
-export async function uploadLibraryDocument(
+export function uploadLibraryDocumentWithProgress(
   file: File,
   name: string,
   securityLevel: string,
-): Promise<LibraryDocumentUploadResponse> {
+): UploadWithProgressResult {
   const body = new FormData();
   body.set("file", file);
   if (name.trim()) {
@@ -48,7 +53,55 @@ export async function uploadLibraryDocument(
   }
   body.set("securityLevel", securityLevel);
 
-  return apiPostForm<LibraryDocumentUploadResponse>("/library/documents", body);
+  const xhr = new XMLHttpRequest();
+  let progressCallback: ((progress: UploadProgress) => void) | null = null;
+
+  const promise = new Promise<LibraryDocumentUploadResponse>((resolve, reject) => {
+    xhr.open("POST", `${API_BASE_URL}/library/documents`);
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && progressCallback) {
+        progressCallback({
+          loaded: event.loaded,
+          total: event.total,
+          percent: Math.round((event.loaded / event.total) * 100),
+        });
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(JSON.parse(xhr.responseText) as LibraryDocumentUploadResponse);
+      } else {
+        let message = `上传失败: ${xhr.status}`;
+        try {
+          const body = JSON.parse(xhr.responseText);
+          message = body.detail || body.message || message;
+        } catch {}
+        reject(new Error(message));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error("网络错误，请检查连接"));
+    xhr.onabort = () => reject(new Error("上传已取消"));
+
+    xhr.send(body);
+  });
+
+  return {
+    promise,
+    cancel: () => xhr.abort(),
+    onProgress: (callback) => { progressCallback = callback; },
+  };
+}
+
+// 保留原有函数作为向后兼容
+export async function uploadLibraryDocument(
+  file: File,
+  name: string,
+  securityLevel: string,
+): Promise<LibraryDocumentUploadResponse> {
+  return uploadLibraryDocumentWithProgress(file, name, securityLevel).promise;
 }
 
 export async function fetchLibraryDocumentDetail(
@@ -126,4 +179,18 @@ export async function retryBinding(
   bindingId: string,
 ): Promise<{ bindingId: string; status: string }> {
   return apiPostJson(`/knowledge-bases/${kbId}/library-bindings/${bindingId}/retry`, {});
+}
+
+export async function fetchLibraryStats(): Promise<LibraryStatsResponse> {
+  return apiGet<LibraryStatsResponse>("/library/documents/stats");
+}
+
+export async function batchAction(
+  documentIds: string[],
+  action: "delete" | "reparse" | "disable",
+): Promise<BatchActionResponse> {
+  return apiPostJson<BatchActionResponse>("/library/documents/batch-actions", {
+    documentIds,
+    action,
+  });
 }
