@@ -577,6 +577,54 @@ def run_library_parse_job_by_id(job_id: UUID) -> dict:
         session.close()
 
 
+def retry_library_parse(
+    session: Session,
+    current_user: CurrentUserResponse,
+    document_id: UUID,
+) -> dict:
+    """重新触发文档解析。"""
+    _ensure_owner(session, current_user, document_id)
+    user_id = UUID(current_user.user.userId)
+
+    version_row = session.execute(
+        select(document_versions)
+        .where(document_versions.c.document_id == document_id)
+        .order_by(document_versions.c.version_no.desc())
+        .limit(1)
+    ).mappings().first()
+    if version_row is None:
+        raise LibraryDocumentNotFoundError
+
+    # Create new parse job
+    job_id = uuid4()
+    session.execute(
+        insert(library_parse_jobs).values(
+            job_id=job_id,
+            document_id=document_id,
+            version_id=version_row["version_id"],
+            job_type="reparse",
+            status="queued",
+            progress=0,
+            created_by=user_id,
+        )
+    )
+
+    # Reset version parse status
+    session.execute(
+        update(document_versions)
+        .where(document_versions.c.version_id == version_row["version_id"])
+        .values(parse_status="pending", updated_by=user_id, updated_at=func.now())
+    )
+
+    session.commit()
+
+    # Trigger Celery
+    from app.worker import run_library_parse_task
+    run_library_parse_task.delay(str(job_id))
+
+    return {"jobId": str(job_id), "status": "queued"}
+
+
 def get_document_text(
     session: Session,
     current_user: CurrentUserResponse,

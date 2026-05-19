@@ -305,6 +305,76 @@ def unbind_document_from_kb(
     )
 
 
+def retry_binding(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    binding_id: UUID,
+) -> dict:
+    """重试失败的绑定。"""
+    _ensure_kb_permission(session, current_user, kb_id)
+
+    binding_row = session.execute(
+        select(document_kb_bindings)
+        .where(
+            document_kb_bindings.c.binding_id == binding_id,
+            document_kb_bindings.c.kb_id == kb_id,
+            document_kb_bindings.c.status == "failed",
+        )
+        .limit(1)
+    ).mappings().first()
+    if binding_row is None:
+        raise BindingNotFoundError
+
+    user_id = UUID(current_user.user.userId)
+    kb_ver_id = binding_row["version_id"]
+
+    # Get KB-side document_id
+    kb_doc_id = session.execute(
+        select(document_versions.c.document_id)
+        .where(document_versions.c.version_id == kb_ver_id)
+        .limit(1)
+    ).scalar()
+
+    # Create new ingest job
+    ingest_job_id = uuid4()
+    session.execute(
+        insert(ingest_jobs).values(
+            job_id=ingest_job_id,
+            kb_id=kb_id,
+            document_id=kb_doc_id,
+            version_id=kb_ver_id,
+            job_type="upload_parse",
+            status="queued",
+            stage="queued",
+            progress=0,
+            result_summary={},
+            created_by=user_id,
+        )
+    )
+
+    # Reset binding status
+    session.execute(
+        update(document_kb_bindings)
+        .where(document_kb_bindings.c.binding_id == binding_id)
+        .values(
+            status="processing",
+            error_code=None,
+            error_message=None,
+            updated_by=user_id,
+            updated_at=func.now(),
+        )
+    )
+
+    session.commit()
+
+    # Trigger Celery
+    from app.worker import run_document_ingest_task
+    run_document_ingest_task.delay(str(ingest_job_id))
+
+    return {"bindingId": str(binding_id), "ingestJobId": str(ingest_job_id), "status": "processing"}
+
+
 def list_kb_bindings(
     session: Session,
     current_user: CurrentUserResponse,

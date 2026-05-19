@@ -31,6 +31,7 @@ from app.services.library_service import (
     get_library_parse_jobs,
     get_document_text,
     list_library_documents,
+    retry_library_parse,
     update_library_document,
 )
 from app.services.object_storage import ObjectStorageError
@@ -170,6 +171,20 @@ def list_parse_jobs(
     """获取文档的解析作业列表。"""
     try:
         return get_library_parse_jobs(db, current_user, document_id)
+    except Exception as exc:
+        _raise_library_error(exc)
+        raise  # unreachable
+
+
+@router.post("/{document_id}/parse-retry")
+def retry_parse(
+    document_id: UUID,
+    current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db_session)],
+) -> dict:
+    """重新触发文档解析。"""
+    try:
+        return retry_library_parse(db, current_user, document_id)
     except Exception as exc:
         _raise_library_error(exc)
         raise  # unreachable

@@ -23,6 +23,7 @@ from app.services.binding_service import (
     BindingPermissionError,
     bind_documents_to_kb,
     list_kb_bindings,
+    retry_binding,
     unbind_document_from_kb,
 )
 
@@ -87,6 +88,21 @@ def list_bindings(
     """列出知识库的所有文档库绑定。"""
     try:
         return list_kb_bindings(db, current_user, kb_id)
+    except Exception as exc:
+        _raise_binding_error(exc)
+        raise  # unreachable
+
+
+@router.post("/{binding_id}/retry")
+def retry_binding_route(
+    kb_id: UUID,
+    binding_id: UUID,
+    current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db_session)],
+) -> dict:
+    """重试失败的绑定。"""
+    try:
+        return retry_binding(db, current_user, kb_id, binding_id)
     except Exception as exc:
         _raise_binding_error(exc)
         raise  # unreachable
