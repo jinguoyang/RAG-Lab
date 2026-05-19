@@ -8,7 +8,7 @@
 - 建议版本：V1.8
 - 时间范围：待定
 - 目标：将治理后的知识库与 Pipeline 以 RAG 应用形式暴露给外部 Web 应用，先跑通 blocking 对话接口、App API Key 鉴权和 QARun 可追溯闭环。
-- 开发计划：[RAG App Runtime Implementation Plan](../../../superpowers/plans/2026-05-14-rag-app-runtime.md)
+- 开发计划：[RAG App Runtime Implementation Plan](../../plans/2026-05-14-rag-app-runtime.md)
 
 ## 2. 关键假设
 

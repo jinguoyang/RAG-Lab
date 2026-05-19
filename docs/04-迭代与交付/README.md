@@ -39,7 +39,7 @@
 - `sprints/sprint1-20/Sprint-01.md` 至 `sprints/sprint1-20/Sprint-20.md`
 - `sprints/sprint21-40/Sprint-21.md` 至 `sprints/sprint21-40/Sprint-29.md`
 - `releases/V1.0-*.md` 至 `releases/V1.7-*.md`
-- `docs/superpowers/specs/` 和 `docs/superpowers/plans/`
+- `docs/04-迭代与交付/specs/` 和 `docs/04-迭代与交付/plans/`
 - 已删除的阶段性 `backend/scripts/verify_*.py` 脚本只保留在历史文档记录中，不再作为当前验证入口。
 
 历史归档中出现旧计划、旧假设或当时的“待定”字样时，一般保留原貌；只在它会误导当前入口时补充归档说明。

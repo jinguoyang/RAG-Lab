@@ -8,7 +8,7 @@
 - 建议版本：V1.8
 - 时间范围：待定
 - 目标：在 Sprint 30 后端最小链路基础上，补齐 P13 RAG 应用管理入口，让知识库负责人可以创建应用、管理 App API Key、查看调用记录和会话摘要，并跳转回 QARun 做内部诊断。
-- 开发计划：[RAG App Management UI Implementation Plan](../../../superpowers/plans/2026-05-15-rag-app-management-ui.md)
+- 开发计划：[RAG App Management UI Implementation Plan](../../plans/2026-05-15-rag-app-management-ui.md)
 
 ## 2. 关键假设
 

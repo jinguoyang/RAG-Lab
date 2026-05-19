@@ -12,6 +12,7 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 - Sprint 31 已完成 P13 RAG App 管理端入口、API Key 管理、调用记录和会话摘要；Sprint 32 已完成 App Runtime 安全边界设计和真实 Provider 轻量网络级复测；Sprint 33 至 Sprint 34 已完成 V1.8 后续计划，覆盖生产化能力、治理回流与架构预留评估。
 - Sprint 35 已完成，聚焦前端真实动作触发 App Runtime、反馈回流、调用审计、QA 历史回溯和真实 Provider 端到端验收硬化。
 - 后续新增工作应先进入 [产品待办清单](../产品待办清单.md)，再建立新的 Sprint 文档。
+- 所有开发计划和设计规范统一存放在 `docs/04-迭代与交付/plans/` 和 `docs/04-迭代与交付/specs/` 下，不再维护独立的计划目录。
 
 ## 2. 历史 Sprint 索引
 
