@@ -402,7 +402,7 @@ export function Library() {
       {isUploadOpen && (
         <div className="fixed inset-0 z-50 flex">
           <div className="absolute inset-0 bg-black/30" onClick={() => setIsUploadOpen(false)} />
-          <div className="ml-auto w-[420px] bg-ivory border-l border-border-cream flex flex-col shadow-xl">
+          <div className="relative ml-auto w-[420px] bg-ivory border-l border-border-cream flex flex-col shadow-xl">
             <div className="p-6 border-b border-border-cream">
               <h2 className="text-lg font-serif text-near-black">上传文档</h2>
               <p className="text-sm text-stone-gray mt-1">文件将保存到个人文档库</p>

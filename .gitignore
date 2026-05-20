@@ -39,6 +39,9 @@ env/
 .superpowers/
 .worktrees/
 
+# Playwright MCP local settings
+.playwright-mcp/
+
 # Claude Code local settings
 .claude/
 

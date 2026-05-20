@@ -538,27 +538,27 @@ export function RagAppManagement() {
   };
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      <PageHeader
-        title="应用中心"
-        description="将治理后的知识库和配置版本发布为外部可调用应用。"
-        actions={
-          <>
-            <Button variant="outline" onClick={() => void loadApps()} disabled={isLoadingApps}>
-              <RefreshCw className="mr-2 h-4 w-4" /> 刷新
-            </Button>
-            <Button variant="outline" onClick={() => setIsApiDocDrawerOpen(true)} disabled={!selectedApp}>
-              <FileText className="mr-2 h-4 w-4" /> 调用文档
-            </Button>
-            <Button variant="primary" onClick={openCreateForm}>
-              <Plus className="mr-2 h-4 w-4" /> 创建应用
-            </Button>
-          </>
-        }
-      />
+    <div className="flex-1 overflow-auto">
+      <div className="p-8 max-w-7xl mx-auto space-y-6">
+        <PageHeader
+          title="应用中心"
+          description="将治理后的知识库和配置版本发布为外部可调用应用。"
+          actions={
+            <>
+              <Button variant="outline" onClick={() => void loadApps()} disabled={isLoadingApps}>
+                <RefreshCw className="mr-2 h-4 w-4" /> 刷新
+              </Button>
+              <Button variant="outline" onClick={() => setIsApiDocDrawerOpen(true)} disabled={!selectedApp}>
+                <FileText className="mr-2 h-4 w-4" /> 调用文档
+              </Button>
+              <Button variant="primary" onClick={openCreateForm}>
+                <Plus className="mr-2 h-4 w-4" /> 创建应用
+              </Button>
+            </>
+          }
+        />
 
-      <div className="flex-1 overflow-auto p-8">
-        <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 xl:grid-cols-[minmax(520px,1fr)_440px]">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(520px,1fr)_440px]">
           <section className="space-y-4">
             {feedback && (
               <Alert variant={feedback.variant} title={feedback.title} onClose={() => setFeedback(null)}>
@@ -1009,7 +1009,6 @@ export function RagAppManagement() {
             )}
           </aside>
         </div>
-      </div>
 
       <Drawer
         isOpen={isApiDocDrawerOpen && Boolean(selectedApp)}
@@ -1176,6 +1175,7 @@ Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/app-runtime/ch
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }

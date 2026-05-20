@@ -187,29 +187,28 @@ export function LibraryDocuments() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
-    <div className="flex flex-col h-full">
-      <PageHeader
-        title={library?.name ?? "文档库"}
-        description={library?.description ?? undefined}
-        breadcrumbs={[
-          { label: "文档库", href: "/library" },
-          { label: library?.name ?? "..." },
-        ]}
-        actions={
-          <div className="flex items-center gap-2">
-            {library?.visibility === "partial" && (
-              <Button variant="secondary" onClick={() => navigate(`/library/${libraryId}/members`)}>
-                <Users className="w-4 h-4 mr-2" /> 成员管理
+    <div className="flex-1 overflow-auto">
+      <div className="p-8 max-w-7xl mx-auto space-y-6">
+        <PageHeader
+          title={library?.name ?? "文档库"}
+          description={library?.description ?? undefined}
+          breadcrumbs={[
+            { label: "文档库", href: "/library" },
+            { label: library?.name ?? "..." },
+          ]}
+          actions={
+            <div className="flex items-center gap-2">
+              {library?.visibility === "partial" && (
+                <Button variant="secondary" onClick={() => navigate(`/library/${libraryId}/members`)}>
+                  <Users className="w-4 h-4 mr-2" /> 成员管理
+                </Button>
+              )}
+              <Button onClick={() => setIsUploadOpen(true)}>
+                <Upload className="w-4 h-4 mr-2" /> 上传文档
               </Button>
-            )}
-            <Button onClick={() => setIsUploadOpen(true)}>
-              <Upload className="w-4 h-4 mr-2" /> 上传文档
-            </Button>
-          </div>
-        }
-      />
-
-      <div className="flex-1 min-h-0 overflow-auto p-8 space-y-6 max-w-7xl mx-auto w-full">
+            </div>
+          }
+        />
         {feedback && (
           <Alert variant={feedback.variant} title={feedback.title} onClose={() => setFeedback(null)}>
             {feedback.message}
@@ -383,7 +382,7 @@ export function LibraryDocuments() {
       {isUploadOpen && (
         <div className="fixed inset-0 z-50 flex">
           <div className="absolute inset-0 bg-black/30" onClick={() => setIsUploadOpen(false)} />
-          <div className="ml-auto w-[420px] bg-ivory border-l border-border-cream flex flex-col shadow-xl">
+          <div className="relative ml-auto w-[420px] bg-ivory border-l border-border-cream flex flex-col shadow-xl">
             <div className="p-6 border-b border-border-cream">
               <h2 className="text-lg font-serif text-near-black">上传文档</h2>
               <p className="text-sm text-stone-gray mt-1">

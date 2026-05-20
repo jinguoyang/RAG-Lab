@@ -136,18 +136,17 @@ export function DictionaryManagement() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <PageHeader
-        title="字典管理"
-        description="维护密级、来源、角色展示名和反馈标签。"
-        actions={
-          <Button variant="outline" onClick={() => void loadItems()} disabled={isLoading}>
-            <RefreshCw className="mr-2 h-4 w-4" /> 刷新
-          </Button>
-        }
-      />
-
-      <div className="flex-1 min-h-0 overflow-auto p-8 max-w-7xl mx-auto w-full space-y-6">
+    <div className="flex-1 overflow-auto">
+      <div className="p-8 max-w-7xl mx-auto space-y-6">
+        <PageHeader
+          title="字典管理"
+          description="维护密级、来源、角色展示名和反馈标签。"
+          actions={
+            <Button variant="outline" onClick={() => void loadItems()} disabled={isLoading}>
+              <RefreshCw className="mr-2 h-4 w-4" /> 刷新
+            </Button>
+          }
+        />
         {feedback && (
           <Alert variant={feedback.variant} title={feedback.title} onClose={() => setFeedback(null)}>
             {feedback.message}

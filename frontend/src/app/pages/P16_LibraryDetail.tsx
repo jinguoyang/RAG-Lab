@@ -257,26 +257,25 @@ export function LibraryDetail() {
   const previewType = getPreviewType(doc.name);
 
   return (
-    <div className="flex flex-col h-full">
-      <PageHeader
-        title={doc.name}
-        breadcrumbs={[
-          { label: "文档库", href: "/library" },
-          { label: doc.name },
-        ]}
-        actions={
-          <div className="flex items-center gap-2">
-            <Button variant="secondary" onClick={() => void handleDownload()}>
-              <Download className="w-4 h-4 mr-2" /> 下载
-            </Button>
-            <Button variant="secondary" onClick={() => void loadData()}>
-              <RefreshCw className="w-4 h-4 mr-2" /> 刷新
-            </Button>
-          </div>
-        }
-      />
-
-      <div className="flex-1 min-h-0 overflow-auto p-8 space-y-6">
+    <div className="flex-1 overflow-auto">
+      <div className="p-8 max-w-7xl mx-auto space-y-6">
+        <PageHeader
+          title={doc.name}
+          breadcrumbs={[
+            { label: "文档库", href: "/library" },
+            { label: doc.name },
+          ]}
+          actions={
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" onClick={() => void handleDownload()}>
+                <Download className="w-4 h-4 mr-2" /> 下载
+              </Button>
+              <Button variant="secondary" onClick={() => void loadData()}>
+                <RefreshCw className="w-4 h-4 mr-2" /> 刷新
+              </Button>
+            </div>
+          }
+        />
         {feedback && (
           <Alert variant={feedback.variant} title={feedback.title} onClose={() => setFeedback(null)}>
             {feedback.message}

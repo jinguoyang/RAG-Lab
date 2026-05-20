@@ -137,22 +137,21 @@ export function LibraryMembers() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <PageHeader
-        title={`成员管理 - ${library?.name ?? ""}`}
-        breadcrumbs={[
-          { label: "文档库", href: "/library" },
-          { label: library?.name ?? "...", href: `/library/${libraryId}` },
-          { label: "成员管理" },
-        ]}
-        actions={
-          <Button onClick={() => setAddOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" /> 添加成员
-          </Button>
-        }
-      />
-
-      <div className="flex-1 min-h-0 overflow-auto p-8 space-y-6 max-w-7xl mx-auto w-full">
+    <div className="flex-1 overflow-auto">
+      <div className="p-8 max-w-7xl mx-auto space-y-6">
+        <PageHeader
+          title={`成员管理 - ${library?.name ?? ""}`}
+          breadcrumbs={[
+            { label: "文档库", href: "/library" },
+            { label: library?.name ?? "...", href: `/library/${libraryId}` },
+            { label: "成员管理" },
+          ]}
+          actions={
+            <Button onClick={() => setAddOpen(true)}>
+              <Plus className="w-4 h-4 mr-2" /> 添加成员
+            </Button>
+          }
+        />
         {feedback && (
           <Alert variant={feedback.variant} title={feedback.title} onClose={() => setFeedback(null)}>
             {feedback.message}
@@ -257,7 +256,7 @@ export function LibraryMembers() {
       {addOpen && (
         <div className="fixed inset-0 z-50 flex">
           <div className="absolute inset-0 bg-black/30" onClick={() => setAddOpen(false)} />
-          <div className="ml-auto w-[420px] bg-ivory border-l border-border-cream flex flex-col shadow-xl">
+          <div className="relative ml-auto w-[420px] bg-ivory border-l border-border-cream flex flex-col shadow-xl">
             <div className="p-6 border-b border-border-cream">
               <h2 className="text-lg font-serif text-near-black">添加成员</h2>
             </div>
