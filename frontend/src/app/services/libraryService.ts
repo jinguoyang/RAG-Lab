@@ -8,11 +8,17 @@ import type {
   LibraryDocumentPage,
   LibraryDocumentUploadResponse,
   LibraryDocumentUsageResponse,
+  LibraryDocumentVersionDTO,
+  LibraryDTO,
   LibraryFullTextResponse,
+  LibraryMemberDTO,
+  LibraryPageResponse,
   LibraryParseJobDTO,
   LibraryParsedChunksResponse,
   LibraryStatsResponse,
   LibraryTextPreviewResponse,
+  LibraryVersionActivateResponse,
+  LibraryVersionUploadResponse,
   UploadProgress,
   UploadWithProgressResult,
 } from "../types/library";
@@ -22,6 +28,7 @@ interface FetchLibraryDocumentsParams {
   pageNo?: number;
   pageSize?: number;
   status?: string;
+  libraryId?: string;
 }
 
 export async function fetchLibraryDocuments({
@@ -29,6 +36,7 @@ export async function fetchLibraryDocuments({
   pageNo = 1,
   pageSize = 20,
   status,
+  libraryId,
 }: FetchLibraryDocumentsParams = {}): Promise<LibraryDocumentPage> {
   const params = new URLSearchParams({ pageNo: String(pageNo), pageSize: String(pageSize) });
   if (keyword?.trim()) {
@@ -37,6 +45,9 @@ export async function fetchLibraryDocuments({
   if (status) {
     params.set("status", status);
   }
+  if (libraryId) {
+    params.set("library_id", libraryId);
+  }
 
   return apiGet<LibraryDocumentPage>(`/library/documents?${params.toString()}`);
 }
@@ -44,14 +55,16 @@ export async function fetchLibraryDocuments({
 export function uploadLibraryDocumentWithProgress(
   file: File,
   name: string,
-  securityLevel: string,
+  libraryId?: string,
 ): UploadWithProgressResult {
   const body = new FormData();
   body.set("file", file);
   if (name.trim()) {
     body.set("name", name.trim());
   }
-  body.set("securityLevel", securityLevel);
+  if (libraryId) {
+    body.set("libraryId", libraryId);
+  }
 
   const xhr = new XMLHttpRequest();
   let progressCallback: ((progress: UploadProgress) => void) | null = null;
@@ -99,9 +112,9 @@ export function uploadLibraryDocumentWithProgress(
 export async function uploadLibraryDocument(
   file: File,
   name: string,
-  securityLevel: string,
+  libraryId?: string,
 ): Promise<LibraryDocumentUploadResponse> {
-  return uploadLibraryDocumentWithProgress(file, name, securityLevel).promise;
+  return uploadLibraryDocumentWithProgress(file, name, libraryId).promise;
 }
 
 export async function fetchLibraryDocumentDetail(
@@ -193,4 +206,147 @@ export async function batchAction(
     documentIds,
     action,
   });
+}
+
+// --- 版本管理 API ---
+
+export async function fetchLibraryVersions(
+  documentId: string,
+): Promise<LibraryDocumentVersionDTO[]> {
+  return apiGet(`/library/documents/${documentId}/versions`);
+}
+
+export function uploadLibraryVersionWithProgress(
+  documentId: string,
+  file: File,
+): UploadWithProgressResult {
+  const body = new FormData();
+  body.set("file", file);
+
+  const xhr = new XMLHttpRequest();
+  let progressCallback: ((progress: UploadProgress) => void) | null = null;
+
+  const promise = new Promise<LibraryVersionUploadResponse>((resolve, reject) => {
+    xhr.open("POST", `${API_BASE_URL}/library/documents/${documentId}/versions`);
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && progressCallback) {
+        progressCallback({
+          loaded: event.loaded,
+          total: event.total,
+          percent: Math.round((event.loaded / event.total) * 100),
+        });
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(JSON.parse(xhr.responseText) as LibraryVersionUploadResponse);
+      } else {
+        let message = `上传失败: ${xhr.status}`;
+        try {
+          const errBody = JSON.parse(xhr.responseText);
+          message = errBody.detail || errBody.message || message;
+        } catch {}
+        reject(new Error(message));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error("网络错误，请检查连接"));
+    xhr.onabort = () => reject(new Error("上传已取消"));
+
+    xhr.send(body);
+  });
+
+  return {
+    promise,
+    cancel: () => xhr.abort(),
+    onProgress: (callback) => { progressCallback = callback; },
+  };
+}
+
+export async function activateLibraryVersion(
+  documentId: string,
+  versionId: string,
+  confirmImpact: boolean = true,
+): Promise<LibraryVersionActivateResponse> {
+  return apiPostJson(`/library/documents/${documentId}/versions/${versionId}/activate`, { confirmImpact });
+}
+
+export async function deleteLibraryVersion(
+  documentId: string,
+  versionId: string,
+): Promise<void> {
+  return apiDelete(`/library/documents/${documentId}/versions/${versionId}`);
+}
+
+export async function switchBindingVersion(
+  kbId: string,
+  bindingId: string,
+  libraryVersionId: string,
+): Promise<{ bindingId: string; status: string }> {
+  return apiPostJson(`/knowledge-bases/${kbId}/library-bindings/${bindingId}/switch-version`, { libraryVersionId });
+}
+
+// --- 文档库管理 API ---
+
+export async function fetchLibraries(params: {
+  pageNo?: number;
+  pageSize?: number;
+  keyword?: string;
+} = {}): Promise<LibraryPageResponse> {
+  const searchParams = new URLSearchParams({
+    page_no: String(params.pageNo ?? 1),
+    page_size: String(params.pageSize ?? 20),
+  });
+  if (params.keyword?.trim()) {
+    searchParams.set("keyword", params.keyword.trim());
+  }
+  return apiGet<LibraryPageResponse>(`/library?${searchParams.toString()}`);
+}
+
+export async function createLibrary(body: {
+  name: string;
+  description?: string;
+  visibility: "public" | "personal" | "partial";
+}): Promise<LibraryDTO> {
+  return apiPostJson<LibraryDTO>("/library", body);
+}
+
+export async function fetchLibraryDetail(libraryId: string): Promise<LibraryDTO> {
+  return apiGet<LibraryDTO>(`/library/${libraryId}`);
+}
+
+export async function updateLibrary(
+  libraryId: string,
+  body: { name?: string; description?: string; visibility?: string },
+): Promise<LibraryDTO> {
+  return apiPatchJson<LibraryDTO>(`/library/${libraryId}`, body);
+}
+
+export async function deleteLibrary(libraryId: string): Promise<void> {
+  return apiDelete(`/library/${libraryId}`);
+}
+
+export async function fetchLibraryMembers(libraryId: string): Promise<LibraryMemberDTO[]> {
+  return apiGet<LibraryMemberDTO[]>(`/library/${libraryId}/members`);
+}
+
+export async function addLibraryMember(
+  libraryId: string,
+  body: { subjectType: "user" | "group"; subjectId: string; permissionLevel: "read_only" | "document_manage" },
+): Promise<LibraryMemberDTO> {
+  return apiPostJson<LibraryMemberDTO>(`/library/${libraryId}/members`, body);
+}
+
+export async function updateLibraryMember(
+  libraryId: string,
+  bindingId: string,
+  body: { permissionLevel: "read_only" | "document_manage" },
+): Promise<LibraryMemberDTO> {
+  return apiPatchJson<LibraryMemberDTO>(`/library/${libraryId}/members/${bindingId}`, body);
+}
+
+export async function removeLibraryMember(libraryId: string, bindingId: string): Promise<void> {
+  return apiDelete(`/library/${libraryId}/members/${bindingId}`);
 }

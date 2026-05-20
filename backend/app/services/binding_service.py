@@ -41,6 +41,10 @@ class BindingNotFoundError(Exception):
     """绑定记录不存在。"""
 
 
+class BindingVersionNotReadyError(Exception):
+    """目标版本尚未解析完成。"""
+
+
 def _ensure_library_owner(
     session: Session,
     current_user: CurrentUserResponse,
@@ -402,3 +406,129 @@ def list_kb_bindings(
         result.append(_to_binding_dto(row_dict, doc_name=doc_name))
 
     return result
+
+
+def switch_binding_version(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    binding_id: UUID,
+    target_library_version_id: UUID,
+) -> LibraryBindingDTO:
+    """切换 KB 绑定到不同的库文档版本。"""
+    _ensure_kb_permission(session, current_user, kb_id)
+
+    # 加载绑定行
+    binding_row = session.execute(
+        select(document_kb_bindings).where(
+            document_kb_bindings.c.binding_id == binding_id,
+            document_kb_bindings.c.kb_id == kb_id,
+        ).limit(1)
+    ).mappings().first()
+    if binding_row is None:
+        raise BindingNotFoundError
+
+    # 验证用户拥有库文档
+    lib_doc_id = binding_row["document_id"]
+    lib_doc_row = _ensure_library_owner(session, current_user, lib_doc_id)
+    doc_name = lib_doc_row["name"]
+
+    # 验证目标库版本
+    target_ver = session.execute(
+        select(document_versions).where(
+            document_versions.c.version_id == target_library_version_id,
+            document_versions.c.document_id == lib_doc_id,
+            document_versions.c.deleted_at.is_(None),
+        ).limit(1)
+    ).mappings().first()
+    if target_ver is None:
+        raise BindingDocumentNotFoundError(f"Library version {target_library_version_id} not found")
+    if target_ver["parse_status"] != "success":
+        raise BindingVersionNotReadyError
+
+    # 获取 KB 侧文档 ID（通过当前绑定的 version_id 找到 KB 侧 document_id）
+    current_kb_version = session.execute(
+        select(document_versions.c.document_id).where(
+            document_versions.c.version_id == binding_row["version_id"],
+        )
+    ).scalar()
+    if current_kb_version is None:
+        raise BindingNotFoundError
+
+    kb_doc_id = current_kb_version
+    actor_id = UUID(current_user.user.userId)
+
+    # 查询 KB 侧文档当前最大 version_no
+    max_kb_version_no = session.execute(
+        select(func.max(document_versions.c.version_no))
+        .where(document_versions.c.document_id == kb_doc_id)
+    ).scalar() or 0
+
+    # 创建 KB 侧新 document_versions 行
+    new_kb_version_id = uuid4()
+    session.execute(
+        insert(document_versions).values(
+            version_id=new_kb_version_id,
+            document_id=kb_doc_id,
+            version_no=max_kb_version_no + 1,
+            source_file_id=target_ver["source_file_id"],
+            status="processing",
+            parse_status="pending",
+            dense_index_status="pending",
+            sparse_index_status="pending",
+            graph_index_status="pending",
+            retrieval_ready=False,
+            chunk_count=0,
+            metadata={
+                "library_document_id": str(lib_doc_id),
+                "library_version_id": str(target_library_version_id),
+            },
+            created_by=actor_id,
+            updated_by=actor_id,
+        )
+    )
+
+    # 更新绑定指向新 KB 版本
+    session.execute(
+        update(document_kb_bindings)
+        .where(document_kb_bindings.c.binding_id == binding_id)
+        .values(
+            version_id=new_kb_version_id,
+            status="processing",
+            updated_at=func.now(),
+            updated_by=actor_id,
+        )
+    )
+
+    # 创建 ingest 任务
+    job_id = uuid4()
+    session.execute(
+        insert(ingest_jobs).values(
+            job_id=job_id,
+            kb_id=kb_id,
+            document_id=kb_doc_id,
+            version_id=new_kb_version_id,
+            job_type="reparse",
+            status="queued",
+            stage="queued",
+            progress=0,
+            result_summary={},
+            created_by=actor_id,
+        )
+    )
+
+    session.commit()
+
+    # 触发 Celery
+    try:
+        from app.worker import run_document_ingest_task
+        run_document_ingest_task.delay(str(job_id))
+    except Exception:
+        pass
+
+    # 返回更新后的绑定 DTO
+    updated_binding = session.execute(
+        select(document_kb_bindings).where(document_kb_bindings.c.binding_id == binding_id)
+    ).mappings().one()
+
+    return _to_binding_dto(dict(updated_binding), doc_name=doc_name)

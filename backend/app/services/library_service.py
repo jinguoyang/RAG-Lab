@@ -24,6 +24,8 @@ from app.schemas.library import (
     LibraryParsedChunksResponse,
     LibraryStoredFileDTO,
     LibraryTextPreviewResponse,
+    LibraryVersionActivateResponse,
+    LibraryVersionUploadResponse,
 )
 from app.tables import (
     document_kb_bindings,
@@ -45,6 +47,18 @@ class LibraryDocumentNotFoundError(Exception):
     """文档不存在或不属于当前用户。"""
 
 
+class LibraryVersionNotFoundError(Exception):
+    """版本不存在或不属于当前文档。"""
+
+
+class LibraryVersionInUseError(Exception):
+    """版本正在被知识库绑定引用，无法删除。"""
+
+    def __init__(self, kb_names: list[str]) -> None:
+        self.kb_names = kb_names
+        super().__init__(f"Version is in use by KBs: {', '.join(kb_names)}")
+
+
 def _safe_file_name(file_name: str) -> str:
     """提取并清理文件名，避免路径遍历。"""
     return PurePath(file_name).name or "uploaded-document"
@@ -54,9 +68,9 @@ def _to_document_dto(row: RowMapping) -> LibraryDocumentDTO:
     return LibraryDocumentDTO(
         documentId=str(row["document_id"]),
         ownerId=str(row["owner_id"]),
+        libraryId=str(row["library_id"]) if row.get("library_id") else None,
         name=row["name"],
         sourceType=row["source_type"],
-        securityLevel=row["security_level"],
         status=row["status"],
         activeVersionId=str(row["active_version_id"]) if row["active_version_id"] else None,
         createdAt=row["created_at"].isoformat(),
@@ -64,12 +78,14 @@ def _to_document_dto(row: RowMapping) -> LibraryDocumentDTO:
     )
 
 
-def _to_version_dto(row: RowMapping) -> LibraryDocumentVersionDTO:
+def _to_version_dto(row: RowMapping, file_name: str | None = None, file_size: int | None = None) -> LibraryDocumentVersionDTO:
     return LibraryDocumentVersionDTO(
         versionId=str(row["version_id"]),
         documentId=str(row["document_id"]),
         versionNo=row["version_no"],
         sourceFileId=str(row["source_file_id"]),
+        fileName=file_name,
+        fileSize=file_size,
         status=row["status"],
         parseStatus=row["parse_status"],
         chunkCount=row["chunk_count"],
@@ -111,7 +127,8 @@ def _ensure_owner(
     permission_code: str = "library.document.read",
 ) -> RowMapping:
     """校验文档存在且当前用户有权限访问，否则抛出异常。"""
-    from app.services.permission_service import has_library_permission
+    from app.tables import document_libraries
+    from app.services.permission_service import has_library_access
 
     row = session.execute(
         select(documents)
@@ -124,9 +141,33 @@ def _ensure_owner(
     if row is None:
         raise LibraryDocumentNotFoundError
 
-    owner_id = row["owner_id"]
-    if owner_id is not None and not has_library_permission(
-        session, current_user, permission_code, document_owner_id=UUID(str(owner_id)),
+    # 获取文档库信息以进行可见性判断
+    library_owner_id = None
+    library_visibility = None
+    library_id = row.get("library_id")
+    if library_id:
+        lib_row = session.execute(
+            select(document_libraries.c.owner_id, document_libraries.c.visibility).where(
+                document_libraries.c.library_id == library_id,
+                document_libraries.c.deleted_at.is_(None),
+            )
+        ).mappings().first()
+        if lib_row:
+            library_owner_id = UUID(str(lib_row["owner_id"]))
+            library_visibility = lib_row["visibility"]
+
+    # 回退：如果没有 library_id，使用 owner_id
+    if library_owner_id is None:
+        owner_id = row.get("owner_id")
+        if owner_id:
+            library_owner_id = UUID(str(owner_id))
+            library_visibility = "personal"
+
+    if not has_library_access(
+        session, current_user, permission_code,
+        library_id=UUID(str(library_id)) if library_id else None,
+        library_owner_id=library_owner_id,
+        library_visibility=library_visibility,
     ):
         raise LibraryPermissionError
     return row
@@ -139,7 +180,7 @@ def create_library_upload(
     mime_type: str | None,
     file_bytes: bytes,
     name: str | None,
-    security_level: str | None,
+    library_id: UUID | None = None,
     storage_provider: ObjectStorageProvider | None = None,
 ) -> LibraryDocumentUploadResponse:
     """上传文档到个人文档库，创建文件、文档、版本和解析作业。"""
@@ -152,7 +193,36 @@ def create_library_upload(
     normalized_file_name = _safe_file_name(file_name)
     document_name = (name or normalized_file_name).strip() or normalized_file_name
     checksum = sha256(file_bytes).hexdigest()
-    resolved_security_level = security_level or "internal"
+
+    # 如果未指定 library_id，使用用户的默认文档库
+    if library_id is None:
+        from app.tables import document_libraries
+        default_lib = session.execute(
+            select(document_libraries.c.library_id).where(
+                document_libraries.c.owner_id == actor_id,
+                document_libraries.c.name == "默认文档库",
+                document_libraries.c.deleted_at.is_(None),
+            ).limit(1)
+        ).scalar()
+        if default_lib:
+            library_id = default_lib
+        else:
+            # 自动创建默认文档库
+            library_id = uuid4()
+            now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            session.execute(
+                document_libraries.insert().values(
+                    library_id=library_id,
+                    owner_id=actor_id,
+                    name="默认文档库",
+                    visibility="personal",
+                    status="active",
+                    created_at=now,
+                    created_by=actor_id,
+                    updated_at=now,
+                    updated_by=actor_id,
+                )
+            )
 
     object_prefix = settings.storage_object_prefix.strip("/")
     object_path = f"users/{actor_id}/library/{document_id}/{normalized_file_name}"
@@ -184,9 +254,10 @@ def create_library_upload(
             document_id=document_id,
             kb_id=None,
             owner_id=actor_id,
+            library_id=library_id,
             name=document_name,
             source_type="upload",
-            security_level=resolved_security_level,
+            security_level="internal",
             status="active",
             metadata={},
             created_by=actor_id,
@@ -261,13 +332,26 @@ def list_library_documents(
     page_size: int = 20,
     keyword: str | None = None,
     status_filter: str | None = None,
+    library_id: UUID | None = None,
 ) -> PageResponse[LibraryDocumentDTO]:
     """分页列出当前用户的文档库文档。"""
+    from app.tables import document_libraries
+    from app.services.permission_service import library_visibility_condition
+
+    # 使用可见性条件替代简单的 owner_id 过滤
     owner_id = UUID(current_user.user.userId)
     where_clauses = [
-        documents.c.owner_id == owner_id,
         documents.c.deleted_at.is_(None),
     ]
+
+    if library_id:
+        # 指定库时，直接按 library_id 过滤
+        where_clauses.append(documents.c.library_id == library_id)
+    else:
+        # 未指定库时，使用可见性条件
+        vis_cond = library_visibility_condition(current_user)
+        visible_library_ids = select(document_libraries.c.library_id).where(vis_cond)
+        where_clauses.append(documents.c.library_id.in_(visible_library_ids))
     if keyword:
         safe = keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         where_clauses.append(documents.c.name.ilike(f"%{safe}%", escape="\\"))
@@ -637,10 +721,19 @@ def retry_library_parse(
     _ensure_owner(session, current_user, document_id)
     user_id = UUID(current_user.user.userId)
 
+    # 使用活跃版本而非最新版本
+    doc_row = session.execute(
+        select(documents.c.active_version_id).where(documents.c.document_id == document_id)
+    ).mappings().first()
+    if not doc_row or not doc_row["active_version_id"]:
+        raise LibraryDocumentNotFoundError
+
     version_row = session.execute(
         select(document_versions)
-        .where(document_versions.c.document_id == document_id)
-        .order_by(document_versions.c.version_no.desc())
+        .where(
+            document_versions.c.version_id == doc_row["active_version_id"],
+            document_versions.c.deleted_at.is_(None),
+        )
         .limit(1)
     ).mappings().first()
     if version_row is None:
@@ -790,10 +883,19 @@ def get_document_text(
     """获取文档的文本内容，支持 preview/full/chunks 三种模式。"""
     _ensure_owner(session, current_user, document_id)
 
+    # 使用活跃版本而非最新版本
+    doc_row = session.execute(
+        select(documents.c.active_version_id).where(documents.c.document_id == document_id)
+    ).mappings().first()
+    if not doc_row or not doc_row["active_version_id"]:
+        raise LibraryDocumentNotFoundError
+
     ver_row = session.execute(
         select(document_versions)
-        .where(document_versions.c.document_id == document_id)
-        .order_by(document_versions.c.version_no.desc())
+        .where(
+            document_versions.c.version_id == doc_row["active_version_id"],
+            document_versions.c.deleted_at.is_(None),
+        )
         .limit(1)
     ).mappings().first()
 
@@ -871,6 +973,306 @@ def get_document_usage(
             for row in rows
         ],
     }
+
+
+def list_library_versions(
+    session: Session,
+    current_user: CurrentUserResponse,
+    document_id: UUID,
+) -> list[LibraryDocumentVersionDTO]:
+    """列出文档的所有版本（不含已删除）。"""
+    _ensure_owner(session, current_user, document_id)
+
+    rows = session.execute(
+        select(
+            document_versions,
+            stored_files.c.file_name,
+            stored_files.c.file_size,
+        )
+        .join(stored_files, stored_files.c.file_id == document_versions.c.source_file_id)
+        .where(
+            document_versions.c.document_id == document_id,
+            document_versions.c.deleted_at.is_(None),
+        )
+        .order_by(document_versions.c.version_no.desc())
+    ).mappings().all()
+
+    return [_to_version_dto(row, file_name=row["file_name"], file_size=row["file_size"]) for row in rows]
+
+
+def upload_library_version(
+    session: Session,
+    current_user: CurrentUserResponse,
+    document_id: UUID,
+    file_name: str,
+    mime_type: str | None,
+    file_bytes: bytes,
+    storage_provider: ObjectStorageProvider | None = None,
+) -> LibraryVersionUploadResponse:
+    """上传新版本文件到已有文档。"""
+    doc_row = _ensure_owner(session, current_user, document_id, "library.document.update")
+    actor_id = UUID(current_user.user.userId)
+    normalized_file_name = _safe_file_name(file_name)
+    checksum = sha256(file_bytes).hexdigest()
+
+    # 查询当前最大 version_no
+    max_version_no = session.execute(
+        select(func.max(document_versions.c.version_no))
+        .where(
+            document_versions.c.document_id == document_id,
+            document_versions.c.deleted_at.is_(None),
+        )
+    ).scalar() or 0
+
+    next_version_no = max_version_no + 1
+    version_id = uuid4()
+    file_id = uuid4()
+    job_id = uuid4()
+
+    # 存储文件
+    storage = storage_provider or get_object_storage_provider()
+    owner_id = str(doc_row["owner_id"]) if doc_row.get("owner_id") else str(actor_id)
+    object_key = f"users/{owner_id}/library/{document_id}/{normalized_file_name}"
+    storage.put_object(object_key, file_bytes, mime_type or "application/octet-stream")
+
+    # 创建 stored_files 行
+    session.execute(
+        insert(stored_files).values(
+            file_id=file_id,
+            bucket=get_settings().storage_bucket,
+            object_key=object_key,
+            file_name=normalized_file_name,
+            mime_type=mime_type,
+            file_size=len(file_bytes),
+            checksum=checksum,
+            file_role="source",
+            status="active",
+            created_by=actor_id,
+            updated_by=actor_id,
+        )
+    )
+
+    # 创建 document_versions 行（不自动激活）
+    session.execute(
+        insert(document_versions).values(
+            version_id=version_id,
+            document_id=document_id,
+            version_no=next_version_no,
+            source_file_id=file_id,
+            status="processing",
+            parse_status="pending",
+            dense_index_status="not_required",
+            sparse_index_status="not_required",
+            graph_index_status="not_required",
+            retrieval_ready=False,
+            chunk_count=0,
+            metadata={},
+            created_by=actor_id,
+            updated_by=actor_id,
+        )
+    )
+
+    # 创建解析任务
+    session.execute(
+        insert(library_parse_jobs).values(
+            job_id=job_id,
+            document_id=document_id,
+            version_id=version_id,
+            job_type="upload_version",
+            status="queued",
+            progress=0,
+            created_by=actor_id,
+        )
+    )
+
+    session.commit()
+
+    # 触发 Celery
+    from app.worker import run_library_parse_task
+    run_library_parse_task.delay(str(job_id))
+
+    # 构造响应
+    from datetime import datetime, timezone
+    now_iso = datetime.now(timezone.utc).isoformat()
+    ver_dto = LibraryDocumentVersionDTO(
+        versionId=str(version_id),
+        documentId=str(document_id),
+        versionNo=next_version_no,
+        sourceFileId=str(file_id),
+        fileName=normalized_file_name,
+        fileSize=len(file_bytes),
+        status="processing",
+        parseStatus="pending",
+        chunkCount=0,
+        tokenCount=None,
+        createdAt=now_iso,
+        updatedAt=now_iso,
+    )
+    parse_job_dto = LibraryParseJobDTO(
+        jobId=str(job_id),
+        documentId=str(document_id),
+        versionId=str(version_id),
+        jobType="upload_version",
+        status="queued",
+        progress=0,
+        errorCode=None,
+        errorMessage=None,
+        createdAt=now_iso,
+    )
+    stored_file_dto = LibraryStoredFileDTO(
+        fileId=str(file_id),
+        fileName=normalized_file_name,
+        mimeType=mime_type,
+        fileSize=len(file_bytes),
+        checksum=checksum,
+        objectKey=object_key,
+    )
+
+    return LibraryVersionUploadResponse(
+        version=ver_dto,
+        parseJob=parse_job_dto,
+        storedFile=stored_file_dto,
+    )
+
+
+def activate_library_version(
+    session: Session,
+    current_user: CurrentUserResponse,
+    document_id: UUID,
+    version_id: UUID,
+    confirm_impact: bool = False,
+) -> LibraryVersionActivateResponse:
+    """切换文档的活跃版本。"""
+    _ensure_owner(session, current_user, document_id, "library.document.update")
+
+    if not confirm_impact:
+        raise LibraryPermissionError("CONFIRM_REQUIRED: Set confirmImpact=true to proceed.")
+
+    # 校验目标版本
+    ver_row = session.execute(
+        select(document_versions).where(
+            document_versions.c.version_id == version_id,
+            document_versions.c.document_id == document_id,
+            document_versions.c.deleted_at.is_(None),
+        ).limit(1)
+    ).mappings().first()
+    if ver_row is None:
+        raise LibraryVersionNotFoundError
+    if ver_row["parse_status"] != "success":
+        raise LibraryPermissionError("VERSION_NOT_READY: Version must be successfully parsed before activation.")
+
+    # 获取当前活跃版本
+    doc_row = session.execute(
+        select(documents.c.active_version_id).where(documents.c.document_id == document_id)
+    ).mappings().first()
+    previous_active_id = str(doc_row["active_version_id"]) if doc_row and doc_row["active_version_id"] else None
+
+    # 将所有版本设为 inactive
+    session.execute(
+        update(document_versions)
+        .where(
+            document_versions.c.document_id == document_id,
+            document_versions.c.deleted_at.is_(None),
+        )
+        .values(status="inactive", updated_at=func.now())
+    )
+
+    # 目标版本设为 active
+    session.execute(
+        update(document_versions)
+        .where(document_versions.c.version_id == version_id)
+        .values(status="active", updated_at=func.now())
+    )
+
+    # 更新 documents.active_version_id
+    session.execute(
+        update(documents)
+        .where(documents.c.document_id == document_id)
+        .values(active_version_id=version_id, updated_at=func.now())
+    )
+
+    session.commit()
+
+    return LibraryVersionActivateResponse(
+        documentId=str(document_id),
+        activeVersionId=str(version_id),
+        previousActiveVersionId=previous_active_id,
+    )
+
+
+def delete_library_version(
+    session: Session,
+    current_user: CurrentUserResponse,
+    document_id: UUID,
+    version_id: UUID,
+) -> dict:
+    """删除指定版本（软删除）。不能删除活跃版本或被 KB 绑定引用的版本。"""
+    _ensure_owner(session, current_user, document_id, "library.document.update")
+    actor_id = UUID(current_user.user.userId)
+
+    # 校验版本存在
+    ver_row = session.execute(
+        select(document_versions).where(
+            document_versions.c.version_id == version_id,
+            document_versions.c.document_id == document_id,
+            document_versions.c.deleted_at.is_(None),
+        ).limit(1)
+    ).mappings().first()
+    if ver_row is None:
+        raise LibraryVersionNotFoundError
+
+    # 不能删除活跃版本
+    doc_row = session.execute(
+        select(documents.c.active_version_id).where(documents.c.document_id == document_id)
+    ).mappings().first()
+    if doc_row and str(doc_row["active_version_id"]) == str(version_id):
+        raise LibraryPermissionError("VERSION_IS_ACTIVE: Cannot delete the active version. Switch to another version first.")
+
+    # 检查是否有 KB 绑定引用此版本
+    binding_rows = session.execute(
+        select(
+            document_kb_bindings.c.binding_id,
+            knowledge_bases.c.name.label("kb_name"),
+        )
+        .join(knowledge_bases, knowledge_bases.c.kb_id == document_kb_bindings.c.kb_id)
+        .where(
+            document_kb_bindings.c.document_id == document_id,
+            document_kb_bindings.c.version_id == version_id,
+            document_kb_bindings.c.status.in_(["active", "processing", "pending"]),
+        )
+    ).mappings().all()
+
+    if binding_rows:
+        kb_names = [row["kb_name"] for row in binding_rows]
+        raise LibraryVersionInUseError(kb_names)
+
+    # 软删除版本
+    session.execute(
+        update(document_versions)
+        .where(document_versions.c.version_id == version_id)
+        .values(
+            status="archived",
+            deleted_at=func.now(),
+            deleted_by=actor_id,
+            updated_at=func.now(),
+            updated_by=actor_id,
+        )
+    )
+
+    # 软删除关联的 stored_files
+    session.execute(
+        update(stored_files)
+        .where(stored_files.c.file_id == ver_row["source_file_id"])
+        .values(
+            status="deleted",
+            updated_at=func.now(),
+            updated_by=actor_id,
+        )
+    )
+
+    session.commit()
+
+    return {"versionId": str(version_id), "status": "deleted"}
 
 
 def _get_error_suggestion(error_code: str) -> str:

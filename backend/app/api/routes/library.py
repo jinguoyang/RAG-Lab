@@ -18,27 +18,37 @@ from app.schemas.library import (
     LibraryDocumentDetailDTO,
     LibraryDocumentUpdateRequest,
     LibraryDocumentUploadResponse,
+    LibraryDocumentVersionDTO,
     LibraryFullTextResponse,
     LibraryParseJobDTO,
     LibraryParsedChunksResponse,
     LibraryStatsResponse,
     LibraryTextPreviewResponse,
+    LibraryVersionActivateRequest,
+    LibraryVersionActivateResponse,
+    LibraryVersionUploadResponse,
 )
 from app.services.library_service import (
     LibraryDocumentNotFoundError,
     LibraryPermissionError,
+    LibraryVersionInUseError,
+    LibraryVersionNotFoundError,
+    activate_library_version,
     batch_action,
     create_library_upload,
     delete_library_document,
+    delete_library_version,
+    get_document_text,
+    get_document_usage,
     get_library_document_detail,
     get_library_document_source_download,
     get_library_parse_jobs,
     get_library_stats,
-    get_document_text,
-    get_document_usage,
     list_library_documents,
+    list_library_versions,
     retry_library_parse,
     update_library_document,
+    upload_library_version,
 )
 from app.services.object_storage import ObjectStorageError
 
@@ -47,9 +57,16 @@ router = APIRouter(prefix="/library/documents", tags=["library"])
 
 def _raise_library_error(exc: Exception) -> None:
     if isinstance(exc, LibraryPermissionError):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PERMISSION_DENIED") from exc
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc) or "PERMISSION_DENIED") from exc
     if isinstance(exc, LibraryDocumentNotFoundError):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="DOCUMENT_NOT_FOUND") from exc
+    if isinstance(exc, LibraryVersionNotFoundError):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VERSION_NOT_FOUND") from exc
+    if isinstance(exc, LibraryVersionInUseError):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "VERSION_IN_USE", "kbNames": exc.kb_names},
+        ) from exc
     if isinstance(exc, ObjectStorageError):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -66,10 +83,11 @@ def list_documents(
     page_size: int = Query(default=20, ge=1, le=100),
     keyword: str | None = Query(default=None),
     doc_status: str | None = Query(default=None, alias="status"),
+    library_id: UUID | None = Query(default=None),
 ) -> PageResponse[LibraryDocumentDTO]:
     """列出当前用户的文档库文档。"""
     try:
-        return list_library_documents(db, current_user, page_no, page_size, keyword, doc_status)
+        return list_library_documents(db, current_user, page_no, page_size, keyword, doc_status, library_id)
     except Exception as exc:
         _raise_library_error(exc)
         raise  # unreachable
@@ -81,7 +99,7 @@ def upload_document(
     db: Annotated[Session, Depends(get_db_session)],
     file: UploadFile = File(...),
     name: str | None = Form(default=None),
-    securityLevel: str | None = Form(default=None),
+    libraryId: UUID | None = Form(default=None),
 ) -> LibraryDocumentUploadResponse:
     """上传文档到个人文档库。"""
     file_bytes = file.file.read()
@@ -95,7 +113,7 @@ def upload_document(
             mime_type=file.content_type,
             file_bytes=file_bytes,
             name=name,
-            security_level=securityLevel,
+            library_id=libraryId,
         )
     except Exception as exc:
         _raise_library_error(exc)
@@ -251,6 +269,76 @@ def get_document_text_route(
     """获取文档文本内容，支持 preview/full/chunks 三种模式。"""
     try:
         return get_document_text(db, current_user, document_id, mode)
+    except Exception as exc:
+        _raise_library_error(exc)
+        raise  # unreachable
+
+
+@router.get("/{document_id}/versions", response_model=list[LibraryDocumentVersionDTO])
+def list_versions(
+    document_id: UUID,
+    current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db_session)],
+) -> list[LibraryDocumentVersionDTO]:
+    """列出文档的所有版本。"""
+    try:
+        return list_library_versions(db, current_user, document_id)
+    except Exception as exc:
+        _raise_library_error(exc)
+        raise  # unreachable
+
+
+@router.post("/{document_id}/versions", response_model=LibraryVersionUploadResponse, status_code=status.HTTP_201_CREATED)
+def upload_version(
+    document_id: UUID,
+    current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db_session)],
+    file: UploadFile = File(...),
+) -> LibraryVersionUploadResponse:
+    """上传新版本文件。"""
+    file_bytes = file.file.read()
+    if not file_bytes:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="EMPTY_FILE")
+    try:
+        return upload_library_version(
+            session=db,
+            current_user=current_user,
+            document_id=document_id,
+            file_name=file.filename or "uploaded-document",
+            mime_type=file.content_type,
+            file_bytes=file_bytes,
+        )
+    except Exception as exc:
+        _raise_library_error(exc)
+        raise  # unreachable
+
+
+@router.post("/{document_id}/versions/{version_id}/activate", response_model=LibraryVersionActivateResponse)
+def activate_version(
+    document_id: UUID,
+    version_id: UUID,
+    body: LibraryVersionActivateRequest,
+    current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db_session)],
+) -> LibraryVersionActivateResponse:
+    """切换文档的活跃版本。"""
+    try:
+        return activate_library_version(db, current_user, document_id, version_id, body.confirmImpact)
+    except Exception as exc:
+        _raise_library_error(exc)
+        raise  # unreachable
+
+
+@router.delete("/{document_id}/versions/{version_id}")
+def delete_version(
+    document_id: UUID,
+    version_id: UUID,
+    current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db_session)],
+) -> dict:
+    """删除指定版本。"""
+    try:
+        return delete_library_version(db, current_user, document_id, version_id)
     except Exception as exc:
         _raise_library_error(exc)
         raise  # unreachable

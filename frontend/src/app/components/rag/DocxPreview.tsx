@@ -46,27 +46,27 @@ export function DocxPreview({ documentId }: DocxPreviewProps) {
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-neutral-700 bg-neutral-900 p-4">
-        <p className="text-sm text-neutral-400">加载中...</p>
+      <div className="rounded-lg border border-border-cream bg-ivory p-4">
+        <p className="text-sm text-stone-gray">加载中...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="rounded-lg border border-neutral-700 bg-neutral-900 p-4">
-        <p className="text-sm text-red-400">{error}</p>
+      <div className="rounded-lg border border-border-cream bg-ivory p-4">
+        <p className="text-sm text-error-red">{error}</p>
       </div>
     );
   }
 
   return (
-    <div className="rounded-lg border border-neutral-700 bg-neutral-900">
-      <div className="border-b border-neutral-700 px-4 py-2">
-        <span className="text-sm font-medium text-neutral-300">文档预览</span>
+    <div className="rounded-lg border border-border-cream bg-ivory">
+      <div className="border-b border-border-cream px-4 py-2">
+        <span className="text-sm font-medium text-near-black">文档预览</span>
       </div>
       <div
-        className="prose prose-invert max-h-[500px] overflow-auto p-4"
+        className="prose max-h-[500px] overflow-auto p-4"
         dangerouslySetInnerHTML={{ __html: html ?? "" }}
       />
     </div>

@@ -14,6 +14,7 @@ from app.schemas.binding import (
     LibraryBindResponse,
     LibraryBindingDTO,
     LibraryUnbindResponse,
+    SwitchBindingVersionRequest,
 )
 from app.services.binding_service import (
     BindingAlreadyExistsError,
@@ -21,9 +22,11 @@ from app.services.binding_service import (
     BindingKBNotFoundError,
     BindingNotFoundError,
     BindingPermissionError,
+    BindingVersionNotReadyError,
     bind_documents_to_kb,
     list_kb_bindings,
     retry_binding,
+    switch_binding_version,
     unbind_document_from_kb,
 )
 
@@ -59,6 +62,11 @@ def _raise_binding_error(exc: Exception) -> None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="BINDING_NOT_FOUND",
+        ) from exc
+    if isinstance(exc, BindingVersionNotReadyError):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="VERSION_NOT_READY",
         ) from exc
     raise exc
 
@@ -118,6 +126,22 @@ def unbind_document(
     """解绑文档库文档与知识库的绑定关系。"""
     try:
         return unbind_document_from_kb(db, current_user, kb_id, binding_id)
+    except Exception as exc:
+        _raise_binding_error(exc)
+        raise  # unreachable
+
+
+@router.post("/{binding_id}/switch-version", response_model=LibraryBindingDTO)
+def switch_version(
+    kb_id: UUID,
+    binding_id: UUID,
+    body: SwitchBindingVersionRequest,
+    current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db_session)],
+) -> LibraryBindingDTO:
+    """切换绑定到不同的库文档版本。"""
+    try:
+        return switch_binding_version(db, current_user, kb_id, binding_id, UUID(body.libraryVersionId))
     except Exception as exc:
         _raise_binding_error(exc)
         raise  # unreachable

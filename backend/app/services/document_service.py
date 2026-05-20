@@ -644,8 +644,23 @@ def run_ingest_job(
         # Check if we can reuse parsed chunks from library
         parsed_chunks_from_library = None
         if document_row.get("source_type") == "library_bind":
-            library_doc_id_str = (document_row.get("metadata") or {}).get("library_document_id")
-            if library_doc_id_str:
+            version_meta = version_row.get("metadata") or {}
+            library_version_id_str = version_meta.get("library_version_id")
+            library_doc_id_str = version_meta.get("library_document_id") or (document_row.get("metadata") or {}).get("library_document_id")
+
+            lib_version = None
+            if library_version_id_str:
+                # 优先使用指定的库版本（版本切换场景）
+                lib_version = session.execute(
+                    select(document_versions)
+                    .where(
+                        document_versions.c.version_id == UUID(library_version_id_str),
+                        document_versions.c.deleted_at.is_(None),
+                    )
+                    .limit(1)
+                ).mappings().first()
+            elif library_doc_id_str:
+                # 回退到取最新版本（兼容旧数据）
                 library_doc_id = UUID(library_doc_id_str)
                 lib_version = session.execute(
                     select(document_versions)
@@ -656,10 +671,11 @@ def run_ingest_job(
                     .order_by(document_versions.c.version_no.desc())
                     .limit(1)
                 ).mappings().first()
-                if lib_version:
-                    lib_meta = lib_version.get("metadata") or {}
-                    if lib_meta.get("parsed_chunks"):
-                        parsed_chunks_from_library = lib_meta["parsed_chunks"]
+
+            if lib_version:
+                lib_meta = lib_version.get("metadata") or {}
+                if lib_meta.get("parsed_chunks"):
+                    parsed_chunks_from_library = lib_meta["parsed_chunks"]
 
         if parsed_chunks_from_library:
             # Reuse library parsed chunks (convert dicts to objects with attribute access)

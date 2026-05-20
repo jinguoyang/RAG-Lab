@@ -7,9 +7,9 @@ class LibraryDocumentDTO(BaseModel):
 
     documentId: str
     ownerId: str
+    libraryId: str | None = None
     name: str
     sourceType: str
-    securityLevel: str
     status: str
     activeVersionId: str | None
     createdAt: str
@@ -23,6 +23,8 @@ class LibraryDocumentVersionDTO(BaseModel):
     documentId: str
     versionNo: int
     sourceFileId: str
+    fileName: str | None = None
+    fileSize: int | None = None
     status: str
     parseStatus: str
     chunkCount: int
@@ -154,3 +156,22 @@ class LibraryStatsResponse(BaseModel):
     totalDocuments: int
     todayUploads: int
     pendingParse: int
+
+
+class LibraryVersionUploadResponse(BaseModel):
+    """上传新版本成功响应。"""
+    version: LibraryDocumentVersionDTO
+    parseJob: LibraryParseJobDTO
+    storedFile: LibraryStoredFileDTO
+
+
+class LibraryVersionActivateRequest(BaseModel):
+    """切换活跃版本请求。"""
+    confirmImpact: bool = False
+
+
+class LibraryVersionActivateResponse(BaseModel):
+    """切换活跃版本响应。"""
+    documentId: str
+    activeVersionId: str
+    previousActiveVersionId: str | None

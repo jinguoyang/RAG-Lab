@@ -169,6 +169,38 @@ acl_rules = sa.Table(
     sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
 )
 
+document_libraries = sa.Table(
+    "document_libraries",
+    metadata,
+    sa.Column("library_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("owner_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("name", sa.String(length=128), nullable=False),
+    sa.Column("description", sa.Text(), nullable=True),
+    sa.Column("visibility", sa.String(length=16), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("deleted_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
+library_member_bindings = sa.Table(
+    "library_member_bindings",
+    metadata,
+    sa.Column("binding_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("library_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("subject_type", sa.String(length=16), nullable=False),
+    sa.Column("subject_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("permission_level", sa.String(length=32), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
 chunk_access_filters = sa.Table(
     "chunk_access_filters",
     metadata,
@@ -224,6 +256,7 @@ documents = sa.Table(
     sa.Column("document_id", postgresql.UUID(as_uuid=True), primary_key=True),
     sa.Column("kb_id", postgresql.UUID(as_uuid=True), nullable=True),
     sa.Column("owner_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("library_id", postgresql.UUID(as_uuid=True), nullable=True),
     sa.Column("name", sa.String(length=255), nullable=False),
     sa.Column("source_type", sa.String(length=32), nullable=False),
     sa.Column("security_level", sa.String(length=32), nullable=False),
@@ -297,6 +330,8 @@ document_versions = sa.Table(
     sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("deleted_by", postgresql.UUID(as_uuid=True), nullable=True),
 )
 
 ingest_jobs = sa.Table(

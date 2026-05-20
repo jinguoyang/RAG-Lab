@@ -33,3 +33,8 @@ class LibraryUnbindResponse(BaseModel):
     """解绑响应。"""
     bindingId: str
     status: str
+
+
+class SwitchBindingVersionRequest(BaseModel):
+    """切换绑定版本请求。"""
+    libraryVersionId: str

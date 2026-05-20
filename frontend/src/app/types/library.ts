@@ -2,17 +2,47 @@ import type { PageResponse } from "./knowledgeBase";
 
 export type LibraryDocumentStatus = "active" | "disabled" | "archived";
 export type LibraryParseJobStatus = "queued" | "running" | "success" | "failed" | "cancelled";
+export type LibraryVisibility = "public" | "personal" | "partial";
+export type LibraryMemberPermissionLevel = "read_only" | "document_manage";
 
 export interface LibraryDocumentDTO {
   documentId: string;
   ownerId: string;
+  libraryId: string | null;
   name: string;
   sourceType: string;
-  securityLevel: string;
   status: LibraryDocumentStatus;
   activeVersionId: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface LibraryDTO {
+  libraryId: string;
+  ownerId: string;
+  name: string;
+  description: string | null;
+  visibility: LibraryVisibility;
+  status: string;
+  documentCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LibraryMemberDTO {
+  bindingId: string;
+  subjectType: "user" | "group";
+  subjectId: string;
+  permissionLevel: LibraryMemberPermissionLevel;
+  status: string;
+  createdAt: string;
+}
+
+export interface LibraryPageResponse {
+  items: LibraryDTO[];
+  total: number;
+  pageNo: number;
+  pageSize: number;
 }
 
 export interface LibraryDocumentVersionDTO {
@@ -20,6 +50,8 @@ export interface LibraryDocumentVersionDTO {
   documentId: string;
   versionNo: number;
   sourceFileId: string;
+  fileName?: string;
+  fileSize?: number;
   status: string;
   parseStatus: "pending" | "running" | "success" | "failed";
   chunkCount: number;
@@ -132,4 +164,16 @@ export interface UploadWithProgressResult {
   promise: Promise<LibraryDocumentUploadResponse>;
   cancel: () => void;
   onProgress: (callback: (progress: UploadProgress) => void) => void;
+}
+
+export interface LibraryVersionUploadResponse {
+  version: LibraryDocumentVersionDTO;
+  parseJob: LibraryParseJobDTO;
+  storedFile: LibraryStoredFileDTO;
+}
+
+export interface LibraryVersionActivateResponse {
+  documentId: string;
+  activeVersionId: string;
+  previousActiveVersionId: string | null;
 }

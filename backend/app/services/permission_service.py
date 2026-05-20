@@ -14,8 +14,10 @@ from app.schemas.permission import (
     PermissionSummaryDTO,
 )
 from app.tables import (
+    document_libraries,
     kb_member_bindings,
     knowledge_bases,
+    library_member_bindings,
     role_permission_bindings,
     user_groups,
     user_group_members,
@@ -509,3 +511,193 @@ def has_library_permission(
         return user_id == document_owner_id
 
     return True
+
+
+# ---------------------------------------------------------------------------
+# 文档库可见性权限体系
+# ---------------------------------------------------------------------------
+
+def _library_member_permission_levels(
+    session: Session,
+    library_id: UUID,
+    user_id: UUID,
+    group_ids: set[UUID],
+) -> set[str]:
+    """查询用户在指定文档库中的有效权限级别（直接绑定 + 用户组绑定）。"""
+    subject_conditions = [
+        and_(
+            library_member_bindings.c.subject_type == "user",
+            library_member_bindings.c.subject_id == user_id,
+        )
+    ]
+    if group_ids:
+        subject_conditions.append(
+            and_(
+                library_member_bindings.c.subject_type == "group",
+                library_member_bindings.c.subject_id.in_(group_ids),
+            )
+        )
+
+    rows = session.execute(
+        select(library_member_bindings.c.permission_level).where(
+            library_member_bindings.c.library_id == library_id,
+            library_member_bindings.c.status == "active",
+            or_(*subject_conditions),
+        )
+    )
+    return {row[0] for row in rows}
+
+
+# read_only 授予的权限码
+_READ_ONLY_PERMISSIONS = {"library.document.read"}
+# document_manage 授予的权限码
+_MANAGE_PERMISSIONS = {
+    "library.document.read",
+    "library.document.create",
+    "library.document.update",
+    "library.document.delete",
+}
+
+
+def has_library_access(
+    session: Session,
+    current_user: CurrentUserResponse,
+    permission_code: str,
+    library_id: UUID | None = None,
+    library_owner_id: UUID | None = None,
+    library_visibility: str | None = None,
+) -> bool:
+    """判断当前用户是否具备文档库级别的权限。
+
+    规则：
+    1. 平台管理员 → 通过
+    2. 拥有 library.document.admin 权限 → 通过
+    3. 是文档库所有者 → 通过
+    4. visibility=public → 任何用户可读
+    5. visibility=personal → 仅 owner
+    6. visibility=partial → 查 library_member_bindings
+       - read_only → library.document.read
+       - document_manage → read/create/update/delete
+    """
+    user_id = _user_id(current_user)
+
+    # 平台管理员自动通过
+    if current_user.user.platformRole == "platform_admin":
+        return True
+
+    # 解析平台角色权限
+    platform_allowed, platform_denied = _role_permissions(
+        session, "platform", {current_user.user.platformRole},
+    )
+
+    # admin 权限码可绕过所有限制
+    if "library.document.admin" in platform_allowed and "library.document.admin" not in platform_denied:
+        return True
+
+    # 是文档库所有者 → 通过
+    if library_owner_id is not None and user_id == library_owner_id:
+        return True
+
+    # 需要 library_id 和 visibility 来做进一步判断
+    if library_id is None or library_visibility is None:
+        # 没有库信息时，回退到平台角色权限检查
+        if permission_code in platform_denied:
+            return False
+        return permission_code in platform_allowed
+
+    # public 库：任何用户可读
+    if library_visibility == "public" and permission_code == "library.document.read":
+        return True
+
+    # personal 库：仅 owner（已在上面通过）
+    if library_visibility == "personal":
+        return False
+
+    # partial 库：查 library_member_bindings
+    if library_visibility == "partial":
+        group_ids = _active_group_ids(session, user_id)
+        levels = _library_member_permission_levels(session, library_id, user_id, group_ids)
+
+        granted_permissions: set[str] = set()
+        if "read_only" in levels:
+            granted_permissions |= _READ_ONLY_PERMISSIONS
+        if "document_manage" in levels:
+            granted_permissions |= _MANAGE_PERMISSIONS
+
+        if permission_code in platform_denied:
+            return False
+        return permission_code in granted_permissions
+
+    return False
+
+
+def check_library_owner_or_admin(
+    session: Session,
+    current_user: CurrentUserResponse,
+    library_id: UUID,
+) -> bool:
+    """判断当前用户是否为文档库所有者或平台管理员。"""
+    if current_user.user.platformRole == "platform_admin":
+        return True
+
+    user_id = _user_id(current_user)
+
+    # 检查 library.document.admin 权限
+    platform_allowed, platform_denied = _role_permissions(
+        session, "platform", {current_user.user.platformRole},
+    )
+    if "library.document.admin" in platform_allowed and "library.document.admin" not in platform_denied:
+        return True
+
+    # 检查是否为库所有者
+    row = session.execute(
+        select(document_libraries.c.owner_id).where(
+            document_libraries.c.library_id == library_id,
+            document_libraries.c.deleted_at.is_(None),
+        )
+    ).scalar()
+    return row is not None and UUID(str(row)) == user_id
+
+
+def library_visibility_condition(current_user: CurrentUserResponse):
+    """构造文档库列表可见性条件。
+
+    可见规则：
+    - 库未软删除
+    - 且满足以下之一：
+      a. 当前用户是库所有者
+      b. visibility='public'
+      c. visibility='partial' 且当前用户在 library_member_bindings 中
+      d. 平台管理员
+    """
+    user_id = _user_id(current_user)
+    active_group_ids = (
+        select(user_group_members.c.group_id)
+        .where(
+            user_group_members.c.user_id == user_id,
+            user_group_members.c.status == "active",
+        )
+        .scalar_subquery()
+    )
+    member_exists = exists(
+        select(library_member_bindings.c.binding_id).where(
+            library_member_bindings.c.library_id == document_libraries.c.library_id,
+            library_member_bindings.c.status == "active",
+            or_(
+                and_(
+                    library_member_bindings.c.subject_type == "user",
+                    library_member_bindings.c.subject_id == user_id,
+                ),
+                and_(
+                    library_member_bindings.c.subject_type == "group",
+                    library_member_bindings.c.subject_id.in_(active_group_ids),
+                ),
+            ),
+        )
+    )
+    return (document_libraries.c.deleted_at.is_(None)) & (
+        (document_libraries.c.owner_id == user_id)
+        | (document_libraries.c.visibility == "public")
+        | ((document_libraries.c.visibility == "partial") & member_exists)
+        | (current_user.user.platformRole == "platform_admin")
+    )

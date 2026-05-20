@@ -16,8 +16,10 @@ import { GraphSearchAnalysis } from "./pages/P11_GraphSearchAnalysis";
 import { MembersAndPermissions } from "./pages/P12_MembersAndPermissions";
 import { RagAppManagement } from "./pages/P13_RagAppManagement";
 import { DictionaryManagement } from "./pages/P14_DictionaryManagement";
-import { Library } from "./pages/P15_Library";
 import { LibraryDetail } from "./pages/P16_LibraryDetail";
+import { LibraryManagement } from "./pages/P17_LibraryManagement";
+import { LibraryDocuments } from "./pages/P18_LibraryDocuments";
+import { LibraryMembers } from "./pages/P19_LibraryMembers";
 
 export const router = createBrowserRouter([
   { path: "/login", Component: Login },
@@ -30,8 +32,10 @@ export const router = createBrowserRouter([
       { path: "groups", Component: UserGroupManagement },
       { path: "rag-apps", Component: RagAppManagement },
       { path: "dictionaries", Component: DictionaryManagement },
-      { path: "library", Component: Library },
-      { path: "library/:docId", Component: LibraryDetail },
+      { path: "library", Component: LibraryManagement },
+      { path: "library/:libraryId", Component: LibraryDocuments },
+      { path: "library/:libraryId/documents/:docId", Component: LibraryDetail },
+      { path: "library/:libraryId/members", Component: LibraryMembers },
     ],
   },
   {
