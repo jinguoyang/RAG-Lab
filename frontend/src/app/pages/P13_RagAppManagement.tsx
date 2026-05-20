@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { NavLink } from "react-router";
+import * as Tabs from "@radix-ui/react-tabs";
 import {
   Copy,
   FileText,
@@ -19,6 +20,7 @@ import { Badge } from "../components/rag/Badge";
 import { Button } from "../components/rag/Button";
 import { useConfirmDialog } from "../components/rag/ConfirmDialog";
 import { Drawer, DrawerSection } from "../components/rag/Drawer";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Input } from "../components/rag/Input";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/rag/Table";
@@ -703,24 +705,13 @@ export function RagAppManagement() {
                   </div>
                 </div>
 
-                <div className="rounded-lg border border-border-cream bg-ivory">
-                  <div className="grid grid-cols-4 border-b border-border-cream text-sm">
-                    {[
-                      ["overview", "概览"],
-                      ["keys", "API Keys"],
-                      ["invocations", "调用记录"],
-                      ["conversations", "会话"],
-                    ].map(([value, label]) => (
-                      <button
-                        key={value}
-                        type="button"
-                        onClick={() => setActiveTab(value as DetailTab)}
-                        className={`h-11 border-r border-border-cream last:border-r-0 ${activeTab === value ? "bg-parchment text-terracotta" : "text-near-black hover:bg-parchment"}`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
+                <Tabs.Root value={activeTab} onValueChange={(v) => setActiveTab(v as DetailTab)} className="rounded-lg border border-border-cream bg-ivory">
+                  <Tabs.List className="flex border-b border-border-cream text-sm">
+                    <Tabs.Trigger value="overview" className="flex-1 h-11 border-r border-border-cream text-stone-gray font-medium hover:text-near-black data-[state=active]:bg-parchment data-[state=active]:text-terracotta transition-all">概览</Tabs.Trigger>
+                    <Tabs.Trigger value="keys" className="flex-1 h-11 border-r border-border-cream text-stone-gray font-medium hover:text-near-black data-[state=active]:bg-parchment data-[state=active]:text-terracotta transition-all">API Keys</Tabs.Trigger>
+                    <Tabs.Trigger value="invocations" className="flex-1 h-11 border-r border-border-cream text-stone-gray font-medium hover:text-near-black data-[state=active]:bg-parchment data-[state=active]:text-terracotta transition-all">调用记录</Tabs.Trigger>
+                    <Tabs.Trigger value="conversations" className="flex-1 h-11 text-stone-gray font-medium hover:text-near-black data-[state=active]:bg-parchment data-[state=active]:text-terracotta transition-all">会话</Tabs.Trigger>
+                  </Tabs.List>
                   <div className="max-h-[calc(100vh-250px)] overflow-auto p-4">
                     {isLoadingDetail && <p className="text-sm text-stone-gray">详情加载中...</p>}
                     {!isLoadingDetail && activeTab === "overview" && (
@@ -1013,7 +1004,7 @@ export function RagAppManagement() {
                       </div>
                     )}
                   </div>
-                </div>
+                </Tabs.Root>
               </>
             )}
           </aside>
@@ -1087,107 +1078,104 @@ Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/app-runtime/ch
         )}
       </Drawer>
 
-      {isAppFormOpen && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-4">
-          <div className="w-full max-w-2xl rounded-lg border border-border-warm bg-ivory shadow-[0_24px_80px_rgba(20,20,19,0.18)]">
-            <div className="flex items-center justify-between border-b border-border-cream p-5">
-              <div>
-                <h2 className="font-serif text-xl text-near-black">{editingAppId ? "编辑 RAG 应用" : "创建 RAG 应用"}</h2>
-                <p className="mt-1 text-sm text-stone-gray">应用只保存知识库和配置绑定，不复制 Pipeline。</p>
-              </div>
-              <Button variant="ghost" size="sm" onClick={closeAppForm} disabled={isSaving}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="space-y-4 p-5">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <label className="space-y-2 text-sm">
-                  <span className="text-stone-gray">应用名称</span>
-                  <Input value={appForm.name} onChange={(event) => setAppForm((current) => ({ ...current, name: event.target.value }))} className="bg-white" />
-                </label>
-                <label className="space-y-2 text-sm">
-                  <span className="text-stone-gray">知识库</span>
-                  <select
-                    value={appForm.kbId}
-                    onChange={(event) => setAppForm((current) => ({ ...current, kbId: event.target.value, defaultConfigRevisionId: "" }))}
-                    disabled={Boolean(editingAppId)}
-                    className="h-10 w-full rounded-md border border-border-cream bg-white px-3 text-sm text-near-black focus:outline-none disabled:bg-parchment"
-                  >
-                    <option value="">请选择知识库</option>
-                    {knowledgeBases.map((kb) => (
-                      <option key={kb.kbId} value={kb.kbId}>{kb.name}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <label className="block space-y-2 text-sm">
-                <span className="text-stone-gray">描述</span>
-                <textarea
-                  value={appForm.description}
-                  onChange={(event) => setAppForm((current) => ({ ...current, description: event.target.value }))}
-                  rows={3}
-                  className="w-full rounded-md border border-border-cream bg-white px-3 py-2 text-sm text-near-black focus:outline-none"
-                />
+      <Drawer
+        isOpen={isAppFormOpen}
+        onClose={closeAppForm}
+        title={editingAppId ? "编辑 RAG 应用" : "创建 RAG 应用"}
+        width="640px"
+      >
+        <DrawerSection title="基本信息">
+          <div className="space-y-4">
+            <p className="text-sm text-stone-gray">应用只保存知识库和配置绑定，不复制 Pipeline。</p>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <label className="space-y-2 text-sm">
+                <span className="text-stone-gray">应用名称</span>
+                <Input value={appForm.name} onChange={(event) => setAppForm((current) => ({ ...current, name: event.target.value }))} className="bg-white" />
               </label>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <label className="space-y-2 text-sm">
+                <span className="text-stone-gray">知识库</span>
+                <select
+                  value={appForm.kbId}
+                  onChange={(event) => setAppForm((current) => ({ ...current, kbId: event.target.value, defaultConfigRevisionId: "" }))}
+                  disabled={Boolean(editingAppId)}
+                  className="h-10 w-full rounded-md border border-border-cream bg-white px-3 text-sm text-near-black focus:outline-none disabled:bg-parchment"
+                >
+                  <option value="">请选择知识库</option>
+                  {knowledgeBases.map((kb) => (
+                    <option key={kb.kbId} value={kb.kbId}>{kb.name}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <label className="block space-y-2 text-sm">
+              <span className="text-stone-gray">描述</span>
+              <textarea
+                value={appForm.description}
+                onChange={(event) => setAppForm((current) => ({ ...current, description: event.target.value }))}
+                rows={3}
+                className="w-full rounded-md border border-border-cream bg-white px-3 py-2 text-sm text-near-black focus:outline-none"
+              />
+            </label>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <label className="space-y-2 text-sm">
+                <span className="text-stone-gray">检索配置</span>
+                <select
+                  value={appForm.defaultConfigRevisionId}
+                  onChange={(event) => setAppForm((current) => ({ ...current, defaultConfigRevisionId: event.target.value }))}
+                  className="h-10 w-full rounded-md border border-border-cream bg-white px-3 text-sm text-near-black focus:outline-none"
+                >
+                  <option value="">跟随知识库</option>
+                  {configRevisions.map((revision) => (
+                    <option key={revision.configRevisionId} value={revision.configRevisionId}>
+                      {revisionLabel(revision)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {editingAppId && (
                 <label className="space-y-2 text-sm">
-                  <span className="text-stone-gray">检索配置</span>
+                  <span className="text-stone-gray">状态</span>
                   <select
-                    value={appForm.defaultConfigRevisionId}
-                    onChange={(event) => setAppForm((current) => ({ ...current, defaultConfigRevisionId: event.target.value }))}
+                    value={appForm.status}
+                    onChange={(event) => setAppForm((current) => ({ ...current, status: event.target.value as RagAppStatus }))}
                     className="h-10 w-full rounded-md border border-border-cream bg-white px-3 text-sm text-near-black focus:outline-none"
                   >
-                    <option value="">跟随知识库</option>
-                    {configRevisions.map((revision) => (
-                      <option key={revision.configRevisionId} value={revision.configRevisionId}>
-                        {revisionLabel(revision)}
-                      </option>
-                    ))}
+                    <option value="active">启用</option>
+                    <option value="disabled">停用</option>
+                    <option value="archived">已归档</option>
                   </select>
                 </label>
-                {editingAppId && (
-                  <label className="space-y-2 text-sm">
-                    <span className="text-stone-gray">状态</span>
-                    <select
-                      value={appForm.status}
-                      onChange={(event) => setAppForm((current) => ({ ...current, status: event.target.value as RagAppStatus }))}
-                      className="h-10 w-full rounded-md border border-border-cream bg-white px-3 text-sm text-near-black focus:outline-none"
-                    >
-                      <option value="active">启用</option>
-                      <option value="disabled">停用</option>
-                      <option value="archived">已归档</option>
-                    </select>
-                  </label>
-                )}
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 border-t border-border-cream p-5">
-              <Button variant="ghost" onClick={closeAppForm} disabled={isSaving}>取消</Button>
-              <Button variant="primary" onClick={() => void handleSaveApp()} disabled={isSaving}>
-                {editingAppId ? "保存修改" : "创建应用"}
-              </Button>
+              )}
             </div>
           </div>
+        </DrawerSection>
+        <div className="flex justify-end gap-3 border-t border-border-cream p-5">
+          <Button variant="ghost" onClick={closeAppForm} disabled={isSaving}>取消</Button>
+          <Button variant="primary" onClick={() => void handleSaveApp()} disabled={isSaving}>
+            {editingAppId ? "保存修改" : "创建应用"}
+          </Button>
         </div>
-      )}
+      </Drawer>
 
-      {createdPlainApiKey && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-          <div className="w-full max-w-xl rounded-lg border border-border-warm bg-ivory p-6 shadow-[0_24px_80px_rgba(20,20,19,0.18)]">
-            <h2 className="font-serif text-xl text-near-black">API Key 已生成</h2>
-            <p className="mt-2 text-sm text-stone-gray">明文只显示一次，关闭后页面不会保留。请立即保存到外部应用的安全配置中。</p>
-            <div className="mt-4 rounded-lg border border-border-cream bg-parchment p-4 font-mono text-sm text-near-black break-all">
-              {createdPlainApiKey}
-            </div>
-            <div className="mt-5 flex justify-end gap-3">
-              <Button variant="outline" onClick={() => void copyPlainKey()}>
-                <Copy className="mr-2 h-4 w-4" /> 复制
-              </Button>
-              <Button variant="primary" onClick={handleClosePlainKey}>我已保存</Button>
-            </div>
+      <Dialog open={Boolean(createdPlainApiKey)} onOpenChange={(open) => { if (!open) handleClosePlainKey(); }}>
+        <DialogContent className="sm:max-w-xl bg-ivory border-border-warm">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-xl text-near-black">API Key 已生成</DialogTitle>
+            <DialogDescription className="text-sm text-stone-gray">
+              明文只显示一次，关闭后页面不会保留。请立即保存到外部应用的安全配置中。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg border border-border-cream bg-parchment p-4 font-mono text-sm text-near-black break-all">
+            {createdPlainApiKey}
           </div>
-        </div>
-      )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => void copyPlainKey()}>
+              <Copy className="mr-2 h-4 w-4" /> 复制
+            </Button>
+            <Button variant="primary" onClick={handleClosePlainKey}>我已保存</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

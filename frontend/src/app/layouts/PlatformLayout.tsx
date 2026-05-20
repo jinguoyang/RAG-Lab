@@ -20,6 +20,18 @@ export function PlatformLayout() {
           >
             <Book className="w-4 h-4" /> 知识库
           </NavLink>
+          <NavLink
+            to="/library"
+            className={({isActive}) => `flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${isActive ? 'bg-parchment text-terracotta' : 'text-near-black hover:bg-parchment'}`}
+          >
+            <FolderOpen className="w-4 h-4" /> 文档库
+          </NavLink>
+          <NavLink
+            to="/rag-apps"
+            className={({isActive}) => `flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${isActive ? 'bg-parchment text-terracotta' : 'text-near-black hover:bg-parchment'}`}
+          >
+            <Rocket className="w-4 h-4" /> 应用中心
+          </NavLink>
           <NavLink 
             to="/users" 
             className={({isActive}) => `flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${isActive ? 'bg-parchment text-terracotta' : 'text-near-black hover:bg-parchment'}`}
@@ -32,24 +44,14 @@ export function PlatformLayout() {
           >
             <Building className="w-4 h-4" /> 用户组
           </NavLink>
-          <NavLink
-            to="/rag-apps"
-            className={({isActive}) => `flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${isActive ? 'bg-parchment text-terracotta' : 'text-near-black hover:bg-parchment'}`}
-          >
-            <Rocket className="w-4 h-4" /> 应用中心
-          </NavLink>
+
           <NavLink
             to="/dictionaries"
             className={({isActive}) => `flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${isActive ? 'bg-parchment text-terracotta' : 'text-near-black hover:bg-parchment'}`}
           >
             <ListTree className="w-4 h-4" /> 字典管理
           </NavLink>
-          <NavLink
-            to="/library"
-            className={({isActive}) => `flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${isActive ? 'bg-parchment text-terracotta' : 'text-near-black hover:bg-parchment'}`}
-          >
-            <FolderOpen className="w-4 h-4" /> 文档库
-          </NavLink>
+
         </nav>
 
         <div className="p-4 border-t border-border-cream">

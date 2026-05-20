@@ -13,6 +13,7 @@ from app.schemas.binding import (
 )
 from app.tables import (
     document_kb_bindings,
+    document_libraries,
     document_versions,
     documents,
     ingest_jobs,
@@ -45,22 +46,53 @@ class BindingVersionNotReadyError(Exception):
     """目标版本尚未解析完成。"""
 
 
+class BindingDispatchError(Exception):
+    """绑定入库任务投递失败。"""
+
+    def __init__(self, job_ids: list[str]) -> None:
+        self.job_ids = job_ids
+        super().__init__(f"Failed to enqueue ingest jobs: {', '.join(job_ids)}")
+
+
 def _ensure_library_owner(
     session: Session,
     current_user: CurrentUserResponse,
     document_id: UUID,
 ) -> dict:
-    """验证用户拥有该文档库文档。"""
+    """验证用户可读取该文档库文档。"""
+    from app.services.permission_service import has_library_access
+
     user_id = UUID(current_user.user.userId)
     row = session.execute(
         select(documents).where(
             documents.c.document_id == document_id,
-            documents.c.owner_id == user_id,
             documents.c.deleted_at.is_(None),
             documents.c.kb_id.is_(None),
         ).limit(1)
     ).mappings().first()
     if row is None:
+        raise BindingDocumentNotFoundError
+    library_id = row.get("library_id")
+    if library_id:
+        library_uuid = UUID(str(library_id))
+        lib_row = session.execute(
+            select(document_libraries).where(
+                document_libraries.c.library_id == library_uuid,
+                document_libraries.c.deleted_at.is_(None),
+            ).limit(1)
+        ).mappings().first()
+        if lib_row is None:
+            raise BindingDocumentNotFoundError
+        if not has_library_access(
+            session,
+            current_user,
+            permission_code="library.document.read",
+            library_id=library_uuid,
+            library_owner_id=UUID(str(lib_row["owner_id"])),
+            library_visibility=lib_row["visibility"],
+        ):
+            raise BindingDocumentNotFoundError
+    elif UUID(str(row["owner_id"])) != user_id:
         raise BindingDocumentNotFoundError
     return dict(row)
 
@@ -80,7 +112,7 @@ def _ensure_kb_permission(
     if row is None:
         raise BindingKBNotFoundError
     user_id = UUID(current_user.user.userId)
-    if current_user.user.platformRole == "admin":
+    if current_user.user.platformRole == "platform_admin":
         return dict(row)
     if row["created_by"] == user_id:
         return dict(row)
@@ -120,7 +152,7 @@ def bind_documents_to_kb(
     actor_id = UUID(current_user.user.userId)
 
     bindings: list[LibraryBindingDTO] = []
-    job_ids: list[UUID] = []
+    dispatch_targets: list[tuple[UUID, UUID]] = []
 
     for doc_id in document_ids:
         lib_doc_row = _ensure_library_owner(session, current_user, doc_id)
@@ -137,14 +169,22 @@ def bind_documents_to_kb(
         if existing is not None:
             raise BindingAlreadyExistsError(f"Document {doc_id} already bound to KB {kb_id}")
 
-        # 获取最新版本
+        active_version_id = lib_doc_row.get("active_version_id")
+        if active_version_id is None:
+            raise BindingDocumentNotFoundError(f"No active version found for document {doc_id}")
+
+        # 绑定使用文档库当前活跃版本，避免未确认的新版本影响 KB。
         latest_version = session.execute(
             select(document_versions).where(
+                document_versions.c.version_id == active_version_id,
                 document_versions.c.document_id == doc_id,
-            ).order_by(document_versions.c.version_no.desc()).limit(1)
+                document_versions.c.deleted_at.is_(None),
+            ).limit(1)
         ).mappings().first()
         if latest_version is None:
             raise BindingDocumentNotFoundError(f"No version found for document {doc_id}")
+        if latest_version["parse_status"] != "success":
+            raise BindingVersionNotReadyError
 
         # 获取源文件
         source_file_row = session.execute(
@@ -188,7 +228,10 @@ def bind_documents_to_kb(
                 graph_index_status="pending",
                 retrieval_ready=False,
                 chunk_count=0,
-                metadata={"library_document_id": str(doc_id)},
+                metadata={
+                    "library_document_id": str(doc_id),
+                    "library_version_id": str(latest_version["version_id"]),
+                },
                 created_by=actor_id,
                 updated_by=actor_id,
             )
@@ -242,17 +285,46 @@ def bind_documents_to_kb(
         ).mappings().one()
 
         bindings.append(_to_binding_dto(dict(binding_row), doc_name=doc_name))
-        job_ids.append(job_id)
+        dispatch_targets.append((job_id, binding_row["binding_id"]))
 
     session.commit()
 
     # 触发 Celery 任务
-    for job_id in job_ids:
+    failed_job_ids: list[str] = []
+    for job_id, binding_id in dispatch_targets:
         try:
             from app.worker import run_document_ingest_task
             run_document_ingest_task.delay(str(job_id))
-        except Exception:
-            pass
+        except Exception as exc:
+            error_message = f"Failed to enqueue ingest job: {exc}"
+            session.execute(
+                update(ingest_jobs)
+                .where(ingest_jobs.c.job_id == job_id)
+                .values(
+                    status="failed",
+                    stage="failed",
+                    progress=100,
+                    error_code="INGEST_ENQUEUE_FAILED",
+                    error_message=error_message,
+                    finished_at=func.now(),
+                )
+            )
+            session.execute(
+                update(document_kb_bindings)
+                .where(document_kb_bindings.c.binding_id == binding_id)
+                .values(
+                    status="failed",
+                    error_code="INGEST_ENQUEUE_FAILED",
+                    error_message=error_message,
+                    updated_by=actor_id,
+                    updated_at=func.now(),
+                )
+            )
+            failed_job_ids.append(str(job_id))
+
+    if failed_job_ids:
+        session.commit()
+        raise BindingDispatchError(failed_job_ids)
 
     return LibraryBindResponse(bindings=bindings)
 

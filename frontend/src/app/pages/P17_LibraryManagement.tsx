@@ -7,6 +7,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from ".
 import { Input } from "../components/rag/Input";
 import { Alert } from "../components/rag/Alert";
 import { Badge } from "../components/rag/Badge";
+import { useConfirmDialog } from "../components/rag/ConfirmDialog";
 import {
   fetchLibraries,
   createLibrary,
@@ -31,6 +32,7 @@ function visibilityVariant(v: LibraryVisibility) {
 
 export function LibraryManagement() {
   const navigate = useNavigate();
+  const confirm = useConfirmDialog();
   const [libraries, setLibraries] = useState<LibraryDTO[]>([]);
   const [total, setTotal] = useState(0);
   const [pageNo, setPageNo] = useState(1);
@@ -128,7 +130,13 @@ export function LibraryManagement() {
   }
 
   async function handleDelete(lib: LibraryDTO) {
-    if (!confirm(`确定要删除文档库"${lib.name}"吗？库内所有文档将被一并删除。`)) return;
+    const ok = await confirm({
+      title: "删除文档库",
+      description: `确定要删除文档库"${lib.name}"吗？库内所有文档将被一并删除。`,
+      variant: "destructive",
+      confirmLabel: "删除",
+    });
+    if (!ok) return;
     try {
       await deleteLibrary(lib.libraryId);
       setFeedback({ variant: "success", title: "删除成功", message: "文档库已删除。" });
@@ -156,7 +164,7 @@ export function LibraryManagement() {
         }
       />
 
-      <div className="flex-1 min-h-0 overflow-auto p-8 space-y-6">
+      <div className="flex-1 min-h-0 overflow-auto p-8 space-y-6 max-w-7xl mx-auto w-full">
         {feedback && (
           <Alert variant={feedback.variant} title={feedback.title} onClose={() => setFeedback(null)}>
             {feedback.message}

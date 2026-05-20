@@ -4,7 +4,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.api.deps import CurrentUserResponse, get_current_user, get_db_session
+from app.api.deps import CurrentUserResponse, get_current_user
+from app.core.database import get_db_session
 from app.schemas.library_management import (
     AddLibraryMemberRequest,
     CreateLibraryRequest,

@@ -7,6 +7,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from ".
 import { Input } from "../components/rag/Input";
 import { Alert } from "../components/rag/Alert";
 import { Badge } from "../components/rag/Badge";
+import { useConfirmDialog } from "../components/rag/ConfirmDialog";
 import {
   fetchLibraryDetail,
   fetchLibraryMembers,
@@ -26,6 +27,7 @@ function permissionVariant(level: LibraryMemberPermissionLevel) {
 
 export function LibraryMembers() {
   const navigate = useNavigate();
+  const confirm = useConfirmDialog();
   const { libraryId = "" } = useParams();
   const [library, setLibrary] = useState<LibraryDTO | null>(null);
   const [members, setMembers] = useState<LibraryMemberDTO[]>([]);
@@ -114,7 +116,13 @@ export function LibraryMembers() {
   }
 
   async function handleRemoveMember(bindingId: string) {
-    if (!confirm("确定要移除此成员吗？")) return;
+    const ok = await confirm({
+      title: "移除成员",
+      description: "确定要移除此成员吗？移除后该成员将无法访问此文档库。",
+      variant: "destructive",
+      confirmLabel: "移除",
+    });
+    if (!ok) return;
     try {
       await removeLibraryMember(libraryId, bindingId);
       setFeedback({ variant: "success", title: "移除成功", message: "成员已移除。" });
@@ -144,7 +152,7 @@ export function LibraryMembers() {
         }
       />
 
-      <div className="flex-1 min-h-0 overflow-auto p-8 space-y-6">
+      <div className="flex-1 min-h-0 overflow-auto p-8 space-y-6 max-w-7xl mx-auto w-full">
         {feedback && (
           <Alert variant={feedback.variant} title={feedback.title} onClose={() => setFeedback(null)}>
             {feedback.message}

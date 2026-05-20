@@ -7,6 +7,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from ".
 import { Input } from "../components/rag/Input";
 import { Alert } from "../components/rag/Alert";
 import { Badge, StatusBadge } from "../components/rag/Badge";
+import { useConfirmDialog } from "../components/rag/ConfirmDialog";
 import {
   fetchLibraryDocuments,
   uploadLibraryDocumentWithProgress,
@@ -39,6 +40,7 @@ function visibilityVariant(v: string) {
 
 export function LibraryDocuments() {
   const navigate = useNavigate();
+  const confirm = useConfirmDialog();
   const { libraryId = "" } = useParams();
   const [library, setLibrary] = useState<LibraryDTO | null>(null);
   const [documents, setDocuments] = useState<LibraryDocumentDTO[]>([]);
@@ -153,7 +155,13 @@ export function LibraryDocuments() {
   async function handleBatchAction(action: "delete" | "reparse" | "disable") {
     if (selectedIds.size === 0) return;
     const actionLabel = { delete: "删除", reparse: "重新解析", disable: "停用" }[action];
-    if (!confirm(`确定要${actionLabel}选中的 ${selectedIds.size} 个文档吗？`)) return;
+    const ok = await confirm({
+      title: `批量${actionLabel}`,
+      description: `确定要${actionLabel}选中的 ${selectedIds.size} 个文档吗？`,
+      variant: action === "delete" ? "destructive" : "default",
+      confirmLabel: actionLabel,
+    });
+    if (!ok) return;
 
     setBatchLoading(true);
     try {
@@ -201,7 +209,7 @@ export function LibraryDocuments() {
         }
       />
 
-      <div className="flex-1 min-h-0 overflow-auto p-8 space-y-6">
+      <div className="flex-1 min-h-0 overflow-auto p-8 space-y-6 max-w-7xl mx-auto w-full">
         {feedback && (
           <Alert variant={feedback.variant} title={feedback.title} onClose={() => setFeedback(null)}>
             {feedback.message}

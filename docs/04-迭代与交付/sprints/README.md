@@ -35,6 +35,7 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 | Sprint 36 | 文档库 V1.0 | 文档库基础模型、上传、文本提取和 PDF/Markdown 预览 | Done | `sprint21-40/Sprint-36.md` |
 | Sprint 37 | 文档库 V1.0 | 文档预览完善、知识库绑定和绑定后切块向量化 | Planned | `sprint21-40/Sprint-37.md` |
 | Sprint 38 | 文档库 V1.0 | 权限收口、批量操作、大文件体验、错误处理和测试覆盖 | Planned | `sprint21-40/Sprint-38.md` |
+| Sprint 39 | UI V1.1 | UI/交互风格统一 — 文档库、应用中心、字典管理对齐知识库 | Done | `sprint21-40/Sprint-39.md` |
 
 ## 3. 单个 Sprint 文档约定
 

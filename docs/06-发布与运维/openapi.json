@@ -8720,6 +8720,23 @@
             }
           },
           {
+            "name": "library_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Library Id"
+            }
+          },
+          {
             "name": "X-Dev-User",
             "in": "header",
             "required": false,
@@ -8801,6 +8818,116 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LibraryDocumentUploadResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/library/documents/batch-actions": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Batch Actions",
+        "description": "批量操作文档：删除、重新解析、停用。",
+        "operationId": "batch_actions_api_v1_library_documents_batch_actions_post",
+        "parameters": [
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchActionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/library/documents/stats": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Get Stats",
+        "description": "获取当前用户的文档库统计。",
+        "operationId": "get_stats_api_v1_library_documents_stats_get",
+        "parameters": [
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryStatsResponse"
                 }
               }
             }
@@ -8944,6 +9071,66 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Delete Document",
+        "description": "删除文档库文档（软删除），级联清理所有知识库绑定。",
+        "operationId": "delete_document_api_v1_library_documents__document_id__delete",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Delete Document Api V1 Library Documents  Document Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/library/documents/{document_id}/download": {
@@ -9067,10 +9254,1489 @@
           }
         }
       }
+    },
+    "/api/v1/library/documents/{document_id}/parse-retry": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Retry Parse",
+        "description": "重新触发文档解析。",
+        "operationId": "retry_parse_api_v1_library_documents__document_id__parse_retry_post",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Retry Parse Api V1 Library Documents  Document Id  Parse Retry Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/library/documents/{document_id}/usage": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Get Document Usage Route",
+        "description": "查询文档绑定的所有知识库。",
+        "operationId": "get_document_usage_route_api_v1_library_documents__document_id__usage_get",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Document Usage Route Api V1 Library Documents  Document Id  Usage Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/library/documents/{document_id}/text": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Get Document Text Route",
+        "description": "获取文档文本内容，支持 preview/full/chunks 三种模式。",
+        "operationId": "get_document_text_route_api_v1_library_documents__document_id__text_get",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "preview",
+                "full",
+                "chunks"
+              ],
+              "type": "string",
+              "default": "preview",
+              "title": "Mode"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/LibraryTextPreviewResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LibraryFullTextResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LibraryParsedChunksResponse"
+                    }
+                  ],
+                  "title": "Response Get Document Text Route Api V1 Library Documents  Document Id  Text Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/library/documents/{document_id}/versions": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "List Versions",
+        "description": "列出文档的所有版本。",
+        "operationId": "list_versions_api_v1_library_documents__document_id__versions_get",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LibraryDocumentVersionDTO"
+                  },
+                  "title": "Response List Versions Api V1 Library Documents  Document Id  Versions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Upload Version",
+        "description": "上传新版本文件。",
+        "operationId": "upload_version_api_v1_library_documents__document_id__versions_post",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_version_api_v1_library_documents__document_id__versions_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryVersionUploadResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/library/documents/{document_id}/versions/{version_id}/activate": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Activate Version",
+        "description": "切换文档的活跃版本。",
+        "operationId": "activate_version_api_v1_library_documents__document_id__versions__version_id__activate_post",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryVersionActivateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryVersionActivateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/library/documents/{document_id}/versions/{version_id}": {
+      "delete": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Delete Version",
+        "description": "删除指定版本。",
+        "operationId": "delete_version_api_v1_library_documents__document_id__versions__version_id__delete",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Delete Version Api V1 Library Documents  Document Id  Versions  Version Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/library": {
+      "get": {
+        "tags": [
+          "文档库管理"
+        ],
+        "summary": "List Libraries Route",
+        "description": "列出当前用户可见的文档库。",
+        "operationId": "list_libraries_route_api_v1_library_get",
+        "parameters": [
+          {
+            "name": "page_no",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page No"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Keyword"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryPageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "文档库管理"
+        ],
+        "summary": "Create Library Route",
+        "description": "创建文档库。",
+        "operationId": "create_library_route_api_v1_library_post",
+        "parameters": [
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLibraryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/library/{library_id}": {
+      "get": {
+        "tags": [
+          "文档库管理"
+        ],
+        "summary": "Get Library Detail Route",
+        "description": "获取文档库详情。",
+        "operationId": "get_library_detail_route_api_v1_library__library_id__get",
+        "parameters": [
+          {
+            "name": "library_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Library Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryDetailDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "文档库管理"
+        ],
+        "summary": "Update Library Route",
+        "description": "更新文档库。仅所有者或平台管理员可操作。",
+        "operationId": "update_library_route_api_v1_library__library_id__patch",
+        "parameters": [
+          {
+            "name": "library_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Library Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLibraryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "文档库管理"
+        ],
+        "summary": "Delete Library Route",
+        "description": "删除文档库（软删除，级联删除库内文档）。仅所有者或平台管理员可操作。",
+        "operationId": "delete_library_route_api_v1_library__library_id__delete",
+        "parameters": [
+          {
+            "name": "library_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Library Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/library/{library_id}/members": {
+      "get": {
+        "tags": [
+          "文档库管理"
+        ],
+        "summary": "List Members Route",
+        "description": "列出文档库成员。仅所有者或平台管理员可操作。",
+        "operationId": "list_members_route_api_v1_library__library_id__members_get",
+        "parameters": [
+          {
+            "name": "library_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Library Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LibraryMemberDTO"
+                  },
+                  "title": "Response List Members Route Api V1 Library  Library Id  Members Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "文档库管理"
+        ],
+        "summary": "Add Member Route",
+        "description": "添加文档库成员。仅所有者或平台管理员可操作。",
+        "operationId": "add_member_route_api_v1_library__library_id__members_post",
+        "parameters": [
+          {
+            "name": "library_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Library Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddLibraryMemberRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryMemberDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/library/{library_id}/members/{binding_id}": {
+      "patch": {
+        "tags": [
+          "文档库管理"
+        ],
+        "summary": "Update Member Route",
+        "description": "更新文档库成员权限级别。仅所有者或平台管理员可操作。",
+        "operationId": "update_member_route_api_v1_library__library_id__members__binding_id__patch",
+        "parameters": [
+          {
+            "name": "library_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Library Id"
+            }
+          },
+          {
+            "name": "binding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Binding Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLibraryMemberRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryMemberDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "文档库管理"
+        ],
+        "summary": "Remove Member Route",
+        "description": "移除文档库成员。仅所有者或平台管理员可操作。",
+        "operationId": "remove_member_route_api_v1_library__library_id__members__binding_id__delete",
+        "parameters": [
+          {
+            "name": "library_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Library Id"
+            }
+          },
+          {
+            "name": "binding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Binding Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/library-bindings": {
+      "post": {
+        "tags": [
+          "library-bindings"
+        ],
+        "summary": "Bind Documents",
+        "description": "将文档库文档绑定到知识库。",
+        "operationId": "bind_documents_api_v1_knowledge_bases__kb_id__library_bindings_post",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryBindRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryBindResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "library-bindings"
+        ],
+        "summary": "List Bindings",
+        "description": "列出知识库的所有文档库绑定。",
+        "operationId": "list_bindings_api_v1_knowledge_bases__kb_id__library_bindings_get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LibraryBindingDTO"
+                  },
+                  "title": "Response List Bindings Api V1 Knowledge Bases  Kb Id  Library Bindings Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/library-bindings/{binding_id}/retry": {
+      "post": {
+        "tags": [
+          "library-bindings"
+        ],
+        "summary": "Retry Binding Route",
+        "description": "重试失败的绑定。",
+        "operationId": "retry_binding_route_api_v1_knowledge_bases__kb_id__library_bindings__binding_id__retry_post",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "binding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Binding Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Retry Binding Route Api V1 Knowledge Bases  Kb Id  Library Bindings  Binding Id  Retry Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/library-bindings/{binding_id}": {
+      "delete": {
+        "tags": [
+          "library-bindings"
+        ],
+        "summary": "Unbind Document",
+        "description": "解绑文档库文档与知识库的绑定关系。",
+        "operationId": "unbind_document_api_v1_knowledge_bases__kb_id__library_bindings__binding_id__delete",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "binding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Binding Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryUnbindResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/library-bindings/{binding_id}/switch-version": {
+      "post": {
+        "tags": [
+          "library-bindings"
+        ],
+        "summary": "Switch Version",
+        "description": "切换绑定到不同的库文档版本。",
+        "operationId": "switch_version_api_v1_knowledge_bases__kb_id__library_bindings__binding_id__switch_version_post",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "binding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Binding Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SwitchBindingVersionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryBindingDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AddLibraryMemberRequest": {
+        "properties": {
+          "subjectType": {
+            "type": "string",
+            "enum": [
+              "user",
+              "group"
+            ],
+            "title": "Subjecttype"
+          },
+          "subjectId": {
+            "type": "string",
+            "title": "Subjectid"
+          },
+          "permissionLevel": {
+            "type": "string",
+            "enum": [
+              "read_only",
+              "document_manage"
+            ],
+            "title": "Permissionlevel"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subjectType",
+          "subjectId",
+          "permissionLevel"
+        ],
+        "title": "AddLibraryMemberRequest",
+        "description": "添加文档库成员请求。"
+      },
       "AppConversationDetailDTO": {
         "properties": {
           "conversationId": {
@@ -9931,6 +11597,112 @@
         "title": "BackupDrillDTO",
         "description": "备份恢复演练记录。"
       },
+      "BatchActionFailedItem": {
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "title": "Documentid"
+          },
+          "error": {
+            "type": "string",
+            "title": "Error"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "documentId",
+          "error",
+          "message"
+        ],
+        "title": "BatchActionFailedItem",
+        "description": "批量操作失败项。"
+      },
+      "BatchActionRequest": {
+        "properties": {
+          "documentIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Documentids"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "delete",
+              "reparse",
+              "disable"
+            ],
+            "title": "Action"
+          }
+        },
+        "type": "object",
+        "required": [
+          "documentIds",
+          "action"
+        ],
+        "title": "BatchActionRequest",
+        "description": "批量操作请求。"
+      },
+      "BatchActionResponse": {
+        "properties": {
+          "succeeded": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Succeeded"
+          },
+          "failed": {
+            "items": {
+              "$ref": "#/components/schemas/BatchActionFailedItem"
+            },
+            "type": "array",
+            "title": "Failed"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/BatchActionSummary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "succeeded",
+          "failed",
+          "summary"
+        ],
+        "title": "BatchActionResponse",
+        "description": "批量操作响应。"
+      },
+      "BatchActionSummary": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "succeeded": {
+            "type": "integer",
+            "title": "Succeeded"
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "succeeded",
+          "failed"
+        ],
+        "title": "BatchActionSummary",
+        "description": "批量操作汇总。"
+      },
       "Body_upload_document_api_v1_knowledge_bases__kb_id__documents_post": {
         "properties": {
           "file": {
@@ -9985,16 +11757,17 @@
             ],
             "title": "Name"
           },
-          "securityLevel": {
+          "libraryId": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "format": "uuid"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Securitylevel"
+            "title": "Libraryid"
           }
         },
         "type": "object",
@@ -10002,6 +11775,20 @@
           "file"
         ],
         "title": "Body_upload_document_api_v1_library_documents_post"
+      },
+      "Body_upload_version_api_v1_library_documents__document_id__versions_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_version_api_v1_library_documents__document_id__versions_post"
       },
       "BulkDocumentGovernanceRequest": {
         "properties": {
@@ -10837,6 +12624,43 @@
         ],
         "title": "CostSummaryResponse",
         "description": "成本估算汇总，基于 Token 消耗和模型定价。"
+      },
+      "CreateLibraryRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "public",
+              "personal",
+              "partial"
+            ],
+            "title": "Visibility",
+            "default": "personal"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "CreateLibraryRequest",
+        "description": "创建文档库请求。"
       },
       "CurrentUserResponse": {
         "properties": {
@@ -13835,6 +15659,254 @@
         "title": "KnowledgeBaseUpdateRequest",
         "description": "更新知识库基础信息请求；未传字段保持原值不变。"
       },
+      "LibraryBindRequest": {
+        "properties": {
+          "documentIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Documentids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "documentIds"
+        ],
+        "title": "LibraryBindRequest",
+        "description": "绑定请求。"
+      },
+      "LibraryBindResponse": {
+        "properties": {
+          "bindings": {
+            "items": {
+              "$ref": "#/components/schemas/LibraryBindingDTO"
+            },
+            "type": "array",
+            "title": "Bindings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "bindings"
+        ],
+        "title": "LibraryBindResponse",
+        "description": "绑定响应。"
+      },
+      "LibraryBindingDTO": {
+        "properties": {
+          "bindingId": {
+            "type": "string",
+            "title": "Bindingid"
+          },
+          "documentId": {
+            "type": "string",
+            "title": "Documentid"
+          },
+          "documentName": {
+            "type": "string",
+            "title": "Documentname"
+          },
+          "kbId": {
+            "type": "string",
+            "title": "Kbid"
+          },
+          "versionId": {
+            "type": "string",
+            "title": "Versionid"
+          },
+          "chunkSize": {
+            "type": "integer",
+            "title": "Chunksize"
+          },
+          "chunkOverlap": {
+            "type": "integer",
+            "title": "Chunkoverlap"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "chunkCount": {
+            "type": "integer",
+            "title": "Chunkcount"
+          },
+          "errorCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errorcode"
+          },
+          "errorMessage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errormessage"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "createdBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdby"
+          }
+        },
+        "type": "object",
+        "required": [
+          "bindingId",
+          "documentId",
+          "documentName",
+          "kbId",
+          "versionId",
+          "chunkSize",
+          "chunkOverlap",
+          "status",
+          "chunkCount",
+          "createdAt"
+        ],
+        "title": "LibraryBindingDTO",
+        "description": "文档库绑定到知识库的绑定记录。"
+      },
+      "LibraryDTO": {
+        "properties": {
+          "libraryId": {
+            "type": "string",
+            "title": "Libraryid"
+          },
+          "ownerId": {
+            "type": "string",
+            "title": "Ownerid"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "visibility": {
+            "type": "string",
+            "title": "Visibility"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "documentCount": {
+            "type": "integer",
+            "title": "Documentcount",
+            "default": 0
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "updatedAt": {
+            "type": "string",
+            "title": "Updatedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "libraryId",
+          "ownerId",
+          "name",
+          "description",
+          "visibility",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "LibraryDTO",
+        "description": "文档库主对象 DTO。"
+      },
+      "LibraryDetailDTO": {
+        "properties": {
+          "libraryId": {
+            "type": "string",
+            "title": "Libraryid"
+          },
+          "ownerId": {
+            "type": "string",
+            "title": "Ownerid"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "visibility": {
+            "type": "string",
+            "title": "Visibility"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "documentCount": {
+            "type": "integer",
+            "title": "Documentcount",
+            "default": 0
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "updatedAt": {
+            "type": "string",
+            "title": "Updatedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "libraryId",
+          "ownerId",
+          "name",
+          "description",
+          "visibility",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "LibraryDetailDTO",
+        "description": "文档库详情响应。"
+      },
       "LibraryDocumentDTO": {
         "properties": {
           "documentId": {
@@ -13845,6 +15917,17 @@
             "type": "string",
             "title": "Ownerid"
           },
+          "libraryId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Libraryid"
+          },
           "name": {
             "type": "string",
             "title": "Name"
@@ -13852,10 +15935,6 @@
           "sourceType": {
             "type": "string",
             "title": "Sourcetype"
-          },
-          "securityLevel": {
-            "type": "string",
-            "title": "Securitylevel"
           },
           "status": {
             "type": "string",
@@ -13887,7 +15966,6 @@
           "ownerId",
           "name",
           "sourceType",
-          "securityLevel",
           "status",
           "activeVersionId",
           "createdAt",
@@ -13992,6 +16070,28 @@
             "type": "string",
             "title": "Sourcefileid"
           },
+          "fileName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "fileSize": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filesize"
+          },
           "status": {
             "type": "string",
             "title": "Status"
@@ -14039,6 +16139,91 @@
         ],
         "title": "LibraryDocumentVersionDTO",
         "description": "文档库版本 DTO，精简为文本提取状态。"
+      },
+      "LibraryFullTextResponse": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "LibraryFullTextResponse",
+        "description": "完整文本响应。"
+      },
+      "LibraryMemberDTO": {
+        "properties": {
+          "bindingId": {
+            "type": "string",
+            "title": "Bindingid"
+          },
+          "subjectType": {
+            "type": "string",
+            "title": "Subjecttype"
+          },
+          "subjectId": {
+            "type": "string",
+            "title": "Subjectid"
+          },
+          "permissionLevel": {
+            "type": "string",
+            "title": "Permissionlevel"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "bindingId",
+          "subjectType",
+          "subjectId",
+          "permissionLevel",
+          "status",
+          "createdAt"
+        ],
+        "title": "LibraryMemberDTO",
+        "description": "文档库成员 DTO。"
+      },
+      "LibraryPageResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LibraryDTO"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "pageNo": {
+            "type": "integer",
+            "title": "Pageno"
+          },
+          "pageSize": {
+            "type": "integer",
+            "title": "Pagesize"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "pageNo",
+          "pageSize"
+        ],
+        "title": "LibraryPageResponse",
+        "description": "文档库分页响应。"
       },
       "LibraryParseJobDTO": {
         "properties": {
@@ -14108,6 +16293,110 @@
         "title": "LibraryParseJobDTO",
         "description": "文档库解析作业 DTO。"
       },
+      "LibraryParsedChunkDTO": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "tokenCount": {
+            "type": "integer",
+            "title": "Tokencount"
+          },
+          "section": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section"
+          },
+          "pageNo": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pageno"
+          },
+          "startOffset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startoffset"
+          },
+          "endOffset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endoffset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content",
+          "tokenCount"
+        ],
+        "title": "LibraryParsedChunkDTO",
+        "description": "解析后的分块数据。"
+      },
+      "LibraryParsedChunksResponse": {
+        "properties": {
+          "chunks": {
+            "items": {
+              "$ref": "#/components/schemas/LibraryParsedChunkDTO"
+            },
+            "type": "array",
+            "title": "Chunks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "chunks"
+        ],
+        "title": "LibraryParsedChunksResponse",
+        "description": "结构化解析分块响应。"
+      },
+      "LibraryStatsResponse": {
+        "properties": {
+          "totalDocuments": {
+            "type": "integer",
+            "title": "Totaldocuments"
+          },
+          "todayUploads": {
+            "type": "integer",
+            "title": "Todayuploads"
+          },
+          "pendingParse": {
+            "type": "integer",
+            "title": "Pendingparse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "totalDocuments",
+          "todayUploads",
+          "pendingParse"
+        ],
+        "title": "LibraryStatsResponse",
+        "description": "文档库统计响应。"
+      },
       "LibraryStoredFileDTO": {
         "properties": {
           "fileId": {
@@ -14160,6 +16449,113 @@
         ],
         "title": "LibraryStoredFileDTO",
         "description": "文档库文件元数据 DTO。"
+      },
+      "LibraryTextPreviewResponse": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated"
+          },
+          "fullLength": {
+            "type": "integer",
+            "title": "Fulllength"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "truncated",
+          "fullLength"
+        ],
+        "title": "LibraryTextPreviewResponse",
+        "description": "文本预览响应。"
+      },
+      "LibraryUnbindResponse": {
+        "properties": {
+          "bindingId": {
+            "type": "string",
+            "title": "Bindingid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "bindingId",
+          "status"
+        ],
+        "title": "LibraryUnbindResponse",
+        "description": "解绑响应。"
+      },
+      "LibraryVersionActivateRequest": {
+        "properties": {
+          "confirmImpact": {
+            "type": "boolean",
+            "title": "Confirmimpact",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "LibraryVersionActivateRequest",
+        "description": "切换活跃版本请求。"
+      },
+      "LibraryVersionActivateResponse": {
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "title": "Documentid"
+          },
+          "activeVersionId": {
+            "type": "string",
+            "title": "Activeversionid"
+          },
+          "previousActiveVersionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previousactiveversionid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "documentId",
+          "activeVersionId",
+          "previousActiveVersionId"
+        ],
+        "title": "LibraryVersionActivateResponse",
+        "description": "切换活跃版本响应。"
+      },
+      "LibraryVersionUploadResponse": {
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/LibraryDocumentVersionDTO"
+          },
+          "parseJob": {
+            "$ref": "#/components/schemas/LibraryParseJobDTO"
+          },
+          "storedFile": {
+            "$ref": "#/components/schemas/LibraryStoredFileDTO"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "parseJob",
+          "storedFile"
+        ],
+        "title": "LibraryVersionUploadResponse",
+        "description": "上传新版本成功响应。"
       },
       "PageResponse_AppInvocationDTO_": {
         "properties": {
@@ -16789,6 +19185,20 @@
         "title": "StoredFileDTO",
         "description": "上传文件元数据摘要，开发期仅返回可追踪的对象引用信息。"
       },
+      "SwitchBindingVersionRequest": {
+        "properties": {
+          "libraryVersionId": {
+            "type": "string",
+            "title": "Libraryversionid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "libraryVersionId"
+        ],
+        "title": "SwitchBindingVersionRequest",
+        "description": "切换绑定版本请求。"
+      },
       "TokenUsageResponse": {
         "properties": {
           "kbId": {
@@ -16897,6 +19307,71 @@
         ],
         "title": "TokenUsageSummaryDTO",
         "description": "Token 消耗汇总，按 Provider 阶段聚合。"
+      },
+      "UpdateLibraryMemberRequest": {
+        "properties": {
+          "permissionLevel": {
+            "type": "string",
+            "enum": [
+              "read_only",
+              "document_manage"
+            ],
+            "title": "Permissionlevel"
+          }
+        },
+        "type": "object",
+        "required": [
+          "permissionLevel"
+        ],
+        "title": "UpdateLibraryMemberRequest",
+        "description": "更新文档库成员权限请求。"
+      },
+      "UpdateLibraryRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "visibility": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "public",
+                  "personal",
+                  "partial"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visibility"
+          }
+        },
+        "type": "object",
+        "title": "UpdateLibraryRequest",
+        "description": "更新文档库请求。"
       },
       "UserCreateRequest": {
         "properties": {

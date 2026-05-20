@@ -18,9 +18,10 @@ from app.schemas.library_management import (
 from app.services.permission_service import (
     _user_id,
     check_library_owner_or_admin,
+    has_library_access,
     library_visibility_condition,
 )
-from app.tables import document_libraries, documents, library_member_bindings
+from app.tables import document_kb_bindings, document_libraries, document_versions, documents, library_member_bindings
 
 
 class LibraryNotFoundError(Exception):
@@ -104,7 +105,8 @@ def list_libraries(
 
     base_query = select(document_libraries).where(visibility_cond)
     if keyword and keyword.strip():
-        base_query = base_query.where(document_libraries.c.name.ilike(f"%{keyword.strip()}%"))
+        safe_keyword = keyword.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        base_query = base_query.where(document_libraries.c.name.ilike(f"%{safe_keyword}%", escape="\\"))
 
     total = session.execute(
         select(func.count()).select_from(base_query.subquery())
@@ -144,6 +146,15 @@ def get_library_detail(
     ).mappings().first()
     if row is None:
         raise LibraryNotFoundError
+    if not has_library_access(
+        session,
+        current_user,
+        permission_code="library.document.read",
+        library_id=library_id,
+        library_owner_id=UUID(str(row["owner_id"])),
+        library_visibility=row["visibility"],
+    ):
+        raise LibraryPermissionError
 
     doc_count = _count_library_documents(session, library_id)
     return LibraryDetailDTO(
@@ -219,6 +230,52 @@ def delete_library(
     now = datetime.now(timezone.utc)
     actor_id = _user_id(current_user)
 
+    library_doc_ids = [
+        doc_id
+        for (doc_id,) in session.execute(
+            select(documents.c.document_id).where(
+                documents.c.library_id == library_id,
+                documents.c.deleted_at.is_(None),
+            )
+        )
+    ]
+
+    if library_doc_ids:
+        binding_rows = session.execute(
+            select(document_kb_bindings).where(
+                document_kb_bindings.c.document_id.in_(library_doc_ids),
+                document_kb_bindings.c.status.in_(["pending", "processing", "active", "failed"]),
+            )
+        ).mappings().all()
+        binding_version_ids = [row["version_id"] for row in binding_rows if row["version_id"]]
+        if binding_version_ids:
+            kb_doc_ids = [
+                doc_id
+                for (doc_id,) in session.execute(
+                    select(document_versions.c.document_id).where(
+                        document_versions.c.version_id.in_(binding_version_ids)
+                    )
+                )
+            ]
+            if kb_doc_ids:
+                session.execute(
+                    update(documents)
+                    .where(documents.c.document_id.in_(kb_doc_ids), documents.c.deleted_at.is_(None))
+                    .values(
+                        status="archived",
+                        deleted_at=now,
+                        deleted_by=actor_id,
+                        updated_at=now,
+                        updated_by=actor_id,
+                    )
+                )
+        if binding_rows:
+            session.execute(
+                update(document_kb_bindings)
+                .where(document_kb_bindings.c.binding_id.in_([row["binding_id"] for row in binding_rows]))
+                .values(status="disabled", updated_at=now, updated_by=actor_id)
+            )
+
     # 级联软删除库内文档
     session.execute(
         update(documents)
@@ -226,14 +283,20 @@ def delete_library(
             documents.c.library_id == library_id,
             documents.c.deleted_at.is_(None),
         )
-        .values(deleted_at=now, deleted_by=actor_id)
+        .values(
+            status="archived",
+            deleted_at=now,
+            deleted_by=actor_id,
+            updated_at=now,
+            updated_by=actor_id,
+        )
     )
 
     # 软删除文档库
     session.execute(
         update(document_libraries)
         .where(document_libraries.c.library_id == library_id)
-        .values(deleted_at=now, deleted_by=actor_id)
+        .values(status="archived", deleted_at=now, deleted_by=actor_id, updated_at=now, updated_by=actor_id)
     )
     session.commit()
 

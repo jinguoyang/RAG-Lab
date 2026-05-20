@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, RefreshCw, Save } from "lucide-react";
+import { Plus, RefreshCw, Save, Search } from "lucide-react";
 import { Alert } from "../components/rag/Alert";
 import { Button } from "../components/rag/Button";
 import { Input } from "../components/rag/Input";
@@ -45,12 +45,19 @@ export function DictionaryManagement() {
   const [form, setForm] = useState<ItemForm>(EMPTY_FORM);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [itemSearch, setItemSearch] = useState("");
   const [feedback, setFeedback] = useState<{ variant: "success" | "error" | "warning"; title: string; message: string } | null>(null);
 
   const selectedTypeMeta = useMemo(
     () => SYSTEM_DICTIONARY_TYPES.find((type) => type.code === selectedType),
     [selectedType],
   );
+
+  const filteredItems = useMemo(() => {
+    if (!itemSearch.trim()) return items;
+    const q = itemSearch.trim().toLowerCase();
+    return items.filter((item) => item.code.toLowerCase().includes(q) || item.name.toLowerCase().includes(q) || (item.description ?? "").toLowerCase().includes(q));
+  }, [items, itemSearch]);
 
   async function loadItems(typeCode = selectedType) {
     setIsLoading(true);
@@ -129,7 +136,7 @@ export function DictionaryManagement() {
   }
 
   return (
-    <div className="p-6">
+    <div className="flex flex-col h-full">
       <PageHeader
         title="字典管理"
         description="维护密级、来源、角色展示名和反馈标签。"
@@ -140,43 +147,62 @@ export function DictionaryManagement() {
         }
       />
 
-      {feedback && (
-        <Alert variant={feedback.variant} title={feedback.title} className="mb-5">
-          {feedback.message}
-        </Alert>
-      )}
+      <div className="flex-1 min-h-0 overflow-auto p-8 max-w-7xl mx-auto w-full space-y-6">
+        {feedback && (
+          <Alert variant={feedback.variant} title={feedback.title} onClose={() => setFeedback(null)}>
+            {feedback.message}
+          </Alert>
+        )}
 
-      <div className="grid grid-cols-[220px_minmax(0,1fr)] gap-5">
-        <aside className="rounded-md border border-border-cream bg-ivory p-3">
-          {SYSTEM_DICTIONARY_TYPES.map((type) => (
-            <button
-              key={type.code}
-              type="button"
-              className={`mb-1 flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm ${
-                selectedType === type.code ? "bg-parchment text-terracotta" : "text-near-black hover:bg-parchment"
-              }`}
-              onClick={() => setSelectedType(type.code)}
-            >
-              <span>{type.name}</span>
-              {type.fixedCodes && <span className="text-xs text-stone-gray">固定</span>}
-            </button>
-          ))}
-        </aside>
+        <div className="grid grid-cols-[220px_minmax(0,1fr)] gap-5">
+          <aside className="rounded-md border border-border-cream bg-ivory p-3">
+            {SYSTEM_DICTIONARY_TYPES.map((type) => (
+              <button
+                key={type.code}
+                type="button"
+                className={`mb-1 flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm ${
+                  selectedType === type.code ? "bg-parchment text-terracotta" : "text-near-black hover:bg-parchment"
+                }`}
+                onClick={() => setSelectedType(type.code)}
+              >
+                <span>{type.name}</span>
+                {type.fixedCodes && <span className="text-xs text-stone-gray">固定</span>}
+              </button>
+            ))}
+          </aside>
 
-        <section className="min-w-0 space-y-4">
-          <div className="rounded-md border border-border-cream bg-ivory p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-medium text-near-black">{typeName(selectedType)}</h2>
-                <p className="text-xs text-stone-gray">
-                  {selectedTypeMeta?.fixedCodes ? "该类型只能维护既有 code 的展示信息。" : "可新增字典项，保存后由后端校验生效。"}
-                </p>
+          <section className="min-w-0 space-y-4">
+            <div className="rounded-md border border-border-cream bg-ivory p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-medium text-near-black">{typeName(selectedType)}</h2>
+                  <p className="text-xs text-stone-gray">
+                    {selectedTypeMeta?.fixedCodes ? "该类型只能维护既有 code 的展示信息。" : "可新增字典项，保存后由后端校验生效。"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="relative w-48">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-gray" />
+                    <Input
+                      value={itemSearch}
+                      onChange={(e) => setItemSearch(e.target.value)}
+                      placeholder="搜索字典项..."
+                      className="pl-9 bg-white"
+                    />
+                  </div>
+                  <Button variant="outline" onClick={startCreate}>
+                    <Plus className="mr-2 h-4 w-4" /> 新增
+                  </Button>
+                </div>
               </div>
-              <Button variant="outline" onClick={startCreate}>
-                <Plus className="mr-2 h-4 w-4" /> 新增
-              </Button>
-            </div>
-            <Table>
+              {isLoading ? (
+                <div className="space-y-3">
+                  {[0, 1, 2].map((i) => (
+                    <div key={i} className="h-12 rounded-lg bg-parchment animate-pulse" />
+                  ))}
+                </div>
+              ) : (
+                <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>编码</TableHead>
@@ -187,7 +213,7 @@ export function DictionaryManagement() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.map((item) => (
+                {filteredItems.map((item) => (
                   <TableRow key={item.code}>
                     <TableCell className="font-mono">{item.code}</TableCell>
                     <TableCell>{item.name}</TableCell>
@@ -200,14 +226,15 @@ export function DictionaryManagement() {
                     </TableCell>
                   </TableRow>
                 ))}
-                {items.length === 0 && (
+                {filteredItems.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-stone-gray">暂无字典项</TableCell>
+                    <TableCell colSpan={5} className="text-stone-gray">{itemSearch.trim() ? "无匹配字典项" : "暂无字典项"}</TableCell>
                   </TableRow>
                 )}
               </TableBody>
             </Table>
-          </div>
+              )}
+            </div>
 
           <div className="rounded-md border border-border-cream bg-ivory p-4">
             <h3 className="mb-3 text-sm font-medium text-near-black">{editingCode ? "编辑字典项" : "新增字典项"}</h3>
@@ -246,7 +273,8 @@ export function DictionaryManagement() {
               </Button>
             </div>
           </div>
-        </section>
+          </section>
+        </div>
       </div>
     </div>
   );

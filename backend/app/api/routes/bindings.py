@@ -18,6 +18,7 @@ from app.schemas.binding import (
 )
 from app.services.binding_service import (
     BindingAlreadyExistsError,
+    BindingDispatchError,
     BindingDocumentNotFoundError,
     BindingKBNotFoundError,
     BindingNotFoundError,
@@ -67,6 +68,11 @@ def _raise_binding_error(exc: Exception) -> None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="VERSION_NOT_READY",
+        ) from exc
+    if isinstance(exc, BindingDispatchError):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "INGEST_ENQUEUE_FAILED", "jobIds": exc.job_ids},
         ) from exc
     raise exc
 
