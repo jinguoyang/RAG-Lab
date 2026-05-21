@@ -1,5 +1,4 @@
-from pydantic import BaseModel
-from pydantic import Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class StoredFileDTO(BaseModel):
@@ -231,6 +230,23 @@ class DocumentUploadResponse(BaseModel):
     storedFile: StoredFileDTO | None = None
     duplicateInfo: dict | None = None
     fileHash: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_status_fields(self) -> "DocumentUploadResponse":
+        if self.status == "success":
+            missing = [
+                name
+                for name in ("document", "version", "ingestJob", "storedFile")
+                if getattr(self, name) is None
+            ]
+            if missing:
+                raise ValueError(
+                    f"status='success' requires {', '.join(missing)} to be non-None"
+                )
+        elif self.status == "duplicate":
+            if self.duplicateInfo is None:
+                raise ValueError("status='duplicate' requires duplicateInfo to be non-None")
+        return self
 
 
 class DocumentDetailDTO(BaseModel):

@@ -86,7 +86,7 @@ def _calculate_file_hash(file_content: bytes) -> str:
 
 def check_file_hash_duplicate(
     session: Session,
-    library_id: UUID,
+    kb_id: UUID,
     file_hash: str,
 ) -> dict | None:
     """检查文件 hash 是否重复
@@ -102,7 +102,7 @@ def check_file_hash_duplicate(
             .join(documents, document_versions.c.document_id == documents.c.document_id)
         )
         .where(
-            documents.c.kb_id == library_id,
+            documents.c.kb_id == kb_id,
             documents.c.deleted_at.is_(None),
             stored_files.c.checksum == file_hash,
             stored_files.c.status == "active",

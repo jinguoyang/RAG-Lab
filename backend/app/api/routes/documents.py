@@ -107,6 +107,7 @@ async def upload_document(
     file: Annotated[UploadFile, File()],
     name: Annotated[str | None, Form()] = None,
     security_level: Annotated[str | None, Form(alias="securityLevel")] = None,
+    force_upload: Annotated[bool, Form(alias="forceUpload")] = False,
     current_user: CurrentUserResponse = Depends(get_current_user),
     session: Session = Depends(get_db_session),
 ) -> DocumentUploadResponse:
@@ -125,6 +126,7 @@ async def upload_document(
             file_bytes=file_bytes,
             name=name,
             security_level=security_level,
+            force_upload=force_upload,
         )
     except (KnowledgeBaseDisabledError, DocumentPermissionError, DocumentConflictError, DocumentIngestEnqueueError, DictionaryValidationError) as exc:
         _raise_document_error(exc)
