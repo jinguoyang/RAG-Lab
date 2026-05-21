@@ -334,6 +334,25 @@ document_versions = sa.Table(
     sa.Column("deleted_by", postgresql.UUID(as_uuid=True), nullable=True),
 )
 
+parse_revisions = sa.Table(
+    "parse_revisions",
+    metadata,
+    sa.Column("parse_revision_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("document_version_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("content_format", sa.String(length=16), nullable=False),
+    sa.Column("content_object_key", sa.String(length=512), nullable=True),
+    sa.Column("content_text", sa.Text(), nullable=True),
+    sa.Column("content_hash", sa.String(length=128), nullable=True),
+    sa.Column("parser_name", sa.String(length=64), nullable=True),
+    sa.Column("parser_version", sa.String(length=32), nullable=True),
+    sa.Column("parse_options", postgresql.JSONB(), nullable=False, server_default="{}"),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("deleted_by", postgresql.UUID(as_uuid=True), nullable=True),
+)
+
 ingest_jobs = sa.Table(
     "ingest_jobs",
     metadata,
