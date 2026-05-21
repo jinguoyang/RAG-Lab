@@ -412,6 +412,17 @@ chunks = sa.Table(
     sa.Column("status", sa.String(length=16), nullable=False),
     sa.Column("metadata", postgresql.JSONB(), nullable=False),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    # 新增字段
+    sa.Column("binding_revision_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("parse_revision_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("document_version_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("start_offset", sa.Integer(), nullable=True),
+    sa.Column("end_offset", sa.Integer(), nullable=True),
+    sa.Column("section_path", sa.String(length=255), nullable=True),
+    sa.Column("heading", sa.String(length=255), nullable=True),
+    sa.Column("summary", sa.Text(), nullable=True),
+    sa.Column("retired_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
 )
 
 index_sync_jobs = sa.Table(
