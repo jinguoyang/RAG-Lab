@@ -190,7 +190,21 @@ def test_parse_png_chunk_metadata_has_image_fields():
     assert first_chunk.metadata["sourceModality"] == "image"
     assert first_chunk.metadata["parserName"] == "vision_text"
     assert first_chunk.metadata["region"] == "full"
-    assert first_chunk.metadata["visionConfidence"] == "medium"
+    assert first_chunk.metadata["visionConfidence"] == "unknown"
+
+
+def test_parse_image_empty_content_raises():
+    """视觉 Provider 返回空内容时应抛出 PARSE_EMPTY_CONTENT。"""
+    from app.services.vision_text_provider import VisionTextResult
+
+    png_bytes = _make_tiny_png()
+    empty_provider = LocalVisionTextProvider()
+    empty_provider.extract_text = lambda _: VisionTextResult(caption="", ocr_text="", structured_summary="")
+    with patch("app.services.document_parsing.get_vision_text_provider") as mock_factory:
+        mock_factory.return_value = empty_provider
+        with pytest.raises(DocumentParseError) as exc_info:
+            parse_document("test.png", "image/png", png_bytes)
+    assert exc_info.value.error_code == "PARSE_EMPTY_CONTENT"
 
 
 def test_parse_unsupported_image_extension_raises():
