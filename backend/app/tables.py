@@ -288,6 +288,8 @@ document_kb_bindings = sa.Table(
     sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
+    # 新增字段
+    sa.Column("active_binding_revision_id", postgresql.UUID(as_uuid=True), nullable=True),
 )
 
 library_parse_jobs = sa.Table(
@@ -422,7 +424,9 @@ chunks = sa.Table(
     sa.Column("heading", sa.String(length=255), nullable=True),
     sa.Column("summary", sa.Text(), nullable=True),
     sa.Column("retired_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("retired_by", postgresql.UUID(as_uuid=True), nullable=True),
     sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("deleted_by", postgresql.UUID(as_uuid=True), nullable=True),
 )
 
 index_sync_jobs = sa.Table(
