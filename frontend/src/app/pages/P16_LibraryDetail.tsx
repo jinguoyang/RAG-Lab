@@ -23,6 +23,7 @@ import {
   activateLibraryVersion,
   deleteLibraryVersion,
   switchBindingVersion,
+  getDeletionImpact,
 } from "../services/libraryService";
 import type {
   LibraryDocumentDetailDTO,
@@ -30,6 +31,7 @@ import type {
   LibraryDocumentUsageDTO,
   LibraryDocumentVersionDTO,
   UploadProgress,
+  DeletionImpactAnalysis,
 } from "../types/library";
 
 function getPreviewType(fileName: string): "pdf" | "markdown" | "text" | "docx" | "unsupported" {
@@ -77,6 +79,12 @@ export function LibraryDetail() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [uploading, setUploading] = useState(false);
+
+  // Deletion impact drawer state
+  const [deleteDrawer, setDeleteDrawer] = useState<{ versionId: string; versionNo: number } | null>(null);
+  const [deleteImpact, setDeleteImpact] = useState<DeletionImpactAnalysis | null>(null);
+  const [deleteImpactLoading, setDeleteImpactLoading] = useState(false);
+  const [strongConfirmChecked, setStrongConfirmChecked] = useState(false);
 
   // KB version switch drawer
   const [switchDrawer, setSwitchDrawer] = useState<{ bindingId: string; kbId: string; kbName: string } | null>(null);
@@ -147,8 +155,16 @@ export function LibraryDetail() {
     try {
       const { promise, onProgress } = uploadLibraryVersionWithProgress(docId, uploadFile);
       onProgress(setUploadProgress);
-      await promise;
-      setFeedback({ variant: "success", title: "上传成功", message: "版本文件已上传，解析任务已创建。" });
+      const result = await promise;
+      if ('isDuplicate' in result && result.isDuplicate) {
+        setFeedback({
+          variant: "warning",
+          title: "重复文件提醒",
+          message: `该文件与已有版本内容相同。`,
+        });
+      } else {
+        setFeedback({ variant: "success", title: "上传成功", message: "版本文件已上传，解析任务已创建。" });
+      }
       setShowUpload(false);
       setUploadFile(null);
       setUploadProgress(null);
@@ -177,16 +193,32 @@ export function LibraryDetail() {
   }
 
   async function handleDeleteVersion(versionId: string, versionNo: number) {
-    const confirmed = await confirm({
-      title: "删除版本",
-      description: `确定要删除 v${versionNo} 吗？此操作不可撤销。`,
-      confirmLabel: "确认删除",
-      destructive: true,
-    });
-    if (!confirmed) return;
+    setDeleteDrawer({ versionId, versionNo });
+    setDeleteImpactLoading(true);
+    setStrongConfirmChecked(false);
+    setDeleteImpact(null);
     try {
-      await deleteLibraryVersion(docId, versionId);
-      setFeedback({ variant: "success", title: "删除成功", message: `v${versionNo} 已删除。` });
+      const impact = await getDeletionImpact(docId, versionId);
+      setDeleteImpact(impact);
+    } catch (error) {
+      setFeedback({ variant: "error", title: "获取影响分析失败", message: error instanceof Error ? error.message : "请稍后重试。" });
+      setDeleteDrawer(null);
+    } finally {
+      setDeleteImpactLoading(false);
+    }
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteDrawer || !deleteImpact) return;
+    if (deleteImpact.requiresStrongConfirmation && !strongConfirmChecked) {
+      setFeedback({ variant: "warning", title: "请确认", message: "请先勾选确认选项。" });
+      return;
+    }
+    try {
+      await deleteLibraryVersion(docId, deleteDrawer.versionId);
+      setFeedback({ variant: "success", title: "删除成功", message: `v${deleteDrawer.versionNo} 已删除。` });
+      setDeleteDrawer(null);
+      setDeleteImpact(null);
       await loadData();
     } catch (error) {
       const msg = error instanceof Error ? error.message : "请稍后重试。";
@@ -399,7 +431,14 @@ export function LibraryDetail() {
                       <TableCell>{v.fileName ?? "-"}</TableCell>
                       <TableCell>{formatFileSize(v.fileSize)}</TableCell>
                       <TableCell>
-                        <Badge variant={parseStatusVariant(v.parseStatus)}>{v.parseStatus}</Badge>
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant={parseStatusVariant(v.parseStatus)}>{v.parseStatus}</Badge>
+                          {v.parseRevisions && v.parseRevisions.length > 0 && (
+                            <span className="text-xs text-stone-gray" title={v.parseRevisions.map(pr => `${pr.parserName ?? "unknown"}: ${pr.status}`).join("\n")}>
+                              ({v.parseRevisions.length})
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>{v.chunkCount}</TableCell>
                       <TableCell>
@@ -568,6 +607,88 @@ export function LibraryDetail() {
             )}
           </Tabs.Content>
         </Tabs.Root>
+
+        {/* 删除影响分析 Drawer */}
+        {deleteDrawer && (
+          <Drawer title={`删除版本 v${deleteDrawer.versionNo}`} onClose={() => { setDeleteDrawer(null); setDeleteImpact(null); }}>
+            <DrawerSection>
+              {deleteImpactLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <span className="text-stone-gray">正在分析影响...</span>
+                </div>
+              ) : deleteImpact ? (
+                <div className="space-y-4">
+                  {/* 影响摘要 */}
+                  <div className="rounded-lg border border-border-cream bg-parchment p-4 space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-stone-gray">当前活跃版本</span>
+                      <span className="text-near-black">{deleteImpact.isActiveVersion ? "是" : "否"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-stone-gray">活跃知识库绑定</span>
+                      <span className="text-near-black">{deleteImpact.activeBindingCount}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-stone-gray">运行中任务</span>
+                      <span className="text-near-black">{deleteImpact.pendingJobsCount}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-stone-gray">历史 QA 引用</span>
+                      <span className="text-near-black">{deleteImpact.qaEvidenceCount}</span>
+                    </div>
+                  </div>
+
+                  {/* 阻塞原因 */}
+                  {!deleteImpact.canDelete && deleteImpact.blockingReasons.length > 0 && (
+                    <Alert variant="error" title="无法删除">
+                      <ul className="list-disc list-inside space-y-1">
+                        {deleteImpact.blockingReasons.map((reason, i) => (
+                          <li key={i}>{reason}</li>
+                        ))}
+                      </ul>
+                    </Alert>
+                  )}
+
+                  {/* 强确认提示 */}
+                  {deleteImpact.canDelete && deleteImpact.requiresStrongConfirmation && (
+                    <Alert variant="warning" title="影响提示">
+                      删除后，相关 QA 历史的证据将显示「引用文件已被清理」，无法再查看当时引用的原文片段。
+                    </Alert>
+                  )}
+
+                  {/* 强确认 checkbox */}
+                  {deleteImpact.canDelete && deleteImpact.requiresStrongConfirmation && (
+                    <label className="flex items-start gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={strongConfirmChecked}
+                        onChange={(e) => setStrongConfirmChecked(e.target.checked)}
+                        className="mt-0.5"
+                      />
+                      <span>我确认清理该文档版本，并接受相关 QA 历史证据不可回放。</span>
+                    </label>
+                  )}
+
+                  {/* 操作按钮 */}
+                  <div className="flex gap-2 justify-end pt-2">
+                    <Button variant="secondary" onClick={() => { setDeleteDrawer(null); setDeleteImpact(null); }}>
+                      取消
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      disabled={!deleteImpact.canDelete || (deleteImpact.requiresStrongConfirmation && !strongConfirmChecked)}
+                      onClick={() => void handleConfirmDelete()}
+                    >
+                      确认删除
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-stone-gray text-sm">无法加载影响分析</p>
+              )}
+            </DrawerSection>
+          </Drawer>
+        )}
       </div>
     </div>
   );
