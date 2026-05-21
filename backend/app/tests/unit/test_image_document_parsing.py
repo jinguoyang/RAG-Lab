@@ -43,10 +43,11 @@ def test_vision_settings_explicit_override():
     assert settings.vision_text_max_image_side == 1024
 
 
-def test_vision_text_provider_is_abstract():
-    """VisionTextProvider 是抽象基类，不能直接实例化。"""
-    with pytest.raises(TypeError):
-        VisionTextProvider()  # type: ignore[abstract]
+def test_vision_text_provider_base_raises_not_implemented():
+    """VisionTextProvider 基类 extract_text 应抛出 NotImplementedError。"""
+    provider = VisionTextProvider()
+    with pytest.raises(NotImplementedError):
+        provider.extract_text(b"fake-image-bytes")
 
 
 def test_local_vision_text_provider_returns_stable_data():

@@ -1,7 +1,5 @@
 """VisionTextProvider：图片视觉文本抽取 Provider 抽象。"""
 
-from abc import ABC, abstractmethod
-
 from pydantic import BaseModel
 
 from app.core.config import Settings
@@ -16,10 +14,9 @@ class VisionTextResult(BaseModel):
     structured_summary: str
 
 
-class VisionTextProvider(ABC):
+class VisionTextProvider:
     """视觉文本抽取 Provider 抽象基类。"""
 
-    @abstractmethod
     def extract_text(self, image_bytes: bytes) -> VisionTextResult:
         raise NotImplementedError
 
@@ -48,4 +45,5 @@ class HttpVisionTextProvider(VisionTextProvider):
         self._max_image_side = settings.vision_text_max_image_side
 
     def extract_text(self, image_bytes: bytes) -> VisionTextResult:
+        # TODO: B-219 - implement HTTP vision API call
         raise NotImplementedError
