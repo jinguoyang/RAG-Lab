@@ -8,6 +8,7 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 - Sprint 36 已完成，主题为文档库基础框架与文档解析，实现数据库迁移、上传/列表/详情 API、P15/P16 前端页面、PDF/Markdown 预览组件和验收脚本。
 - Sprint 37 至 Sprint 38 已规划，主题为 E28 文档库后续功能，范围见 [E28 文档库功能实施计划](../plans/2026-05-19-e28-document-library.md)。
 - Sprint 40 至 Sprint 43 已规划，主题为 E30 三层架构模型收口，范围见 [E30 三层架构模型收口实施计划](../plans/2026-05-21-e30-three-layer-architecture-refactor.md)。
+- Sprint 44 已规划，主题为 E31 图片 RAG 第一阶段，范围见 [图片多模态 RAG 第一阶段实施计划](../plans/2026-05-21-image-rag-phase1.md)。
 - 下一版本为 V1.9，计划承接 E23 图快照保留与配置治理、E24 文档解析能力增强；E27 RAG App 运行治理与接入可见性已完成。E28 文档库功能作为后续文档库 V1.0 规划进入 Sprint 36 至 Sprint 38。
 - Sprint 01 至 Sprint 26 已完成，对应 V1.0 至 V1.7。
 - Sprint 27 至 Sprint 29 已完成 E22 知识库治理工作流强化范围：P05 支持治理问题定位和治理后验证摘要，P06 支持批量治理和索引同步作业，P07 支持 Chunk 治理标记、索引重建和作业查看。
@@ -41,6 +42,7 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 | Sprint 41 | 架构演进 V2.0 | 三层架构后端生命周期改造 | Planned | `sprint41-60/Sprint-41.md` |
 | Sprint 42 | 架构演进 V2.0 | 三层架构前端体验改造 | Planned | `sprint41-60/Sprint-42.md` |
 | Sprint 43 | 架构演进 V2.0 | 三层架构回归验收与文档同步 | Planned | `sprint41-60/Sprint-43.md` |
+| Sprint 44 | 多模态 RAG Phase 1 | 图片 RAG 第一阶段：视觉文本 Chunk 闭环 | Planned | `sprint41-60/Sprint-44.md` |
 
 ## 3. 单个 Sprint 文档约定
 
