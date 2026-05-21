@@ -482,11 +482,20 @@ export function RagAppManagement() {
       }
       await loadAppDetail(selectedApp);
     } catch (error) {
-      setFeedback({
-        variant: "error",
-        title: "Runtime 试运行失败",
-        message: error instanceof Error ? error.message : "请检查 API Key、应用状态和后端服务。",
-      });
+      const rawMessage = error instanceof Error ? error.message : "请检查 API Key、应用状态和后端服务。";
+      const friendlyTitle =
+        rawMessage.includes("KB_DISABLED") ? "知识库已停用" :
+        rawMessage.includes("KB_NOT_FOUND") ? "知识库不存在" :
+        rawMessage.includes("APP_DISABLED") ? "应用已停用" :
+        rawMessage.includes("KEY_EXPIRED") ? "API Key 已过期" :
+        "Runtime 试运行失败";
+      const friendlyMessage =
+        rawMessage.includes("KB_DISABLED") ? "知识库已停用，请先在知识库管理页面恢复知识库状态。" :
+        rawMessage.includes("KB_NOT_FOUND") ? "知识库不存在或已删除，请检查应用配置。" :
+        rawMessage.includes("APP_DISABLED") ? "应用已停用，请先启用应用。" :
+        rawMessage.includes("KEY_EXPIRED") ? "API Key 已过期，请创建新的 Key。" :
+        rawMessage;
+      setFeedback({ variant: "error", title: friendlyTitle, message: friendlyMessage });
     } finally {
       setIsRuntimeRunning(false);
     }
@@ -705,6 +714,33 @@ export function RagAppManagement() {
                   </div>
                 </div>
 
+                {selectedApp.knowledgeBaseName && (
+                  <div className="rounded-lg border border-border-cream bg-parchment p-3 text-sm mt-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-stone-gray">所属知识库：</span>
+                        <span className="text-near-black ml-2">{selectedApp.knowledgeBaseName}</span>
+                      </div>
+                      <Badge
+                        variant={
+                          selectedApp.knowledgeBaseStatus === "active" ? "success" :
+                          selectedApp.knowledgeBaseStatus === "disabled" ? "warning" :
+                          "error"
+                        }
+                      >
+                        {selectedApp.knowledgeBaseStatus === "active" ? "运行中" :
+                         selectedApp.knowledgeBaseStatus === "disabled" ? "已停用" :
+                         selectedApp.knowledgeBaseStatus}
+                      </Badge>
+                    </div>
+                    {selectedApp.knowledgeBaseStatus === "disabled" && (
+                      <Alert variant="warning" title="知识库已停用" className="mt-2">
+                        Runtime 调用将被拒绝。请先恢复知识库。
+                      </Alert>
+                    )}
+                  </div>
+                )}
+
                 <Tabs.Root value={activeTab} onValueChange={(v) => setActiveTab(v as DetailTab)} className="rounded-lg border border-border-cream bg-ivory">
                   <Tabs.List className="flex border-b border-border-cream text-sm">
                     <Tabs.Trigger value="overview" className="flex-1 h-11 border-r border-border-cream text-stone-gray font-medium hover:text-near-black data-[state=active]:bg-parchment data-[state=active]:text-terracotta transition-all">概览</Tabs.Trigger>
@@ -732,6 +768,11 @@ export function RagAppManagement() {
                             <p className="mt-1 text-lg font-medium text-near-black">{invocationRows[0]?.createdAtLabel ?? "-"}</p>
                           </div>
                         </div>
+                        {selectedApp.knowledgeBaseStatus === "disabled" && (
+                          <Alert variant="warning" title="调用统计受影响">
+                            知识库已停用，自停用以来无新调用记录。
+                          </Alert>
+                        )}
                         <div className="rounded-lg border border-border-cream bg-parchment p-3">
                           <p className="text-xs text-stone-gray">调用统计</p>
                           <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-stone-gray">
@@ -837,6 +878,7 @@ export function RagAppManagement() {
                             <TableRow>
                               <TableHead>前缀</TableHead>
                               <TableHead>状态</TableHead>
+                              <TableHead>可用性</TableHead>
                               <TableHead>过期时间</TableHead>
                               <TableHead>最近使用</TableHead>
                               <TableHead>操作</TableHead>
@@ -845,13 +887,23 @@ export function RagAppManagement() {
                           <TableBody>
                             {keyRows.length === 0 && (
                               <TableRow>
-                                <TableCell colSpan={5} className="text-stone-gray">暂无 API Key</TableCell>
+                                <TableCell colSpan={6} className="text-stone-gray">暂无 API Key</TableCell>
                               </TableRow>
                             )}
                             {keyRows.map((key) => (
                               <TableRow key={key.id}>
                                 <TableCell mono>{key.keyPrefix}</TableCell>
                                 <TableCell><Badge variant={statusBadgeVariant(key.status)}>{key.statusLabel}</Badge></TableCell>
+                                <TableCell>
+                                  {(() => {
+                                    if (key.status === "revoked") return <Badge variant="inactive">已撤销</Badge>;
+                                    const sourceKey = apiKeys.find((item) => item.apiKeyId === key.id);
+                                    if (sourceKey?.expiresAt && new Date(sourceKey.expiresAt) < new Date()) return <Badge variant="inactive">已过期</Badge>;
+                                    if (selectedApp.status === "disabled") return <Badge variant="warning">应用已停用</Badge>;
+                                    if (selectedApp.knowledgeBaseStatus === "disabled") return <Badge variant="error">知识库已停用</Badge>;
+                                    return <Badge variant="success">可用</Badge>;
+                                  })()}
+                                </TableCell>
                                 <TableCell>{key.expiresAtLabel}</TableCell>
                                 <TableCell>{key.lastUsedAtLabel}</TableCell>
                                 <TableCell>
