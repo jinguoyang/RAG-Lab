@@ -770,12 +770,53 @@ export function QAHistory() {
                 <div className="rounded-lg border border-border-cream bg-parchment p-3 text-sm text-stone-gray">
                   Trace 步骤：{selectedDetail?.trace.length ?? "-"} · Evidence：{selectedDetail?.evidence.length ?? "-"} · Candidate：{selectedDetail?.candidates.length ?? "-"}
                 </div>
-                {selectedDetail?.evidence.slice(0, 3).map((evidence) => (
-                  <div key={evidence.evidenceId} className="rounded-lg border border-border-cream bg-parchment p-3 text-sm">
-                    <div className="font-mono text-xs text-stone-gray">{evidence.chunkId}</div>
-                    <p className="mt-2 text-near-black">{evidence.contentSnapshot || "当前证据策略未返回正文快照。"}</p>
-                  </div>
-                ))}
+                {selectedDetail?.evidence.slice(0, 5).map((evidence) => {
+                  const isDeleted = evidence.sourceStatus === "source_deleted";
+                  return (
+                    <div
+                      key={evidence.evidenceId}
+                      className={`rounded-lg border border-border-cream bg-parchment p-3 text-sm ${isDeleted ? "opacity-60" : ""}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="font-mono text-xs text-stone-gray">{evidence.chunkId}</div>
+                        {isDeleted && <Badge variant="inactive">已清理</Badge>}
+                      </div>
+                      {isDeleted ? (
+                        <p className="mt-2 text-stone-gray italic">引用文件已被清理</p>
+                      ) : (
+                        <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">
+                          {evidence.documentName && (
+                            <>
+                              <Badge variant="info">{evidence.documentName}</Badge>
+                              <span className="text-stone-gray">→</span>
+                            </>
+                          )}
+                          {evidence.versionNo != null && (
+                            <>
+                              <Badge variant="info">v{evidence.versionNo}</Badge>
+                              <span className="text-stone-gray">→</span>
+                            </>
+                          )}
+                          {evidence.pageNo != null && (
+                            <>
+                              <Badge variant="info">p.{evidence.pageNo}</Badge>
+                              <span className="text-stone-gray">→</span>
+                            </>
+                          )}
+                          {evidence.sectionPath && (
+                            <Badge variant="info">{evidence.sectionPath}</Badge>
+                          )}
+                          {evidence.chunkStatus && evidence.chunkStatus !== "active" && (
+                            <Badge variant="warning">{evidence.chunkStatus}</Badge>
+                          )}
+                        </div>
+                      )}
+                      <p className={`mt-2 ${isDeleted ? "text-stone-gray" : "text-near-black"}`}>
+                        {evidence.contentSnapshot || "当前证据策略未返回正文快照。"}
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
             </DrawerSection>
 
