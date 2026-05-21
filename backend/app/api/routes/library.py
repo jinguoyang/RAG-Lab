@@ -5,6 +5,7 @@ from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -53,6 +54,7 @@ from app.services.library_service import (
     upload_library_version,
 )
 from app.services.object_storage import ObjectStorageError
+from app.tables import document_versions
 
 router = APIRouter(prefix="/library/documents", tags=["library"])
 
@@ -340,6 +342,14 @@ def get_deletion_impact(
 ) -> DeletionImpactAnalysis:
     """分析删除指定版本的影响。"""
     try:
+        version = db.execute(
+            select(document_versions.c.document_id).where(
+                document_versions.c.version_id == version_id,
+                document_versions.c.document_id == document_id,
+            )
+        ).scalar()
+        if version is None:
+            raise LibraryVersionNotFoundError()
         result = analyze_document_version_deletion_impact(db, version_id)
         return DeletionImpactAnalysis(
             canDelete=result["can_delete"],
