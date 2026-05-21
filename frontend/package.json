@@ -9,6 +9,8 @@
     "lint": "eslint .",
     "test": "vitest --run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test --config e2e/playwright.config.ts",
+    "test:e2e:ui": "playwright test --config e2e/playwright.config.ts --ui",
     "verify:app-runtime-service": "node ./scripts/verify_app_runtime_service.mjs",
     "verify:rag-app-management-ui": "node ./scripts/verify_rag_app_management_ui.mjs",
     "verify:p13-runtime-flow": "node ./scripts/verify_p13_runtime_action_flow.mjs"
@@ -74,6 +76,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/vite": "4.1.12",
     "@types/dompurify": "^3.0.5",
     "@vitejs/plugin-react": "4.7.0",
