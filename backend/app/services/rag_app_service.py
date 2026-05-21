@@ -49,7 +49,11 @@ class RagAppConflictError(ValueError):
     """RAG App 管理操作遇到业务状态冲突。"""
 
 
-def _to_app_dto(row: RowMapping) -> RagAppDTO:
+def _to_app_dto(
+    row: RowMapping,
+    kb_name: str | None = None,
+    kb_status: str | None = None,
+) -> RagAppDTO:
     """将 RAG App 数据库行转换为管理端 DTO。"""
     return RagAppDTO(
         appId=str(row["app_id"]),
@@ -64,7 +68,25 @@ def _to_app_dto(row: RowMapping) -> RagAppDTO:
         metadata=row["metadata"] or {},
         createdAt=row["created_at"].isoformat(),
         updatedAt=row["updated_at"].isoformat(),
+        knowledgeBaseName=kb_name,
+        knowledgeBaseStatus=kb_status,
     )
+
+
+def _fetch_kb_info(
+    session: Session,
+    kb_id: UUID,
+) -> tuple[str | None, str | None]:
+    """查询知识库名称和状态，用于填充 RagAppDTO 的 KB 扩展字段。"""
+    kb_row = session.execute(
+        select(
+            knowledge_bases.c.name,
+            knowledge_bases.c.status,
+        ).where(knowledge_bases.c.kb_id == kb_id)
+    ).first()
+    if kb_row is None:
+        return None, None
+    return kb_row[0], kb_row[1]
 
 
 def _to_api_key_dto(row: RowMapping) -> RagAppApiKeyDTO:
@@ -266,7 +288,11 @@ def list_rag_apps(
     base_from = rag_apps.join(knowledge_bases, rag_apps.c.kb_id == knowledge_bases.c.kb_id)
     total = session.execute(select(func.count()).select_from(base_from).where(condition)).scalar_one()
     rows = session.execute(
-        select(rag_apps)
+        select(
+            rag_apps,
+            knowledge_bases.c.name.label("kb_name"),
+            knowledge_bases.c.status.label("kb_status"),
+        )
         .select_from(base_from)
         .where(condition)
         .order_by(rag_apps.c.updated_at.desc(), rag_apps.c.created_at.desc())
@@ -274,7 +300,7 @@ def list_rag_apps(
         .limit(page_size)
     ).mappings()
     return PageResponse(
-        items=[_to_app_dto(row) for row in rows],
+        items=[_to_app_dto(row, kb_name=row["kb_name"], kb_status=row["kb_status"]) for row in rows],
         pageNo=page_no,
         pageSize=page_size,
         total=total,
@@ -287,7 +313,9 @@ def get_rag_app(
     app_id: UUID,
 ) -> RagAppDTO:
     """读取单个 RAG App 详情。"""
-    return _to_app_dto(_read_visible_app_row(session, current_user, app_id))
+    app_row = _read_visible_app_row(session, current_user, app_id)
+    kb_name, kb_status = _fetch_kb_info(session, app_row["kb_id"])
+    return _to_app_dto(app_row, kb_name=kb_name, kb_status=kb_status)
 
 
 def create_rag_app(
@@ -330,7 +358,8 @@ def create_rag_app(
         detail={"name": request.name},
     )
     session.commit()
-    return _to_app_dto(row)
+    kb_name, kb_status = _fetch_kb_info(session, request.kbId)
+    return _to_app_dto(row, kb_name=kb_name, kb_status=kb_status)
 
 
 def update_rag_app(
@@ -380,7 +409,8 @@ def update_rag_app(
         detail={"updatedFields": sorted(requested_fields)},
     )
     session.commit()
-    return _to_app_dto(row)
+    kb_name, kb_status = _fetch_kb_info(session, app_row["kb_id"])
+    return _to_app_dto(row, kb_name=kb_name, kb_status=kb_status)
 
 
 def delete_rag_app(

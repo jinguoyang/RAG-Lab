@@ -18,6 +18,9 @@ class RagAppDTO(BaseModel):
     metadata: dict[str, Any]
     createdAt: str
     updatedAt: str
+    # Sprint 42: KB status fields
+    knowledgeBaseName: str | None = None
+    knowledgeBaseStatus: str | None = None  # "active" | "disabled" | "deleted"
 
 
 class RagAppCreateRequest(BaseModel):
