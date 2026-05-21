@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import PurePath
 import time
@@ -41,6 +42,7 @@ from app.tables import (
     index_sync_records,
     ingest_jobs,
     knowledge_bases,
+    parse_revisions,
     stored_files,
     users,
 )
@@ -82,6 +84,45 @@ class DocumentIngestEnqueueError(Exception):
 def _calculate_file_hash(file_content: bytes) -> str:
     """计算文件内容的 SHA256 hash"""
     return sha256(file_content).hexdigest()
+
+
+def create_parse_revision(
+    session: Session,
+    document_version_id: UUID,
+    content_format: str,
+    content_text: str | None = None,
+    content_object_key: str | None = None,
+    content_hash: str | None = None,
+    parser_name: str | None = None,
+    parser_version: str | None = None,
+    parse_options: dict | None = None,
+    created_by: UUID | None = None,
+) -> UUID:
+    """创建 ParseRevision 记录
+
+    Returns: parse_revision_id
+    """
+    parse_revision_id = uuid4()
+    now = datetime.now(timezone.utc)
+
+    session.execute(
+        insert(parse_revisions).values(
+            parse_revision_id=parse_revision_id,
+            document_version_id=document_version_id,
+            content_format=content_format,
+            content_text=content_text,
+            content_object_key=content_object_key,
+            content_hash=content_hash,
+            parser_name=parser_name,
+            parser_version=parser_version,
+            parse_options=parse_options or {},
+            status="completed",
+            created_at=now,
+            created_by=created_by,
+        )
+    )
+
+    return parse_revision_id
 
 
 def check_file_hash_duplicate(
@@ -728,6 +769,19 @@ def run_ingest_job(
             parser_name = parsed_document.parser_name
             parser_version = parsed_document.parser_version
         stage_timings["parse"] = round(time.perf_counter() - stage_started_at, 3)
+
+        # 解析完成后创建 ParseRevision
+        content_text = "\n\n".join(chunk.content for chunk in parsed_chunks if chunk.content)
+        create_parse_revision(
+            session=session,
+            document_version_id=version_row["version_id"],
+            content_format="markdown",
+            content_text=content_text,
+            content_hash=sha256(content_text.encode("utf-8")).hexdigest() if content_text else None,
+            parser_name=parser_name,
+            parser_version=parser_version,
+            created_by=UUID(current_user.user.userId),
+        )
         old_chunk_ids = [
             row[0]
             for row in session.execute(

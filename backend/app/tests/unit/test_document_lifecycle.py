@@ -2,7 +2,7 @@ import pytest
 from uuid import uuid4
 from unittest.mock import Mock, patch, MagicMock
 
-from app.services.document_service import _calculate_file_hash, check_file_hash_duplicate
+from app.services.document_service import _calculate_file_hash, check_file_hash_duplicate, create_parse_revision
 
 
 def test_calculate_file_hash():
@@ -74,3 +74,71 @@ def test_check_file_hash_duplicate_found_null_created_at():
     result = check_file_hash_duplicate(session, uuid4(), "abc123")
     assert result is not None
     assert result["created_at"] is None
+
+
+def test_create_parse_revision():
+    """测试创建 ParseRevision"""
+    session = Mock()
+    version_id = uuid4()
+
+    with patch('app.services.document_service.insert') as mock_insert:
+        mock_insert.return_value.values.return_value = None
+
+        result = create_parse_revision(
+            session=session,
+            document_version_id=version_id,
+            content_format="markdown",
+            content_text="# Test Content",
+            content_hash="abc123",
+            parser_name="test_parser",
+            parser_version="1.0",
+        )
+
+        assert result is not None
+        mock_insert.assert_called_once()
+
+
+def test_create_parse_revision_with_created_by():
+    """测试创建 ParseRevision 时传入 created_by"""
+    session = Mock()
+    version_id = uuid4()
+    user_id = uuid4()
+
+    with patch('app.services.document_service.insert') as mock_insert:
+        mock_insert.return_value.values.return_value = None
+
+        result = create_parse_revision(
+            session=session,
+            document_version_id=version_id,
+            content_format="markdown",
+            content_text="# Test Content",
+            parser_name="test_parser",
+            parser_version="1.0",
+            created_by=user_id,
+        )
+
+        assert result is not None
+        mock_insert.assert_called_once()
+        # Verify created_by was passed to values
+        call_kwargs = mock_insert.return_value.values.call_args[1]
+        assert call_kwargs["created_by"] == user_id
+
+
+def test_create_parse_revision_default_parse_options():
+    """测试 create_parse_revision 默认空 parse_options"""
+    session = Mock()
+    version_id = uuid4()
+
+    with patch('app.services.document_service.insert') as mock_insert:
+        mock_insert.return_value.values.return_value = None
+
+        result = create_parse_revision(
+            session=session,
+            document_version_id=version_id,
+            content_format="markdown",
+        )
+
+        assert result is not None
+        call_kwargs = mock_insert.return_value.values.call_args[1]
+        assert call_kwargs["parse_options"] == {}
+        assert call_kwargs["status"] == "completed"
