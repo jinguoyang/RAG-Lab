@@ -353,6 +353,27 @@ parse_revisions = sa.Table(
     sa.Column("deleted_by", postgresql.UUID(as_uuid=True), nullable=True),
 )
 
+binding_revisions = sa.Table(
+    "binding_revisions",
+    metadata,
+    sa.Column("binding_revision_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("binding_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("knowledge_base_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("document_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("document_version_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("parse_revision_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("chunk_count", sa.Integer(), nullable=False, server_default='0'),
+    sa.Column("index_status", sa.String(length=16), nullable=True),
+    sa.Column("build_started_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("build_finished_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("activated_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("retired_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+)
+
 ingest_jobs = sa.Table(
     "ingest_jobs",
     metadata,
