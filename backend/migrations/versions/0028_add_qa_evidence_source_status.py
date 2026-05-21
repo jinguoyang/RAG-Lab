@@ -17,8 +17,14 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     op.add_column("qa_run_evidence", sa.Column("source_status", sa.String(length=16), nullable=False, server_default="available"))
+    op.create_check_constraint(
+        "ck_qa_run_evidence_source_status",
+        "qa_run_evidence",
+        "source_status IN ('available', 'source_deleted')",
+    )
     op.create_index("ix_qa_run_evidence_source_status", "qa_run_evidence", ["source_status"])
 
 def downgrade() -> None:
     op.drop_index("ix_qa_run_evidence_source_status", table_name="qa_run_evidence")
+    op.drop_constraint("ck_qa_run_evidence_source_status", "qa_run_evidence", type_="check")
     op.drop_column("qa_run_evidence", "source_status")

@@ -576,6 +576,7 @@ qa_run_evidence = sa.Table(
     sa.Column("source_status", sa.String(length=16), nullable=False, server_default="available"),
     sa.Column("source_snapshot", postgresql.JSONB(), nullable=False),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.CheckConstraint("source_status IN ('available', 'source_deleted')", name="ck_qa_run_evidence_source_status"),
 )
 
 qa_run_citations = sa.Table(
