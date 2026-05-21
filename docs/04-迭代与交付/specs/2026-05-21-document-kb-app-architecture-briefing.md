@@ -49,27 +49,31 @@
 
 ```mermaid
 flowchart LR
-    subgraph L["文档库层：源文件资产管理"]
-        Library["DocumentLibrary<br/>文档库"]
-        Document["Document<br/>文档"]
-        Version["DocumentVersion<br/>源文件版本"]
-        Parse["ParseRevision<br/>解析产物版本"]
+
+    subgraph L[文档库层：源文件资产管理]
+        Library["DocumentLibrary\n文档库"]
+        Document["Document\n文档"]
+        Version["DocumentVersion\n源文件版本"]
+        Parse["ParseRevision\n解析产物版本"]
+
         Library --> Document --> Version --> Parse
     end
 
-    subgraph K["知识库层：知识加工与问答"]
-        KB["KnowledgeBase<br/>知识库"]
-        Binding["DocumentKbBinding<br/>文档绑定"]
-        BR["BindingRevision<br/>入库物化版本"]
-        Chunk["Chunk<br/>检索证据单元"]
-        QA["QARun / Evidence<br/>QA 历史与证据"]
+    subgraph K[知识库层：知识加工与问答]
+        KB["KnowledgeBase\n知识库"]
+        Binding["DocumentKbBinding\n文档绑定"]
+        BR["BindingRevision\n入库物化版本"]
+        Chunk["Chunk\n检索证据单元"]
+        QA["QARun / Evidence\nQA 历史与证据"]
+
         KB --> Binding --> BR --> Chunk --> QA
     end
 
-    subgraph A["智能应用层：外部 API 发布"]
-        App["RagApp<br/>智能应用"]
-        Key["AppApiKey<br/>API Key"]
-        Invoke["AppInvocation<br/>调用记录/统计"]
+    subgraph A[智能应用层：外部 API 发布]
+        App["RagApp\n智能应用"]
+        Key["AppApiKey\nAPI Key"]
+        Invoke["AppInvocation\n调用记录/统计"]
+
         App --> Key
         App --> Invoke
     end

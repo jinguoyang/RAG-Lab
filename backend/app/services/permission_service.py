@@ -701,3 +701,22 @@ def library_visibility_condition(current_user: CurrentUserResponse):
         | ((document_libraries.c.visibility == "partial") & member_exists)
         | (current_user.user.platformRole == "platform_admin")
     )
+
+
+# ---------------------------------------------------------------------------
+# 跨资源权限校验（延迟导入，避免循环依赖）
+# ---------------------------------------------------------------------------
+
+def __getattr__(name: str):
+    if name in ("check_cross_resource_permission", "check_document_version_delete_permission"):
+        from app.services.cross_resource_permission import (
+            check_cross_resource_permission,
+            check_document_version_delete_permission,
+        )
+        _exports = {
+            "check_cross_resource_permission": check_cross_resource_permission,
+            "check_document_version_delete_permission": check_document_version_delete_permission,
+        }
+        globals().update(_exports)
+        return _exports[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

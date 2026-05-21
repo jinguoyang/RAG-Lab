@@ -20,11 +20,11 @@
 
 | Backlog | 标题 | 优先级 | 预估 | 状态 |
 | --- | --- | --- | --- | --- |
-| B-197 | 同步三层架构实施范围，明确迁移边界和兼容策略 | P0 | 0.5d | Ready |
-| B-198 | 创建核心数据模型迁移，补齐 ParseRevision、BindingRevision、Chunk 状态和 QARunEvidence source_status | P0 | 2d | Ready |
-| B-199 | 建立历史数据回填脚本，将现有 parsed_chunks 映射到目标 ParseRevision 和 Chunk 元数据 | P0 | 1.5d | Ready |
-| B-200 | 重构权限服务角色映射，固化三层角色和跨资源校验 | P0 | 2d | Ready |
-| B-201 | 建立数据迁移和权限矩阵回归测试 | P0 | 1.5d | Ready |
+| B-197 | 同步三层架构实施范围，明确迁移边界和兼容策略 | P0 | 0.5d | Done |
+| B-198 | 创建核心数据模型迁移，补齐 ParseRevision、BindingRevision、Chunk 状态和 QARunEvidence source_status | P0 | 2d | Done |
+| B-199 | 建立历史数据回填脚本，将现有 parsed_chunks 映射到目标 ParseRevision 和 Chunk 元数据 | P0 | 1.5d | Done |
+| B-200 | 重构权限服务角色映射，固化三层角色和跨资源校验 | P0 | 2d | Done |
+| B-201 | 建立数据迁移和权限矩阵回归测试 | P0 | 1.5d | Done |
 
 ## 4. 验收标准
 
@@ -58,5 +58,9 @@ git diff --check
 ## 7. 关联文档
 
 - `../../plans/2026-05-21-e30-three-layer-architecture-refactor.md`
+- `../../plans/2026-05-21-sprint40-three-layer-architecture-migration.md`
 - `../../specs/2026-05-20-permission-role-model-design.md`
 - `../../specs/2026-05-21-knowledge-base-chunk-management-design.md`
+- `../../specs/2026-05-21-sprint40-three-layer-architecture-migration-design.md`
+- `../../specs/2026-05-21-document-version-parse-revision-deletion-design.md`
+- `../../specs/2026-05-21-document-kb-app-architecture-briefing.md`
