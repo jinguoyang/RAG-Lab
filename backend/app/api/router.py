@@ -42,3 +42,10 @@ api_router.include_router(app_runtime_router)
 api_router.include_router(library_router)
 api_router.include_router(library_management_router)
 api_router.include_router(bindings_router)
+
+from app.core.config import get_settings
+
+if get_settings().test_seed_enabled:
+    from app.api.routes.test_seed import router as test_seed_router
+
+    api_router.include_router(test_seed_router)

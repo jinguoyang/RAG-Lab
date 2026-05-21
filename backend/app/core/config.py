@@ -133,6 +133,26 @@ class Settings(BaseSettings):
         default="qwen3-rerank",
         validation_alias=AliasChoices("RAG_LAB_RERANK_MODEL", "RERANK_MODEL", "OPENAI_RERANK_MODEL"),
     )
+    vision_text_provider: str = Field(
+        default="http",
+        validation_alias=AliasChoices("RAG_LAB_VISION_TEXT_PROVIDER", "VISION_TEXT_PROVIDER"),
+    )
+    vision_text_endpoint: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("RAG_LAB_VISION_TEXT_ENDPOINT", "VISION_TEXT_ENDPOINT"),
+    )
+    vision_text_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("RAG_LAB_VISION_TEXT_API_KEY", "VISION_TEXT_API_KEY"),
+    )
+    vision_text_model: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("RAG_LAB_VISION_TEXT_MODEL", "VISION_TEXT_MODEL"),
+    )
+    vision_text_max_image_side: int = Field(
+        default=1600,
+        validation_alias=AliasChoices("RAG_LAB_VISION_TEXT_MAX_IMAGE_SIDE", "VISION_TEXT_MAX_IMAGE_SIDE"),
+    )
     provider_top_k: int = Field(default=5, validation_alias=AliasChoices("RAG_LAB_PROVIDER_TOP_K", "PROVIDER_TOP_K"))
     celery_broker_url: str = Field(
         default="redis://127.0.0.1:6379/0",
@@ -161,6 +181,10 @@ class Settings(BaseSettings):
     langfuse_secret_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices("RAG_LAB_LANGFUSE_SECRET_KEY", "LANGFUSE_SECRET_KEY"),
+    )
+    test_seed_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("RAG_LAB_TEST_SEED_ENABLED", "TEST_SEED_ENABLED"),
     )
 
     model_config = SettingsConfigDict(
