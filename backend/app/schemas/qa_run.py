@@ -84,6 +84,13 @@ class QARunEvidenceDTO(BaseModel):
     contentSnapshot: str | None
     sourceSnapshot: dict[str, Any]
     redactionStatus: str
+    # Sprint 42: traceability metadata
+    sourceStatus: str = "available"  # "available" | "source_deleted"
+    documentName: str | None = None
+    versionNo: int | None = None
+    pageNo: int | None = None
+    sectionPath: str | None = None
+    chunkStatus: str | None = None  # "active" | "retired" | "deleted"
 
 
 class QARunCitationDTO(BaseModel):

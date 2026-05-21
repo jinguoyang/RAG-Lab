@@ -1678,6 +1678,32 @@ def get_qa_run_detail(
         ).mappings()
     filters_by_chunk_id = {filter_row["chunk_id"]: filter_row for filter_row in filter_rows}
 
+    # Sprint 42: join chunks + document_versions + documents for traceability metadata
+    metadata_by_chunk_id: dict[UUID, dict[str, Any]] = {}
+    if evidence_chunk_ids:
+        metadata_rows = session.execute(
+            select(
+                chunks.c.chunk_id,
+                chunks.c.status.label("chunk_status"),
+                chunks.c.page_no,
+                chunks.c.section_path,
+                document_versions.c.version_no,
+                documents.c.name.label("document_name"),
+                qa_run_evidence.c.source_status,
+            )
+            .select_from(
+                qa_run_evidence
+                .join(chunks, qa_run_evidence.c.chunk_id == chunks.c.chunk_id)
+                .outerjoin(document_versions, chunks.c.version_id == document_versions.c.version_id)
+                .outerjoin(documents, chunks.c.document_id == documents.c.document_id)
+            )
+            .where(
+                qa_run_evidence.c.run_id == run_id,
+                qa_run_evidence.c.chunk_id.in_(evidence_chunk_ids),
+            )
+        ).mappings()
+        metadata_by_chunk_id = {row["chunk_id"]: row for row in metadata_rows}
+
     trace = []
     if include_trace:
         trace_rows = session.execute(
@@ -1700,6 +1726,8 @@ def get_qa_run_detail(
 
     def _to_authorized_evidence_dto(evidence_row: RowMapping) -> QARunEvidenceDTO:
         """历史 Evidence 读取仍按当前 Chunk 权限二次裁剪，避免回放泄露旧授权正文。"""
+        metadata = metadata_by_chunk_id.get(evidence_row["chunk_id"], {})
+
         # 源文档已被删除时，返回清理提示而非原始内容
         if evidence_row["source_status"] == "source_deleted":
             return QARunEvidenceDTO(
@@ -1709,6 +1737,8 @@ def get_qa_run_detail(
                 contentSnapshot=None,
                 sourceSnapshot={"sourceDeleted": True, "message": "引用文件已被清理"},
                 redactionStatus="source_deleted",
+                sourceStatus="source_deleted",
+                documentName=metadata.get("document_name"),
             )
 
         drop_reason = _chunk_access_filter_drop_reason(filters_by_chunk_id.get(evidence_row["chunk_id"]), access_filter)
@@ -1722,6 +1752,12 @@ def get_qa_run_detail(
                 contentSnapshot=None,
                 sourceSnapshot=redacted_snapshot,
                 redactionStatus="redacted",
+                sourceStatus=metadata.get("source_status", "available"),
+                documentName=metadata.get("document_name"),
+                versionNo=metadata.get("version_no"),
+                pageNo=metadata.get("page_no"),
+                sectionPath=metadata.get("section_path"),
+                chunkStatus=metadata.get("chunk_status"),
             )
         return QARunEvidenceDTO(
             evidenceId=str(evidence_row["evidence_id"]),
@@ -1730,6 +1766,12 @@ def get_qa_run_detail(
             contentSnapshot=evidence_row["content_snapshot"],
             sourceSnapshot=evidence_row["source_snapshot"],
             redactionStatus=evidence_row["redaction_status"],
+            sourceStatus=metadata.get("source_status", "available"),
+            documentName=metadata.get("document_name"),
+            versionNo=metadata.get("version_no"),
+            pageNo=metadata.get("page_no"),
+            sectionPath=metadata.get("section_path"),
+            chunkStatus=metadata.get("chunk_status"),
         )
 
     return QARunDetailDTO(
