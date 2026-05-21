@@ -6,7 +6,8 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from ".
 import { Input } from "../components/rag/Input";
 import { Alert } from "../components/rag/Alert";
 import { useConfirmDialog } from "../components/rag/ConfirmDialog";
-import { ChevronLeft, ChevronRight, RefreshCw, Search, ShieldAlert, Trash2, UserPlus } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Search, ShieldAlert, Trash2, UserPlus, Users } from "lucide-react";
+import { Badge } from "../components/rag/Badge";
 import { dictionaryLabel, fetchDictionaryItemsWithFallback } from "../services/dictionaryService";
 import {
   createKbMember,
@@ -32,6 +33,13 @@ const ROLE_LABELS: Record<KbRole, string> = {
   kb_editor: "知识库编辑",
   kb_operator: "QA 操作员",
   kb_viewer: "知识库读者",
+};
+
+const ROLE_DESCRIPTIONS: Record<KbRole, string> = {
+  kb_owner: "全部知识库权限，可管理成员、转移 owner、删除或归档知识库",
+  kb_editor: "绑定文档、解绑、重建索引、管理配置、运行 QA、查看历史",
+  kb_operator: "只能运行 QA，查看自己的 QA 运行结果",
+  kb_viewer: "查看知识库、文档摘要、Chunk 摘要和 QA 历史",
 };
 
 const SUBJECT_TYPE_LABELS: Record<KbMemberSubjectType, string> = {
@@ -303,6 +311,11 @@ export function MembersAndPermissions() {
         </div>
       </div>
 
+      <div className="bg-parchment border border-border-cream rounded-lg p-4 text-sm text-stone-gray">
+        <p className="font-medium text-near-black mb-1">权限说明</p>
+        <p>知识库角色控制文档绑定、索引管理、QA 操作和成员管理权限。文档库权限在文档库中单独管理，智能应用权限在应用中管理。</p>
+      </div>
+
       {errorMessage && (
         <Alert variant="error" title="操作失败">
           {errorMessage}
@@ -319,8 +332,21 @@ export function MembersAndPermissions() {
           <p className="text-sm font-medium text-near-black">{canManageMembers ? "可管理" : "只读"}</p>
         </div>
         <div className="bg-ivory border border-border-cream rounded-lg p-4 lg:col-span-2">
-          <p className="text-xs text-stone-gray mb-1">权限摘要</p>
-          <p className="text-sm text-near-black truncate">{summary?.permissions.join("、") || "暂无权限"}</p>
+          <p className="text-xs text-stone-gray mb-1">有效权限</p>
+          <div className="flex flex-wrap gap-1.5">
+            {summary?.permissions.slice(0, 8).map((perm) => (
+              <Badge key={perm} variant="default" className="text-xs">{perm}</Badge>
+            ))}
+            {(summary?.permissions.length ?? 0) > 8 && (
+              <Badge variant="default" className="text-xs">+{(summary?.permissions.length ?? 0) - 8}</Badge>
+            )}
+            {(!summary?.permissions || summary.permissions.length === 0) && (
+              <span className="text-sm text-stone-gray">暂无权限</span>
+            )}
+          </div>
+          {summary?.inheritedFromPlatformRole && (
+            <p className="mt-2 text-xs text-stone-gray">部分权限继承自平台角色</p>
+          )}
         </div>
       </div>
 
@@ -519,7 +545,18 @@ export function MembersAndPermissions() {
                     roleLabel(member.kbRole)
                   )}
                 </TableCell>
-                <TableCell className="text-stone-gray">{member.subjectType === "group" ? "用户组绑定" : "直接绑定"}</TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-1.5">
+                    {member.subjectType === "group" ? (
+                      <>
+                        <Users className="w-3.5 h-3.5 text-focus-blue" />
+                        <span className="text-focus-blue text-xs">用户组</span>
+                      </>
+                    ) : (
+                      <span className="text-stone-gray text-xs">直接授权</span>
+                    )}
+                  </div>
+                </TableCell>
                 <TableCell>{formatDate(member.updatedAt)}</TableCell>
                 <TableCell>
                   {canManageMembers ? (
