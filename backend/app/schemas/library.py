@@ -12,12 +12,16 @@ class LibraryDocumentDTO(BaseModel):
     sourceType: str
     status: str
     activeVersionId: str | None
+    activeVersionNo: int | None = None
+    activeVersionFileName: str | None = None
+    latestParseStatus: str | None = None
+    latestParseRevisionId: str | None = None
     createdAt: str
     updatedAt: str
 
 
 class LibraryDocumentVersionDTO(BaseModel):
-    """文档库版本 DTO，精简为文本提取状态。"""
+    """文档库源文件版本 DTO。"""
 
     versionId: str
     documentId: str
@@ -25,6 +29,7 @@ class LibraryDocumentVersionDTO(BaseModel):
     sourceFileId: str
     fileName: str | None = None
     fileSize: int | None = None
+    fileChecksum: str | None = None
     status: str
     parseStatus: str
     chunkCount: int
@@ -56,6 +61,42 @@ class LibraryParseJobDTO(BaseModel):
     errorCode: str | None
     errorMessage: str | None
     createdAt: str
+
+
+class LibraryParseRevisionDTO(BaseModel):
+    """文档库解析版本 DTO，不包含知识库分块数量。"""
+
+    parseRevisionId: str
+    documentVersionId: str
+    status: str
+    contentFormat: str
+    contentLength: int
+    contentHash: str | None
+    parserName: str | None
+    parserVersion: str | None
+    parseOptions: dict
+    errorCode: str | None = None
+    errorMessage: str | None = None
+    createdAt: str
+    createdBy: str | None = None
+
+
+class LibraryReparseRequest(BaseModel):
+    """创建解析版本请求。"""
+
+    parserName: str | None = "auto"
+    parserVersion: str | None = None
+    contentFormat: Literal["markdown", "text"] = "markdown"
+    parseOptions: dict = Field(default_factory=dict)
+    reason: str | None = None
+
+
+class LibraryParseRevisionCreateResponse(BaseModel):
+    """创建解析版本后的排队响应。"""
+
+    jobId: str
+    parseRevisionId: str
+    status: str
 
 
 class LibraryDocumentUploadResponse(BaseModel):

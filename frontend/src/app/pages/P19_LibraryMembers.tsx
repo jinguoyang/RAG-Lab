@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { ArrowLeft, Plus, Trash2, Edit } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Edit, Database, ShieldCheck, KeyRound } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
@@ -18,11 +18,41 @@ import {
 import type { LibraryDTO, LibraryMemberDTO, LibraryMemberPermissionLevel } from "../types/library";
 
 function permissionLabel(level: LibraryMemberPermissionLevel) {
-  return level === "read_only" ? "只读" : "文档管理";
+  const labels: Record<LibraryMemberPermissionLevel, string> = {
+    read_only: "只读（旧）",
+    document_manage: "文档管理（旧）",
+    library_viewer: "查看者",
+    library_binder: "绑定者",
+    library_editor: "编辑者",
+    library_manager: "管理员",
+  };
+  return labels[level] ?? level;
 }
 
 function permissionVariant(level: LibraryMemberPermissionLevel) {
-  return level === "read_only" ? "default" : "info";
+  if (level === "library_manager") return "success";
+  if (level === "library_editor" || level === "document_manage") return "info";
+  return "default";
+}
+
+const LIBRARY_ROLES: LibraryMemberPermissionLevel[] = [
+  "library_viewer",
+  "library_binder",
+  "library_editor",
+  "library_manager",
+];
+const ALL_PERMISSION_LEVELS: LibraryMemberPermissionLevel[] = ["read_only", "document_manage", ...LIBRARY_ROLES];
+
+function permissionDescription(level: LibraryMemberPermissionLevel) {
+  const descriptions: Record<LibraryMemberPermissionLevel, string> = {
+    read_only: "旧权限值：可查看文档列表和详情",
+    document_manage: "旧权限值：可查看、上传、编辑和删除文档",
+    library_viewer: "可查看、预览和下载文档",
+    library_binder: "可查看、预览、下载，并绑定到知识库",
+    library_editor: "可上传、更新、重解析、版本管理、删除和绑定",
+    library_manager: "可管理文档、版本、成员和文档库配置",
+  };
+  return descriptions[level] ?? "";
 }
 
 export function LibraryMembers() {
@@ -42,12 +72,12 @@ export function LibraryMembers() {
   const [addOpen, setAddOpen] = useState(false);
   const [newSubjectType, setNewSubjectType] = useState<"user" | "group">("user");
   const [newSubjectId, setNewSubjectId] = useState("");
-  const [newPermissionLevel, setNewPermissionLevel] = useState<LibraryMemberPermissionLevel>("read_only");
+  const [newPermissionLevel, setNewPermissionLevel] = useState<LibraryMemberPermissionLevel>("library_viewer");
   const [submitting, setSubmitting] = useState(false);
 
   // 编辑成员
   const [editingBindingId, setEditingBindingId] = useState<string | null>(null);
-  const [editPermissionLevel, setEditPermissionLevel] = useState<LibraryMemberPermissionLevel>("read_only");
+  const [editPermissionLevel, setEditPermissionLevel] = useState<LibraryMemberPermissionLevel>("library_viewer");
 
   async function loadData() {
     setLoading(true);
@@ -159,9 +189,28 @@ export function LibraryMembers() {
         )}
 
         {/* 说明 */}
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="rounded-lg border border-border-cream bg-ivory p-4 text-sm">
+            <div className="flex items-center gap-2 font-medium text-near-black">
+              <ShieldCheck className="h-4 w-4 text-terracotta" /> 文档库权限
+            </div>
+            <p className="mt-2 text-stone-gray">成员只控制当前文档库的查看、上传、编辑和删除。</p>
+          </div>
+          <div className="rounded-lg border border-border-cream bg-ivory p-4 text-sm">
+            <div className="flex items-center gap-2 font-medium text-near-black">
+              <Database className="h-4 w-4 text-terracotta" /> 知识库权限
+            </div>
+            <p className="mt-2 text-stone-gray">绑定后的检索、成员角色和管理权限在知识库成员页维护。</p>
+          </div>
+          <div className="rounded-lg border border-border-cream bg-ivory p-4 text-sm">
+            <div className="flex items-center gap-2 font-medium text-near-black">
+              <KeyRound className="h-4 w-4 text-terracotta" /> 应用调用权限
+            </div>
+            <p className="mt-2 text-stone-gray">外部调用由应用状态、所属知识库状态和 API Key 共同决定。</p>
+          </div>
+        </div>
         <div className="p-4 bg-ivory border border-border-cream rounded-lg text-sm text-stone-gray">
-          <p>部分可见性文档库的成员可以访问库中的文档。</p>
-          <p className="mt-1"><strong>只读</strong>：可查看文档列表和详情。<strong>文档管理</strong>：可查看、上传、编辑和删除文档。</p>
+          <p><strong>查看者</strong>：查看、预览、下载。<strong>绑定者</strong>：可将文档带入知识库。<strong>编辑者</strong>：可管理文档和版本。<strong>管理员</strong>：可管理成员和文档库配置。</p>
         </div>
 
         {/* 成员列表 */}
@@ -202,8 +251,9 @@ export function LibraryMembers() {
                           value={editPermissionLevel}
                           onChange={(e) => setEditPermissionLevel(e.target.value as LibraryMemberPermissionLevel)}
                         >
-                          <option value="read_only">只读</option>
-                          <option value="document_manage">文档管理</option>
+                          {ALL_PERMISSION_LEVELS.map((role) => (
+                            <option key={role} value={role}>{permissionLabel(role)}</option>
+                          ))}
                         </select>
                         <Button size="sm" onClick={() => void handleUpdateMember(member.bindingId)}>
                           保存
@@ -301,7 +351,7 @@ export function LibraryMembers() {
               <div>
                 <label className="block text-sm font-medium text-near-black mb-2">权限级别</label>
                 <div className="space-y-2">
-                  {(["read_only", "document_manage"] as LibraryMemberPermissionLevel[]).map((level) => (
+                  {LIBRARY_ROLES.map((level) => (
                     <label
                       key={level}
                       className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
@@ -321,8 +371,7 @@ export function LibraryMembers() {
                       <div>
                         <div className="text-sm font-medium text-near-black">{permissionLabel(level)}</div>
                         <div className="text-xs text-stone-gray mt-0.5">
-                          {level === "read_only" && "可查看文档列表和详情"}
-                          {level === "document_manage" && "可查看、上传、编辑和删除文档"}
+                          {permissionDescription(level)}
                         </div>
                       </div>
                     </label>

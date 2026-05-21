@@ -3,6 +3,16 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+LibraryRole = Literal[
+    "read_only",
+    "document_manage",
+    "library_viewer",
+    "library_binder",
+    "library_editor",
+    "library_manager",
+]
+
+
 class LibraryDTO(BaseModel):
     """文档库主对象 DTO。"""
 
@@ -63,13 +73,13 @@ class AddLibraryMemberRequest(BaseModel):
 
     subjectType: Literal["user", "group"]
     subjectId: str
-    permissionLevel: Literal["read_only", "document_manage"]
+    permissionLevel: LibraryRole
 
 
 class UpdateLibraryMemberRequest(BaseModel):
     """更新文档库成员权限请求。"""
 
-    permissionLevel: Literal["read_only", "document_manage"]
+    permissionLevel: LibraryRole
 
 
 class LibraryPageResponse(BaseModel):

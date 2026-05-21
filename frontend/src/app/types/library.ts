@@ -3,7 +3,13 @@ import type { PageResponse } from "./knowledgeBase";
 export type LibraryDocumentStatus = "active" | "disabled" | "archived";
 export type LibraryParseJobStatus = "queued" | "running" | "success" | "failed" | "cancelled";
 export type LibraryVisibility = "public" | "personal" | "partial";
-export type LibraryMemberPermissionLevel = "read_only" | "document_manage";
+export type LibraryMemberPermissionLevel =
+  | "read_only"
+  | "document_manage"
+  | "library_viewer"
+  | "library_binder"
+  | "library_editor"
+  | "library_manager";
 
 export interface LibraryDocumentDTO {
   documentId: string;
@@ -13,6 +19,10 @@ export interface LibraryDocumentDTO {
   sourceType: string;
   status: LibraryDocumentStatus;
   activeVersionId: string | null;
+  activeVersionNo?: number | null;
+  activeVersionFileName?: string | null;
+  latestParseStatus?: string | null;
+  latestParseRevisionId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -48,9 +58,17 @@ export interface LibraryPageResponse {
 export interface ParseRevisionDTO {
   parseRevisionId: string;
   documentVersionId: string;
-  status: "pending" | "running" | "success" | "failed";
+  status: "pending" | "running" | "success" | "failed" | "completed";
+  contentFormat?: string;
+  contentLength?: number;
+  contentHash?: string | null;
   parserName: string | null;
+  parserVersion?: string | null;
+  parseOptions?: Record<string, unknown>;
+  errorCode?: string | null;
+  errorMessage?: string | null;
   createdAt: string;
+  createdBy?: string | null;
 }
 
 export interface LibraryDocumentVersionDTO {
@@ -60,6 +78,7 @@ export interface LibraryDocumentVersionDTO {
   sourceFileId: string;
   fileName?: string;
   fileSize?: number;
+  fileChecksum?: string | null;
   status: string;
   parseStatus: "pending" | "running" | "success" | "failed";
   chunkCount: number;
@@ -187,6 +206,20 @@ export interface LibraryVersionActivateResponse {
   previousActiveVersionId: string | null;
 }
 
+export interface LibraryReparseRequest {
+  parserName?: string | null;
+  parserVersion?: string | null;
+  contentFormat: "markdown" | "text";
+  parseOptions: Record<string, unknown>;
+  reason?: string | null;
+}
+
+export interface LibraryParseRevisionCreateResponse {
+  jobId: string;
+  parseRevisionId: string;
+  status: string;
+}
+
 export interface DeletionImpactAnalysis {
   canDelete: boolean;
   blockingReasons: string[];
@@ -198,3 +231,22 @@ export interface DeletionImpactAnalysis {
   requiresStrongConfirmation: boolean;
 }
 
+export interface LibraryBindingDTO {
+  bindingId: string;
+  documentId: string;
+  documentName: string;
+  kbId: string;
+  versionId: string;
+  chunkSize: number;
+  chunkOverlap: number;
+  status: string;
+  chunkCount: number;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  activeBindingRevisionId?: string | null;
+  bindingRevisionStatus?: string | null;
+  bindingRevisionChunkCount?: number | null;
+  bindingRevisionVersionId?: string | null;
+  createdAt: string;
+  createdBy?: string | null;
+}

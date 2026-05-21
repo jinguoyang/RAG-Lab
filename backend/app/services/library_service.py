@@ -1,6 +1,7 @@
 """文档库服务：文档上传、列表、详情和文本提取作业管理。"""
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Literal
 from hashlib import sha256
 from pathlib import PurePath
@@ -17,6 +18,7 @@ from app.schemas.library import (
     LibraryDocumentDTO,
     LibraryDocumentDetailDTO,
     LibraryDocumentUploadResponse,
+    LibraryParseRevisionDTO,
     LibraryDocumentVersionDTO,
     LibraryFullTextResponse,
     LibraryParseJobDTO,
@@ -34,6 +36,7 @@ from app.tables import (
     documents,
     knowledge_bases,
     library_parse_jobs,
+    parse_revisions,
     stored_files,
     users,
 )
@@ -97,7 +100,13 @@ def _safe_file_name(file_name: str) -> str:
     return PurePath(file_name).name or "uploaded-document"
 
 
-def _to_document_dto(row: RowMapping) -> LibraryDocumentDTO:
+def _to_document_dto(
+    row: RowMapping,
+    active_version_no: int | None = None,
+    active_version_file_name: str | None = None,
+    latest_parse_status: str | None = None,
+    latest_parse_revision_id: UUID | None = None,
+) -> LibraryDocumentDTO:
     return LibraryDocumentDTO(
         documentId=str(row["document_id"]),
         ownerId=str(row["owner_id"]),
@@ -106,12 +115,21 @@ def _to_document_dto(row: RowMapping) -> LibraryDocumentDTO:
         sourceType=row["source_type"],
         status=row["status"],
         activeVersionId=str(row["active_version_id"]) if row["active_version_id"] else None,
+        activeVersionNo=active_version_no,
+        activeVersionFileName=active_version_file_name,
+        latestParseStatus=latest_parse_status,
+        latestParseRevisionId=str(latest_parse_revision_id) if latest_parse_revision_id else None,
         createdAt=row["created_at"].isoformat(),
         updatedAt=row["updated_at"].isoformat(),
     )
 
 
-def _to_version_dto(row: RowMapping, file_name: str | None = None, file_size: int | None = None) -> LibraryDocumentVersionDTO:
+def _to_version_dto(
+    row: RowMapping,
+    file_name: str | None = None,
+    file_size: int | None = None,
+    file_checksum: str | None = None,
+) -> LibraryDocumentVersionDTO:
     return LibraryDocumentVersionDTO(
         versionId=str(row["version_id"]),
         documentId=str(row["document_id"]),
@@ -119,6 +137,7 @@ def _to_version_dto(row: RowMapping, file_name: str | None = None, file_size: in
         sourceFileId=str(row["source_file_id"]),
         fileName=file_name,
         fileSize=file_size,
+        fileChecksum=file_checksum,
         status=row["status"],
         parseStatus=row["parse_status"],
         chunkCount=row["chunk_count"],
@@ -151,6 +170,75 @@ def _to_parse_job_dto(row: RowMapping) -> LibraryParseJobDTO:
         errorMessage=row["error_message"],
         createdAt=row["created_at"].isoformat(),
     )
+
+
+def _parse_revision_error_fields(row: RowMapping) -> tuple[str | None, str | None]:
+    """从解析版本参数中读取失败信息，兼容当前 parse_revisions 表结构。"""
+    options = row["parse_options"] or {}
+    return options.get("errorCode"), options.get("errorMessage")
+
+
+def _to_parse_revision_dto(row: RowMapping) -> LibraryParseRevisionDTO:
+    error_code, error_message = _parse_revision_error_fields(row)
+    content_text = row["content_text"] or ""
+    return LibraryParseRevisionDTO(
+        parseRevisionId=str(row["parse_revision_id"]),
+        documentVersionId=str(row["document_version_id"]),
+        status=row["status"],
+        contentFormat=row["content_format"],
+        contentLength=len(content_text),
+        contentHash=row["content_hash"],
+        parserName=row["parser_name"],
+        parserVersion=row["parser_version"],
+        parseOptions=row["parse_options"] or {},
+        errorCode=error_code,
+        errorMessage=error_message,
+        createdAt=row["created_at"].isoformat(),
+        createdBy=str(row["created_by"]) if row["created_by"] else None,
+    )
+
+
+def _job_parse_revision_id(job_row: RowMapping) -> UUID | None:
+    """读取解析任务关联的 ParseRevision ID。"""
+    detail = job_row["error_detail"] or {}
+    value = detail.get("parseRevisionId")
+    if not value:
+        return None
+    try:
+        return UUID(str(value))
+    except ValueError:
+        return None
+
+
+def _create_pending_parse_revision(
+    session: Session,
+    version_id: UUID,
+    actor_id: UUID | None,
+    parser_name: str | None = "auto",
+    parser_version: str | None = None,
+    content_format: str = "markdown",
+    parse_options: dict | None = None,
+) -> UUID:
+    """为一次文档库解析创建 pending ParseRevision。"""
+    parse_revision_id = uuid4()
+    now = datetime.now(timezone.utc)
+    session.execute(
+        insert(parse_revisions).values(
+            parse_revision_id=parse_revision_id,
+            document_version_id=version_id,
+            content_format=content_format,
+            content_text=None,
+            content_object_key=None,
+            content_hash=None,
+            parser_name=parser_name,
+            parser_version=parser_version,
+            parse_options=parse_options or {},
+            status="pending",
+            created_at=now,
+            created_by=actor_id,
+        )
+    )
+    return parse_revision_id
 
 
 def _ensure_owner(
@@ -331,6 +419,15 @@ def create_library_upload(
         .values(active_version_id=version_id)
     )
 
+    parse_revision_id = _create_pending_parse_revision(
+        session,
+        version_id,
+        actor_id,
+        parser_name="auto",
+        content_format="markdown",
+        parse_options={"source": "initial_upload"},
+    )
+
     job_row = session.execute(
         insert(library_parse_jobs)
         .values(
@@ -340,6 +437,8 @@ def create_library_upload(
             job_type="extract_text",
             status="queued",
             progress=0,
+            error_detail={"parseRevisionId": str(parse_revision_id)},
+            created_at=datetime.now(timezone.utc),
             created_by=actor_id,
         )
         .returning(library_parse_jobs)
@@ -412,8 +511,51 @@ def list_library_documents(
         .limit(page_size)
     ).mappings().all()
 
+    items: list[LibraryDocumentDTO] = []
+    for row in rows:
+        active_version_no = None
+        active_version_file_name = None
+        latest_parse_status = None
+        latest_parse_revision_id = None
+        if row["active_version_id"]:
+            active_row = session.execute(
+                select(
+                    document_versions.c.version_no,
+                    document_versions.c.parse_status,
+                    stored_files.c.file_name,
+                )
+                .select_from(document_versions.join(stored_files, stored_files.c.file_id == document_versions.c.source_file_id))
+                .where(document_versions.c.version_id == row["active_version_id"])
+                .limit(1)
+            ).mappings().first()
+            if active_row:
+                active_version_no = active_row["version_no"]
+                active_version_file_name = active_row["file_name"]
+                latest_parse_status = active_row["parse_status"]
+            parse_row = session.execute(
+                select(parse_revisions.c.parse_revision_id, parse_revisions.c.status)
+                .where(
+                    parse_revisions.c.document_version_id == row["active_version_id"],
+                    parse_revisions.c.deleted_at.is_(None),
+                )
+                .order_by(parse_revisions.c.created_at.desc())
+                .limit(1)
+            ).mappings().first()
+            if parse_row:
+                latest_parse_revision_id = parse_row["parse_revision_id"]
+                latest_parse_status = parse_row["status"]
+        items.append(
+            _to_document_dto(
+                row,
+                active_version_no=active_version_no,
+                active_version_file_name=active_version_file_name,
+                latest_parse_status=latest_parse_status,
+                latest_parse_revision_id=latest_parse_revision_id,
+            )
+        )
+
     return PageResponse(
-        items=[_to_document_dto(r) for r in rows],
+        items=items,
         pageNo=page_no,
         pageSize=page_size,
         total=total,
@@ -447,19 +589,25 @@ def get_library_document_source_download(
     session: Session,
     current_user: CurrentUserResponse,
     document_id: UUID,
+    version_id: UUID | None = None,
 ) -> tuple[str, str | None, bytes]:
     """下载文档库文档原始文件，返回 (file_name, mime_type, content)。"""
-    _ensure_owner(session, current_user, document_id)
+    _ensure_owner(session, current_user, document_id, "library.document.download")
 
     doc_row = session.execute(
         select(documents).where(documents.c.document_id == document_id)
     ).mappings().one()
 
-    if not doc_row["active_version_id"]:
+    target_version_id = version_id or doc_row["active_version_id"]
+    if not target_version_id:
         raise LibraryDocumentNotFoundError
 
     ver_row = session.execute(
-        select(document_versions).where(document_versions.c.version_id == doc_row["active_version_id"])
+        select(document_versions).where(
+            document_versions.c.version_id == target_version_id,
+            document_versions.c.document_id == document_id,
+            document_versions.c.deleted_at.is_(None),
+        )
     ).mappings().first()
     if not ver_row:
         raise LibraryDocumentNotFoundError
@@ -616,6 +764,13 @@ def run_library_parse_job_by_id(job_id: UUID) -> dict:
             .where(library_parse_jobs.c.job_id == job_id)
             .values(status="running", started_at=sa.func.now())
         )
+        parse_revision_id = _job_parse_revision_id(job_row)
+        if parse_revision_id:
+            session.execute(
+                update(parse_revisions)
+                .where(parse_revisions.c.parse_revision_id == parse_revision_id)
+                .values(status="running")
+            )
         session.commit()
 
         document_id = job_row["document_id"]
@@ -719,7 +874,32 @@ def run_library_parse_job_by_id(job_id: UUID) -> dict:
             or doc_active_version_id == version_id
         )
 
-        # 更新 version 的 metadata，保存解析结果
+        content_hash = sha256(full_text.encode("utf-8")).hexdigest()
+        if parse_revision_id is None:
+            parse_revision_id = _create_pending_parse_revision(
+                session,
+                version_id,
+                actor_id=job_row["created_by"],
+                parser_name=parsed.parser_name,
+                parser_version=parsed.parser_version,
+                content_format="markdown",
+                parse_options={},
+            )
+
+        session.execute(
+            update(parse_revisions)
+            .where(parse_revisions.c.parse_revision_id == parse_revision_id)
+            .values(
+                content_format="markdown",
+                content_text=full_text,
+                content_hash=content_hash,
+                parser_name=parsed.parser_name,
+                parser_version=parsed.parser_version,
+                status="success",
+            )
+        )
+
+        # 更新 version 的 metadata，保存最新解析摘要，完整正文以 ParseRevision 为准。
         session.execute(
             update(document_versions)
             .where(document_versions.c.version_id == version_id)
@@ -768,21 +948,39 @@ def retry_library_parse(
     current_user: CurrentUserResponse,
     document_id: UUID,
 ) -> dict:
-    """重新触发文档解析。"""
-    _ensure_owner(session, current_user, document_id)
-    user_id = UUID(current_user.user.userId)
-
-    # 使用活跃版本而非最新版本
+    """使用默认参数重新触发当前活跃版本解析，兼容旧接口。"""
     doc_row = session.execute(
         select(documents.c.active_version_id).where(documents.c.document_id == document_id)
     ).mappings().first()
     if not doc_row or not doc_row["active_version_id"]:
         raise LibraryDocumentNotFoundError
+    return create_library_parse_revision_job(
+        session=session,
+        current_user=current_user,
+        document_id=document_id,
+        version_id=doc_row["active_version_id"],
+        parser_name="auto",
+        parser_version=None,
+        content_format="markdown",
+        parse_options={"source": "parse_retry"},
+        reason="legacy_parse_retry",
+    )
+
+
+def list_library_parse_revisions(
+    session: Session,
+    current_user: CurrentUserResponse,
+    document_id: UUID,
+    version_id: UUID,
+) -> list[LibraryParseRevisionDTO]:
+    """列出指定源文件版本下的解析版本。"""
+    _ensure_owner(session, current_user, document_id)
 
     version_row = session.execute(
         select(document_versions)
         .where(
-            document_versions.c.version_id == doc_row["active_version_id"],
+            document_versions.c.version_id == version_id,
+            document_versions.c.document_id == document_id,
             document_versions.c.deleted_at.is_(None),
         )
         .limit(1)
@@ -790,34 +988,92 @@ def retry_library_parse(
     if version_row is None:
         raise LibraryDocumentNotFoundError
 
-    # Create new parse job
+    rows = session.execute(
+        select(parse_revisions)
+        .where(
+            parse_revisions.c.document_version_id == version_id,
+            parse_revisions.c.deleted_at.is_(None),
+        )
+        .order_by(parse_revisions.c.created_at.desc())
+    ).mappings().all()
+    return [_to_parse_revision_dto(row) for row in rows]
+
+
+def create_library_parse_revision_job(
+    session: Session,
+    current_user: CurrentUserResponse,
+    document_id: UUID,
+    version_id: UUID,
+    parser_name: str | None = "auto",
+    parser_version: str | None = None,
+    content_format: str = "markdown",
+    parse_options: dict | None = None,
+    reason: str | None = None,
+) -> dict:
+    """为指定源文件版本创建新的解析版本并排队解析任务。"""
+    _ensure_owner(session, current_user, document_id, "library.document.update")
+    user_id = UUID(current_user.user.userId)
+
+    version_row = session.execute(
+        select(document_versions)
+        .where(
+            document_versions.c.version_id == version_id,
+            document_versions.c.document_id == document_id,
+            document_versions.c.deleted_at.is_(None),
+        )
+        .limit(1)
+    ).mappings().first()
+    if version_row is None:
+        raise LibraryDocumentNotFoundError
+
+    normalized_options = dict(parse_options or {})
+    if reason:
+        normalized_options["reason"] = reason
+    parse_revision_id = _create_pending_parse_revision(
+        session,
+        version_id,
+        user_id,
+        parser_name=parser_name or "auto",
+        parser_version=parser_version,
+        content_format=content_format,
+        parse_options=normalized_options,
+    )
+
     job_id = uuid4()
+    now = datetime.now(timezone.utc)
     session.execute(
         insert(library_parse_jobs).values(
             job_id=job_id,
             document_id=document_id,
-            version_id=version_row["version_id"],
+            version_id=version_id,
             job_type="reparse_library",
             status="queued",
             progress=0,
+            error_detail={
+                "parseRevisionId": str(parse_revision_id),
+                "parseOptions": normalized_options,
+            },
+            created_at=now,
             created_by=user_id,
         )
     )
 
-    # Reset version parse status
     session.execute(
         update(document_versions)
-        .where(document_versions.c.version_id == version_row["version_id"])
+        .where(document_versions.c.version_id == version_id)
         .values(parse_status="pending", updated_by=user_id, updated_at=func.now())
     )
 
     session.commit()
 
-    # Trigger Celery
-    from app.worker import run_library_parse_task
-    run_library_parse_task.delay(str(job_id))
+    try:
+        from app.worker import run_library_parse_task
 
-    return {"jobId": str(job_id), "status": "queued"}
+        run_library_parse_task.delay(str(job_id))
+    except Exception:
+        pass
+
+    return {"jobId": str(job_id), "parseRevisionId": str(parse_revision_id), "status": "queued"}
 
 
 def batch_action(
@@ -931,6 +1187,7 @@ def get_document_text(
     current_user: CurrentUserResponse,
     document_id: UUID,
     mode: Literal["preview", "full", "chunks"] = "preview",
+    parse_revision_id: UUID | None = None,
 ) -> LibraryTextPreviewResponse | LibraryFullTextResponse | LibraryParsedChunksResponse:
     """获取文档的文本内容，支持 preview/full/chunks 三种模式。"""
     _ensure_owner(session, current_user, document_id)
@@ -953,6 +1210,55 @@ def get_document_text(
 
     if ver_row is None:
         raise LibraryDocumentNotFoundError
+
+    if parse_revision_id is not None:
+        parse_row = session.execute(
+            select(parse_revisions)
+            .select_from(parse_revisions.join(document_versions, document_versions.c.version_id == parse_revisions.c.document_version_id))
+            .where(
+                parse_revisions.c.parse_revision_id == parse_revision_id,
+                document_versions.c.document_id == document_id,
+                document_versions.c.deleted_at.is_(None),
+                parse_revisions.c.deleted_at.is_(None),
+            )
+            .limit(1)
+        ).mappings().first()
+        if parse_row is None:
+            raise LibraryDocumentNotFoundError
+        text = parse_row["content_text"] or ""
+        if mode == "full":
+            return LibraryFullTextResponse(text=text)
+        if mode == "chunks":
+            return LibraryParsedChunksResponse(chunks=[])
+        preview_text = text[:2000]
+        return LibraryTextPreviewResponse(
+            text=preview_text,
+            truncated=len(text) > len(preview_text),
+            fullLength=len(text),
+        )
+
+    latest_parse = session.execute(
+        select(parse_revisions)
+        .where(
+            parse_revisions.c.document_version_id == ver_row["version_id"],
+            parse_revisions.c.status == "success",
+            parse_revisions.c.deleted_at.is_(None),
+        )
+        .order_by(parse_revisions.c.created_at.desc())
+        .limit(1)
+    ).mappings().first()
+    if latest_parse is not None:
+        text = latest_parse["content_text"] or ""
+        if mode == "full":
+            return LibraryFullTextResponse(text=text)
+        if mode == "chunks":
+            return LibraryParsedChunksResponse(chunks=[])
+        preview_text = text[:2000]
+        return LibraryTextPreviewResponse(
+            text=preview_text,
+            truncated=len(text) > len(preview_text),
+            fullLength=len(text),
+        )
 
     metadata = ver_row["metadata"] or {}
     preview_text = metadata.get("preview_text", "")
@@ -1040,6 +1346,7 @@ def list_library_versions(
             document_versions,
             stored_files.c.file_name,
             stored_files.c.file_size,
+            stored_files.c.checksum,
         )
         .join(stored_files, stored_files.c.file_id == document_versions.c.source_file_id)
         .where(
@@ -1049,7 +1356,15 @@ def list_library_versions(
         .order_by(document_versions.c.version_no.desc())
     ).mappings().all()
 
-    return [_to_version_dto(row, file_name=row["file_name"], file_size=row["file_size"]) for row in rows]
+    return [
+        _to_version_dto(
+            row,
+            file_name=row["file_name"],
+            file_size=row["file_size"],
+            file_checksum=row["checksum"],
+        )
+        for row in rows
+    ]
 
 
 def upload_library_version(
@@ -1062,7 +1377,7 @@ def upload_library_version(
     storage_provider: ObjectStorageProvider | None = None,
 ) -> LibraryVersionUploadResponse:
     """上传新版本文件到已有文档。"""
-    doc_row = _ensure_owner(session, current_user, document_id, "library.document.update")
+    doc_row = _ensure_owner(session, current_user, document_id, "library.version.create")
     actor_id = UUID(current_user.user.userId)
     normalized_file_name = _safe_file_name(file_name)
     checksum = sha256(file_bytes).hexdigest()
@@ -1127,6 +1442,15 @@ def upload_library_version(
         )
     )
 
+    parse_revision_id = _create_pending_parse_revision(
+        session,
+        version_id,
+        actor_id,
+        parser_name="auto",
+        content_format="markdown",
+        parse_options={"source": "upload_version"},
+    )
+
     # 创建解析任务
     session.execute(
         insert(library_parse_jobs).values(
@@ -1136,6 +1460,8 @@ def upload_library_version(
             job_type="upload_version",
             status="queued",
             progress=0,
+            error_detail={"parseRevisionId": str(parse_revision_id)},
+            created_at=datetime.now(timezone.utc),
             created_by=actor_id,
         )
     )
@@ -1147,7 +1473,6 @@ def upload_library_version(
     run_library_parse_task.delay(str(job_id))
 
     # 构造响应
-    from datetime import datetime, timezone
     now_iso = datetime.now(timezone.utc).isoformat()
     ver_dto = LibraryDocumentVersionDTO(
         versionId=str(version_id),
@@ -1156,6 +1481,7 @@ def upload_library_version(
         sourceFileId=str(file_id),
         fileName=normalized_file_name,
         fileSize=len(file_bytes),
+        fileChecksum=checksum,
         status="processing",
         parseStatus="pending",
         chunkCount=0,
@@ -1198,7 +1524,7 @@ def activate_library_version(
     confirm_impact: bool = False,
 ) -> LibraryVersionActivateResponse:
     """切换文档的活跃版本。"""
-    _ensure_owner(session, current_user, document_id, "library.document.update")
+    _ensure_owner(session, current_user, document_id, "library.version.activate")
 
     if not confirm_impact:
         raise LibraryPermissionError("CONFIRM_REQUIRED: Set confirmImpact=true to proceed.")
@@ -1262,7 +1588,7 @@ def delete_library_version(
     version_id: UUID,
 ) -> dict:
     """删除指定版本（软删除）。不能删除活跃版本或被 KB 绑定引用的版本。"""
-    _ensure_owner(session, current_user, document_id, "library.document.update")
+    _ensure_owner(session, current_user, document_id, "library.version.delete")
     actor_id = UUID(current_user.user.userId)
 
     # 校验版本存在
@@ -1378,6 +1704,7 @@ def _mark_job_failed(
         select(library_parse_jobs).where(library_parse_jobs.c.job_id == job_id)
     ).mappings().first()
     if job:
+        parse_revision_id = _job_parse_revision_id(job)
         session.execute(
             update(document_versions)
             .where(document_versions.c.version_id == job["version_id"])
@@ -1387,6 +1714,20 @@ def _mark_job_failed(
                 error_message=error_message,
             )
         )
+        if parse_revision_id:
+            existing_options = session.execute(
+                select(parse_revisions.c.parse_options)
+                .where(parse_revisions.c.parse_revision_id == parse_revision_id)
+                .limit(1)
+            ).scalar()
+            options = dict(existing_options or {})
+            options["errorCode"] = error_code
+            options["errorMessage"] = error_message
+            session.execute(
+                update(parse_revisions)
+                .where(parse_revisions.c.parse_revision_id == parse_revision_id)
+                .values(status="failed", parse_options=options)
+            )
     session.commit()
 
 

@@ -5,25 +5,32 @@ import { fetchDocumentText } from "../../services/libraryService";
 
 interface TextPreviewProps {
   documentId: string;
+  parseRevisionId?: string;
   initialData?: LibraryTextPreviewResponse;
 }
 
-export function TextPreview({ documentId, initialData }: TextPreviewProps) {
+export function TextPreview({ documentId, parseRevisionId, initialData }: TextPreviewProps) {
   const [data, setData] = useState<LibraryTextPreviewResponse | null>(initialData ?? null);
   const [fullText, setFullText] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
-  // Load preview data on first render if not provided
+  useEffect(() => {
+    setData(initialData ?? null);
+    setFullText(null);
+    setExpanded(false);
+  }, [documentId, parseRevisionId, initialData]);
+
+  // Load preview data when the target document or parse revision changes.
   useEffect(() => {
     if (!data) {
-      fetchDocumentText(documentId, "preview")
+      fetchDocumentText(documentId, "preview", parseRevisionId)
         .then((result) => {
           setData(result as LibraryTextPreviewResponse);
         })
         .catch(() => {});
     }
-  }, []);
+  }, [data, documentId, parseRevisionId]);
 
   const handleExpand = async () => {
     if (expanded) {
@@ -33,7 +40,7 @@ export function TextPreview({ documentId, initialData }: TextPreviewProps) {
     if (!fullText) {
       setLoading(true);
       try {
-        const result = (await fetchDocumentText(documentId, "full")) as { text: string };
+        const result = (await fetchDocumentText(documentId, "full", parseRevisionId)) as { text: string };
         setFullText(result.text);
       } finally {
         setLoading(false);

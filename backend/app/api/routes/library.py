@@ -22,7 +22,10 @@ from app.schemas.library import (
     LibraryDocumentVersionDTO,
     LibraryFullTextResponse,
     LibraryParseJobDTO,
+    LibraryParseRevisionCreateResponse,
+    LibraryParseRevisionDTO,
     LibraryParsedChunksResponse,
+    LibraryReparseRequest,
     LibraryStatsResponse,
     LibraryTextPreviewResponse,
     LibraryVersionActivateRequest,
@@ -47,6 +50,8 @@ from app.services.library_service import (
     get_library_document_source_download,
     get_library_parse_jobs,
     get_library_stats,
+    create_library_parse_revision_job,
+    list_library_parse_revisions,
     list_library_documents,
     list_library_versions,
     retry_library_parse,
@@ -200,10 +205,11 @@ def download_document(
     document_id: UUID,
     current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db_session)],
+    version_id: UUID | None = Query(default=None, alias="versionId"),
 ) -> Response:
     """下载文档库文档原始文件。"""
     try:
-        file_name, mime_type, content = get_library_document_source_download(db, current_user, document_id)
+        file_name, mime_type, content = get_library_document_source_download(db, current_user, document_id, version_id)
         encoded_name = quote(file_name)
         return Response(
             content=content,
@@ -269,10 +275,60 @@ def get_document_text_route(
     current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db_session)],
     mode: Literal["preview", "full", "chunks"] = Query(default="preview"),
+    parse_revision_id: UUID | None = Query(default=None, alias="parseRevisionId"),
 ) -> LibraryTextPreviewResponse | LibraryFullTextResponse | LibraryParsedChunksResponse:
     """获取文档文本内容，支持 preview/full/chunks 三种模式。"""
     try:
-        return get_document_text(db, current_user, document_id, mode)
+        return get_document_text(db, current_user, document_id, mode, parse_revision_id)
+    except Exception as exc:
+        _raise_library_error(exc)
+        raise  # unreachable
+
+
+@router.get(
+    "/{document_id}/versions/{version_id}/parse-revisions",
+    response_model=list[LibraryParseRevisionDTO],
+)
+def list_parse_revisions(
+    document_id: UUID,
+    version_id: UUID,
+    current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db_session)],
+) -> list[LibraryParseRevisionDTO]:
+    """列出源文件版本下的解析版本。"""
+    try:
+        return list_library_parse_revisions(db, current_user, document_id, version_id)
+    except Exception as exc:
+        _raise_library_error(exc)
+        raise  # unreachable
+
+
+@router.post(
+    "/{document_id}/versions/{version_id}/parse-revisions",
+    response_model=LibraryParseRevisionCreateResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def create_parse_revision(
+    document_id: UUID,
+    version_id: UUID,
+    body: LibraryReparseRequest,
+    current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db_session)],
+) -> LibraryParseRevisionCreateResponse:
+    """基于指定源文件版本创建新的解析版本。"""
+    try:
+        result = create_library_parse_revision_job(
+            db,
+            current_user,
+            document_id,
+            version_id,
+            parser_name=body.parserName,
+            parser_version=body.parserVersion,
+            content_format=body.contentFormat,
+            parse_options=body.parseOptions,
+            reason=body.reason,
+        )
+        return LibraryParseRevisionCreateResponse(**result)
     except Exception as exc:
         _raise_library_error(exc)
         raise  # unreachable

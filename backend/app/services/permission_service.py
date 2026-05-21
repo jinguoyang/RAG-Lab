@@ -549,14 +549,18 @@ def _library_member_permission_levels(
 
 
 # read_only 授予的权限码
-_READ_ONLY_PERMISSIONS = {"library.document.read"}
-# document_manage 授予的权限码
-_MANAGE_PERMISSIONS = {
+_READ_ONLY_PERMISSIONS = {"library.view", "library.document.read", "library.document.download"}
+_BINDER_PERMISSIONS = _READ_ONLY_PERMISSIONS | {"library.document.bind"}
+_EDITOR_PERMISSIONS = _BINDER_PERMISSIONS | {
     "library.document.read",
     "library.document.create",
     "library.document.update",
     "library.document.delete",
+    "library.version.create",
+    "library.version.activate",
+    "library.version.delete",
 }
+_MANAGE_PERMISSIONS = _EDITOR_PERMISSIONS | {"library.member.manage"}
 
 
 def has_library_access(
@@ -576,8 +580,9 @@ def has_library_access(
     4. visibility=public → 任何用户可读
     5. visibility=personal → 仅 owner
     6. visibility=partial → 查 library_member_bindings
-       - read_only → library.document.read
-       - document_manage → read/create/update/delete
+       - read_only/library_viewer → read/download
+       - document_manage/library_editor → document/version management
+       - library_binder/library_manager → bind/member management according to role
     """
     user_id = _user_id(current_user)
 
@@ -619,9 +624,13 @@ def has_library_access(
         levels = _library_member_permission_levels(session, library_id, user_id, group_ids)
 
         granted_permissions: set[str] = set()
-        if "read_only" in levels:
+        if "read_only" in levels or "library_viewer" in levels:
             granted_permissions |= _READ_ONLY_PERMISSIONS
-        if "document_manage" in levels:
+        if "library_binder" in levels:
+            granted_permissions |= _BINDER_PERMISSIONS
+        if "document_manage" in levels or "library_editor" in levels:
+            granted_permissions |= _EDITOR_PERMISSIONS
+        if "library_manager" in levels:
             granted_permissions |= _MANAGE_PERMISSIONS
 
         if permission_code in platform_denied:

@@ -12,7 +12,14 @@ vi.mock("./apiClient", () => ({
 }));
 
 import { apiGet, apiPostJson } from "./apiClient";
-import { fetchLibraryStats, batchAction, fetchLibraryDocuments } from "./libraryService";
+import {
+  fetchLibraryStats,
+  batchAction,
+  fetchLibraryDocuments,
+  fetchLibraryParseRevisions,
+  createLibraryParseRevision,
+  fetchDocumentText,
+} from "./libraryService";
 
 describe("libraryService", () => {
   beforeEach(() => {
@@ -65,6 +72,47 @@ describe("libraryService", () => {
       );
       expect(apiGet).toHaveBeenCalledWith(
         expect.stringContaining("status=active"),
+      );
+    });
+  });
+
+  describe("parse revision APIs", () => {
+    it("should list parse revisions for a document version", async () => {
+      const mockRevisions = [{ parseRevisionId: "pr-1", documentVersionId: "v-1", status: "success" }];
+      vi.mocked(apiGet).mockResolvedValue(mockRevisions);
+
+      const result = await fetchLibraryParseRevisions("doc-1", "v-1");
+
+      expect(apiGet).toHaveBeenCalledWith("/library/documents/doc-1/versions/v-1/parse-revisions");
+      expect(result).toEqual(mockRevisions);
+    });
+
+    it("should create a parse revision with parser options", async () => {
+      const mockResponse = { jobId: "job-1", parseRevisionId: "pr-1", status: "queued" };
+      vi.mocked(apiPostJson).mockResolvedValue(mockResponse);
+
+      const body = {
+        parserName: "auto",
+        contentFormat: "markdown" as const,
+        parseOptions: { ocrEnabled: true },
+        reason: "manual_reparse",
+      };
+      const result = await createLibraryParseRevision("doc-1", "v-1", body);
+
+      expect(apiPostJson).toHaveBeenCalledWith(
+        "/library/documents/doc-1/versions/v-1/parse-revisions",
+        body,
+      );
+      expect(result).toEqual(mockResponse);
+    });
+
+    it("should include parseRevisionId when fetching parsed text", async () => {
+      vi.mocked(apiGet).mockResolvedValue({ text: "parsed", truncated: false, fullLength: 6 });
+
+      await fetchDocumentText("doc-1", "preview", "pr-1");
+
+      expect(apiGet).toHaveBeenCalledWith(
+        "/library/documents/doc-1/text?mode=preview&parseRevisionId=pr-1",
       );
     });
   });

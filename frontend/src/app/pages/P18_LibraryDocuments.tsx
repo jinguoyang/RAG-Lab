@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { ArrowLeft, Upload, Download, FileText, ChevronLeft, ChevronRight, Trash2, RefreshCw, Power, Users } from "lucide-react";
+import { ArrowLeft, Upload, Download, FileText, ChevronLeft, ChevronRight, Trash2, RefreshCw, Power, Users, Eye, Settings2 } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
@@ -14,6 +14,7 @@ import {
   downloadLibraryDocument,
   batchAction,
   fetchLibraryDetail,
+  createLibraryParseRevision,
 } from "../services/libraryService";
 import type { LibraryDocumentDTO, UploadProgress } from "../types/library";
 import type { LibraryDTO } from "../types/library";
@@ -36,6 +37,21 @@ function visibilityVariant(v: string) {
   if (v === "public") return "success";
   if (v === "partial") return "info";
   return "default";
+}
+
+function parseStatusLabel(status?: string | null) {
+  if (status === "success") return "解析成功";
+  if (status === "failed") return "解析失败";
+  if (status === "running") return "解析中";
+  if (status === "pending") return "待解析";
+  return "未解析";
+}
+
+function parseStatusVariant(status?: string | null): "success" | "error" | "running" | "queued" {
+  if (status === "success") return "success";
+  if (status === "failed") return "error";
+  if (status === "running") return "running";
+  return "queued";
 }
 
 export function LibraryDocuments() {
@@ -62,10 +78,21 @@ export function LibraryDocuments() {
   } | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchLoading, setBatchLoading] = useState(false);
+  const [reparseTargets, setReparseTargets] = useState<LibraryDocumentDTO[]>([]);
+  const [reparseSubmitting, setReparseSubmitting] = useState(false);
+  const [parserName, setParserName] = useState("auto");
+  const [contentFormat, setContentFormat] = useState<"markdown" | "text">("markdown");
+  const [parseLanguage, setParseLanguage] = useState("zh-CN");
+  const [ocrEnabled, setOcrEnabled] = useState(false);
+  const [tableStrategy, setTableStrategy] = useState("preserve");
+  const [extractImageText, setExtractImageText] = useState(false);
+  const [preserveHeadings, setPreserveHeadings] = useState(true);
 
   // 加载文档库信息
   useEffect(() => {
-    void fetchLibraryDetail(libraryId).then(setLibrary).catch(() => {});
+    void fetchLibraryDetail(libraryId).then(setLibrary).catch(() => {
+      // 文档列表可独立加载，库元数据失败时保留默认标题。
+    });
   }, [libraryId]);
 
   const loadData = useCallback(async (keyword = searchTerm, nextPageNo = pageNo) => {
@@ -152,7 +179,56 @@ export function LibraryDocuments() {
     }
   }
 
-  async function handleBatchAction(action: "delete" | "reparse" | "disable") {
+  function openReparseDrawer(targets: LibraryDocumentDTO[]) {
+    const usableTargets = targets.filter((doc) => doc.activeVersionId);
+    if (usableTargets.length === 0) {
+      setFeedback({ variant: "warning", title: "无法重解析", message: "选中的文档没有可用的活跃源文件版本。" });
+      return;
+    }
+    setReparseTargets(usableTargets);
+  }
+
+  async function handleSubmitReparse() {
+    if (reparseTargets.length === 0) return;
+    setReparseSubmitting(true);
+    try {
+      const results = await Promise.allSettled(
+        reparseTargets.map((doc) =>
+          createLibraryParseRevision(doc.documentId, doc.activeVersionId!, {
+            parserName,
+            contentFormat,
+            reason: "library_document_list_reparse",
+            parseOptions: {
+              language: parseLanguage,
+              ocrEnabled,
+              tableStrategy,
+              extractImageText,
+              preserveHeadings,
+            },
+          }),
+        ),
+      );
+      const failed = results.filter((item) => item.status === "rejected").length;
+      setFeedback({
+        variant: failed > 0 ? "warning" : "success",
+        title: "重解析已提交",
+        message: `成功 ${results.length - failed} 个，失败 ${failed} 个。`,
+      });
+      setSelectedIds(new Set());
+      setReparseTargets([]);
+      await loadData(searchTerm, pageNo);
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "重解析失败",
+        message: error instanceof Error ? error.message : "请稍后重试。",
+      });
+    } finally {
+      setReparseSubmitting(false);
+    }
+  }
+
+  async function handleBatchAction(action: "delete" | "disable") {
     if (selectedIds.size === 0) return;
     const actionLabel = { delete: "删除", reparse: "重新解析", disable: "停用" }[action];
     const ok = await confirm({
@@ -215,13 +291,11 @@ export function LibraryDocuments() {
           </Alert>
         )}
 
-        {/* 库信息卡片 */}
         {library && (
-          <div className="flex items-center gap-4 p-4 bg-ivory border border-border-cream rounded-lg">
-            <Badge variant={visibilityVariant(library.visibility)}>
-              {visibilityLabel(library.visibility)}
-            </Badge>
-            <span className="text-sm text-stone-gray">{library.documentCount} 个文档</span>
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border-cream bg-ivory px-4 py-3 text-sm">
+            <Badge variant={visibilityVariant(library.visibility)}>{visibilityLabel(library.visibility)}</Badge>
+            <span className="text-stone-gray">{library.documentCount} 个文档</span>
+            <span className="text-stone-gray">最近更新 {new Date(library.updatedAt).toLocaleString("zh-CN")}</span>
           </div>
         )}
 
@@ -254,7 +328,7 @@ export function LibraryDocuments() {
         {selectedIds.size > 0 && (
           <div className="flex items-center gap-3 p-3 bg-parchment rounded-lg border border-border-cream">
             <span className="text-sm text-near-black">已选 {selectedIds.size} 个文档</span>
-            <Button variant="ghost" size="sm" disabled={batchLoading} onClick={() => void handleBatchAction("reparse")}>
+            <Button variant="ghost" size="sm" disabled={batchLoading} onClick={() => openReparseDrawer(documents.filter((doc) => selectedIds.has(doc.documentId)))}>
               <RefreshCw className="w-4 h-4 mr-1" /> 重新解析
             </Button>
             <Button variant="ghost" size="sm" disabled={batchLoading} onClick={() => void handleBatchAction("disable")}>
@@ -296,7 +370,8 @@ export function LibraryDocuments() {
                   </TableHead>
                   <TableHead>文档名称</TableHead>
                   <TableHead>状态</TableHead>
-                  <TableHead>创建时间</TableHead>
+                  <TableHead>活跃源文件版本</TableHead>
+                  <TableHead>最新解析状态</TableHead>
                   <TableHead>更新时间</TableHead>
                   <TableHead>操作</TableHead>
                 </TableRow>
@@ -330,19 +405,82 @@ export function LibraryDocuments() {
                     <TableCell>
                       <StatusBadge status={doc.status === "active" ? "active" : doc.status === "disabled" ? "inactive" : "draft"} />
                     </TableCell>
-                    <TableCell>{new Date(doc.createdAt).toLocaleString("zh-CN")}</TableCell>
+                    <TableCell>
+                      {doc.activeVersionNo ? (
+                        <div>
+                          <span className="font-mono text-sm">v{doc.activeVersionNo}</span>
+                          {doc.activeVersionFileName && (
+                            <p className="max-w-[180px] truncate text-xs text-stone-gray">{doc.activeVersionFileName}</p>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-stone-gray">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={parseStatusVariant(doc.latestParseStatus)}>
+                        {parseStatusLabel(doc.latestParseStatus)}
+                      </Badge>
+                    </TableCell>
                     <TableCell>{new Date(doc.updatedAt).toLocaleString("zh-CN")}</TableCell>
                     <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void handleDownload(doc);
-                        }}
-                      >
-                        <Download className="w-4 h-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="预览"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/library/${libraryId}/documents/${doc.documentId}?tab=preview`);
+                          }}
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="下载"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleDownload(doc);
+                          }}
+                        >
+                          <Download className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="重解析"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openReparseDrawer([doc]);
+                          }}
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="详情"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/library/${libraryId}/documents/${doc.documentId}`);
+                          }}
+                        >
+                          <FileText className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="权限"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/library/${libraryId}/members`);
+                          }}
+                        >
+                          <Users className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -439,6 +577,74 @@ export function LibraryDocuments() {
               </Button>
               <Button className="flex-1" disabled={uploading} onClick={() => void handleUploadSubmit()}>
                 {uploading ? "上传中..." : "确认上传"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reparseTargets.length > 0 && (
+        <div className="fixed inset-0 z-50 flex">
+          <div className="absolute inset-0 bg-black/30" onClick={() => setReparseTargets([])} />
+          <div className="relative ml-auto flex w-[460px] flex-col border-l border-border-cream bg-ivory shadow-xl">
+            <div className="border-b border-border-cream p-6">
+              <div className="flex items-center gap-2">
+                <Settings2 className="h-5 w-5 text-terracotta" />
+                <h2 className="text-lg font-serif text-near-black">重解析参数</h2>
+              </div>
+              <p className="mt-1 text-sm text-stone-gray">
+                将为 {reparseTargets.length} 个文档的当前活跃源文件版本创建新的解析版本。
+              </p>
+            </div>
+            <div className="flex-1 space-y-4 overflow-auto p-6">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-near-black">解析器</label>
+                <select className="w-full rounded-md border border-border-cream bg-white px-3 py-2 text-sm" value={parserName} onChange={(e) => setParserName(e.target.value)}>
+                  <option value="auto">自动识别</option>
+                  <option value="plain_text">纯文本</option>
+                  <option value="pdf_pypdf">PDF</option>
+                  <option value="docx_python_docx">DOCX</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-near-black">产物格式</label>
+                <select className="w-full rounded-md border border-border-cream bg-white px-3 py-2 text-sm" value={contentFormat} onChange={(e) => setContentFormat(e.target.value as "markdown" | "text")}>
+                  <option value="markdown">Markdown</option>
+                  <option value="text">纯文本</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-near-black">语言</label>
+                <Input value={parseLanguage} onChange={(e) => setParseLanguage(e.target.value)} placeholder="zh-CN" />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-near-black">表格处理</label>
+                <select className="w-full rounded-md border border-border-cream bg-white px-3 py-2 text-sm" value={tableStrategy} onChange={(e) => setTableStrategy(e.target.value)}>
+                  <option value="preserve">保留表格结构</option>
+                  <option value="flatten">转为段落文本</option>
+                  <option value="ignore">忽略表格</option>
+                </select>
+              </div>
+              <label className="flex items-center justify-between rounded-lg border border-border-cream bg-parchment px-3 py-2 text-sm">
+                <span>启用 OCR</span>
+                <input type="checkbox" checked={ocrEnabled} onChange={(e) => setOcrEnabled(e.target.checked)} className="accent-terracotta" />
+              </label>
+              <label className="flex items-center justify-between rounded-lg border border-border-cream bg-parchment px-3 py-2 text-sm">
+                <span>抽取图片文字</span>
+                <input type="checkbox" checked={extractImageText} onChange={(e) => setExtractImageText(e.target.checked)} className="accent-terracotta" />
+              </label>
+              <label className="flex items-center justify-between rounded-lg border border-border-cream bg-parchment px-3 py-2 text-sm">
+                <span>保留标题结构</span>
+                <input type="checkbox" checked={preserveHeadings} onChange={(e) => setPreserveHeadings(e.target.checked)} className="accent-terracotta" />
+              </label>
+              <Alert variant="info" title="不会影响知识库">
+                重解析只创建新的解析版本，不创建新的源文件版本，也不会自动切换已有知识库绑定。
+              </Alert>
+            </div>
+            <div className="flex items-center gap-3 border-t border-border-cream p-6">
+              <Button variant="secondary" className="flex-1" onClick={() => setReparseTargets([])}>取消</Button>
+              <Button className="flex-1" disabled={reparseSubmitting} onClick={() => void handleSubmitReparse()}>
+                {reparseSubmitting ? "提交中..." : "提交重解析"}
               </Button>
             </div>
           </div>

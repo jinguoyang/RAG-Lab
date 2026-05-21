@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { Plus, Search, Trash2, Edit, ChevronLeft, ChevronRight, FileText } from "lucide-react";
+import { Plus, Search, Trash2, Edit, ChevronLeft, ChevronRight, FileText, Users, FolderOpen } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
@@ -28,6 +28,10 @@ function visibilityVariant(v: LibraryVisibility) {
   if (v === "public") return "success";
   if (v === "partial") return "info";
   return "default";
+}
+
+function currentRoleLabel(lib: LibraryDTO) {
+  return lib.visibility === "personal" ? "所有者" : "可访问";
 }
 
 export function LibraryManagement() {
@@ -202,8 +206,9 @@ export function LibraryManagement() {
                 <TableRow>
                   <TableHead>名称</TableHead>
                   <TableHead>可见性</TableHead>
+                  <TableHead>我的角色</TableHead>
                   <TableHead>文档数</TableHead>
-                  <TableHead>创建时间</TableHead>
+                  <TableHead>最近更新</TableHead>
                   <TableHead>操作</TableHead>
                 </TableRow>
               </TableHeader>
@@ -229,15 +234,40 @@ export function LibraryManagement() {
                       </Badge>
                     </TableCell>
                     <TableCell>
+                      <Badge variant="default">{currentRoleLabel(lib)}</Badge>
+                    </TableCell>
+                    <TableCell>
                       <span className="text-near-black">{lib.documentCount}</span>
                     </TableCell>
                     <TableCell>
                       <span className="text-stone-gray text-sm">
-                        {new Date(lib.createdAt).toLocaleString("zh-CN")}
+                        {new Date(lib.updatedAt).toLocaleString("zh-CN")}
                       </span>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="进入文档"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/library/${lib.libraryId}`);
+                          }}
+                        >
+                          <FolderOpen className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="成员权限"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/library/${lib.libraryId}/members`);
+                          }}
+                        >
+                          <Users className="w-4 h-4" />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="sm"

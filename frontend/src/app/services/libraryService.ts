@@ -10,12 +10,16 @@ import type {
   LibraryDocumentUploadResponse,
   LibraryDocumentUsageResponse,
   LibraryDocumentVersionDTO,
+  LibraryBindingDTO,
   LibraryDTO,
   LibraryFullTextResponse,
   LibraryMemberDTO,
   LibraryPageResponse,
   LibraryParseJobDTO,
+  LibraryParseRevisionCreateResponse,
   LibraryParsedChunksResponse,
+  LibraryReparseRequest,
+  ParseRevisionDTO,
   LibraryStatsResponse,
   LibraryTextPreviewResponse,
   LibraryVersionActivateResponse,
@@ -91,7 +95,9 @@ export function uploadLibraryDocumentWithProgress(
         try {
           const body = JSON.parse(xhr.responseText);
           message = body.detail || body.message || message;
-        } catch {}
+        } catch {
+          // 后端可能返回非 JSON 错误页，此时保留 HTTP 状态提示。
+        }
         reject(new Error(message));
       }
     };
@@ -126,8 +132,10 @@ export async function fetchLibraryDocumentDetail(
 
 export async function downloadLibraryDocument(
   documentId: string,
+  versionId?: string,
 ): Promise<ApiDownload> {
-  return apiDownload(`/library/documents/${documentId}/download`);
+  const query = versionId ? `?versionId=${encodeURIComponent(versionId)}` : "";
+  return apiDownload(`/library/documents/${documentId}/download${query}`);
 }
 
 export async function updateLibraryDocument(
@@ -146,8 +154,13 @@ export async function fetchLibraryParseJobs(
 export async function fetchDocumentText(
   documentId: string,
   mode: "preview" | "full" | "chunks" = "preview",
+  parseRevisionId?: string,
 ): Promise<LibraryTextPreviewResponse | LibraryFullTextResponse | LibraryParsedChunksResponse> {
-  return apiGet(`/library/documents/${documentId}/text?mode=${mode}`);
+  const params = new URLSearchParams({ mode });
+  if (parseRevisionId) {
+    params.set("parseRevisionId", parseRevisionId);
+  }
+  return apiGet(`/library/documents/${documentId}/text?${params.toString()}`);
 }
 
 export async function fetchDocumentUsage(
@@ -164,7 +177,7 @@ export async function deleteLibraryDocument(
 
 export async function retryLibraryParse(
   documentId: string,
-): Promise<{ jobId: string; status: string }> {
+): Promise<{ jobId: string; parseRevisionId?: string; status: string }> {
   return apiPostJson(`/library/documents/${documentId}/parse-retry`, {});
 }
 
@@ -172,13 +185,13 @@ export async function bindDocumentsToKB(
   kbId: string,
   documentIds: string[],
   versionId?: string,
-): Promise<{ bindings: Array<{ bindingId: string; documentId: string; status: string }> }> {
+): Promise<{ bindings: LibraryBindingDTO[] }> {
   return apiPostJson(`/knowledge-bases/${kbId}/library-bindings`, { documentIds, versionId });
 }
 
 export async function listKBBindings(
   kbId: string,
-): Promise<Array<{ bindingId: string; documentId: string; documentName: string; status: string; chunkCount: number }>> {
+): Promise<LibraryBindingDTO[]> {
   return apiGet(`/knowledge-bases/${kbId}/library-bindings`);
 }
 
@@ -218,6 +231,24 @@ export async function fetchLibraryVersions(
   return apiGet(`/library/documents/${documentId}/versions`);
 }
 
+export async function fetchLibraryParseRevisions(
+  documentId: string,
+  versionId: string,
+): Promise<ParseRevisionDTO[]> {
+  return apiGet<ParseRevisionDTO[]>(`/library/documents/${documentId}/versions/${versionId}/parse-revisions`);
+}
+
+export async function createLibraryParseRevision(
+  documentId: string,
+  versionId: string,
+  body: LibraryReparseRequest,
+): Promise<LibraryParseRevisionCreateResponse> {
+  return apiPostJson<LibraryParseRevisionCreateResponse>(
+    `/library/documents/${documentId}/versions/${versionId}/parse-revisions`,
+    body,
+  );
+}
+
 export function uploadLibraryVersionWithProgress(
   documentId: string,
   file: File,
@@ -249,7 +280,9 @@ export function uploadLibraryVersionWithProgress(
         try {
           const errBody = JSON.parse(xhr.responseText);
           message = errBody.detail || errBody.message || message;
-        } catch {}
+        } catch {
+          // 后端可能返回非 JSON 错误页，此时保留 HTTP 状态提示。
+        }
         reject(new Error(message));
       }
     };
@@ -293,7 +326,7 @@ export async function switchBindingVersion(
   kbId: string,
   bindingId: string,
   libraryVersionId: string,
-): Promise<{ bindingId: string; status: string }> {
+): Promise<LibraryBindingDTO> {
   return apiPostJson(`/knowledge-bases/${kbId}/library-bindings/${bindingId}/switch-version`, { libraryVersionId });
 }
 
@@ -343,7 +376,7 @@ export async function fetchLibraryMembers(libraryId: string): Promise<LibraryMem
 
 export async function addLibraryMember(
   libraryId: string,
-  body: { subjectType: "user" | "group"; subjectId: string; permissionLevel: "read_only" | "document_manage" },
+  body: { subjectType: "user" | "group"; subjectId: string; permissionLevel: LibraryMemberDTO["permissionLevel"] },
 ): Promise<LibraryMemberDTO> {
   return apiPostJson<LibraryMemberDTO>(`/library/${libraryId}/members`, body);
 }
@@ -351,7 +384,7 @@ export async function addLibraryMember(
 export async function updateLibraryMember(
   libraryId: string,
   bindingId: string,
-  body: { permissionLevel: "read_only" | "document_manage" },
+  body: { permissionLevel: LibraryMemberDTO["permissionLevel"] },
 ): Promise<LibraryMemberDTO> {
   return apiPatchJson<LibraryMemberDTO>(`/library/${libraryId}/members/${bindingId}`, body);
 }
