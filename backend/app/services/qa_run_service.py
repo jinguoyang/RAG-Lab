@@ -1376,6 +1376,12 @@ def _execute_provider_qa_run(
                     "pageNo": candidate.metadata.get("pageNo"),
                     "section": candidate.metadata.get("section"),
                     "matchedChannels": candidate.metadata.get("matchedChannels", [candidate.source_type]),
+                    # Image-specific location fields (B-222)
+                    "sourceModality": candidate.metadata.get("sourceModality"),
+                    "sourceFileId": candidate.metadata.get("sourceFileId"),
+                    "region": candidate.metadata.get("region"),
+                    "imageWidth": candidate.metadata.get("imageWidth"),
+                    "imageHeight": candidate.metadata.get("imageHeight"),
                 },
             )
         )
