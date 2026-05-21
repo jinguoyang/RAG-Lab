@@ -573,6 +573,7 @@ qa_run_evidence = sa.Table(
     sa.Column("content_snapshot_hash", sa.String(length=128), nullable=True),
     sa.Column("snapshot_policy", sa.String(length=32), nullable=False),
     sa.Column("redaction_status", sa.String(length=16), nullable=False),
+    sa.Column("source_status", sa.String(length=16), nullable=False, server_default="available"),
     sa.Column("source_snapshot", postgresql.JSONB(), nullable=False),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
 )
