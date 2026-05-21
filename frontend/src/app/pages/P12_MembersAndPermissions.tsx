@@ -35,12 +35,6 @@ const ROLE_LABELS: Record<KbRole, string> = {
   kb_viewer: "知识库读者",
 };
 
-const ROLE_DESCRIPTIONS: Record<KbRole, string> = {
-  kb_owner: "全部知识库权限，可管理成员、转移 owner、删除或归档知识库",
-  kb_editor: "绑定文档、解绑、重建索引、管理配置、运行 QA、查看历史",
-  kb_operator: "只能运行 QA，查看自己的 QA 运行结果",
-  kb_viewer: "查看知识库、文档摘要、Chunk 摘要和 QA 历史",
-};
 
 const SUBJECT_TYPE_LABELS: Record<KbMemberSubjectType, string> = {
   user: "用户",
