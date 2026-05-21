@@ -1700,6 +1700,17 @@ def get_qa_run_detail(
 
     def _to_authorized_evidence_dto(evidence_row: RowMapping) -> QARunEvidenceDTO:
         """历史 Evidence 读取仍按当前 Chunk 权限二次裁剪，避免回放泄露旧授权正文。"""
+        # 源文档已被删除时，返回清理提示而非原始内容
+        if evidence_row["source_status"] == "source_deleted":
+            return QARunEvidenceDTO(
+                evidenceId=str(evidence_row["evidence_id"]),
+                chunkId=str(evidence_row["chunk_id"]),
+                candidateId=str(evidence_row["candidate_id"]) if evidence_row["candidate_id"] else None,
+                contentSnapshot=None,
+                sourceSnapshot={"sourceDeleted": True, "message": "引用文件已被清理"},
+                redactionStatus="source_deleted",
+            )
+
         drop_reason = _chunk_access_filter_drop_reason(filters_by_chunk_id.get(evidence_row["chunk_id"]), access_filter)
         if drop_reason is not None:
             redacted_snapshot = dict(evidence_row["source_snapshot"] or {})

@@ -1,4 +1,6 @@
 """知识库绑定相关 DTO。"""
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -38,3 +40,21 @@ class LibraryUnbindResponse(BaseModel):
 class SwitchBindingVersionRequest(BaseModel):
     """切换绑定版本请求。"""
     libraryVersionId: str
+
+
+class BindingRevisionDTO(BaseModel):
+    """绑定版本修订记录。"""
+    bindingRevisionId: str
+    bindingId: str
+    knowledgeBaseId: str
+    documentId: str
+    documentVersionId: str
+    parseRevisionId: str
+    status: str
+    chunkCount: int
+    buildStartedAt: str | None = None
+    buildFinishedAt: str | None = None
+    activatedAt: str | None = None
+    retiredAt: str | None = None
+    createdAt: str
+    createdBy: str | None = None

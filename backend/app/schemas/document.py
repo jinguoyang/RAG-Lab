@@ -254,3 +254,31 @@ class DocumentDetailDTO(BaseModel):
 
     document: DocumentDTO
     activeVersion: DocumentVersionDTO | None
+
+
+class DeletionImpactAnalysis(BaseModel):
+    """删除影响分析结果。"""
+
+    canDelete: bool
+    blockingReasons: list[str]
+    isActiveVersion: bool
+    activeBindingCount: int
+    pendingJobsCount: int
+    qaEvidenceCount: int
+    qaCitationCount: int
+    requiresStrongConfirmation: bool
+
+
+class DocumentVersionDeleteRequest(BaseModel):
+    """文档版本删除请求。"""
+
+    strongConfirmation: bool = False
+
+
+class DocumentVersionDeleteResponse(BaseModel):
+    """文档版本删除响应。"""
+
+    status: str
+    message: str
+    impactAnalysis: DeletionImpactAnalysis | None = None
+    deletedVersionId: str | None = None

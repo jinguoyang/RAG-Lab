@@ -1,5 +1,6 @@
 """知识库绑定服务：将文档库文档绑定到知识库进行解析入库。"""
 
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, insert, select, update
@@ -7,17 +8,20 @@ from sqlalchemy.orm import Session
 
 from app.schemas.auth import CurrentUserResponse
 from app.schemas.binding import (
+    BindingRevisionDTO,
     LibraryBindingDTO,
     LibraryBindResponse,
     LibraryUnbindResponse,
 )
 from app.tables import (
+    binding_revisions,
     document_kb_bindings,
     document_libraries,
     document_versions,
     documents,
     ingest_jobs,
     knowledge_bases,
+    parse_revisions,
     stored_files,
 )
 
@@ -52,6 +56,128 @@ class BindingDispatchError(Exception):
     def __init__(self, job_ids: list[str]) -> None:
         self.job_ids = job_ids
         super().__init__(f"Failed to enqueue ingest jobs: {', '.join(job_ids)}")
+
+
+class BindingBuildInProgressError(Exception):
+    """有版本正在构建中，无法切换版本。"""
+
+
+def _to_binding_revision_dto(row: dict) -> BindingRevisionDTO:
+    """将 binding_revisions 行转换为 DTO。"""
+    return BindingRevisionDTO(
+        bindingRevisionId=str(row["binding_revision_id"]),
+        bindingId=str(row["binding_id"]),
+        knowledgeBaseId=str(row["knowledge_base_id"]),
+        documentId=str(row["document_id"]),
+        documentVersionId=str(row["document_version_id"]),
+        parseRevisionId=str(row["parse_revision_id"]),
+        status=row["status"],
+        chunkCount=row["chunk_count"],
+        buildStartedAt=row["build_started_at"].isoformat() if row.get("build_started_at") else None,
+        buildFinishedAt=row["build_finished_at"].isoformat() if row.get("build_finished_at") else None,
+        activatedAt=row["activated_at"].isoformat() if row.get("activated_at") else None,
+        retiredAt=row["retired_at"].isoformat() if row.get("retired_at") else None,
+        createdAt=row["created_at"].isoformat(),
+        createdBy=str(row["created_by"]) if row.get("created_by") else None,
+    )
+
+
+def create_binding_revision(
+    session: Session,
+    binding_id: UUID,
+    knowledge_base_id: UUID,
+    document_id: UUID,
+    document_version_id: UUID,
+    parse_revision_id: UUID,
+    created_by: UUID | None = None,
+) -> UUID:
+    """创建 BindingRevision 记录，状态为 building。
+
+    Returns: binding_revision_id
+    """
+    binding_revision_id = uuid4()
+    now = datetime.now(timezone.utc)
+
+    session.execute(
+        insert(binding_revisions).values(
+            binding_revision_id=binding_revision_id,
+            binding_id=binding_id,
+            knowledge_base_id=knowledge_base_id,
+            document_id=document_id,
+            document_version_id=document_version_id,
+            parse_revision_id=parse_revision_id,
+            status="building",
+            chunk_count=0,
+            build_started_at=now,
+            created_at=now,
+            created_by=created_by,
+        )
+    )
+
+    return binding_revision_id
+
+
+def activate_binding_revision(
+    session: Session,
+    binding_revision_id: UUID,
+) -> None:
+    """激活 BindingRevision，将旧 active 版本置为 retired。"""
+    now = datetime.now(timezone.utc)
+
+    binding_rev = session.execute(
+        select(binding_revisions).where(
+            binding_revisions.c.binding_revision_id == binding_revision_id,
+        )
+    ).mappings().first()
+
+    if not binding_rev:
+        raise BindingNotFoundError
+
+    # 更新状态为 active
+    session.execute(
+        update(binding_revisions).where(
+            binding_revisions.c.binding_revision_id == binding_revision_id,
+        ).values(
+            status="active",
+            activated_at=now,
+        )
+    )
+
+    # 更新 document_kb_bindings 的 active_binding_revision_id
+    session.execute(
+        update(document_kb_bindings).where(
+            document_kb_bindings.c.binding_id == binding_rev["binding_id"],
+        ).values(
+            active_binding_revision_id=binding_revision_id,
+        )
+    )
+
+    # 将旧的 active BindingRevision 置为 retired
+    session.execute(
+        update(binding_revisions).where(
+            binding_revisions.c.binding_id == binding_rev["binding_id"],
+            binding_revisions.c.status == "active",
+            binding_revisions.c.binding_revision_id != binding_revision_id,
+        ).values(
+            status="retired",
+            retired_at=now,
+        )
+    )
+
+
+def fail_binding_revision(
+    session: Session,
+    binding_revision_id: UUID,
+    error_message: str | None = None,
+) -> None:
+    """标记 BindingRevision 为失败。"""
+    session.execute(
+        update(binding_revisions).where(
+            binding_revisions.c.binding_revision_id == binding_revision_id,
+        ).values(
+            status="failed",
+        )
+    )
 
 
 def _ensure_library_owner(
@@ -243,9 +369,10 @@ def bind_documents_to_kb(
             )
         )
 
+        binding_id = uuid4()
         session.execute(
             insert(document_kb_bindings).values(
-                binding_id=uuid4(),
+                binding_id=binding_id,
                 document_id=doc_id,
                 kb_id=kb_id,
                 version_id=kb_version_id,
@@ -256,6 +383,26 @@ def bind_documents_to_kb(
                 created_by=actor_id,
                 updated_by=actor_id,
             )
+        )
+
+        # 查找库文档版本的 ParseRevision
+        parse_rev = session.execute(
+            select(parse_revisions).where(
+                parse_revisions.c.document_version_id == latest_version["version_id"],
+                parse_revisions.c.deleted_at.is_(None),
+            ).order_by(parse_revisions.c.created_at.desc()).limit(1)
+        ).mappings().first()
+        parse_revision_id = parse_rev["parse_revision_id"] if parse_rev else uuid4()
+
+        # 创建 BindingRevision
+        create_binding_revision(
+            session=session,
+            binding_id=binding_id,
+            knowledge_base_id=kb_id,
+            document_id=doc_id,
+            document_version_id=kb_version_id,
+            parse_revision_id=parse_revision_id,
+            created_by=actor_id,
         )
 
         session.execute(
@@ -480,6 +627,33 @@ def list_kb_bindings(
     return result
 
 
+def complete_binding_revision_build(
+    session: Session,
+    binding_revision_id: UUID,
+    chunk_count: int,
+) -> None:
+    """完成 BindingRevision 构建并激活。
+
+    此函数在 Chunk 生成和索引同步完成后调用。
+    """
+    now = datetime.now(timezone.utc)
+
+    # 更新构建完成时间
+    session.execute(
+        update(binding_revisions).where(
+            binding_revisions.c.binding_revision_id == binding_revision_id,
+        ).values(
+            status="active",
+            chunk_count=chunk_count,
+            build_finished_at=now,
+            activated_at=now,
+        )
+    )
+
+    # 激活新版本（会自动将旧版本置为 retired）
+    activate_binding_revision(session, binding_revision_id)
+
+
 def switch_binding_version(
     session: Session,
     current_user: CurrentUserResponse,
@@ -487,7 +661,7 @@ def switch_binding_version(
     binding_id: UUID,
     target_library_version_id: UUID,
 ) -> LibraryBindingDTO:
-    """切换 KB 绑定到不同的库文档版本。"""
+    """切换 KB 绑定到不同的库文档版本，采用先构建后激活流程。"""
     _ensure_kb_permission(session, current_user, kb_id)
 
     # 加载绑定行
@@ -499,6 +673,16 @@ def switch_binding_version(
     ).mappings().first()
     if binding_row is None:
         raise BindingNotFoundError
+
+    # 检查是否有正在构建的版本
+    building_rev = session.execute(
+        select(binding_revisions).where(
+            binding_revisions.c.binding_id == binding_id,
+            binding_revisions.c.status == "building",
+        ).limit(1)
+    ).mappings().first()
+    if building_rev is not None:
+        raise BindingBuildInProgressError("有版本正在构建中，无法切换版本")
 
     # 验证用户拥有库文档
     lib_doc_id = binding_row["document_id"]
@@ -530,6 +714,26 @@ def switch_binding_version(
     kb_doc_id = current_kb_version
     actor_id = UUID(current_user.user.userId)
 
+    # 查找目标库版本的 ParseRevision
+    parse_rev = session.execute(
+        select(parse_revisions).where(
+            parse_revisions.c.document_version_id == target_library_version_id,
+            parse_revisions.c.deleted_at.is_(None),
+        ).order_by(parse_revisions.c.created_at.desc()).limit(1)
+    ).mappings().first()
+    parse_revision_id = parse_rev["parse_revision_id"] if parse_rev else uuid4()
+
+    # 创建新的 BindingRevision（状态为 building）
+    binding_revision_id = create_binding_revision(
+        session=session,
+        binding_id=binding_id,
+        knowledge_base_id=kb_id,
+        document_id=lib_doc_id,
+        document_version_id=target_library_version_id,
+        parse_revision_id=parse_revision_id,
+        created_by=actor_id,
+    )
+
     # 查询 KB 侧文档当前最大 version_no
     max_kb_version_no = session.execute(
         select(func.max(document_versions.c.version_no))
@@ -554,6 +758,7 @@ def switch_binding_version(
             metadata={
                 "library_document_id": str(lib_doc_id),
                 "library_version_id": str(target_library_version_id),
+                "binding_revision_id": str(binding_revision_id),
             },
             created_by=actor_id,
             updated_by=actor_id,
@@ -584,7 +789,7 @@ def switch_binding_version(
             status="queued",
             stage="queued",
             progress=0,
-            result_summary={},
+            result_summary={"binding_revision_id": str(binding_revision_id)},
             created_by=actor_id,
         )
     )

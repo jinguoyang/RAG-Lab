@@ -32,6 +32,7 @@ from app.schemas.document import (
 from app.schemas.common import PageResponse
 from app.tables import (
     audit_logs,
+    binding_revisions,
     chunk_access_filters,
     chunks,
     document_versions,
@@ -43,6 +44,7 @@ from app.tables import (
     ingest_jobs,
     knowledge_bases,
     parse_revisions,
+    qa_run_evidence,
     stored_files,
     users,
 )
@@ -158,6 +160,224 @@ def check_file_hash_duplicate(
             "created_at": existing_file["created_at"].isoformat() if existing_file["created_at"] else None,
         }
     return None
+
+
+def analyze_document_version_deletion_impact(
+    session: Session,
+    document_version_id: UUID,
+) -> dict:
+    """分析删除文档版本的影响。
+
+    Returns: 影响分析结果，包含 can_delete、blocking_reasons 等字段。
+    """
+    # 1. 检查是否为 active version
+    doc = session.execute(
+        select(documents.c.active_version_id).where(
+            documents.c.document_id == (
+                select(document_versions.c.document_id).where(
+                    document_versions.c.version_id == document_version_id
+                ).scalar_subquery()
+            )
+        )
+    ).scalar()
+
+    is_active_version = (doc == document_version_id)
+
+    # 2. 检查是否存在 active BindingRevision
+    active_binding_count = session.execute(
+        select(func.count()).select_from(binding_revisions).where(
+            binding_revisions.c.document_version_id == document_version_id,
+            binding_revisions.c.status == "active",
+        )
+    ).scalar_one()
+
+    # 3. 检查是否存在 pending/running 任务
+    pending_ingest_jobs = session.execute(
+        select(func.count()).select_from(ingest_jobs).where(
+            ingest_jobs.c.version_id == document_version_id,
+            ingest_jobs.c.status.in_(["queued", "running"]),
+        )
+    ).scalar_one()
+
+    # 4. 汇总历史 QA 引用
+    version_chunks = list(session.execute(
+        select(chunks.c.chunk_id).where(
+            chunks.c.version_id == document_version_id,
+        )
+    ).scalars().all())
+
+    qa_evidence_count = 0
+    qa_citation_count = 0
+
+    if version_chunks:
+        qa_evidence_count = session.execute(
+            select(func.count()).select_from(qa_run_evidence).where(
+                qa_run_evidence.c.chunk_id.in_(version_chunks),
+            )
+        ).scalar_one()
+
+    # 5. 判断是否允许删除
+    can_delete = True
+    blocking_reasons: list[str] = []
+
+    if is_active_version:
+        can_delete = False
+        blocking_reasons.append("不能删除文档库当前 active version")
+
+    if active_binding_count > 0:
+        can_delete = False
+        blocking_reasons.append(f"该版本正在支撑 {active_binding_count} 个知识库的 active BindingRevision")
+
+    if pending_ingest_jobs > 0:
+        can_delete = False
+        blocking_reasons.append("该版本存在运行中的任务")
+
+    return {
+        "can_delete": can_delete,
+        "blocking_reasons": blocking_reasons,
+        "is_active_version": is_active_version,
+        "active_binding_count": active_binding_count,
+        "pending_jobs_count": pending_ingest_jobs,
+        "qa_evidence_count": qa_evidence_count,
+        "qa_citation_count": qa_citation_count,
+        "requires_strong_confirmation": qa_evidence_count > 0 or qa_citation_count > 0,
+    }
+
+
+def delete_document_version(
+    session: Session,
+    current_user: CurrentUserResponse,
+    document_version_id: UUID,
+    strong_confirmation: bool = False,
+) -> dict:
+    """删除文档版本，执行影响分析和级联清理。
+
+    Returns: 删除结果，包含 status、message 和 impact_analysis。
+    """
+    # 1. 执行影响分析
+    impact = analyze_document_version_deletion_impact(session, document_version_id)
+
+    # 2. 检查是否可以删除
+    if not impact["can_delete"]:
+        return {
+            "status": "blocked",
+            "message": "无法删除该版本",
+            "blocking_reasons": impact["blocking_reasons"],
+            "impact_analysis": impact,
+        }
+
+    # 3. 检查是否需要强确认
+    if impact["requires_strong_confirmation"] and not strong_confirmation:
+        return {
+            "status": "confirmation_required",
+            "message": "该版本有历史 QA 引用，需要强确认",
+            "impact_analysis": impact,
+        }
+
+    # 4. 执行删除
+    now = datetime.now(timezone.utc)
+    user_id = UUID(current_user.user.userId)
+
+    # 4.1 删除 ParseRevision（软删除）
+    parse_rev_ids = list(session.execute(
+        select(parse_revisions.c.parse_revision_id).where(
+            parse_revisions.c.document_version_id == document_version_id,
+        )
+    ).scalars().all())
+
+    if parse_rev_ids:
+        session.execute(
+            update(parse_revisions).where(
+                parse_revisions.c.parse_revision_id.in_(parse_rev_ids),
+            ).values(
+                deleted_at=now,
+                deleted_by=user_id,
+            )
+        )
+
+    # 4.2 清理 retired/failed BindingRevision
+    session.execute(
+        update(binding_revisions).where(
+            binding_revisions.c.document_version_id == document_version_id,
+            binding_revisions.c.status.in_(["retired", "failed"]),
+        ).values(
+            status="deleted",
+            deleted_at=now,
+        )
+    )
+
+    # 4.3 清理 Chunk
+    version_chunks = list(session.execute(
+        select(chunks.c.chunk_id).where(
+            chunks.c.version_id == document_version_id,
+        )
+    ).scalars().all())
+
+    if version_chunks:
+        session.execute(
+            update(chunks).where(
+                chunks.c.chunk_id.in_(version_chunks),
+            ).values(
+                status="deleted",
+            )
+        )
+        session.execute(
+            update(chunk_access_filters).where(
+                chunk_access_filters.c.chunk_id.in_(version_chunks),
+            ).values(
+                chunk_status="deleted",
+                updated_at=now,
+            )
+        )
+        session.execute(
+            delete(graph_chunk_refs).where(
+                graph_chunk_refs.c.chunk_id.in_(version_chunks),
+            )
+        )
+
+    # 4.4 更新 QA Evidence 状态
+    if version_chunks:
+        session.execute(
+            update(qa_run_evidence).where(
+                qa_run_evidence.c.chunk_id.in_(version_chunks),
+            ).values(
+                source_status="source_deleted",
+            )
+        )
+
+    # 4.5 删除 DocumentVersion（软删除）
+    session.execute(
+        update(document_versions).where(
+            document_versions.c.version_id == document_version_id,
+        ).values(
+            deleted_at=now,
+            deleted_by=user_id,
+        )
+    )
+
+    # 5. 记录审计日志
+    _insert_audit_log(
+        session,
+        current_user,
+        "document_version.delete",
+        "document_version",
+        document_version_id,
+        UUID("00000000-0000-0000-0000-000000000000"),  # 无特定 KB
+        None,
+        {
+            "qa_evidence_count": impact["qa_evidence_count"],
+            "qa_citation_count": impact["qa_citation_count"],
+            "chunks_deleted": len(version_chunks),
+            "parse_revisions_deleted": len(parse_rev_ids),
+        },
+    )
+
+    return {
+        "status": "success",
+        "message": "文档版本已删除",
+        "deleted_version_id": str(document_version_id),
+        "impact_analysis": impact,
+    }
 
 
 def _is_platform_admin(current_user: CurrentUserResponse) -> bool:
@@ -772,12 +992,13 @@ def run_ingest_job(
 
         # 解析完成后创建 ParseRevision
         content_text = "\n\n".join(chunk.content for chunk in parsed_chunks if chunk.content)
+        content_format = "markdown" if parser_name == "markdown" else "text"
         create_parse_revision(
             session=session,
             document_version_id=version_row["version_id"],
-            content_format="markdown",
+            content_format=content_format,
             content_text=content_text,
-            content_hash=sha256(content_text.encode("utf-8")).hexdigest() if content_text else None,
+            content_hash=_calculate_file_hash(content_text.encode("utf-8")) if content_text else None,
             parser_name=parser_name,
             parser_version=parser_version,
             created_by=UUID(current_user.user.userId),

@@ -54,6 +54,46 @@ class AppRuntimeConcurrencyExceededError(ValueError):
     """App Runtime 同时运行调用超过应用级并发上限。"""
 
 
+class KnowledgeBaseDisabledError(Exception):
+    """知识库已禁用。"""
+
+    def __init__(self, kb_id: UUID):
+        self.kb_id = kb_id
+        super().__init__(f"Knowledge base {kb_id} is disabled")
+
+
+class KnowledgeBaseNotFoundError(Exception):
+    """知识库不存在。"""
+
+    def __init__(self, kb_id: UUID):
+        self.kb_id = kb_id
+        super().__init__(f"Knowledge base {kb_id} not found")
+
+
+def _check_kb_status(
+    session: Session,
+    kb_id: UUID,
+) -> None:
+    """检查知识库状态。
+
+    Raises:
+        KnowledgeBaseNotFoundError: 知识库不存在
+        KnowledgeBaseDisabledError: 知识库已禁用
+    """
+    kb = session.execute(
+        select(knowledge_bases).where(
+            knowledge_bases.c.kb_id == kb_id,
+            knowledge_bases.c.deleted_at.is_(None),
+        ).limit(1)
+    ).mappings().first()
+
+    if not kb:
+        raise KnowledgeBaseNotFoundError(kb_id)
+
+    if kb.get("status") == "disabled":
+        raise KnowledgeBaseDisabledError(kb_id)
+
+
 FEEDBACK_STATUS_MAP = {
     "correct": "correct",
     "partiallyCorrect": "partially_correct",
