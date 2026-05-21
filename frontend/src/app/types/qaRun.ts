@@ -53,6 +53,13 @@ export interface QARunEvidenceDTO {
   contentSnapshot: string | null;
   sourceSnapshot: Record<string, unknown>;
   redactionStatus: string;
+  // Sprint 42: traceability metadata
+  sourceStatus?: string;  // "available" | "source_deleted"
+  documentName?: string | null;
+  versionNo?: number | null;
+  pageNo?: number | null;
+  sectionPath?: string | null;
+  chunkStatus?: string | null;
 }
 
 export interface QARunCitationDTO {

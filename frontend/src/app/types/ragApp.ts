@@ -15,6 +15,9 @@ export interface RagAppDTO {
   metadata: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
+  // Sprint 42: KB status
+  knowledgeBaseName?: string | null;
+  knowledgeBaseStatus?: string | null;
 }
 
 export interface RagAppCreateRequest {

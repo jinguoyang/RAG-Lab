@@ -3,6 +3,7 @@ import { API_BASE_URL } from "./apiClient";
 import type { ApiDownload } from "./apiClient";
 import type {
   BatchActionResponse,
+  DeletionImpactAnalysis,
   LibraryDocumentDTO,
   LibraryDocumentDetailDTO,
   LibraryDocumentPage,
@@ -278,6 +279,13 @@ export async function deleteLibraryVersion(
   versionId: string,
 ): Promise<void> {
   return apiDelete(`/library/documents/${documentId}/versions/${versionId}`);
+}
+
+export async function getDeletionImpact(
+  documentId: string,
+  versionId: string,
+): Promise<DeletionImpactAnalysis> {
+  return apiGet<DeletionImpactAnalysis>(`/library/documents/${documentId}/versions/${versionId}/deletion-impact`);
 }
 
 export async function switchBindingVersion(

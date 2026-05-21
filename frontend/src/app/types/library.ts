@@ -45,6 +45,14 @@ export interface LibraryPageResponse {
   pageSize: number;
 }
 
+export interface ParseRevisionDTO {
+  parseRevisionId: string;
+  documentVersionId: string;
+  status: "pending" | "running" | "success" | "failed";
+  parserName: string | null;
+  createdAt: string;
+}
+
 export interface LibraryDocumentVersionDTO {
   versionId: string;
   documentId: string;
@@ -58,6 +66,7 @@ export interface LibraryDocumentVersionDTO {
   tokenCount: number | null;
   createdAt: string;
   updatedAt: string;
+  parseRevisions?: ParseRevisionDTO[];
 }
 
 export interface LibraryStoredFileDTO {
@@ -177,3 +186,15 @@ export interface LibraryVersionActivateResponse {
   activeVersionId: string;
   previousActiveVersionId: string | null;
 }
+
+export interface DeletionImpactAnalysis {
+  canDelete: boolean;
+  blockingReasons: string[];
+  isActiveVersion: boolean;
+  activeBindingCount: number;
+  pendingJobsCount: number;
+  qaEvidenceCount: number;
+  qaCitationCount: number;
+  requiresStrongConfirmation: boolean;
+}
+
