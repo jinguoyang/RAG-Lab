@@ -79,6 +79,46 @@ class DocumentIngestEnqueueError(Exception):
     """文档入库任务投递到后台队列失败。"""
 
 
+def _calculate_file_hash(file_content: bytes) -> str:
+    """计算文件内容的 SHA256 hash"""
+    return sha256(file_content).hexdigest()
+
+
+def check_file_hash_duplicate(
+    session: Session,
+    library_id: UUID,
+    file_hash: str,
+) -> dict | None:
+    """检查文件 hash 是否重复
+
+    通过 stored_files -> document_versions -> documents 链路查找同一知识库内相同 checksum 的文件。
+    返回: 重复文件的信息，如果没有重复返回 None
+    """
+    existing_file = session.execute(
+        select(stored_files)
+        .select_from(
+            stored_files
+            .join(document_versions, stored_files.c.file_id == document_versions.c.source_file_id)
+            .join(documents, document_versions.c.document_id == documents.c.document_id)
+        )
+        .where(
+            documents.c.kb_id == library_id,
+            documents.c.deleted_at.is_(None),
+            stored_files.c.checksum == file_hash,
+            stored_files.c.status == "active",
+        )
+        .limit(1)
+    ).mappings().first()
+
+    if existing_file:
+        return {
+            "file_id": existing_file["file_id"],
+            "file_name": existing_file["file_name"],
+            "created_at": existing_file["created_at"].isoformat() if existing_file["created_at"] else None,
+        }
+    return None
+
+
 def _is_platform_admin(current_user: CurrentUserResponse) -> bool:
     """沿用 E1 最小权限：平台管理员可访问全部知识库。"""
     return current_user.user.platformRole == "platform_admin"
@@ -1259,8 +1299,12 @@ def create_document_upload(
     name: str | None,
     security_level: str | None,
     storage_provider: ObjectStorageProvider | None = None,
+    force_upload: bool = False,
 ) -> DocumentUploadResponse | None:
-    """写入原始文件对象，并事务内创建文件、文档、首版本和 queued IngestJob。"""
+    """写入原始文件对象，并事务内创建文件、文档、首版本和 queued IngestJob。
+
+    force_upload 为 False 时，如果同一知识库内已存在相同 checksum 的文件，返回 duplicate 响应。
+    """
     kb_row = _read_visible_knowledge_base(session, current_user, kb_id)
     if kb_row is None:
         return None
@@ -1272,6 +1316,18 @@ def create_document_upload(
     require_active_dict_item(session, "document_source_type", "upload", "sourceType")
     require_active_dict_item(session, "file_role", "source", "fileRole")
 
+    file_hash = _calculate_file_hash(file_bytes)
+
+    if not force_upload:
+        duplicate = check_file_hash_duplicate(session, kb_id, file_hash)
+        if duplicate:
+            return DocumentUploadResponse(
+                status="duplicate",
+                message="文件已存在",
+                duplicateInfo=duplicate,
+                fileHash=file_hash,
+            )
+
     settings = get_settings()
     actor_id = UUID(current_user.user.userId)
     document_id = uuid4()
@@ -1280,7 +1336,7 @@ def create_document_upload(
     job_id = uuid4()
     normalized_file_name = _safe_file_name(file_name)
     document_name = (name or normalized_file_name).strip() or normalized_file_name
-    checksum = sha256(file_bytes).hexdigest()
+    checksum = file_hash
     object_prefix = settings.storage_object_prefix.strip("/")
     object_path = f"kb/{kb_id}/documents/{document_id}/versions/{version_id}/{normalized_file_name}"
     object_key = f"{object_prefix}/{object_path}" if object_prefix else object_path
@@ -1387,10 +1443,13 @@ def create_document_upload(
     enqueue_ingest_job(session, job_id)
 
     return DocumentUploadResponse(
+        status="success",
+        message="上传成功",
         document=_to_document_dto(document_row),
         version=_to_version_dto(version_row),
         ingestJob=_to_ingest_job_dto(job_row),
         storedFile=_to_stored_file_dto(stored_file_row),
+        fileHash=file_hash,
     )
 
 

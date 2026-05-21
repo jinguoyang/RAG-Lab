@@ -221,12 +221,16 @@ class BulkDocumentGovernanceResponse(BaseModel):
 
 
 class DocumentUploadResponse(BaseModel):
-    """上传成功后一次性返回文档、首版本和 queued 作业。"""
+    """上传成功后一次性返回文档、首版本和 queued 作业，或文件重复检查结果。"""
 
-    document: DocumentDTO
-    version: DocumentVersionDTO
-    ingestJob: IngestJobDTO
-    storedFile: StoredFileDTO
+    status: str = "success"  # "success" or "duplicate"
+    message: str = "上传成功"
+    document: DocumentDTO | None = None
+    version: DocumentVersionDTO | None = None
+    ingestJob: IngestJobDTO | None = None
+    storedFile: StoredFileDTO | None = None
+    duplicateInfo: dict | None = None
+    fileHash: str | None = None
 
 
 class DocumentDetailDTO(BaseModel):
