@@ -5,7 +5,6 @@ from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -54,7 +53,6 @@ from app.services.library_service import (
     upload_library_version,
 )
 from app.services.object_storage import ObjectStorageError
-from app.tables import document_versions
 
 router = APIRouter(prefix="/library/documents", tags=["library"])
 
@@ -341,26 +339,21 @@ def get_deletion_impact(
     db: Annotated[Session, Depends(get_db_session)],
 ) -> DeletionImpactAnalysis:
     """分析删除指定版本的影响。"""
-    # 验证 version 属于该 document
-    row = db.execute(
-        select(document_versions.c.version_id).where(
-            document_versions.c.version_id == version_id,
-            document_versions.c.document_id == document_id,
+    try:
+        result = analyze_document_version_deletion_impact(db, version_id)
+        return DeletionImpactAnalysis(
+            canDelete=result["can_delete"],
+            blockingReasons=result["blocking_reasons"],
+            isActiveVersion=result["is_active_version"],
+            activeBindingCount=result["active_binding_count"],
+            pendingJobsCount=result["pending_jobs_count"],
+            qaEvidenceCount=result["qa_evidence_count"],
+            qaCitationCount=result["qa_citation_count"],
+            requiresStrongConfirmation=result["requires_strong_confirmation"],
         )
-    ).scalar()
-    if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VERSION_NOT_FOUND")
-    result = analyze_document_version_deletion_impact(db, version_id)
-    return DeletionImpactAnalysis(
-        canDelete=result["can_delete"],
-        blockingReasons=result["blocking_reasons"],
-        isActiveVersion=result["is_active_version"],
-        activeBindingCount=result["active_binding_count"],
-        pendingJobsCount=result["pending_jobs_count"],
-        qaEvidenceCount=result["qa_evidence_count"],
-        qaCitationCount=result["qa_citation_count"],
-        requiresStrongConfirmation=result["requires_strong_confirmation"],
-    )
+    except Exception as exc:
+        _raise_library_error(exc)
+        raise  # unreachable
 
 
 @router.delete("/{document_id}/versions/{version_id}")
