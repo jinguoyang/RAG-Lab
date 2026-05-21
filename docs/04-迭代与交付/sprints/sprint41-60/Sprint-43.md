@@ -19,10 +19,10 @@
 
 | Backlog | 标题 | 优先级 | 预估 | 状态 |
 | --- | --- | --- | --- | --- |
-| B-214 | 建立三层主链路端到端验收：上传、解析、绑定、切换版本、QA、App Runtime 调用 | P0 | 2d | Ready |
-| B-215 | 建立删除和清理回归：active 引用禁止删除、历史 QA 引用强确认、索引副本清理重试 | P0 | 1.5d | Ready |
-| B-216 | 建立权限矩阵和 Runtime 状态回归 | P0 | 1.5d | Ready |
-| B-217 | 同步接口设计、数据模型设计、数据库设计、测试计划和 OpenAPI，回填 E30 验收结论 | P1 | 1.5d | Ready |
+| B-214 | 建立三层主链路端到端验收：上传、解析、绑定、切换版本、QA、App Runtime 调用 | P0 | 2d | In Progress |
+| B-215 | 建立删除和清理回归：active 引用禁止删除、历史 QA 引用强确认、索引副本清理重试 | P0 | 1.5d | In Progress |
+| B-216 | 建立权限矩阵和 Runtime 状态回归 | P0 | 1.5d | In Progress |
+| B-217 | 同步接口设计、数据模型设计、数据库设计、测试计划和 OpenAPI，回填 E30 验收结论 | P1 | 1.5d | In Progress |
 
 ## 4. 验收标准
 
@@ -62,7 +62,9 @@ git diff --check
 ## 7. 关联文档
 
 - `../../plans/2026-05-21-e30-three-layer-architecture-refactor.md`
+- `../../plans/2026-05-21-sprint43-regression-validation.md`
 - `../../specs/2026-05-20-permission-role-model-design.md`
 - `../../specs/2026-05-21-document-version-parse-revision-deletion-design.md`
 - `../../specs/2026-05-21-knowledge-base-chunk-management-design.md`
 - `../../specs/2026-05-21-document-kb-app-architecture-briefing.md`
+- `../../specs/2026-05-21-sprint43-regression-validation-design.md`
