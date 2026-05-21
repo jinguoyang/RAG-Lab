@@ -6,13 +6,13 @@ import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const ROOT = path.resolve(__dirname, "../../../..");
+const ROOT = path.resolve(__dirname, "../../..");
 
 test.describe("B-217: 文档同步校验", () => {
   test("OpenAPI 导出成功", async () => {
     const result = execSync(
       "conda run -n rag-lab python scripts/export_openapi.py",
-      { cwd: path.join(ROOT, "backend"), encoding: "utf-8" }
+      { cwd: path.join(ROOT, "backend"), encoding: "utf-8", shell: true }
     );
     const openapiPath = path.join(ROOT, "docs/06-发布与运维/openapi.json");
     expect(fs.existsSync(openapiPath)).toBe(true);
@@ -26,7 +26,7 @@ test.describe("B-217: 文档同步校验", () => {
     try {
       execSync(
         "conda run -n rag-lab python scripts/check_api_contract.py",
-        { cwd: path.join(ROOT, "backend"), encoding: "utf-8", stdio: "pipe" }
+        { cwd: path.join(ROOT, "backend"), encoding: "utf-8", stdio: "pipe", shell: true }
       );
     } catch (error: any) {
       const output = error.stdout || error.stderr || "";
