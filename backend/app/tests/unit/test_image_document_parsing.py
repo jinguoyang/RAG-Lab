@@ -599,3 +599,223 @@ def test_run_ingest_job_version_metadata_contains_vision_text_provider():
                 break
 
     assert found_vision_provider, "DocumentVersion metadata 中未找到 visionTextProvider"
+
+
+# ---------------------------------------------------------------------------
+# Task 4: Image Chunk Ingest and Index Sync Verification
+# ---------------------------------------------------------------------------
+
+
+def test_run_ingest_job_image_chunk_content_not_empty():
+    """图片 Chunk 入库后 content 应不为空。"""
+    from unittest.mock import patch
+
+    import sqlalchemy as sa
+
+    from app.services.document_service import run_ingest_job
+
+    env = _make_run_ingest_job_mocks()
+
+    with (
+        patch("app.services.document_service.parse_document", return_value=env["parsed_doc"]),
+        patch("app.services.document_service.get_settings", return_value=env["mock_settings"]),
+        patch("app.services.document_service.get_qa_run_providers", return_value=env["mock_provider_set"]),
+        patch("app.services.document_service._update_ingest_progress"),
+        patch("app.services.document_service.mark_graph_snapshots_stale"),
+        patch("app.services.document_service._write_chunk_access_filters", return_value={}),
+        patch("app.services.document_service.build_chunk_index_payload", return_value={"content": "x"}),
+        patch("app.services.document_service._create_index_sync_job", return_value=(None, "success", None)),
+        patch("app.services.document_service.create_parse_revision"),
+    ):
+        run_ingest_job(
+            env["session"],
+            env["current_user"],
+            env["kb_row"],
+            env["job_id"],
+            source_bytes=env["source_bytes"],
+        )
+
+    # Find the chunk insert statement in captured executes
+    found_chunk_insert = False
+    for stmt in env["captured_executes"]:
+        if isinstance(stmt, sa.Insert):
+            compiled = stmt.compile()
+            content = compiled.params.get("content")
+            if content is not None and isinstance(content, str):
+                assert content.strip() != "", "Chunk content should not be empty"
+                found_chunk_insert = True
+                break
+
+    assert found_chunk_insert, "未找到 chunk insert 语句"
+
+
+def test_run_ingest_job_image_chunk_metadata_source_modality():
+    """图片 Chunk metadata 应含 sourceModality='image'。"""
+    from unittest.mock import patch
+
+    import sqlalchemy as sa
+
+    from app.services.document_service import run_ingest_job
+
+    env = _make_run_ingest_job_mocks()
+
+    with (
+        patch("app.services.document_service.parse_document", return_value=env["parsed_doc"]),
+        patch("app.services.document_service.get_settings", return_value=env["mock_settings"]),
+        patch("app.services.document_service.get_qa_run_providers", return_value=env["mock_provider_set"]),
+        patch("app.services.document_service._update_ingest_progress"),
+        patch("app.services.document_service.mark_graph_snapshots_stale"),
+        patch("app.services.document_service._write_chunk_access_filters", return_value={}),
+        patch("app.services.document_service.build_chunk_index_payload", return_value={"content": "x"}),
+        patch("app.services.document_service._create_index_sync_job", return_value=(None, "success", None)),
+        patch("app.services.document_service.create_parse_revision"),
+    ):
+        run_ingest_job(
+            env["session"],
+            env["current_user"],
+            env["kb_row"],
+            env["job_id"],
+            source_bytes=env["source_bytes"],
+        )
+
+    found = False
+    for stmt in env["captured_executes"]:
+        if isinstance(stmt, sa.Insert):
+            compiled = stmt.compile()
+            meta = compiled.params.get("metadata")
+            if isinstance(meta, dict) and "sourceModality" in meta:
+                assert meta["sourceModality"] == "image"
+                found = True
+                break
+
+    assert found, "Chunk metadata 中未找到 sourceModality='image'"
+
+
+def test_run_ingest_job_image_chunk_metadata_source_file_name():
+    """图片 Chunk metadata 应含 sourceFileName 为原始图片名。"""
+    from unittest.mock import patch
+
+    import sqlalchemy as sa
+
+    from app.services.document_service import run_ingest_job
+
+    env = _make_run_ingest_job_mocks()
+
+    with (
+        patch("app.services.document_service.parse_document", return_value=env["parsed_doc"]),
+        patch("app.services.document_service.get_settings", return_value=env["mock_settings"]),
+        patch("app.services.document_service.get_qa_run_providers", return_value=env["mock_provider_set"]),
+        patch("app.services.document_service._update_ingest_progress"),
+        patch("app.services.document_service.mark_graph_snapshots_stale"),
+        patch("app.services.document_service._write_chunk_access_filters", return_value={}),
+        patch("app.services.document_service.build_chunk_index_payload", return_value={"content": "x"}),
+        patch("app.services.document_service._create_index_sync_job", return_value=(None, "success", None)),
+        patch("app.services.document_service.create_parse_revision"),
+    ):
+        run_ingest_job(
+            env["session"],
+            env["current_user"],
+            env["kb_row"],
+            env["job_id"],
+            source_bytes=env["source_bytes"],
+        )
+
+    found = False
+    for stmt in env["captured_executes"]:
+        if isinstance(stmt, sa.Insert):
+            compiled = stmt.compile()
+            meta = compiled.params.get("metadata")
+            if isinstance(meta, dict) and "sourceFileName" in meta:
+                assert meta["sourceFileName"] == "test.png"
+                found = True
+                break
+
+    assert found, "Chunk metadata 中未找到 sourceFileName='test.png'"
+
+
+def test_run_ingest_job_image_dense_payload_contains_content_and_filters():
+    """图片 Chunk 的 Dense payload 应包含 chunk 文本和过滤字段。"""
+    from unittest.mock import patch
+
+    from app.services.document_service import run_ingest_job
+
+    env = _make_run_ingest_job_mocks()
+
+    captured_payloads = []
+
+    def capture_payload(*args, **kwargs):
+        captured_payloads.append({"args": args, "kwargs": kwargs})
+        return {"content": "x"}
+
+    with (
+        patch("app.services.document_service.parse_document", return_value=env["parsed_doc"]),
+        patch("app.services.document_service.get_settings", return_value=env["mock_settings"]),
+        patch("app.services.document_service.get_qa_run_providers", return_value=env["mock_provider_set"]),
+        patch("app.services.document_service._update_ingest_progress"),
+        patch("app.services.document_service.mark_graph_snapshots_stale"),
+        patch("app.services.document_service._write_chunk_access_filters", return_value={}),
+        patch("app.services.document_service.build_chunk_index_payload", side_effect=capture_payload),
+        patch("app.services.document_service._create_index_sync_job", return_value=(None, "success", None)),
+        patch("app.services.document_service.create_parse_revision"),
+    ):
+        run_ingest_job(
+            env["session"],
+            env["current_user"],
+            env["kb_row"],
+            env["job_id"],
+            source_bytes=env["source_bytes"],
+        )
+
+    assert len(captured_payloads) >= 1, "build_chunk_index_payload 未被调用"
+    payload = captured_payloads[0]
+    chunk_row = payload["args"][0]
+    # Chunk content should be the image caption text
+    assert chunk_row["content"] == "image caption text"
+    # Dense payload should include document_status and version_status
+    assert payload["kwargs"]["document_status"] == "active"
+    assert payload["kwargs"]["version_status"] == "active"
+    # access_filter should be passed (mocked as {})
+    assert isinstance(payload["kwargs"]["access_filter"], dict)
+    # embedding should be present
+    assert len(payload["kwargs"]["embedding"]) == 1536
+
+
+def test_run_ingest_job_image_chunk_no_visual_index():
+    """图片 Chunk 入库不应创建 Visual Index，只用 milvus。"""
+    from unittest.mock import patch
+
+    from app.services.document_service import run_ingest_job
+
+    env = _make_run_ingest_job_mocks()
+
+    with (
+        patch("app.services.document_service.parse_document", return_value=env["parsed_doc"]),
+        patch("app.services.document_service.get_settings", return_value=env["mock_settings"]),
+        patch("app.services.document_service.get_qa_run_providers", return_value=env["mock_provider_set"]),
+        patch("app.services.document_service._update_ingest_progress"),
+        patch("app.services.document_service.mark_graph_snapshots_stale"),
+        patch("app.services.document_service._write_chunk_access_filters", return_value={}),
+        patch("app.services.document_service.build_chunk_index_payload", return_value={"content": "x"}),
+        patch("app.services.document_service._create_index_sync_job") as mock_sync,
+        patch("app.services.document_service.create_parse_revision"),
+    ):
+        mock_sync.return_value = (None, "success", None)
+        run_ingest_job(
+            env["session"],
+            env["current_user"],
+            env["kb_row"],
+            env["job_id"],
+            source_bytes=env["source_bytes"],
+        )
+
+    # Verify only milvus sync was called (no visual index)
+    called_targets = []
+    for call in mock_sync.call_args_list:
+        # _create_index_sync_job(session, kb_row, current_user, target_store, ...)
+        # target_store is the 4th positional arg (index 3)
+        if len(call.args) >= 4:
+            called_targets.append(call.args[3])
+
+    assert "milvus" in called_targets, "应调用 milvus 索引同步"
+    assert "visual" not in called_targets, "不应创建 Visual Index"
+    assert "vision" not in called_targets, "不应创建 Vision Index"
