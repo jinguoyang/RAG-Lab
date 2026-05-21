@@ -1,4 +1,4 @@
-"""VisionTextProvider：图片视觉文本抽取 Provider 抽象。"""
+"""VisionTextProvider：图片视觉文本抽取 Provider 抽象与工厂。"""
 
 from pydantic import BaseModel
 
@@ -47,3 +47,15 @@ class HttpVisionTextProvider(VisionTextProvider):
     def extract_text(self, image_bytes: bytes) -> VisionTextResult:
         # TODO: B-219 - implement HTTP vision API call
         raise NotImplementedError
+
+
+def get_vision_text_provider(settings: Settings | None = None) -> VisionTextProvider:
+    """根据配置创建 VisionTextProvider 实例。"""
+    if settings is None:
+        from app.core.config import get_settings
+
+        settings = get_settings()
+    provider_type = settings.vision_text_provider
+    if provider_type == "local":
+        return LocalVisionTextProvider()
+    return HttpVisionTextProvider(settings)

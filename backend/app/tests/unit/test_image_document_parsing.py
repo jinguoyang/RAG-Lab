@@ -1,13 +1,19 @@
-"""Task 1: VisionTextProvider 配置与 Provider 抽象测试。"""
+"""Task 1 & 2: VisionTextProvider 配置与图片解析集成测试。"""
+
+import struct
+import zlib
+from unittest.mock import patch
 
 import pytest
 
 from app.core.config import Settings
+from app.services.document_parsing import DocumentParseError, parse_document
 from app.services.qa_providers import ProviderError
 from app.services.vision_text_provider import (
     HttpVisionTextProvider,
     LocalVisionTextProvider,
     VisionTextProvider,
+    get_vision_text_provider,
 )
 
 
@@ -108,3 +114,117 @@ def test_http_vision_text_provider_requires_endpoint():
     settings = Settings(_env_file=None, RAG_LAB_VISION_TEXT_PROVIDER="http")
     with pytest.raises(ProviderError):
         HttpVisionTextProvider(settings)
+
+
+# ---------------------------------------------------------------------------
+# Task 2: 图片解析接入 document_parsing
+# ---------------------------------------------------------------------------
+
+
+def _make_tiny_png() -> bytes:
+    """Create a minimal valid 1x1 white PNG for testing."""
+    signature = b"\x89PNG\r\n\x1a\n"
+    ihdr_data = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
+    ihdr_crc = struct.pack(">I", zlib.crc32(b"IHDR" + ihdr_data) & 0xFFFFFFFF)
+    ihdr = struct.pack(">I", len(ihdr_data)) + b"IHDR" + ihdr_data + ihdr_crc
+    raw_data = b"\x00\xff\xff\xff"
+    compressed = zlib.compress(raw_data)
+    idat_crc = struct.pack(">I", zlib.crc32(b"IDAT" + compressed) & 0xFFFFFFFF)
+    idat = struct.pack(">I", len(compressed)) + b"IDAT" + compressed + idat_crc
+    iend_crc = struct.pack(">I", zlib.crc32(b"IEND") & 0xFFFFFFFF)
+    iend = struct.pack(">I", 0) + b"IEND" + iend_crc
+    return signature + ihdr + idat + iend
+
+
+def test_get_vision_text_provider_local():
+    """vision_text_provider=local 时应返回 LocalVisionTextProvider。"""
+    settings = Settings(_env_file=None, RAG_LAB_VISION_TEXT_PROVIDER="local")
+    provider = get_vision_text_provider(settings)
+    assert isinstance(provider, LocalVisionTextProvider)
+
+
+def test_get_vision_text_provider_http():
+    """vision_text_provider=http 时应返回 HttpVisionTextProvider。"""
+    settings = Settings(
+        _env_file=None,
+        RAG_LAB_VISION_TEXT_PROVIDER="http",
+        RAG_LAB_LLM_ENDPOINT="https://llm.example.com/v1/chat/completions",
+        RAG_LAB_LLM_API_KEY="sk-llm-key",
+    )
+    provider = get_vision_text_provider(settings)
+    assert isinstance(provider, HttpVisionTextProvider)
+
+
+def test_parse_png_returns_parsed_document():
+    """上传 .png 应返回 ParsedDocument，parser_name 为 vision_text。"""
+    png_bytes = _make_tiny_png()
+    with patch("app.services.document_parsing.get_vision_text_provider") as mock_factory:
+        mock_factory.return_value = LocalVisionTextProvider()
+        result = parse_document("test.png", "image/png", png_bytes)
+
+    assert result.parser_name == "vision_text"
+    assert result.source_file_name == "test.png"
+    assert len(result.chunks) >= 1
+
+
+def test_parse_png_chunk_content_contains_caption_and_ocr():
+    """图片 chunk content 应包含图片描述和 OCR 文本。"""
+    png_bytes = _make_tiny_png()
+    with patch("app.services.document_parsing.get_vision_text_provider") as mock_factory:
+        mock_factory.return_value = LocalVisionTextProvider()
+        result = parse_document("test.png", "image/png", png_bytes)
+
+    all_content = " ".join(c.content for c in result.chunks)
+    assert "本地 Vision Provider 测试 caption" in all_content
+    assert "本地 Vision Provider 测试 OCR 文本" in all_content
+
+
+def test_parse_png_chunk_metadata_has_image_fields():
+    """图片 chunk metadata 应包含 sourceModality、region、visionConfidence。"""
+    png_bytes = _make_tiny_png()
+    with patch("app.services.document_parsing.get_vision_text_provider") as mock_factory:
+        mock_factory.return_value = LocalVisionTextProvider()
+        result = parse_document("test.png", "image/png", png_bytes)
+
+    first_chunk = result.chunks[0]
+    assert first_chunk.metadata["sourceModality"] == "image"
+    assert first_chunk.metadata["parserName"] == "vision_text"
+    assert first_chunk.metadata["region"] == "full"
+    assert first_chunk.metadata["visionConfidence"] == "medium"
+
+
+def test_parse_unsupported_image_extension_raises():
+    """非白名单图片格式（如 .bmp）应返回 UNSUPPORTED_FILE_TYPE。"""
+    with pytest.raises(DocumentParseError) as exc_info:
+        parse_document("test.bmp", "image/bmp", b"\x00")
+    assert exc_info.value.error_code == "UNSUPPORTED_FILE_TYPE"
+
+
+def test_parse_jpg_supported():
+    """.jpg 应走图片解析分支。"""
+    png_bytes = _make_tiny_png()  # 用 png bytes 做 fake，mock 后不会真正解码
+    with patch("app.services.document_parsing.get_vision_text_provider") as mock_factory:
+        mock_factory.return_value = LocalVisionTextProvider()
+        result = parse_document("photo.jpg", "image/jpeg", png_bytes)
+
+    assert result.parser_name == "vision_text"
+
+
+def test_parse_jpeg_supported():
+    """.jpeg 应走图片解析分支。"""
+    png_bytes = _make_tiny_png()
+    with patch("app.services.document_parsing.get_vision_text_provider") as mock_factory:
+        mock_factory.return_value = LocalVisionTextProvider()
+        result = parse_document("photo.jpeg", "image/jpeg", png_bytes)
+
+    assert result.parser_name == "vision_text"
+
+
+def test_parse_webp_supported():
+    """.webp 应走图片解析分支。"""
+    png_bytes = _make_tiny_png()
+    with patch("app.services.document_parsing.get_vision_text_provider") as mock_factory:
+        mock_factory.return_value = LocalVisionTextProvider()
+        result = parse_document("photo.webp", "image/webp", png_bytes)
+
+    assert result.parser_name == "vision_text"

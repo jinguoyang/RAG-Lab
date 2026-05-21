@@ -5,6 +5,8 @@ import re
 from xml.etree import ElementTree
 from zipfile import BadZipFile, ZipFile
 
+from app.services.vision_text_provider import get_vision_text_provider
+
 
 PARSER_VERSION = "sprint19.2"
 DEFAULT_CHUNK_SIZE = 900
@@ -15,6 +17,7 @@ MARKDOWN_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$")
 LEGAL_HEADING_RE = re.compile(rf"^(第{CHINESE_NUMBER_PATTERN}([章节条]))\s+(.+)$")
 CHINESE_LIST_HEADING_RE = re.compile(r"^([一二三四五六七八九十]+)[、.]\s*(.{1,30})$")
 NUMBERED_HEADING_RE = re.compile(r"^(\d+)[、.]\s+(.{1,30})$")
+_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
 @dataclass(frozen=True)
@@ -69,6 +72,8 @@ def parse_document(
     elif extension == ".docx":
         blocks = _parse_docx(file_bytes)
         parser_name = "docx_python_docx"
+    elif extension in _IMAGE_EXTENSIONS:
+        return _parse_image(file_bytes, normalized_name, mime_type, chunk_size, chunk_overlap)
     else:
         raise DocumentParseError("UNSUPPORTED_FILE_TYPE", f"Unsupported file type: {extension or 'unknown'}")
 
@@ -261,6 +266,78 @@ def _parse_docx(file_bytes: bytes) -> list[dict]:
         section = current_section or f"Paragraph {len(blocks) + 1}"
         blocks.append({"content": content, "section": section, "page_no": None})
     return blocks
+
+
+def _parse_image(
+    file_bytes: bytes,
+    normalized_name: str,
+    mime_type: str | None,
+    chunk_size: int,
+    chunk_overlap: int,
+) -> ParsedDocument:
+    """调用 VisionTextProvider 解析图片，将结果渲染为 Markdown。"""
+    provider = get_vision_text_provider()
+    result = provider.extract_text(file_bytes)
+
+    blocks = []
+    if result.caption:
+        blocks.append({"content": f"## Image Description\n\n{result.caption}", "section": "Image Description", "page_no": None})
+    if result.ocr_text:
+        blocks.append({"content": f"## OCR Text\n\n{result.ocr_text}", "section": "OCR Text", "page_no": None})
+    if result.structured_summary:
+        blocks.append({"content": f"## Structured Summary\n\n{result.structured_summary}", "section": "Structured Summary", "page_no": None})
+    if not blocks:
+        raise DocumentParseError("PARSE_EMPTY_CONTENT", "Image parsing returned no content.")
+
+    chunks = _blocks_to_image_chunks(blocks, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    return ParsedDocument(
+        parser_name="vision_text",
+        parser_version=PARSER_VERSION,
+        source_file_name=normalized_name,
+        mime_type=mime_type,
+        chunks=chunks,
+    )
+
+
+def _blocks_to_image_chunks(
+    blocks: list[dict],
+    chunk_size: int,
+    chunk_overlap: int,
+) -> list[ParsedChunk]:
+    """把图片解析 block 切成 Chunk，附加图片特有的 metadata。"""
+    chunks: list[ParsedChunk] = []
+    overlap = max(0, min(chunk_overlap, chunk_size // 2))
+    for block_index, block in enumerate(blocks, start=1):
+        content = str(block["content"]).strip()
+        if not content:
+            continue
+        start = 0
+        while start < len(content):
+            end = min(start + chunk_size, len(content))
+            chunk_content = content[start:end].strip()
+            if chunk_content:
+                chunks.append(
+                    ParsedChunk(
+                        content=chunk_content,
+                        token_count=_estimate_token_count(chunk_content),
+                        section=block.get("section"),
+                        page_no=block.get("page_no"),
+                        metadata={
+                            "sourceModality": "image",
+                            "parserName": "vision_text",
+                            "parserVersion": PARSER_VERSION,
+                            "region": "full",
+                            "visionConfidence": "medium",
+                            "blockIndex": block_index,
+                            "charStart": start,
+                            "charEnd": end,
+                        },
+                    )
+                )
+            if end >= len(content):
+                break
+            start = max(end - overlap, start + 1)
+    return chunks
 
 
 def _normalize_text(text: str) -> str:
