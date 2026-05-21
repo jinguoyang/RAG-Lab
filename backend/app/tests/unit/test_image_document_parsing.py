@@ -364,3 +364,238 @@ def test_to_version_dto_text_document_no_image():
     dto = _to_version_dto(row)
     assert dto.sourceModality is None
     assert dto.image is None
+
+
+# ---------------------------------------------------------------------------
+# Task 3 continued: run_ingest_job 生产端元数据验证
+# ---------------------------------------------------------------------------
+
+
+def _make_run_ingest_job_mocks():
+    """为 run_ingest_job 构造最小 mock 环境，返回 (session, mock_create_rev) 及相关对象。"""
+    from unittest.mock import MagicMock, patch
+    from uuid import uuid4
+
+    from app.services.document_parsing import ParsedDocument, ParsedChunk
+
+    kb_id = uuid4()
+    doc_id = uuid4()
+    version_id = uuid4()
+    file_id = uuid4()
+    job_id = uuid4()
+    user_id = uuid4()
+
+    job_row = {
+        "job_id": job_id,
+        "kb_id": kb_id,
+        "version_id": version_id,
+        "document_id": doc_id,
+        "status": "pending",
+    }
+    version_row = {
+        "version_id": version_id,
+        "document_id": doc_id,
+        "source_file_id": file_id,
+        "metadata": None,
+    }
+    document_row = {
+        "document_id": doc_id,
+        "kb_id": kb_id,
+        "name": "test.png",
+        "source_type": "upload",
+        "active_version_id": version_id,
+        "status": "active",
+        "security_level": "default",
+    }
+    file_row = {
+        "file_id": file_id,
+        "file_name": "test.png",
+        "file_hash": "abc123",
+        "mime_type": "image/png",
+    }
+
+    parsed_doc = ParsedDocument(
+        parser_name="vision_text",
+        parser_version="1.0",
+        source_file_name="test.png",
+        mime_type="image/png",
+        chunks=[
+            ParsedChunk(
+                content="image caption text",
+                token_count=10,
+                section=None,
+                page_no=None,
+                metadata={
+                    "sourceModality": "image",
+                    "parserName": "vision_text",
+                    "region": "full",
+                    "visionConfidence": "unknown",
+                },
+            )
+        ],
+    )
+
+    current_user = MagicMock()
+    current_user.user.userId = str(user_id)
+
+    kb_row = {
+        "kb_id": kb_id,
+        "sparse_index_enabled": False,
+        "graph_index_enabled": False,
+        "sparse_required_for_activation": False,
+        "graph_required_for_activation": False,
+    }
+
+    mock_settings = MagicMock()
+    mock_settings.vision_text_provider = "http"
+    mock_settings.vision_text_model = "gpt-4o-mini"
+    mock_settings.vision_text_max_image_side = 1600
+    mock_settings.llm_model = "gpt-4o"
+    mock_settings.embedding_provider = "openai"
+    mock_settings.embedding_model = "text-embedding-3-small"
+
+    mock_provider_set = MagicMock()
+    mock_provider_set.embedding.embed_query.return_value = [0.1] * 1536
+
+    # session.execute side_effect: 按调用顺序返回不同结果
+    chunk_id = uuid4()
+    chunk_row = {
+        "chunk_id": chunk_id,
+        "version_id": version_id,
+        "document_id": doc_id,
+        "kb_id": kb_id,
+        "chunk_index": 1,
+        "content": "image caption text",
+        "token_count": 10,
+        "metadata": {},
+        "status": "active",
+        "security_level": "default",
+    }
+
+    def _select_result(mapping):
+        r = MagicMock()
+        r.mappings.return_value.first.return_value = mapping
+        return r
+
+    def _insert_result(mapping):
+        r = MagicMock()
+        r.mappings.return_value.one.return_value = mapping
+        return r
+
+    execute_returns = [
+        _select_result(job_row),       # 1: select(ingest_jobs)
+        _select_result(version_row),   # 2: select(document_versions)
+        _select_result(document_row),  # 3: select(documents)
+        _select_result(file_row),      # 4: select(stored_files)
+        MagicMock(),                   # 5: update(ingest_jobs) started_at
+        MagicMock(),                   # 6: update(document_versions) processing
+        iter([]),                      # 7: select(chunks) old_chunk_ids → empty
+        MagicMock(),                   # 8: delete(chunk_access_filters)
+        MagicMock(),                   # 9: delete(graph_chunk_refs)
+        MagicMock(),                   # 10: delete(chunks)
+        _insert_result(chunk_row),     # 11: insert(chunks)
+        MagicMock(),                   # 12: update(document_versions) final metadata
+        _insert_result(job_row),       # 13: update(ingest_jobs) final
+    ]
+    call_idx = {"i": 0}
+    captured_executes = []
+
+    def execute_side_effect(stmt):
+        captured_executes.append(stmt)
+        idx = call_idx["i"]
+        call_idx["i"] += 1
+        if idx < len(execute_returns):
+            return execute_returns[idx]
+        return MagicMock()
+
+    session = MagicMock()
+    session.execute.side_effect = execute_side_effect
+
+    return {
+        "session": session,
+        "current_user": current_user,
+        "kb_row": kb_row,
+        "job_id": job_id,
+        "source_bytes": b"\x89PNG\r\n\x1a\n",
+        "parsed_doc": parsed_doc,
+        "mock_settings": mock_settings,
+        "mock_provider_set": mock_provider_set,
+        "captured_executes": captured_executes,
+    }
+
+
+def test_run_ingest_job_parse_revision_options_contain_source_modality():
+    """run_ingest_job 处理图片时，ParseRevision.parse_options 应含 sourceModality='image'。"""
+    from unittest.mock import patch
+
+    from app.services.document_service import run_ingest_job
+
+    env = _make_run_ingest_job_mocks()
+
+    with (
+        patch("app.services.document_service.parse_document", return_value=env["parsed_doc"]),
+        patch("app.services.document_service.get_settings", return_value=env["mock_settings"]),
+        patch("app.services.document_service.get_qa_run_providers", return_value=env["mock_provider_set"]),
+        patch("app.services.document_service._update_ingest_progress"),
+        patch("app.services.document_service.mark_graph_snapshots_stale"),
+        patch("app.services.document_service._write_chunk_access_filters", return_value={}),
+        patch("app.services.document_service.build_chunk_index_payload", return_value={"content": "x"}),
+        patch("app.services.document_service._create_index_sync_job", return_value=(None, "success", None)),
+        patch("app.services.document_service.create_parse_revision") as mock_create_rev,
+    ):
+        run_ingest_job(
+            env["session"],
+            env["current_user"],
+            env["kb_row"],
+            env["job_id"],
+            source_bytes=env["source_bytes"],
+        )
+
+    mock_create_rev.assert_called_once()
+    kwargs = mock_create_rev.call_args.kwargs
+    assert kwargs["parse_options"] is not None
+    assert kwargs["parse_options"]["sourceModality"] == "image"
+
+
+def test_run_ingest_job_version_metadata_contains_vision_text_provider():
+    """run_ingest_job 处理图片时，DocumentVersion.metadata 应含 visionTextProvider。"""
+    from unittest.mock import patch
+
+    import sqlalchemy as sa
+
+    from app.services.document_service import run_ingest_job
+
+    env = _make_run_ingest_job_mocks()
+
+    with (
+        patch("app.services.document_service.parse_document", return_value=env["parsed_doc"]),
+        patch("app.services.document_service.get_settings", return_value=env["mock_settings"]),
+        patch("app.services.document_service.get_qa_run_providers", return_value=env["mock_provider_set"]),
+        patch("app.services.document_service._update_ingest_progress"),
+        patch("app.services.document_service.mark_graph_snapshots_stale"),
+        patch("app.services.document_service._write_chunk_access_filters", return_value={}),
+        patch("app.services.document_service.build_chunk_index_payload", return_value={"content": "x"}),
+        patch("app.services.document_service._create_index_sync_job", return_value=(None, "success", None)),
+        patch("app.services.document_service.create_parse_revision"),
+    ):
+        run_ingest_job(
+            env["session"],
+            env["current_user"],
+            env["kb_row"],
+            env["job_id"],
+            source_bytes=env["source_bytes"],
+        )
+
+    # 从 captured_executes 中找到包含 metadata 的 update(document_versions) 调用
+    found_vision_provider = False
+    for stmt in env["captured_executes"]:
+        if isinstance(stmt, sa.Update):
+            compiled = stmt.compile()
+            meta = compiled.params.get("metadata")
+            if isinstance(meta, dict) and "visionTextProvider" in meta:
+                assert meta["visionTextProvider"] == "http"
+                assert meta["sourceModality"] == "image"
+                found_vision_provider = True
+                break
+
+    assert found_vision_provider, "DocumentVersion metadata 中未找到 visionTextProvider"
