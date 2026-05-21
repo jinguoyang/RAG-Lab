@@ -43,6 +43,8 @@ class DocumentVersionDTO(BaseModel):
     tokenCount: int | None
     createdAt: str
     updatedAt: str
+    sourceModality: str | None = None
+    image: dict | None = None
 
 
 class IngestJobDTO(BaseModel):

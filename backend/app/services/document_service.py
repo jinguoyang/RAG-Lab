@@ -431,6 +431,9 @@ def _to_document_dto(row: RowMapping) -> DocumentDTO:
 
 def _to_version_dto(row: RowMapping) -> DocumentVersionDTO:
     """将 document_versions 行转换为版本 DTO。"""
+    metadata = row.get("metadata") or {}
+    source_modality = metadata.get("sourceModality")
+    image_info = metadata.get("image") if source_modality == "image" else None
     return DocumentVersionDTO(
         versionId=str(row["version_id"]),
         documentId=str(row["document_id"]),
@@ -446,6 +449,8 @@ def _to_version_dto(row: RowMapping) -> DocumentVersionDTO:
         tokenCount=row["token_count"],
         createdAt=row["created_at"].isoformat(),
         updatedAt=row["updated_at"].isoformat(),
+        sourceModality=source_modality,
+        image=image_info,
     )
 
 
@@ -992,7 +997,17 @@ def run_ingest_job(
 
         # 解析完成后创建 ParseRevision
         content_text = "\n\n".join(chunk.content for chunk in parsed_chunks if chunk.content)
-        content_format = "markdown" if parser_name == "markdown" else "text"
+        is_image = parser_name == "vision_text"
+        content_format = "markdown" if (parser_name == "markdown" or is_image) else "text"
+        parse_options_for_revision = None
+        if is_image:
+            vision_settings = get_settings()
+            parse_options_for_revision = {
+                "sourceModality": "image",
+                "provider": vision_settings.vision_text_provider,
+                "model": vision_settings.vision_text_model or vision_settings.llm_model,
+                "maxImageSide": vision_settings.vision_text_max_image_side,
+            }
         create_parse_revision(
             session=session,
             document_version_id=version_row["version_id"],
@@ -1001,6 +1016,7 @@ def run_ingest_job(
             content_hash=_calculate_file_hash(content_text.encode("utf-8")) if content_text else None,
             parser_name=parser_name,
             parser_version=parser_version,
+            parse_options=parse_options_for_revision,
             created_by=UUID(current_user.user.userId),
         )
         old_chunk_ids = [
@@ -1315,6 +1331,12 @@ def run_ingest_job(
                     "embeddingModel": get_settings().embedding_model,
                     "error_summary": error_summary,
                     "graphExtractionErrors": graph_extraction_errors,
+                    **({"sourceModality": "image",
+                        "visionTextProvider": get_settings().vision_text_provider,
+                        "image": {
+                            "region": (parsed_chunks[0].metadata.get("region", "full") if parsed_chunks else "full"),
+                            "visionConfidence": (parsed_chunks[0].metadata.get("visionConfidence", "unknown") if parsed_chunks else "unknown"),
+                        }} if is_image else {}),
                 },
                 updated_by=UUID(current_user.user.userId),
                 updated_at=func.now(),

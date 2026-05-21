@@ -242,3 +242,125 @@ def test_parse_webp_supported():
         result = parse_document("photo.webp", "image/webp", png_bytes)
 
     assert result.parser_name == "vision_text"
+
+
+# ---------------------------------------------------------------------------
+# Task 3: 文档与 ParseRevision 元数据落库
+# ---------------------------------------------------------------------------
+
+
+def test_version_dto_includes_image_fields():
+    """DocumentVersionDTO 应支持 sourceModality 和 image 字段。"""
+    from app.schemas.document import DocumentVersionDTO
+
+    dto = DocumentVersionDTO(
+        versionId="test-version-id",
+        documentId="test-doc-id",
+        versionNo=1,
+        sourceFileId="test-file-id",
+        status="active",
+        parseStatus="success",
+        denseIndexStatus="success",
+        sparseIndexStatus="not_required",
+        graphIndexStatus="not_required",
+        retrievalReady=True,
+        chunkCount=1,
+        tokenCount=100,
+        createdAt="2024-01-01T00:00:00",
+        updatedAt="2024-01-01T00:00:00",
+        sourceModality="image",
+        image={"region": "full", "visionConfidence": "unknown"},
+    )
+    assert dto.sourceModality == "image"
+    assert dto.image == {"region": "full", "visionConfidence": "unknown"}
+
+
+def test_version_dto_text_document_has_no_image_fields():
+    """普通文档 DocumentVersionDTO 的 image 字段应为 None。"""
+    from app.schemas.document import DocumentVersionDTO
+
+    dto = DocumentVersionDTO(
+        versionId="test-version-id",
+        documentId="test-doc-id",
+        versionNo=1,
+        sourceFileId="test-file-id",
+        status="active",
+        parseStatus="success",
+        denseIndexStatus="success",
+        sparseIndexStatus="not_required",
+        graphIndexStatus="not_required",
+        retrievalReady=True,
+        chunkCount=1,
+        tokenCount=100,
+        createdAt="2024-01-01T00:00:00",
+        updatedAt="2024-01-01T00:00:00",
+    )
+    assert dto.sourceModality is None
+    assert dto.image is None
+
+
+def test_to_version_dto_extracts_image_metadata():
+    """_to_version_dto 应从 metadata 中提取图片 sourceModality 和 image 信息。"""
+    from datetime import datetime, timezone
+    from uuid import uuid4
+
+    from app.services.document_service import _to_version_dto
+
+    row = {
+        "version_id": uuid4(),
+        "document_id": uuid4(),
+        "version_no": 1,
+        "source_file_id": uuid4(),
+        "status": "active",
+        "parse_status": "success",
+        "dense_index_status": "success",
+        "sparse_index_status": "not_required",
+        "graph_index_status": "not_required",
+        "retrieval_ready": True,
+        "chunk_count": 1,
+        "token_count": 100,
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
+        "metadata": {
+            "sourceModality": "image",
+            "visionTextProvider": "http",
+            "image": {
+                "region": "full",
+                "visionConfidence": "unknown",
+            },
+        },
+    }
+    dto = _to_version_dto(row)
+    assert dto.sourceModality == "image"
+    assert dto.image == {"region": "full", "visionConfidence": "unknown"}
+
+
+def test_to_version_dto_text_document_no_image():
+    """普通文档 _to_version_dto 的 sourceModality 和 image 应为 None。"""
+    from datetime import datetime, timezone
+    from uuid import uuid4
+
+    from app.services.document_service import _to_version_dto
+
+    row = {
+        "version_id": uuid4(),
+        "document_id": uuid4(),
+        "version_no": 1,
+        "source_file_id": uuid4(),
+        "status": "active",
+        "parse_status": "success",
+        "dense_index_status": "success",
+        "sparse_index_status": "not_required",
+        "graph_index_status": "not_required",
+        "retrieval_ready": True,
+        "chunk_count": 1,
+        "token_count": 100,
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
+        "metadata": {
+            "parserName": "markdown",
+        },
+    }
+    dto = _to_version_dto(row)
+    assert dto.sourceModality is None
+    assert dto.image is None
