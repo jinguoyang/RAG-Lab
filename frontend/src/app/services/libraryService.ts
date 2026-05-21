@@ -171,8 +171,9 @@ export async function retryLibraryParse(
 export async function bindDocumentsToKB(
   kbId: string,
   documentIds: string[],
+  versionId?: string,
 ): Promise<{ bindings: Array<{ bindingId: string; documentId: string; status: string }> }> {
-  return apiPostJson(`/knowledge-bases/${kbId}/library-bindings`, { documentIds });
+  return apiPostJson(`/knowledge-bases/${kbId}/library-bindings`, { documentIds, versionId });
 }
 
 export async function listKBBindings(

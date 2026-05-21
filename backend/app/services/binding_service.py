@@ -269,6 +269,7 @@ def bind_documents_to_kb(
     current_user: CurrentUserResponse,
     kb_id: UUID,
     document_ids: list[UUID],
+    version_id_override: UUID | None = None,
 ) -> LibraryBindResponse:
     """将文档库文档绑定到知识库，创建 KB 侧文档副本并投递解析任务。"""
     kb_row = _ensure_kb_permission(session, current_user, kb_id)
@@ -296,13 +297,14 @@ def bind_documents_to_kb(
             raise BindingAlreadyExistsError(f"Document {doc_id} already bound to KB {kb_id}")
 
         active_version_id = lib_doc_row.get("active_version_id")
-        if active_version_id is None:
+        if active_version_id is None and version_id_override is None:
             raise BindingDocumentNotFoundError(f"No active version found for document {doc_id}")
 
-        # 绑定使用文档库当前活跃版本，避免未确认的新版本影响 KB。
+        # 绑定使用指定版本或文档库当前活跃版本。
+        target_version_id = version_id_override or active_version_id
         latest_version = session.execute(
             select(document_versions).where(
-                document_versions.c.version_id == active_version_id,
+                document_versions.c.version_id == target_version_id,
                 document_versions.c.document_id == doc_id,
                 document_versions.c.deleted_at.is_(None),
             ).limit(1)

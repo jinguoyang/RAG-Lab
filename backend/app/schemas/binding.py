@@ -24,6 +24,7 @@ class LibraryBindingDTO(BaseModel):
 class LibraryBindRequest(BaseModel):
     """绑定请求。"""
     documentIds: list[str]
+    versionId: str | None = None
 
 
 class LibraryBindResponse(BaseModel):

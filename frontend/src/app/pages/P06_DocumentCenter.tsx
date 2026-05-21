@@ -21,9 +21,9 @@ import {
   runBulkDocumentGovernance,
   uploadDocument,
 } from "../services/documentService";
-import { fetchLibraryDocuments, bindDocumentsToKB } from "../services/libraryService";
+import { fetchLibraryDocuments, fetchLibraryVersions, bindDocumentsToKB } from "../services/libraryService";
 import type { BulkDocumentGovernanceRequest, DocumentDTO, IndexStageViewModel, IndexSyncJobDTO, IngestJobDTO, JobStatus } from "../types/document";
-import type { LibraryDocumentDTO } from "../types/library";
+import type { LibraryDocumentDTO, LibraryDocumentVersionDTO } from "../types/library";
 import type { DictionaryItemDTO } from "../types/dictionary";
 
 const DOCUMENT_PAGE_SIZE = 10;
@@ -82,6 +82,10 @@ export function DocumentCenter() {
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [bindingLoading, setBindingLoading] = useState(false);
+  const [versionPickerDoc, setVersionPickerDoc] = useState<LibraryDocumentDTO | null>(null);
+  const [versionPickerVersions, setVersionPickerVersions] = useState<LibraryDocumentVersionDTO[]>([]);
+  const [versionPickerLoading, setVersionPickerLoading] = useState(false);
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
 
   async function loadData(keyword = searchTerm, nextPageNo = pageNo) {
     if (!kbId) return;
@@ -333,6 +337,20 @@ export function DocumentCenter() {
       setFeedback({ variant: "warning", title: "请选择文档", message: "请至少选择一个文档库文档。" });
       return;
     }
+    // Single document: open version picker for explicit version selection
+    if (selectedDocIds.length === 1) {
+      const doc = libraryDocs.find((d) => d.documentId === selectedDocIds[0]);
+      if (doc) {
+        setShowLibraryPicker(false);
+        await openVersionPicker(doc);
+        return;
+      }
+    }
+    // Multiple documents: bind directly using active version
+    await handleBindDirect();
+  }
+
+  async function handleBindDirect() {
     setBindingLoading(true);
     try {
       const result = await bindDocumentsToKB(kbId, selectedDocIds);
@@ -342,6 +360,48 @@ export function DocumentCenter() {
         message: `已绑定 ${result.bindings.length} 个文档到当前知识库。`,
       });
       setShowLibraryPicker(false);
+      await loadData(searchTerm, 1);
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "绑定失败",
+        message: error instanceof Error ? error.message : "请稍后重试。",
+      });
+    } finally {
+      setBindingLoading(false);
+    }
+  }
+
+  async function openVersionPicker(doc: LibraryDocumentDTO) {
+    setVersionPickerDoc(doc);
+    setSelectedVersionId(null);
+    setVersionPickerLoading(true);
+    try {
+      const versions = await fetchLibraryVersions(doc.documentId);
+      setVersionPickerVersions(versions.filter((v) => v.parseStatus === "success"));
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "版本加载失败",
+        message: error instanceof Error ? error.message : "请稍后重试。",
+      });
+      setVersionPickerVersions([]);
+    } finally {
+      setVersionPickerLoading(false);
+    }
+  }
+
+  async function handleBindWithSelectedVersion() {
+    if (!versionPickerDoc || !selectedVersionId) return;
+    setBindingLoading(true);
+    try {
+      const result = await bindDocumentsToKB(kbId, [versionPickerDoc.documentId], selectedVersionId);
+      setFeedback({
+        variant: "success",
+        title: "绑定成功",
+        message: `已绑定文档到当前知识库。`,
+      });
+      setVersionPickerDoc(null);
       await loadData(searchTerm, 1);
     } catch (error) {
       setFeedback({
@@ -753,6 +813,57 @@ export function DocumentCenter() {
           </div>
         </div>
       )}
+
+      {/* 版本选择 Drawer */}
+      <Drawer isOpen={!!versionPickerDoc} onClose={() => setVersionPickerDoc(null)} title={`选择版本 — ${versionPickerDoc?.name ?? ""}`}>
+        <DrawerSection title="可用版本">
+          {versionPickerLoading ? (
+            <p className="text-center text-stone-gray py-8">加载版本列表...</p>
+          ) : versionPickerVersions.length === 0 ? (
+            <p className="text-center text-stone-gray py-8">暂无可绑定的已解析版本</p>
+          ) : (
+            <div className="space-y-2">
+              {versionPickerVersions.map((v) => (
+                <label
+                  key={v.versionId}
+                  className="flex items-start gap-3 p-3 rounded-lg border border-border-cream bg-parchment cursor-pointer hover:bg-border-cream/30"
+                >
+                  <input
+                    type="radio"
+                    name="version-picker"
+                    checked={selectedVersionId === v.versionId}
+                    onChange={() => setSelectedVersionId(v.versionId)}
+                    className="mt-1"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-near-black">v{v.versionNo}</p>
+                    <p className="text-xs text-stone-gray">{v.fileName ?? "—"}</p>
+                    <div className="mt-1 flex flex-wrap gap-2 text-xs text-stone-gray">
+                      <span>Chunks: {v.chunkCount}</span>
+                      {v.tokenCount != null && <span>Tokens: {v.tokenCount}</span>}
+                      <span>创建时间: {new Date(v.createdAt).toLocaleString()}</span>
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+        </DrawerSection>
+        <DrawerSection>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setVersionPickerDoc(null)}>
+              取消
+            </Button>
+            <Button
+              variant="primary"
+              disabled={bindingLoading || !selectedVersionId}
+              onClick={() => void handleBindWithSelectedVersion()}
+            >
+              {bindingLoading ? "绑定中..." : "使用此版本绑定"}
+            </Button>
+          </div>
+        </DrawerSection>
+      </Drawer>
     </div>
   );
 }

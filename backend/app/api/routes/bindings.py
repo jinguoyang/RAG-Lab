@@ -87,7 +87,8 @@ def bind_documents(
     """将文档库文档绑定到知识库。"""
     try:
         doc_ids = [UUID(d) for d in body.documentIds]
-        return bind_documents_to_kb(db, current_user, kb_id, doc_ids)
+        version_id_override = UUID(body.versionId) if body.versionId else None
+        return bind_documents_to_kb(db, current_user, kb_id, doc_ids, version_id_override=version_id_override)
     except Exception as exc:
         _raise_binding_error(exc)
         raise  # unreachable
