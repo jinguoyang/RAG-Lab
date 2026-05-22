@@ -115,3 +115,38 @@ class KbMemberUpdateRequest(BaseModel):
     """修改知识库成员角色请求；不允许通过更新接口更换绑定主体。"""
 
     kbRole: KbRole
+
+
+class KbDeleteImpactBlockerDTO(BaseModel):
+    """删除阻断条件。"""
+    activeRagApps: list[dict]
+    runningJobs: list[dict]
+
+
+class KbDeleteImpactCascadeDTO(BaseModel):
+    """将被级联清理的数据统计。"""
+    bindings: int
+    kbDocuments: int
+    chunks: int
+    configRevisions: int
+    inactiveRagApps: list[dict]
+    kbMembers: int
+
+
+class KbDeleteImpactUnaffectedDTO(BaseModel):
+    """不受影响的数据说明。"""
+    libraryDocuments: int
+    description: str
+
+
+class KbDeleteImpactDTO(BaseModel):
+    """删除影响查询响应。"""
+    kbName: str
+    blockers: KbDeleteImpactBlockerDTO
+    cascadeData: KbDeleteImpactCascadeDTO
+    unaffected: KbDeleteImpactUnaffectedDTO
+
+
+class KbDeleteRequest(BaseModel):
+    """删除知识库请求，需输入知识库名称确认。"""
+    confirmName: str = Field(min_length=1, max_length=128)
