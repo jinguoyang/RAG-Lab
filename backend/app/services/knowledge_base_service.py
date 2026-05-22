@@ -555,6 +555,188 @@ def get_kb_delete_impact(
     )
 
 
+def delete_knowledge_base(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    confirm_name: str,
+) -> None:
+    """删除知识库及级联数据。采用软删除，外部索引异步清理。"""
+    _ensure_kb_manage_permission(session, current_user, kb_id)
+    kb_row = _read_visible_kb_row(session, current_user, kb_id)
+
+    # 名称确认
+    if confirm_name != kb_row["name"]:
+        raise KnowledgeBaseConfirmNameMismatchError
+
+    # 阻断条件：活跃 RAG 应用
+    active_app_count = session.execute(
+        select(func.count())
+        .select_from(rag_apps)
+        .where(
+            rag_apps.c.kb_id == kb_id,
+            rag_apps.c.status == "active",
+            rag_apps.c.deleted_at.is_(None),
+        )
+    ).scalar_one()
+    if active_app_count > 0:
+        raise KnowledgeBaseActiveRagAppsError
+
+    # 阻断条件：运行中的 ingest_job
+    running_job_count = session.execute(
+        select(func.count())
+        .select_from(ingest_jobs)
+        .where(
+            ingest_jobs.c.kb_id == kb_id,
+            ingest_jobs.c.status.in_(["pending", "processing"]),
+        )
+    ).scalar_one()
+    if running_job_count > 0:
+        raise KnowledgeBaseRunningJobsError
+
+    now = datetime.now(UTC)
+    deleted_by = UUID(current_user.user.userId)
+
+    # 1. 软删除知识库本身
+    session.execute(
+        update(knowledge_bases)
+        .where(knowledge_bases.c.kb_id == kb_id)
+        .values(
+            status="archived",
+            deleted_at=now,
+            deleted_by=deleted_by,
+            updated_at=now,
+            updated_by=deleted_by,
+        )
+    )
+
+    # 2. 禁用所有 document_kb_bindings
+    session.execute(
+        update(document_kb_bindings)
+        .where(
+            document_kb_bindings.c.kb_id == kb_id,
+            document_kb_bindings.c.status.in_(["active", "processing", "pending", "failed"]),
+        )
+        .values(status="disabled")
+    )
+
+    # 3. 收集 chunk_ids 用于外部索引清理（在标记删除前）
+    kb_doc_ids = session.execute(
+        select(documents.c.document_id)
+        .where(
+            documents.c.kb_id == kb_id,
+            documents.c.deleted_at.is_(None),
+        )
+    ).scalars().all()
+
+    chunk_ids = []
+    if kb_doc_ids:
+        chunk_rows = session.execute(
+            select(chunks.c.chunk_id)
+            .where(chunks.c.document_id.in_(kb_doc_ids))
+        ).scalars().all()
+        chunk_ids = list(chunk_rows)
+
+    # 4. 软删除 KB 侧文档副本
+    if kb_doc_ids:
+        session.execute(
+            update(documents)
+            .where(documents.c.document_id.in_(kb_doc_ids))
+            .values(
+                status="archived",
+                deleted_at=now,
+                deleted_by=deleted_by,
+            )
+        )
+
+    # 5. 取消运行中的 ingest_jobs（防御性处理）
+    session.execute(
+        update(ingest_jobs)
+        .where(
+            ingest_jobs.c.kb_id == kb_id,
+            ingest_jobs.c.status.in_(["pending", "processing"]),
+        )
+        .values(status="cancelled")
+    )
+
+    # 6. 软删除 config_revisions
+    session.execute(
+        update(config_revisions)
+        .where(config_revisions.c.knowledge_base_id == kb_id)
+        .values(
+            deleted_at=now,
+            deleted_by=deleted_by,
+        )
+    )
+
+    # 7. 删除 kb_member_bindings
+    session.execute(
+        kb_member_bindings.delete().where(kb_member_bindings.c.kb_id == kb_id)
+    )
+
+    # 8. 软删除停用/归档的 rag_apps
+    session.execute(
+        update(rag_apps)
+        .where(
+            rag_apps.c.kb_id == kb_id,
+            rag_apps.c.status.in_(["disabled", "archived"]),
+            rag_apps.c.deleted_at.is_(None),
+        )
+        .values(
+            status="archived",
+            deleted_at=now,
+            deleted_by=deleted_by,
+        )
+    )
+
+    # 9. 记录 KB 配置用于外部清理
+    kb_config_row = session.execute(
+        select(
+            knowledge_bases.c.sparse_index_enabled,
+            knowledge_bases.c.graph_index_enabled,
+        )
+        .where(knowledge_bases.c.kb_id == kb_id)
+    ).mappings().first()
+
+    # 10. 审计日志
+    write_audit_log(
+        session,
+        current_user,
+        "knowledge_base.delete",
+        "knowledge_base",
+        kb_id,
+        kb_id=kb_id,
+        detail={"confirm_name": confirm_name},
+    )
+
+    session.commit()
+
+    # 11. 异步清理外部索引（best-effort）
+    from app.services.document_service import _create_index_sync_job
+
+    if chunk_ids:
+        targets = ["milvus"]
+        if kb_config_row and kb_config_row["sparse_index_enabled"]:
+            targets.append("opensearch")
+        if kb_config_row and kb_config_row["graph_index_enabled"]:
+            targets.append("neo4j")
+        for target_store in targets:
+            try:
+                _create_index_sync_job(
+                    session,
+                    kb_config_row,
+                    current_user,
+                    target_store,
+                    None,
+                    chunk_ids,
+                    False,
+                    sync_type="delete",
+                )
+                session.commit()
+            except Exception:
+                session.rollback()
+
+
 def create_knowledge_base(
     session: Session,
     current_user: CurrentUserResponse,
