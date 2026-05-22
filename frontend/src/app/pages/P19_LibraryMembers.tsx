@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { ArrowLeft, Plus, Trash2, Edit, Database, ShieldCheck, KeyRound } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
@@ -15,6 +15,7 @@ import {
   updateLibraryMember,
   removeLibraryMember,
 } from "../services/libraryService";
+import { SubjectSearchDropdown } from "../components/rag/SubjectSearchDropdown";
 import type { LibraryDTO, LibraryMemberDTO, LibraryMemberPermissionLevel } from "../types/library";
 
 function permissionLabel(level: LibraryMemberPermissionLevel) {
@@ -71,13 +72,19 @@ export function LibraryMembers() {
   // 添加成员表单
   const [addOpen, setAddOpen] = useState(false);
   const [newSubjectType, setNewSubjectType] = useState<"user" | "group">("user");
-  const [newSubjectId, setNewSubjectId] = useState("");
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
+  const [selectedSubjectLabel, setSelectedSubjectLabel] = useState<string>("");
   const [newPermissionLevel, setNewPermissionLevel] = useState<LibraryMemberPermissionLevel>("library_viewer");
   const [submitting, setSubmitting] = useState(false);
 
   // 编辑成员
   const [editingBindingId, setEditingBindingId] = useState<string | null>(null);
   const [editPermissionLevel, setEditPermissionLevel] = useState<LibraryMemberPermissionLevel>("library_viewer");
+
+  const excludedSubjectIds = useMemo(
+    () => new Set(members.filter((m) => m.subjectType === newSubjectType).map((m) => m.subjectId)),
+    [members, newSubjectType],
+  );
 
   async function loadData() {
     setLoading(true);
@@ -104,20 +111,21 @@ export function LibraryMembers() {
   }, [libraryId]);
 
   async function handleAddMember() {
-    if (!newSubjectId.trim()) {
-      setFeedback({ variant: "warning", title: "请输入 ID", message: "用户/组 ID 不能为空。" });
+    if (!selectedSubjectId) {
+      setFeedback({ variant: "warning", title: "请选择成员", message: "请搜索并选择一个用户或用户组。" });
       return;
     }
     setSubmitting(true);
     try {
       await addLibraryMember(libraryId, {
         subjectType: newSubjectType,
-        subjectId: newSubjectId.trim(),
+        subjectId: selectedSubjectId,
         permissionLevel: newPermissionLevel,
       });
       setFeedback({ variant: "success", title: "添加成功", message: "成员已添加。" });
       setAddOpen(false);
-      setNewSubjectId("");
+      setSelectedSubjectId(null);
+      setSelectedSubjectLabel("");
       await loadData();
     } catch (error) {
       setFeedback({
@@ -320,7 +328,11 @@ export function LibraryMembers() {
                       name="subjectType"
                       value="user"
                       checked={newSubjectType === "user"}
-                      onChange={() => setNewSubjectType("user")}
+                      onChange={() => {
+                        setNewSubjectType("user");
+                        setSelectedSubjectId(null);
+                        setSelectedSubjectLabel("");
+                      }}
                       className="accent-terracotta"
                     />
                     <span className="text-sm text-near-black">用户</span>
@@ -331,7 +343,11 @@ export function LibraryMembers() {
                       name="subjectType"
                       value="group"
                       checked={newSubjectType === "group"}
-                      onChange={() => setNewSubjectType("group")}
+                      onChange={() => {
+                        setNewSubjectType("group");
+                        setSelectedSubjectId(null);
+                        setSelectedSubjectLabel("");
+                      }}
                       className="accent-terracotta"
                     />
                     <span className="text-sm text-near-black">用户组</span>
@@ -340,13 +356,22 @@ export function LibraryMembers() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-near-black mb-1">
-                  {newSubjectType === "user" ? "用户 ID" : "用户组 ID"}
+                  {newSubjectType === "user" ? "搜索用户" : "搜索用户组"}
                 </label>
-                <Input
-                  value={newSubjectId}
-                  onChange={(e) => setNewSubjectId(e.target.value)}
-                  placeholder={`输入${newSubjectType === "user" ? "用户" : "用户组"} ID`}
+                <SubjectSearchDropdown
+                  subjectType={newSubjectType}
+                  excludedIds={excludedSubjectIds}
+                  excludedLabel="已是成员"
+                  onSelect={(id, label) => {
+                    setSelectedSubjectId(id);
+                    setSelectedSubjectLabel(label);
+                  }}
                 />
+                {selectedSubjectId && (
+                  <p className="mt-1 text-xs text-stone-gray">
+                    已选择：{selectedSubjectLabel} ({selectedSubjectId})
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-near-black mb-2">权限级别</label>

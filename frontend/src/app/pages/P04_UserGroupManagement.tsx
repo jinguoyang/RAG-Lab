@@ -12,11 +12,11 @@ import {
   createUserGroup,
   fetchUserGroup,
   fetchUserGroups,
-  fetchUsers,
   removeUserFromGroup,
   updateUserGroup,
 } from "../services/userGroupService";
-import type { GroupMember, GroupStatus, UserGroupDetail, UserGroupSummary, UserSummary } from "../types/userGroup";
+import type { GroupMember, GroupStatus, UserGroupDetail, UserGroupSummary } from "../types/userGroup";
+import { SubjectSearchDropdown } from "../components/rag/SubjectSearchDropdown";
 
 const PAGE_SIZE = 10;
 
@@ -41,10 +41,8 @@ export function UserGroupManagement() {
   const [newGroup, setNewGroup] = useState({ name: "", description: "" });
   const [editingGroup, setEditingGroup] = useState<UserGroupSummary | UserGroupDetail | null>(null);
   const [groupEditForm, setGroupEditForm] = useState({ name: "", description: "" });
-  const [memberSearch, setMemberSearch] = useState("");
-  const [candidateUsers, setCandidateUsers] = useState<UserSummary[]>([]);
-  const [selectedUser, setSelectedUser] = useState<UserSummary | null>(null);
-  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [selectedUserLabel, setSelectedUserLabel] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ variant: "success" | "error"; title: string; message: string } | null>(null);
@@ -72,15 +70,6 @@ export function UserGroupManagement() {
   useEffect(() => {
     void loadGroups();
   }, [loadGroups]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      fetchUsers({ keyword: memberSearch, pageNo: 1, pageSize: 8 })
-        .then((page) => setCandidateUsers(page.items.filter((user) => user.status === "active")))
-        .catch(() => setCandidateUsers([]));
-    }, 200);
-    return () => window.clearTimeout(timer);
-  }, [memberSearch]);
 
   const handleSearch = () => {
     const nextKeyword = keyword.trim();
@@ -127,8 +116,8 @@ export function UserGroupManagement() {
     setIsSaving(true);
     try {
       setSelectedGroup(await fetchUserGroup(group.groupId));
-      setSelectedUser(null);
-      setMemberSearch("");
+      setSelectedUserId(null);
+      setSelectedUserLabel("");
     } catch (error) {
       setFeedback({
         variant: "error",
@@ -223,7 +212,7 @@ export function UserGroupManagement() {
   };
 
   const handleAddMember = async () => {
-    if (!selectedGroup || !selectedUser) {
+    if (!selectedGroup || !selectedUserId) {
       setFeedback({ variant: "error", title: "未选择成员", message: "请先选择用户组和要加入的用户。" });
       return;
     }
@@ -234,12 +223,12 @@ export function UserGroupManagement() {
 
     setIsSaving(true);
     try {
-      const detail = await addUsersToGroup(selectedGroup.groupId, [selectedUser.userId]);
+      const detail = await addUsersToGroup(selectedGroup.groupId, [selectedUserId]);
       setSelectedGroup(detail);
-      setSelectedUser(null);
-      setMemberSearch("");
+      setSelectedUserId(null);
+      setSelectedUserLabel("");
       await loadGroups();
-      setFeedback({ variant: "success", title: "成员已添加", message: `${selectedUser.displayName} 已加入 ${detail.name}。` });
+      setFeedback({ variant: "success", title: "成员已添加", message: `${selectedUserLabel} 已加入 ${detail.name}。` });
     } catch (error) {
       setFeedback({
         variant: "error",
@@ -471,51 +460,18 @@ export function UserGroupManagement() {
                   该用户组已停用，不再参与 active 权限计算；仍可移除成员以整理历史关系。
                 </div>
               )}
-              <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-5 -translate-y-1/2 text-stone-gray z-10" />
-                <Input
-                  value={memberSearch}
-                  onChange={(event) => {
-                    setMemberSearch(event.target.value);
-                    setSelectedUser(null);
-                    setIsUserDropdownOpen(true);
-                  }}
-                  onFocus={() => setIsUserDropdownOpen(true)}
-                  onBlur={() => window.setTimeout(() => setIsUserDropdownOpen(false), 120)}
-                  placeholder="搜索用户加入当前组"
-                  className="pl-9 bg-white"
-                  disabled={!isSelectedGroupActive}
-                />
-                {isUserDropdownOpen && (
-                  <div className="absolute left-0 right-0 top-12 z-20 max-h-64 overflow-auto rounded-lg border border-border-cream bg-white shadow-lg">
-                    {candidateUsers.length === 0 && (
-                      <div className="px-3 py-2 text-sm text-stone-gray">没有可选用户</div>
-                    )}
-                    {candidateUsers.map((user) => (
-                      <button
-                        key={user.userId}
-                        type="button"
-                        disabled={selectedMemberIds.has(user.userId)}
-                        onMouseDown={(event) => {
-                          event.preventDefault();
-                          if (selectedMemberIds.has(user.userId)) return;
-                          setSelectedUser(user);
-                          setMemberSearch(user.displayName);
-                          setIsUserDropdownOpen(false);
-                        }}
-                        className="w-full px-3 py-2 text-left hover:bg-parchment disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-sm font-medium text-near-black">{user.displayName}</span>
-                          {selectedMemberIds.has(user.userId) && <span className="text-xs text-stone-gray">已在组内</span>}
-                        </div>
-                        <div className="text-xs text-stone-gray">@{user.username} · {user.email || "无邮箱"}</div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <Button variant="primary" className="w-full" onClick={handleAddMember} disabled={isSaving || !selectedUser || !isSelectedGroupActive}>
+              <SubjectSearchDropdown
+                subjectType="user"
+                excludedIds={selectedMemberIds}
+                excludedLabel="已在组内"
+                placeholder="搜索用户加入当前组"
+                disabled={!isSelectedGroupActive}
+                onSelect={(id, label) => {
+                  setSelectedUserId(id);
+                  setSelectedUserLabel(label);
+                }}
+              />
+              <Button variant="primary" className="w-full" onClick={handleAddMember} disabled={isSaving || !selectedUserId || !isSelectedGroupActive}>
                 <Plus className="w-4 h-4 mr-2" /> 添加成员
               </Button>
 
