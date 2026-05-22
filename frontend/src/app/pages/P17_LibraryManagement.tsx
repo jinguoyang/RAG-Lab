@@ -6,7 +6,6 @@ import { Button } from "../components/rag/Button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
 import { Input } from "../components/rag/Input";
 import { Alert } from "../components/rag/Alert";
-import { Badge } from "../components/rag/Badge";
 import { useConfirmDialog } from "../components/rag/ConfirmDialog";
 import {
   fetchLibraries,
@@ -14,25 +13,9 @@ import {
   updateLibrary,
   deleteLibrary,
 } from "../services/libraryService";
-import type { LibraryDTO, LibraryVisibility } from "../types/library";
+import type { LibraryDTO } from "../types/library";
 
 const PAGE_SIZE = 20;
-
-function visibilityLabel(v: LibraryVisibility) {
-  if (v === "public") return "公开";
-  if (v === "partial") return "部分";
-  return "个人";
-}
-
-function visibilityVariant(v: LibraryVisibility) {
-  if (v === "public") return "success";
-  if (v === "partial") return "info";
-  return "default";
-}
-
-function currentRoleLabel(lib: LibraryDTO) {
-  return lib.visibility === "personal" ? "所有者" : "可访问";
-}
 
 export function LibraryManagement() {
   const navigate = useNavigate();
@@ -53,7 +36,6 @@ export function LibraryManagement() {
   const [editingLibrary, setEditingLibrary] = useState<LibraryDTO | null>(null);
   const [formName, setFormName] = useState("");
   const [formDescription, setFormDescription] = useState("");
-  const [formVisibility, setFormVisibility] = useState<LibraryVisibility>("personal");
   const [submitting, setSubmitting] = useState(false);
 
   const loadData = useCallback(async (keyword = searchTerm, nextPageNo = pageNo) => {
@@ -86,7 +68,6 @@ export function LibraryManagement() {
     setEditingLibrary(null);
     setFormName("");
     setFormDescription("");
-    setFormVisibility("personal");
     setDrawerOpen(true);
   }
 
@@ -94,7 +75,6 @@ export function LibraryManagement() {
     setEditingLibrary(lib);
     setFormName(lib.name);
     setFormDescription(lib.description ?? "");
-    setFormVisibility(lib.visibility);
     setDrawerOpen(true);
   }
 
@@ -109,14 +89,12 @@ export function LibraryManagement() {
         await updateLibrary(editingLibrary.libraryId, {
           name: formName.trim(),
           description: formDescription.trim() || undefined,
-          visibility: formVisibility,
         });
         setFeedback({ variant: "success", title: "更新成功", message: "文档库已更新。" });
       } else {
         await createLibrary({
           name: formName.trim(),
           description: formDescription.trim() || undefined,
-          visibility: formVisibility,
         });
         setFeedback({ variant: "success", title: "创建成功", message: "文档库已创建。" });
       }
@@ -205,8 +183,6 @@ export function LibraryManagement() {
               <TableHeader>
                 <TableRow>
                   <TableHead>名称</TableHead>
-                  <TableHead>可见性</TableHead>
-                  <TableHead>我的角色</TableHead>
                   <TableHead>文档数</TableHead>
                   <TableHead>最近更新</TableHead>
                   <TableHead>操作</TableHead>
@@ -227,14 +203,6 @@ export function LibraryManagement() {
                       {lib.description && (
                         <p className="text-xs text-stone-gray mt-1 truncate max-w-[400px]">{lib.description}</p>
                       )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={visibilityVariant(lib.visibility)}>
-                        {visibilityLabel(lib.visibility)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="default">{currentRoleLabel(lib)}</Badge>
                     </TableCell>
                     <TableCell>
                       <span className="text-near-black">{lib.documentCount}</span>
@@ -353,38 +321,6 @@ export function LibraryManagement() {
                   onChange={(e) => setFormDescription(e.target.value)}
                   placeholder="可选，输入文档库描述"
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-near-black mb-2">可见性</label>
-                <div className="space-y-2">
-                  {(["personal", "public", "partial"] as LibraryVisibility[]).map((v) => (
-                    <label
-                      key={v}
-                      className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                        formVisibility === v
-                          ? "border-terracotta bg-terracotta/5"
-                          : "border-border-cream hover:border-stone-gray"
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="visibility"
-                        value={v}
-                        checked={formVisibility === v}
-                        onChange={() => setFormVisibility(v)}
-                        className="mt-0.5 accent-terracotta"
-                      />
-                      <div>
-                        <div className="text-sm font-medium text-near-black">{visibilityLabel(v)}</div>
-                        <div className="text-xs text-stone-gray mt-0.5">
-                          {v === "personal" && "仅自己可见"}
-                          {v === "public" && "全平台用户可见"}
-                          {v === "partial" && "指定人员可见，可设置只读或文档管理权限"}
-                        </div>
-                      </div>
-                    </label>
-                  ))}
-                </div>
               </div>
             </div>
             <div className="p-6 border-t border-border-cream flex items-center gap-3">
