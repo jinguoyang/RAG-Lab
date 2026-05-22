@@ -1046,8 +1046,12 @@ def run_library_parse_job_by_id(job_id: UUID) -> dict:
             "token_count": token_count,
         }
 
-    except Exception:
+    except Exception as exc:
         session.rollback()
+        # 用新 session 标记失败，原 session 已 rollback 不可用
+        _mark_job_failed_in_new_session(
+            job_id, "UNEXPECTED_ERROR", str(exc)
+        )
         raise
     finally:
         session.close()
@@ -1787,6 +1791,24 @@ def _get_error_suggestion(error_code: str) -> str:
         "STORAGE_ERROR": "存储服务异常，请稍后重试",
     }
     return suggestions.get(error_code, "请联系管理员")
+
+
+def _mark_job_failed_in_new_session(
+    job_id: UUID,
+    error_code: str,
+    error_message: str,
+) -> None:
+    """在独立 session 中标记 job 失败，用于外层 except 中（原 session 已 rollback）。"""
+    from app.core.database import get_session_factory
+
+    fail_session = get_session_factory()()
+    try:
+        _mark_job_failed(fail_session, job_id, error_code, error_message)
+        fail_session.commit()
+    except Exception:
+        fail_session.rollback()
+    finally:
+        fail_session.close()
 
 
 def _mark_job_failed(
