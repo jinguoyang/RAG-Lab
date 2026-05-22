@@ -21,7 +21,7 @@ from app.services.permission_service import (
     has_library_access,
     library_visibility_condition,
 )
-from app.tables import document_kb_bindings, document_libraries, document_versions, documents, library_member_bindings
+from app.tables import document_kb_bindings, document_libraries, document_versions, documents, library_member_bindings, users
 
 
 class LibraryNotFoundError(Exception):
@@ -40,10 +40,11 @@ class LibraryMemberConflictError(Exception):
     pass
 
 
-def _to_library_dto(row, document_count: int = 0) -> LibraryDTO:
+def _to_library_dto(row, document_count: int = 0, owner_name: str = "") -> LibraryDTO:
     return LibraryDTO(
         libraryId=str(row["library_id"]),
         ownerId=str(row["owner_id"]),
+        ownerName=owner_name,
         name=row["name"],
         description=row.get("description"),
         status=row["status"],
@@ -89,7 +90,20 @@ def create_library(
     row = session.execute(
         select(document_libraries).where(document_libraries.c.library_id == library_id)
     ).mappings().first()
-    return _to_library_dto(row, document_count=0)
+    owner_name = _get_owner_names(session, [actor_id]).get(actor_id, "")
+    return _to_library_dto(row, document_count=0, owner_name=owner_name)
+
+
+def _get_owner_names(session: Session, owner_ids: list[UUID]) -> dict[UUID, str]:
+    """批量查询 owner 的 display_name。"""
+    if not owner_ids:
+        return {}
+    rows = session.execute(
+        select(users.c.user_id, users.c.display_name).where(
+            users.c.user_id.in_(owner_ids)
+        )
+    ).all()
+    return {row[0]: row[1] for row in rows}
 
 
 def list_libraries(
@@ -117,10 +131,14 @@ def list_libraries(
         .limit(page_size)
     ).mappings().all()
 
+    owner_ids = [UUID(str(row["owner_id"])) for row in rows]
+    owner_names = _get_owner_names(session, owner_ids)
+
     items = []
     for row in rows:
         doc_count = _count_library_documents(session, row["library_id"])
-        items.append(_to_library_dto(row, document_count=doc_count))
+        owner_name = owner_names.get(UUID(str(row["owner_id"])), "")
+        items.append(_to_library_dto(row, document_count=doc_count, owner_name=owner_name))
 
     return LibraryPageResponse(
         items=items,
@@ -153,9 +171,11 @@ def get_library_detail(
         raise LibraryPermissionError
 
     doc_count = _count_library_documents(session, library_id)
+    owner_name = _get_owner_names(session, [UUID(str(row["owner_id"]))]).get(UUID(str(row["owner_id"])), "")
     return LibraryDetailDTO(
         libraryId=str(row["library_id"]),
         ownerId=str(row["owner_id"]),
+        ownerName=owner_name,
         name=row["name"],
         description=row.get("description"),
         status=row["status"],
@@ -200,7 +220,8 @@ def update_library(
         select(document_libraries).where(document_libraries.c.library_id == library_id)
     ).mappings().first()
     doc_count = _count_library_documents(session, library_id)
-    return _to_library_dto(row, document_count=doc_count)
+    owner_name = _get_owner_names(session, [UUID(str(row["owner_id"]))]).get(UUID(str(row["owner_id"])), "")
+    return _to_library_dto(row, document_count=doc_count, owner_name=owner_name)
 
 
 def delete_library(

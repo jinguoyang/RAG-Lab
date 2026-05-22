@@ -29,6 +29,7 @@ export interface LibraryDocumentDTO {
 export interface LibraryDTO {
   libraryId: string;
   ownerId: string;
+  ownerName: string;
   name: string;
   description: string | null;
   status: string;

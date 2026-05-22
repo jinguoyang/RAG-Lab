@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { Plus, Search, Trash2, Edit, ChevronLeft, ChevronRight, FileText, Users, FolderOpen } from "lucide-react";
+import { Plus, Search, Trash2, Edit, ChevronLeft, ChevronRight, FileText, Users } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
@@ -184,6 +184,7 @@ export function LibraryManagement() {
                 <TableRow>
                   <TableHead>名称</TableHead>
                   <TableHead>文档数</TableHead>
+                  <TableHead>负责人</TableHead>
                   <TableHead>最近更新</TableHead>
                   <TableHead>操作</TableHead>
                 </TableRow>
@@ -208,23 +209,15 @@ export function LibraryManagement() {
                       <span className="text-near-black">{lib.documentCount}</span>
                     </TableCell>
                     <TableCell>
+                      <span className="text-stone-gray text-sm">{lib.ownerName || "-"}</span>
+                    </TableCell>
+                    <TableCell>
                       <span className="text-stone-gray text-sm">
                         {new Date(lib.updatedAt).toLocaleString("zh-CN")}
                       </span>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          title="进入文档"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/library/${lib.libraryId}`);
-                          }}
-                        >
-                          <FolderOpen className="w-4 h-4" />
-                        </Button>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -293,17 +286,17 @@ export function LibraryManagement() {
         )}
       </div>
 
-      {/* 创建/编辑抽屉 */}
+      {/* 创建/编辑弹出层 */}
       {drawerOpen && (
-        <div className="fixed inset-0 z-50 flex">
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/30" onClick={() => setDrawerOpen(false)} />
-          <div className="relative ml-auto w-[420px] bg-ivory border-l border-border-cream flex flex-col shadow-xl">
+          <div className="relative w-[420px] bg-ivory border border-border-cream rounded-lg shadow-xl">
             <div className="p-6 border-b border-border-cream">
               <h2 className="text-lg font-serif text-near-black">
                 {editingLibrary ? "编辑文档库" : "创建文档库"}
               </h2>
             </div>
-            <div className="flex-1 p-6 space-y-4 overflow-auto">
+            <div className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-near-black mb-1">名称</label>
                 <Input

@@ -18,6 +18,7 @@ class LibraryDTO(BaseModel):
 
     libraryId: str
     ownerId: str
+    ownerName: str = ""
     name: str
     description: str | None
     status: str
@@ -31,6 +32,7 @@ class LibraryDetailDTO(BaseModel):
 
     libraryId: str
     ownerId: str
+    ownerName: str = ""
     name: str
     description: str | None
     status: str
