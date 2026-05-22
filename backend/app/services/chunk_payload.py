@@ -26,7 +26,7 @@ def build_chunk_index_payload(
         "kbId": _stringify(chunk.get("kb_id")),
         "documentId": _stringify(chunk.get("document_id")),
         "versionId": _stringify(chunk.get("version_id")),
-        "bindingRevisionId": _stringify(chunk.get("binding_revision_id")),
+        "chunkRevisionId": _stringify(chunk.get("chunk_revision_id")),
         "parseRevisionId": _stringify(chunk.get("parse_revision_id")),
         "documentVersionId": _stringify(chunk.get("document_version_id")),
         "content": chunk.get("content"),

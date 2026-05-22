@@ -39,10 +39,10 @@ class TestParseRevisionsCreation:
         assert row[3] == "active"
 
 
-class TestBindingRevisionsCreation:
-    """验证 binding_revisions 表创建和插入。"""
+class TestChunkRevisionsCreation:
+    """验证 chunk_revisions 表创建和插入。"""
 
-    def test_binding_revisions_creation(self, db):
+    def test_chunk_revisions_creation(self, db):
         """插入一条 binding_revision 并验证它存在。"""
         binding_rev_id = str(uuid4())
         binding_id = str(uuid4())
@@ -66,8 +66,8 @@ class TestBindingRevisionsCreation:
         db.execute(
             text(
                 """
-                INSERT INTO binding_revisions
-                    (binding_revision_id, binding_id, knowledge_base_id, document_id,
+                INSERT INTO chunk_revisions
+                    (chunk_revision_id, binding_id, knowledge_base_id, document_id,
                      document_version_id, parse_revision_id, status, chunk_count, created_at)
                 VALUES
                     (:bind_rev_id, :binding_id, :kb_id, :doc_id,
@@ -88,10 +88,10 @@ class TestBindingRevisionsCreation:
         row = db.execute(
             text(
                 """
-                SELECT binding_revision_id, binding_id, knowledge_base_id,
+                SELECT chunk_revision_id, binding_id, knowledge_base_id,
                        document_id, document_version_id, parse_revision_id, status
-                FROM binding_revisions
-                WHERE binding_revision_id = :id
+                FROM chunk_revisions
+                WHERE chunk_revision_id = :id
                 """
             ),
             {"id": binding_rev_id},
@@ -126,7 +126,7 @@ class TestChunksTableMigration:
                 INSERT INTO chunks
                     (chunk_id, version_id, document_id, kb_id, chunk_index,
                      content, security_level, status, metadata, created_at,
-                     binding_revision_id, parse_revision_id, document_version_id)
+                     chunk_revision_id, parse_revision_id, document_version_id)
                 VALUES
                     (:chunk_id, :version_id, :doc_id, :kb_id, 0,
                      'test content', 'internal', 'active', '{}', datetime('now'),
@@ -148,7 +148,7 @@ class TestChunksTableMigration:
         row = db.execute(
             text(
                 """
-                SELECT chunk_id, binding_revision_id, parse_revision_id, document_version_id
+                SELECT chunk_id, chunk_revision_id, parse_revision_id, document_version_id
                 FROM chunks
                 WHERE chunk_id = :id
                 """
@@ -194,8 +194,8 @@ class TestDataIntegrityAfterMigration:
         db.execute(
             text(
                 """
-                INSERT INTO binding_revisions
-                    (binding_revision_id, binding_id, knowledge_base_id, document_id,
+                INSERT INTO chunk_revisions
+                    (chunk_revision_id, binding_id, knowledge_base_id, document_id,
                      document_version_id, parse_revision_id, status, chunk_count, created_at)
                 VALUES
                     (:bind_rev_id, :binding_id, :kb_id, :doc_id,
@@ -219,7 +219,7 @@ class TestDataIntegrityAfterMigration:
                 INSERT INTO chunks
                     (chunk_id, version_id, document_id, kb_id, chunk_index,
                      content, security_level, status, metadata, created_at,
-                     binding_revision_id, parse_revision_id, document_version_id)
+                     chunk_revision_id, parse_revision_id, document_version_id)
                 VALUES
                     (:chunk_id, :version_id, :doc_id, :kb_id, 0,
                      'integrity test content', 'internal', 'active', '{}', datetime('now'),
@@ -244,13 +244,13 @@ class TestDataIntegrityAfterMigration:
                 """
                 SELECT
                     c.chunk_id,
-                    c.binding_revision_id,
+                    c.chunk_revision_id,
                     c.parse_revision_id,
-                    br.binding_revision_id AS br_id,
+                    br.chunk_revision_id AS br_id,
                     br.parse_revision_id AS br_parse_rev_id,
                     pr.parse_revision_id AS pr_id
                 FROM chunks c
-                JOIN binding_revisions br ON c.binding_revision_id = br.binding_revision_id
+                JOIN chunk_revisions br ON c.chunk_revision_id = br.chunk_revision_id
                 JOIN parse_revisions pr ON c.parse_revision_id = pr.parse_revision_id
                 WHERE c.chunk_id = :chunk_id
                 """

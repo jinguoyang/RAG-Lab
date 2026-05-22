@@ -30,6 +30,13 @@ from app.schemas.document import (
     IngestJobDTO,
 )
 from app.services.dictionary_service import DictionaryValidationError
+from app.schemas.binding import RechunkRequest
+from app.services.binding_service import (
+    BindingBuildInProgressError,
+    BindingNotFoundError,
+    BindingVersionNotReadyError,
+    rechunk_document,
+)
 from app.services.document_service import (
     DocumentConflictError,
     DocumentIngestEnqueueError,
@@ -195,6 +202,32 @@ def reparse_document_endpoint(
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
     return response
+
+
+@router.post("/{document_id}/rechunk")
+def rechunk_document_endpoint(
+    kb_id: UUID,
+    document_id: UUID,
+    body: RechunkRequest,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> dict:
+    """对已绑定的文档用新策略重新分块。"""
+    try:
+        return rechunk_document(
+            session,
+            current_user=str(current_user.user.userId),
+            kb_id=str(kb_id),
+            document_id=str(document_id),
+            strategy=body.strategy,
+            params=body.params,
+        )
+    except BindingNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="BINDING_NOT_FOUND") from exc
+    except BindingBuildInProgressError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="BUILD_IN_PROGRESS") from exc
+    except BindingVersionNotReadyError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="VERSION_NOT_READY") from exc
 
 
 @router.get("/{document_id}", response_model=DocumentDetailDTO)

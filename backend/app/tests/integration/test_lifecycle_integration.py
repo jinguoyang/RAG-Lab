@@ -12,10 +12,10 @@ from app.services.document_service import (
 from app.services.binding_service import (
     BindingBuildInProgressError,
     BindingNotFoundError,
-    activate_binding_revision,
-    complete_binding_revision_build,
-    create_binding_revision,
-    fail_binding_revision,
+    activate_chunk_revision,
+    complete_chunk_revision_build,
+    create_chunk_revision,
+    fail_chunk_revision,
 )
 from app.services.app_runtime_service import (
     KnowledgeBaseDisabledError,
@@ -96,14 +96,14 @@ class TestDocumentLifecycle:
             assert result["status"] == "success"
 
 
-class TestBindingLifecycle:
+class TestChunkRevisionLifecycle:
     """绑定生命周期测试。"""
 
-    def test_create_binding_revision(self):
+    def test_create_chunk_revision(self):
         """测试创建 BindingRevision。"""
         session = Mock()
 
-        result = create_binding_revision(
+        result = create_chunk_revision(
             session=session,
             binding_id=uuid4(),
             knowledge_base_id=uuid4(),
@@ -115,14 +115,14 @@ class TestBindingLifecycle:
         assert result is not None
         session.execute.assert_called_once()
 
-    def test_activate_binding_revision(self):
+    def test_activate_chunk_revision(self):
         """测试激活 BindingRevision。"""
         session = Mock()
         binding_rev_id = uuid4()
         binding_id = uuid4()
 
         mock_rev = {
-            "binding_revision_id": binding_rev_id,
+            "chunk_revision_id": binding_rev_id,
             "binding_id": binding_id,
             "status": "building",
         }
@@ -130,24 +130,24 @@ class TestBindingLifecycle:
         mock_result.mappings.return_value.first.return_value = mock_rev
         session.execute.return_value = mock_result
 
-        activate_binding_revision(session, binding_rev_id)
+        activate_chunk_revision(session, binding_rev_id)
 
         assert session.execute.call_count >= 5
 
-    def test_fail_binding_revision(self):
+    def test_fail_chunk_revision(self):
         """测试标记 BindingRevision 为失败。"""
         session = Mock()
 
-        fail_binding_revision(session, uuid4())
+        fail_chunk_revision(session, uuid4())
 
         session.execute.assert_called_once()
 
-    def test_complete_binding_revision_build(self):
+    def test_complete_chunk_revision_build(self):
         """测试完成构建并激活。"""
         session = Mock()
 
-        with patch("app.services.binding_service.activate_binding_revision") as mock_activate:
-            complete_binding_revision_build(session, uuid4(), chunk_count=10)
+        with patch("app.services.binding_service.activate_chunk_revision") as mock_activate:
+            complete_chunk_revision_build(session, uuid4(), chunk_count=10)
 
             session.execute.assert_called_once()
             mock_activate.assert_called_once()

@@ -277,8 +277,6 @@ document_kb_bindings = sa.Table(
     sa.Column("document_id", postgresql.UUID(as_uuid=True), nullable=False),
     sa.Column("kb_id", postgresql.UUID(as_uuid=True), nullable=False),
     sa.Column("version_id", postgresql.UUID(as_uuid=True), nullable=False),
-    sa.Column("chunk_size", sa.Integer(), nullable=False),
-    sa.Column("chunk_overlap", sa.Integer(), nullable=False),
     sa.Column("status", sa.String(length=16), nullable=False),
     sa.Column("chunk_count", sa.Integer(), nullable=False),
     sa.Column("error_code", sa.String(length=64), nullable=True),
@@ -288,7 +286,7 @@ document_kb_bindings = sa.Table(
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
     # 新增字段
-    sa.Column("active_binding_revision_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("active_chunk_revision_id", postgresql.UUID(as_uuid=True), nullable=True),
 )
 
 library_parse_jobs = sa.Table(
@@ -354,10 +352,10 @@ parse_revisions = sa.Table(
     sa.Column("deleted_by", postgresql.UUID(as_uuid=True), nullable=True),
 )
 
-binding_revisions = sa.Table(
-    "binding_revisions",
+chunk_revisions = sa.Table(
+    "chunk_revisions",
     metadata,
-    sa.Column("binding_revision_id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("chunk_revision_id", postgresql.UUID(as_uuid=True), primary_key=True),
     sa.Column("binding_id", postgresql.UUID(as_uuid=True), nullable=False),
     sa.Column("knowledge_base_id", postgresql.UUID(as_uuid=True), nullable=False),
     sa.Column("document_id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -414,7 +412,7 @@ chunks = sa.Table(
     sa.Column("metadata", postgresql.JSONB(), nullable=False),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     # 新增字段
-    sa.Column("binding_revision_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("chunk_revision_id", postgresql.UUID(as_uuid=True), nullable=True),
     sa.Column("parse_revision_id", postgresql.UUID(as_uuid=True), nullable=True),
     sa.Column("document_version_id", postgresql.UUID(as_uuid=True), nullable=True),
     sa.Column("start_offset", sa.Integer(), nullable=True),

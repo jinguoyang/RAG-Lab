@@ -32,7 +32,7 @@ from app.schemas.document import (
 from app.schemas.common import PageResponse
 from app.tables import (
     audit_logs,
-    binding_revisions,
+    chunk_revisions,
     chunk_access_filters,
     chunks,
     document_kb_bindings,
@@ -186,9 +186,9 @@ def analyze_document_version_deletion_impact(
 
     # 2. 检查是否存在 active BindingRevision
     active_binding_count = session.execute(
-        select(func.count()).select_from(binding_revisions).where(
-            binding_revisions.c.document_version_id == document_version_id,
-            binding_revisions.c.status == "active",
+        select(func.count()).select_from(chunk_revisions).where(
+            chunk_revisions.c.document_version_id == document_version_id,
+            chunk_revisions.c.status == "active",
         )
     ).scalar_one()
 
@@ -298,9 +298,9 @@ def delete_document_version(
 
     # 4.2 清理 retired/failed BindingRevision
     session.execute(
-        update(binding_revisions).where(
-            binding_revisions.c.document_version_id == document_version_id,
-            binding_revisions.c.status.in_(["retired", "failed"]),
+        update(chunk_revisions).where(
+            chunk_revisions.c.document_version_id == document_version_id,
+            chunk_revisions.c.status.in_(["retired", "failed"]),
         ).values(
             status="deleted",
             deleted_at=now,
@@ -480,7 +480,7 @@ def _to_chunk_dto(row: RowMapping) -> ChunkDTO:
         versionId=str(row["version_id"]),
         documentId=str(row["document_id"]),
         kbId=str(row["kb_id"]),
-        bindingRevisionId=str(row["binding_revision_id"]) if row.get("binding_revision_id") else None,
+        bindingRevisionId=str(row["chunk_revision_id"]) if row.get("chunk_revision_id") else None,
         parseRevisionId=str(row["parse_revision_id"]) if row.get("parse_revision_id") else None,
         documentVersionId=str(row["document_version_id"]) if row.get("document_version_id") else None,
         chunkIndex=row["chunk_index"],
@@ -501,14 +501,14 @@ def _to_chunk_dto(row: RowMapping) -> ChunkDTO:
     )
 
 
-def _read_active_binding_revision_id(
+def _read_active_chunk_revision_id(
     session: Session,
     kb_id: UUID,
     version_id: UUID,
 ) -> UUID | None:
     """读取当前 KB 版本对应的 active BindingRevision，用于过滤当前可检索 Chunk。"""
     return session.execute(
-        select(document_kb_bindings.c.active_binding_revision_id)
+        select(document_kb_bindings.c.active_chunk_revision_id)
         .where(
             document_kb_bindings.c.kb_id == kb_id,
             document_kb_bindings.c.version_id == version_id,
@@ -518,7 +518,7 @@ def _read_active_binding_revision_id(
     ).scalar_one_or_none()
 
 
-def _read_ingest_binding_revision(
+def _read_ingest_chunk_revision(
     session: Session,
     job_row: RowMapping,
     version_row: RowMapping,
@@ -526,13 +526,13 @@ def _read_ingest_binding_revision(
     """从入库任务、版本 metadata 或绑定表中定位本次构建的 BindingRevision。"""
     result_summary = job_row["result_summary"] or {}
     version_metadata = version_row["metadata"] or {}
-    binding_revision_id_str = result_summary.get("binding_revision_id") or version_metadata.get("binding_revision_id")
-    if binding_revision_id_str:
+    chunk_revision_id_str = result_summary.get("chunk_revision_id") or version_metadata.get("chunk_revision_id")
+    if chunk_revision_id_str:
         return session.execute(
-            select(binding_revisions)
+            select(chunk_revisions)
             .where(
-                binding_revisions.c.binding_revision_id == UUID(str(binding_revision_id_str)),
-                binding_revisions.c.deleted_at.is_(None),
+                chunk_revisions.c.chunk_revision_id == UUID(str(chunk_revision_id_str)),
+                chunk_revisions.c.deleted_at.is_(None),
             )
             .limit(1)
         ).mappings().first()
@@ -550,13 +550,13 @@ def _read_ingest_binding_revision(
         return None
 
     return session.execute(
-        select(binding_revisions)
+        select(chunk_revisions)
         .where(
-            binding_revisions.c.binding_id == binding_row["binding_id"],
-            binding_revisions.c.status == "building",
-            binding_revisions.c.deleted_at.is_(None),
+            chunk_revisions.c.binding_id == binding_row["binding_id"],
+            chunk_revisions.c.status == "building",
+            chunk_revisions.c.deleted_at.is_(None),
         )
-        .order_by(binding_revisions.c.created_at.desc())
+        .order_by(chunk_revisions.c.created_at.desc())
         .limit(1)
     ).mappings().first()
 
@@ -988,8 +988,10 @@ def run_ingest_job(
     ).mappings().first()
     if version_row is None or document_row is None:
         raise DocumentConflictError("Document version not found.")
-    binding_revision_row = _read_ingest_binding_revision(session, job_row, version_row)
-    binding_revision_id = binding_revision_row["binding_revision_id"] if binding_revision_row else None
+    chunk_revision_row = _read_ingest_chunk_revision(session, job_row, version_row)
+    chunk_revision_id = chunk_revision_row["chunk_revision_id"] if chunk_revision_row else None
+    chunk_strategy = chunk_revision_row.get("strategy", "fixed_size") if chunk_revision_row else "fixed_size"
+    chunk_params = chunk_revision_row.get("params", {}) if chunk_revision_row else {}
 
     storage = storage_provider or get_object_storage_provider()
     file_row = None
@@ -1018,6 +1020,9 @@ def run_ingest_job(
     )
 
     try:
+        job_type = job_row.get("job_type", "upload_parse")
+        is_rechunk = job_type == "rechunk"
+
         # Check if we can reuse parsed chunks from library
         parsed_chunks_from_library = None
         if document_row.get("source_type") == "library_bind":
@@ -1059,40 +1064,67 @@ def run_ingest_job(
             parsed_chunks = [_DictAsObj(d) for d in parsed_chunks_from_library]
             parser_name = "library_reuse"
             parser_version = "library_reuse"
+        elif is_rechunk:
+            # Rechunk: reuse existing parsed_chunks from version metadata, skip re-parsing
+            version_meta = version_row.get("metadata") or {}
+            rechunk_parsed = version_meta.get("parsed_chunks")
+            if not rechunk_parsed:
+                raise DocumentConflictError(
+                    "Cannot rechunk: version metadata has no stored parsed_chunks."
+                )
+            parsed_chunks = [_DictAsObj(d) for d in rechunk_parsed]
+            parser_name = version_meta.get("parserName", "rechunk_reuse")
+            parser_version = version_meta.get("parserVersion", "rechunk_reuse")
         else:
-            parsed_document = parse_document(file_name, file_row["mime_type"] if file_row else None, source_bytes or b"")
+            if chunk_strategy == "fixed_size":
+                parsed_document = parse_document(
+                    file_name,
+                    file_row["mime_type"] if file_row else None,
+                    source_bytes or b"",
+                    chunk_size=chunk_params.get("chunk_size", 900),
+                    chunk_overlap=chunk_params.get("chunk_overlap", 120),
+                )
+            else:
+                raise ValueError(f"Unsupported chunking strategy: {chunk_strategy}")
             parsed_chunks = parsed_document.chunks
             parser_name = parsed_document.parser_name
             parser_version = parsed_document.parser_version
         stage_timings["parse"] = round(time.perf_counter() - stage_started_at, 3)
 
-        # 解析完成后创建 ParseRevision
+        # 解析完成后创建 ParseRevision（rechunk 跳过，复用已有 ParseRevision）
         content_text = "\n\n".join(chunk.content for chunk in parsed_chunks if chunk.content)
         is_image = parser_name == "vision_text"
         content_format = "markdown" if (parser_name == "markdown" or is_image) else "text"
-        parse_options_for_revision = None
-        if is_image:
-            vision_settings = get_settings()
-            parse_options_for_revision = {
-                "sourceModality": "image",
-                "provider": vision_settings.vision_text_provider,
-                "model": vision_settings.vision_text_model or vision_settings.llm_model,
-                "maxImageSide": vision_settings.vision_text_max_image_side,
-            }
-        generated_parse_revision_id = create_parse_revision(
-            session=session,
-            document_version_id=version_row["version_id"],
-            content_format=content_format,
-            content_text=content_text,
-            content_hash=_calculate_file_hash(content_text.encode("utf-8")) if content_text else None,
-            parser_name=parser_name,
-            parser_version=parser_version,
-            parse_options=parse_options_for_revision,
-            created_by=UUID(current_user.user.userId),
-        )
+        if is_rechunk:
+            generated_parse_revision_id = (
+                chunk_revision_row["parse_revision_id"]
+                if chunk_revision_row is not None
+                else None
+            )
+        else:
+            parse_options_for_revision = None
+            if is_image:
+                vision_settings = get_settings()
+                parse_options_for_revision = {
+                    "sourceModality": "image",
+                    "provider": vision_settings.vision_text_provider,
+                    "model": vision_settings.vision_text_model or vision_settings.llm_model,
+                    "maxImageSide": vision_settings.vision_text_max_image_side,
+                }
+            generated_parse_revision_id = create_parse_revision(
+                session=session,
+                document_version_id=version_row["version_id"],
+                content_format=content_format,
+                content_text=content_text,
+                content_hash=_calculate_file_hash(content_text.encode("utf-8")) if content_text else None,
+                parser_name=parser_name,
+                parser_version=parser_version,
+                parse_options=parse_options_for_revision,
+                created_by=UUID(current_user.user.userId),
+            )
         chunk_parse_revision_id = (
-            binding_revision_row["parse_revision_id"]
-            if binding_revision_row is not None
+            chunk_revision_row["parse_revision_id"]
+            if chunk_revision_row is not None
             else generated_parse_revision_id
         )
         old_chunk_ids = [
@@ -1153,7 +1185,7 @@ def run_ingest_job(
                     version_id=version_row["version_id"],
                     document_id=document_row["document_id"],
                     kb_id=kb_row["kb_id"],
-                    binding_revision_id=binding_revision_id,
+                    chunk_revision_id=chunk_revision_id,
                     parse_revision_id=chunk_parse_revision_id,
                     document_version_id=version_row["version_id"],
                     chunk_index=index,
@@ -1438,7 +1470,7 @@ def run_ingest_job(
                     f"{item['targetStore']}: {item['errorMessage']}" for item in index_errors
                 ) if index_errors else None,
                 result_summary={
-                    **({"binding_revision_id": str(binding_revision_id)} if binding_revision_id else {}),
+                    **({"chunk_revision_id": str(chunk_revision_id)} if chunk_revision_id else {}),
                     "chunkCount": len(chunk_rows),
                     "tokenCount": total_tokens,
                     "parserName": parser_name,
@@ -1454,15 +1486,15 @@ def run_ingest_job(
             )
             .returning(ingest_jobs)
         ).mappings().one()
-        if binding_revision_id is not None and ingest_final_status == "success":
-            from app.services.binding_service import complete_binding_revision_build
+        if chunk_revision_id is not None and ingest_final_status == "success":
+            from app.services.binding_service import complete_chunk_revision_build
 
-            complete_binding_revision_build(session, binding_revision_id, len(chunk_rows))
+            complete_chunk_revision_build(session, chunk_revision_id, len(chunk_rows))
     except (DocumentParseError, ProviderError) as exc:
-        if binding_revision_id is not None:
-            from app.services.binding_service import fail_binding_revision
+        if chunk_revision_id is not None:
+            from app.services.binding_service import fail_chunk_revision
 
-            fail_binding_revision(session, binding_revision_id, str(exc))
+            fail_chunk_revision(session, chunk_revision_id, str(exc))
         error_code = exc.error_code if isinstance(exc, DocumentParseError) else "INGEST_EMBEDDING_FAILED"
         session.execute(
             update(document_versions)
@@ -1516,10 +1548,10 @@ def run_ingest_job(
             .returning(ingest_jobs)
         ).mappings().one()
     except Exception as exc:
-        if binding_revision_id is not None:
-            from app.services.binding_service import fail_binding_revision
+        if chunk_revision_id is not None:
+            from app.services.binding_service import fail_chunk_revision
 
-            fail_binding_revision(session, binding_revision_id, str(exc))
+            fail_chunk_revision(session, chunk_revision_id, str(exc))
         session.execute(
             update(document_versions)
             .where(document_versions.c.version_id == version_row["version_id"])
@@ -2435,15 +2467,15 @@ def list_chunks(
         return None
     _ensure_permission(session, current_user, kb_id, "kb.chunk.read")
 
-    active_binding_revision_id = _read_active_binding_revision_id(session, kb_id, version_id)
+    active_chunk_revision_id = _read_active_chunk_revision_id(session, kb_id, version_id)
     condition = (
         (chunks.c.kb_id == kb_id)
         & (chunks.c.document_id == document_id)
         & (chunks.c.version_id == version_id)
         & (chunks.c.status == "active")
     )
-    if active_binding_revision_id is not None:
-        condition = condition & (chunks.c.binding_revision_id == active_binding_revision_id)
+    if active_chunk_revision_id is not None:
+        condition = condition & (chunks.c.chunk_revision_id == active_chunk_revision_id)
     total = session.execute(select(func.count()).select_from(chunks).where(condition)).scalar_one()
     rows = session.execute(
         select(chunks)

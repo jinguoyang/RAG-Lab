@@ -169,10 +169,18 @@ export async function fetchDocumentUsage(
   return apiGet(`/library/documents/${documentId}/usage`);
 }
 
+export async function fetchDocumentDeletionImpact(
+  documentId: string,
+): Promise<DeletionImpactAnalysis> {
+  return apiGet<DeletionImpactAnalysis>(`/library/documents/${documentId}/deletion-impact`);
+}
+
 export async function deleteLibraryDocument(
   documentId: string,
+  strongConfirmation: boolean = false,
 ): Promise<void> {
-  return apiDelete(`/library/documents/${documentId}`);
+  const params = strongConfirmation ? "?strongConfirmation=true" : "";
+  return apiDelete(`/library/documents/${documentId}${params}`);
 }
 
 export async function retryLibraryParse(
@@ -216,8 +224,10 @@ export async function fetchLibraryStats(): Promise<LibraryStatsResponse> {
 export async function batchAction(
   documentIds: string[],
   action: "delete" | "reparse" | "disable",
+  strongConfirmation: boolean = false,
 ): Promise<BatchActionResponse> {
-  return apiPostJson<BatchActionResponse>("/library/documents/batch-actions", {
+  const params = strongConfirmation ? "?strongConfirmation=true" : "";
+  return apiPostJson<BatchActionResponse>(`/library/documents/batch-actions${params}`, {
     documentIds,
     action,
   });

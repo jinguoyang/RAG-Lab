@@ -1,7 +1,7 @@
 """Backfill chunks with new three-layer field associations.
 
 Updates existing chunks to populate:
-  - binding_revision_id (via document_kb_bindings -> binding_revisions)
+  - chunk_revision_id (via document_kb_bindings -> chunk_revisions)
   - parse_revision_id (via parse_revisions matching version_id)
   - document_version_id (from chunks.version_id)
 
@@ -23,27 +23,27 @@ from sqlalchemy import text
 from app.core.database import get_engine
 
 
-def update_binding_revision_id(engine: sa.Engine) -> int:
-    """Set chunks.binding_revision_id from the active binding revision.
+def update_chunk_revision_id(engine: sa.Engine) -> int:
+    """Set chunks.chunk_revision_id from the active binding revision.
 
     Joins chunks -> document_kb_bindings (on document_id + kb_id + version_id)
-    -> binding_revisions (on binding_id). Picks the active revision.
+    -> chunk_revisions (on binding_id). Picks the active revision.
 
     Returns the number of rows updated.
     """
     with engine.begin() as conn:
         result = conn.execute(text("""
             UPDATE chunks c
-            SET binding_revision_id = br.binding_revision_id
+            SET chunk_revision_id = br.chunk_revision_id
             FROM document_kb_bindings dkb
-            JOIN binding_revisions br
+            JOIN chunk_revisions br
                 ON br.binding_id = dkb.binding_id
                 AND br.deleted_at IS NULL
             WHERE c.document_id = dkb.document_id
               AND c.kb_id = dkb.kb_id
               AND c.version_id = dkb.version_id
               AND dkb.status = 'active'
-              AND c.binding_revision_id IS NULL
+              AND c.chunk_revision_id IS NULL
         """))
         return result.rowcount
 
@@ -86,7 +86,7 @@ def verify(engine: sa.Engine) -> None:
     with engine.begin() as conn:
         total = conn.execute(text("SELECT COUNT(*) FROM chunks")).scalar()
         with_brev = conn.execute(
-            text("SELECT COUNT(*) FROM chunks WHERE binding_revision_id IS NOT NULL")
+            text("SELECT COUNT(*) FROM chunks WHERE chunk_revision_id IS NOT NULL")
         ).scalar()
         with_prev = conn.execute(
             text("SELECT COUNT(*) FROM chunks WHERE parse_revision_id IS NOT NULL")
@@ -96,10 +96,10 @@ def verify(engine: sa.Engine) -> None:
         ).scalar()
 
     print(f"\n  Total chunks:                 {total}")
-    print(f"  With binding_revision_id:     {with_brev}")
+    print(f"  With chunk_revision_id:     {with_brev}")
     print(f"  With parse_revision_id:       {with_prev}")
     print(f"  With document_version_id:     {with_dvid}")
-    print(f"  Missing binding_revision_id:  {total - with_brev}")
+    print(f"  Missing chunk_revision_id:  {total - with_brev}")
     print(f"  Missing parse_revision_id:    {total - with_prev}")
     print(f"  Missing document_version_id:  {total - with_dvid}")
 
@@ -110,8 +110,8 @@ def main() -> None:
 
     engine = get_engine()
 
-    print("[1/4] Updating chunks.binding_revision_id...")
-    count_brev = update_binding_revision_id(engine)
+    print("[1/4] Updating chunks.chunk_revision_id...")
+    count_brev = update_chunk_revision_id(engine)
     print(f"  Updated {count_brev} chunks")
 
     print("[2/4] Updating chunks.parse_revision_id...")

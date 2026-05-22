@@ -10,7 +10,7 @@ from app.services.document_service import (
     list_chunks,
 )
 from app.tables import (
-    binding_revisions,
+    chunk_revisions,
     chunks,
     document_kb_bindings,
     document_versions,
@@ -161,7 +161,7 @@ def test_create_parse_revision_default_parse_options():
 def test_to_chunk_dto_exposes_traceability_fields():
     """Chunk DTO 应暴露 BindingRevision、ParseRevision 和正文位置回溯信息。"""
     now = datetime.now(timezone.utc)
-    binding_revision_id = uuid4()
+    chunk_revision_id = uuid4()
     parse_revision_id = uuid4()
     document_version_id = uuid4()
     row = {
@@ -179,7 +179,7 @@ def test_to_chunk_dto_exposes_traceability_fields():
         "status": "active",
         "metadata": {},
         "created_at": now,
-        "binding_revision_id": binding_revision_id,
+        "chunk_revision_id": chunk_revision_id,
         "parse_revision_id": parse_revision_id,
         "document_version_id": document_version_id,
         "start_offset": 10,
@@ -191,7 +191,7 @@ def test_to_chunk_dto_exposes_traceability_fields():
 
     dto = _to_chunk_dto(row)
 
-    assert dto.bindingRevisionId == str(binding_revision_id)
+    assert dto.chunkRevisionId == str(chunk_revision_id)
     assert dto.parseRevisionId == str(parse_revision_id)
     assert dto.documentVersionId == str(document_version_id)
     assert dto.startOffset == 10
@@ -201,7 +201,7 @@ def test_to_chunk_dto_exposes_traceability_fields():
     assert dto.summary == "摘要"
 
 
-def test_list_chunks_filters_active_binding_revision(db, admin_user):
+def test_list_chunks_filters_active_chunk_revision(db, admin_user):
     """知识库文档页只展示当前 active BindingRevision 对应的 active Chunk。"""
     now = datetime.now(timezone.utc)
     kb_id = uuid4()
@@ -210,8 +210,8 @@ def test_list_chunks_filters_active_binding_revision(db, admin_user):
     library_doc_id = uuid4()
     version_id = uuid4()
     binding_id = uuid4()
-    active_binding_revision_id = uuid4()
-    retired_binding_revision_id = uuid4()
+    active_chunk_revision_id = uuid4()
+    retired_chunk_revision_id = uuid4()
     active_chunk_id = uuid4()
     retired_chunk_id = uuid4()
 
@@ -290,14 +290,14 @@ def test_list_chunks_filters_active_binding_revision(db, admin_user):
             created_by=owner_id,
             updated_at=now,
             updated_by=owner_id,
-            active_binding_revision_id=active_binding_revision_id,
+            active_chunk_revision_id=active_chunk_revision_id,
         )
     )
     db.execute(
-        binding_revisions.insert(),
+        chunk_revisions.insert(),
         [
             {
-                "binding_revision_id": active_binding_revision_id,
+                "chunk_revision_id": active_chunk_revision_id,
                 "binding_id": binding_id,
                 "knowledge_base_id": kb_id,
                 "document_id": library_doc_id,
@@ -315,7 +315,7 @@ def test_list_chunks_filters_active_binding_revision(db, admin_user):
                 "created_at": now,
             },
             {
-                "binding_revision_id": retired_binding_revision_id,
+                "chunk_revision_id": retired_chunk_revision_id,
                 "binding_id": binding_id,
                 "knowledge_base_id": kb_id,
                 "document_id": library_doc_id,
@@ -366,14 +366,14 @@ def test_list_chunks_filters_active_binding_revision(db, admin_user):
                 "chunk_id": active_chunk_id,
                 "chunk_index": 1,
                 "content": "active content",
-                "binding_revision_id": active_binding_revision_id,
+                "chunk_revision_id": active_chunk_revision_id,
             },
             {
                 **base_chunk,
                 "chunk_id": retired_chunk_id,
                 "chunk_index": 2,
                 "content": "retired content",
-                "binding_revision_id": retired_binding_revision_id,
+                "chunk_revision_id": retired_chunk_revision_id,
             },
         ],
     )

@@ -328,12 +328,6 @@ export function LibraryDetail() {
           ]}
           actions={
             <div className="flex items-center gap-2">
-              <Button variant="secondary" onClick={() => void handleDownload()}>
-                <Download className="mr-2 h-4 w-4" /> 下载
-              </Button>
-              <Button variant="secondary" onClick={() => setShowReparse(true)} disabled={!selectedVersion}>
-                <RefreshCw className="mr-2 h-4 w-4" /> 重解析
-              </Button>
               <Button variant="secondary" onClick={() => void loadData()}>
                 <RefreshCw className="mr-2 h-4 w-4" /> 刷新
               </Button>
@@ -345,25 +339,6 @@ export function LibraryDetail() {
             {feedback.message}
           </Alert>
         )}
-
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
-          <div className="rounded-lg border border-border-cream bg-ivory p-4">
-            <p className="text-xs text-stone-gray">活跃源文件版本</p>
-            <p className="mt-2 font-serif text-xl text-near-black">{activeVersion ? `v${activeVersion.versionNo}` : "无"}</p>
-          </div>
-          <div className="rounded-lg border border-border-cream bg-ivory p-4">
-            <p className="text-xs text-stone-gray">源文件版本数</p>
-            <p className="mt-2 font-serif text-xl text-near-black">{versions.length}</p>
-          </div>
-          <div className="rounded-lg border border-border-cream bg-ivory p-4">
-            <p className="text-xs text-stone-gray">当前解析状态</p>
-            <p className="mt-2"><Badge variant={parseStatusVariant(selectedParseRevision?.status)}>{selectedParseRevision?.status ?? "无"}</Badge></p>
-          </div>
-          <div className="rounded-lg border border-border-cream bg-ivory p-4">
-            <p className="text-xs text-stone-gray">知识库使用</p>
-            <p className="mt-2 font-serif text-xl text-near-black">{usages.length}</p>
-          </div>
-        </div>
 
         <Tabs.Root value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
           <Tabs.List className="mb-6 flex gap-6 border-b border-border-cream">
@@ -388,6 +363,24 @@ export function LibraryDetail() {
                 <div><span className="text-stone-gray">创建时间：</span><span className="ml-2 text-near-black">{new Date(doc.createdAt).toLocaleString("zh-CN")}</span></div>
                 <div><span className="text-stone-gray">更新时间：</span><span className="ml-2 text-near-black">{new Date(doc.updatedAt).toLocaleString("zh-CN")}</span></div>
                 <div><span className="text-stone-gray">当前文件：</span><span className="ml-2 text-near-black">{activeVersion?.fileName ?? doc.name}</span></div>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+              <div className="rounded-lg border border-border-cream bg-ivory p-4">
+                <p className="text-xs text-stone-gray">活跃源文件版本</p>
+                <p className="mt-2 font-serif text-xl text-near-black">{activeVersion ? `v${activeVersion.versionNo}` : "无"}</p>
+              </div>
+              <div className="rounded-lg border border-border-cream bg-ivory p-4">
+                <p className="text-xs text-stone-gray">源文件版本数</p>
+                <p className="mt-2 font-serif text-xl text-near-black">{versions.length}</p>
+              </div>
+              <div className="rounded-lg border border-border-cream bg-ivory p-4">
+                <p className="text-xs text-stone-gray">当前解析状态</p>
+                <p className="mt-2"><Badge variant={parseStatusVariant(selectedParseRevision?.status)}>{selectedParseRevision?.status ?? "无"}</Badge></p>
+              </div>
+              <div className="rounded-lg border border-border-cream bg-ivory p-4">
+                <p className="text-xs text-stone-gray">知识库使用</p>
+                <p className="mt-2 font-serif text-xl text-near-black">{usages.length}</p>
               </div>
             </div>
           </Tabs.Content>
@@ -452,7 +445,7 @@ export function LibraryDetail() {
                   {versions.map((version) => <option key={version.versionId} value={version.versionId}>源文件 v{version.versionNo}</option>)}
                 </select>
               </div>
-              <Button variant="secondary" onClick={() => setShowReparse(true)} disabled={!selectedVersion}>
+              <Button onClick={() => setShowReparse(true)} disabled={!selectedVersion}>
                 <RefreshCw className="mr-2 h-4 w-4" /> 重解析
               </Button>
             </div>

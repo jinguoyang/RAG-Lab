@@ -17,10 +17,10 @@ class LibraryBindingDTO(BaseModel):
     chunkCount: int
     errorCode: str | None = None
     errorMessage: str | None = None
-    activeBindingRevisionId: str | None = None
-    bindingRevisionStatus: str | None = None
-    bindingRevisionChunkCount: int | None = None
-    bindingRevisionVersionId: str | None = None
+    activeChunkRevisionId: str | None = None
+    chunkRevisionStatus: str | None = None
+    chunkRevisionChunkCount: int | None = None
+    chunkRevisionVersionId: str | None = None
     createdAt: str
     createdBy: str | None = None
 
@@ -47,9 +47,15 @@ class SwitchBindingVersionRequest(BaseModel):
     libraryVersionId: str
 
 
-class BindingRevisionDTO(BaseModel):
+class RechunkRequest(BaseModel):
+    """重新分块请求。"""
+    strategy: str = "fixed_size"
+    params: dict | None = None
+
+
+class ChunkRevisionDTO(BaseModel):
     """绑定版本修订记录。"""
-    bindingRevisionId: str
+    chunkRevisionId: str
     bindingId: str
     knowledgeBaseId: str
     documentId: str

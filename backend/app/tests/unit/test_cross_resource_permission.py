@@ -165,7 +165,7 @@ class TestCheckDocumentVersionDeletePermission:
         version_id = uuid4()
 
         # 第一个查询: 活跃版本 ID = None（不是活跃版本）
-        # 第二个查询: binding_revision_id = uuid4()（有活跃绑定）
+        # 第二个查询: chunk_revision_id = uuid4()（有活跃绑定）
         session = self._mock_session(None, uuid4())
 
         with patch(
@@ -187,7 +187,7 @@ class TestCheckDocumentVersionDeletePermission:
         version_id = uuid4()
 
         # 第一个查询: 活跃版本 ID = None
-        # 第二个查询: binding_revision_id = None（无活跃绑定）
+        # 第二个查询: chunk_revision_id = None（无活跃绑定）
         # 第三个查询: 有待处理的解析任务
         session = self._mock_session(None, None, [uuid4()])
 
@@ -210,7 +210,7 @@ class TestCheckDocumentVersionDeletePermission:
         version_id = uuid4()
 
         # 第一个查询: 活跃版本 ID = None
-        # 第二个查询: binding_revision_id = None
+        # 第二个查询: chunk_revision_id = None
         # 第三个查询: 无待处理解析任务（空列表）
         # 第四个查询: 无待处理入库任务（空列表）
         session = self._mock_session(None, None, [], [])

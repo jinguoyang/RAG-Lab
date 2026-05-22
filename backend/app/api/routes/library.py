@@ -35,11 +35,14 @@ from app.schemas.library import (
 from app.schemas.document import DeletionImpactAnalysis
 from app.services.document_service import analyze_document_version_deletion_impact
 from app.services.library_service import (
+    LibraryDocumentDeleteBlockedError,
+    LibraryDocumentDeleteRequiresConfirmationError,
     LibraryDocumentNotFoundError,
     LibraryPermissionError,
     LibraryVersionInUseError,
     LibraryVersionNotFoundError,
     activate_library_version,
+    analyze_document_deletion_impact,
     batch_action,
     create_library_upload,
     delete_library_document,
@@ -75,6 +78,16 @@ def _raise_library_error(exc: Exception) -> None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "VERSION_IN_USE", "kbNames": exc.kb_names},
+        ) from exc
+    if isinstance(exc, LibraryDocumentDeleteBlockedError):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "DOCUMENT_DELETE_BLOCKED", "blockingReasons": exc.blocking_reasons},
+        ) from exc
+    if isinstance(exc, LibraryDocumentDeleteRequiresConfirmationError):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "DOCUMENT_DELETE_REQUIRES_CONFIRMATION", "impactAnalysis": exc.impact_analysis},
         ) from exc
     if isinstance(exc, ObjectStorageError):
         raise HTTPException(
@@ -132,12 +145,13 @@ def upload_document(
 @router.post("/batch-actions", response_model=BatchActionResponse)
 def batch_actions(
     body: BatchActionRequest,
-    current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
-    db: Annotated[Session, Depends(get_db_session)],
+    strong_confirmation: bool = Query(default=False, alias="strongConfirmation"),
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
 ) -> BatchActionResponse:
     """批量操作文档：删除、重新解析、停用。"""
     try:
-        result = batch_action(db, current_user, body.documentIds, body.action)
+        result = batch_action(db, current_user, body.documentIds, body.action, strong_confirmation)
         return BatchActionResponse(**result)
     except Exception as exc:
         _raise_library_error(exc)
@@ -186,15 +200,40 @@ def update_document(
         raise  # unreachable
 
 
-@router.delete("/{document_id}")
-def delete_document(
+@router.get("/{document_id}/deletion-impact", response_model=DeletionImpactAnalysis)
+def get_document_deletion_impact(
     document_id: UUID,
     current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db_session)],
+) -> DeletionImpactAnalysis:
+    """分析删除文档的影响。"""
+    try:
+        result = analyze_document_deletion_impact(db, document_id)
+        return DeletionImpactAnalysis(
+            canDelete=result["can_delete"],
+            blockingReasons=result["blocking_reasons"],
+            isActiveVersion=False,  # 文档级别不适用
+            activeBindingCount=result["active_binding_count"],
+            pendingJobsCount=result["pending_jobs_count"],
+            qaEvidenceCount=result["qa_evidence_count"],
+            qaCitationCount=0,
+            requiresStrongConfirmation=result["requires_strong_confirmation"],
+        )
+    except Exception as exc:
+        _raise_library_error(exc)
+        raise  # unreachable
+
+
+@router.delete("/{document_id}")
+def delete_document(
+    document_id: UUID,
+    strong_confirmation: bool = Query(default=False, alias="strongConfirmation"),
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
 ) -> dict:
     """删除文档库文档（软删除），级联清理所有知识库绑定。"""
     try:
-        return delete_library_document(db, current_user, document_id)
+        return delete_library_document(db, current_user, document_id, strong_confirmation)
     except Exception as exc:
         _raise_library_error(exc)
         raise  # unreachable

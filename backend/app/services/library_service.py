@@ -63,6 +63,22 @@ class LibraryVersionInUseError(Exception):
         super().__init__(f"Version is in use by KBs: {', '.join(kb_names)}")
 
 
+class LibraryDocumentDeleteBlockedError(Exception):
+    """文档删除被阻止，存在活跃的下游引用。"""
+
+    def __init__(self, blocking_reasons: list[str]) -> None:
+        self.blocking_reasons = blocking_reasons
+        super().__init__(f"Document deletion blocked: {'; '.join(blocking_reasons)}")
+
+
+class LibraryDocumentDeleteRequiresConfirmationError(Exception):
+    """文档删除需要强确认，存在历史 QA 引用。"""
+
+    def __init__(self, impact_analysis: dict) -> None:
+        self.impact_analysis = impact_analysis
+        super().__init__("Document deletion requires strong confirmation due to QA evidence references")
+
+
 def _ensure_library_access(
     session: Session,
     current_user: CurrentUserResponse,
@@ -648,16 +664,116 @@ def update_library_document(
     return _to_document_dto(row)
 
 
+def analyze_document_deletion_impact(
+    session: Session,
+    document_id: UUID,
+) -> dict:
+    """分析删除文档的影响。
+
+    按照设计文档第7节要求，检查所有版本的下游引用。
+    Returns: 影响分析结果，包含 can_delete、blocking_reasons 等字段。
+    """
+    from app.tables import chunks, chunk_revisions, ingest_jobs, qa_run_evidence
+
+    # 1. 获取文档所有版本
+    versions = list(session.execute(
+        select(document_versions.c.version_id).where(
+            document_versions.c.document_id == document_id,
+            document_versions.c.deleted_at.is_(None),
+        )
+    ).scalars().all())
+
+    if not versions:
+        return {
+            "can_delete": True,
+            "blocking_reasons": [],
+            "total_versions": 0,
+            "active_binding_count": 0,
+            "pending_jobs_count": 0,
+            "qa_evidence_count": 0,
+            "requires_strong_confirmation": False,
+        }
+
+    # 2. 检查是否存在 active BindingRevision（任一版本）
+    active_binding_count = session.execute(
+        select(func.count()).select_from(chunk_revisions).where(
+            chunk_revisions.c.document_version_id.in_(versions),
+            chunk_revisions.c.status == "active",
+        )
+    ).scalar_one()
+
+    # 3. 检查是否存在 pending/running 任务（任一版本）
+    pending_jobs_count = session.execute(
+        select(func.count()).select_from(ingest_jobs).where(
+            ingest_jobs.c.version_id.in_(versions),
+            ingest_jobs.c.status.in_(["queued", "running"]),
+        )
+    ).scalar_one()
+
+    # 4. 汇总历史 QA 引用（所有版本的 chunks）
+    all_chunks = list(session.execute(
+        select(chunks.c.chunk_id).where(
+            chunks.c.version_id.in_(versions),
+        )
+    ).scalars().all())
+
+    qa_evidence_count = 0
+    if all_chunks:
+        qa_evidence_count = session.execute(
+            select(func.count()).select_from(qa_run_evidence).where(
+                qa_run_evidence.c.chunk_id.in_(all_chunks),
+            )
+        ).scalar_one()
+
+    # 5. 判断是否允许删除
+    can_delete = True
+    blocking_reasons: list[str] = []
+
+    if active_binding_count > 0:
+        can_delete = False
+        blocking_reasons.append(f"文档存在 {active_binding_count} 个活跃的知识库绑定")
+
+    if pending_jobs_count > 0:
+        can_delete = False
+        blocking_reasons.append(f"文档存在 {pending_jobs_count} 个运行中的任务")
+
+    return {
+        "can_delete": can_delete,
+        "blocking_reasons": blocking_reasons,
+        "total_versions": len(versions),
+        "active_binding_count": active_binding_count,
+        "pending_jobs_count": pending_jobs_count,
+        "qa_evidence_count": qa_evidence_count,
+        "requires_strong_confirmation": qa_evidence_count > 0,
+    }
+
+
 def delete_library_document(
     session: Session,
     current_user: CurrentUserResponse,
     document_id: UUID,
+    strong_confirmation: bool = False,
 ) -> dict:
-    """软删除文档并级联清理所有绑定。"""
+    """软删除文档并级联清理所有绑定。
+
+    按照设计文档第7节要求，执行删除前检查：
+    - 任一版本被 active BindingRevision 使用则禁止删除
+    - 任一版本存在 pending/running 任务则禁止删除
+    - 存在历史 QA 引用则允许但需强确认
+    """
     _ensure_owner(session, current_user, document_id, "library.document.delete")
     user_id = UUID(current_user.user.userId)
 
-    # 1. Soft delete the document
+    # 1. 执行影响分析
+    impact = analyze_document_deletion_impact(session, document_id)
+
+    if not impact["can_delete"]:
+        raise LibraryDocumentDeleteBlockedError(impact["blocking_reasons"])
+
+    if impact["requires_strong_confirmation"] and not strong_confirmation:
+        raise LibraryDocumentDeleteRequiresConfirmationError(impact)
+
+    # 2. Soft delete the document
     session.execute(
         update(documents)
         .where(documents.c.document_id == document_id)
@@ -670,7 +786,7 @@ def delete_library_document(
         )
     )
 
-    # 2. Find all active bindings
+    # 3. Find all active bindings
     active_bindings = list(
         session.execute(
             select(document_kb_bindings)
@@ -681,7 +797,7 @@ def delete_library_document(
         ).mappings()
     )
 
-    # 3. Unbind each one
+    # 4. Unbind each one
     unbound_count = 0
     for binding in active_bindings:
         # Get KB-side document_id from the binding's version_id
@@ -1075,6 +1191,7 @@ def batch_action(
     current_user: CurrentUserResponse,
     document_ids: list[str],
     action: str,
+    strong_confirmation: bool = False,
 ) -> dict:
     """批量操作文档：delete / reparse / disable。逐个检查权限，部分执行。"""
     succeeded: list[str] = []
@@ -1089,7 +1206,7 @@ def batch_action(
 
         try:
             if action == "delete":
-                delete_library_document(session, current_user, doc_id)
+                delete_library_document(session, current_user, doc_id, strong_confirmation)
             elif action == "reparse":
                 retry_library_parse(session, current_user, doc_id)
             elif action == "disable":

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { ArrowLeft, Upload, Download, FileText, ChevronLeft, ChevronRight, Trash2, RefreshCw, Power, Users, Eye, Settings2 } from "lucide-react";
+import { ArrowLeft, Upload, Download, FileText, ChevronLeft, ChevronRight, Trash2, RefreshCw, Power, Users, Settings2 } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
@@ -15,6 +15,8 @@ import {
   batchAction,
   fetchLibraryDetail,
   createLibraryParseRevision,
+  fetchDocumentDeletionImpact,
+  deleteLibraryDocument,
 } from "../services/libraryService";
 import type { LibraryDocumentDTO, UploadProgress } from "../types/library";
 import type { LibraryDTO } from "../types/library";
@@ -167,6 +169,61 @@ export function LibraryDocuments() {
     }
   }
 
+  async function handleDeleteDocument(doc: LibraryDocumentDTO) {
+    try {
+      // 1. 获取删除影响分析
+      const impact = await fetchDocumentDeletionImpact(doc.documentId);
+
+      // 2. 检查是否可以删除
+      if (!impact.canDelete) {
+        setFeedback({
+          variant: "error",
+          title: "无法删除",
+          message: impact.blockingReasons.join("；"),
+        });
+        return;
+      }
+
+      // 3. 构建确认描述
+      let description = `确定要删除文档"${doc.name}"吗？此操作将删除该文档的所有版本。`;
+      if (impact.activeBindingCount > 0) {
+        description += `\n该文档当前有 ${impact.activeBindingCount} 个活跃的知识库绑定，删除后将自动解绑。`;
+      }
+      if (impact.qaEvidenceCount > 0) {
+        description += `\n该文档有 ${impact.qaEvidenceCount} 条历史 QA 引用，删除后相关证据将显示"引用文件已被清理"。`;
+      }
+
+      // 4. 确认删除
+      const ok = await confirm({
+        title: "删除文档",
+        description,
+        variant: "destructive",
+        confirmLabel: impact.requiresStrongConfirmation ? "我确认清理该文档" : "删除",
+      });
+      if (!ok) return;
+
+      // 5. 执行删除
+      await deleteLibraryDocument(doc.documentId, impact.requiresStrongConfirmation);
+      setFeedback({ variant: "success", title: "删除成功", message: `文档"${doc.name}"已删除。` });
+      await loadData(searchTerm, pageNo);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "请稍后重试。";
+      if (message.includes("DOCUMENT_DELETE_REQUIRES_CONFIRMATION")) {
+        setFeedback({
+          variant: "warning",
+          title: "需要确认",
+          message: "该文档存在历史 QA 引用，请确认后重试。",
+        });
+      } else {
+        setFeedback({
+          variant: "error",
+          title: "删除失败",
+          message,
+        });
+      }
+    }
+  }
+
   function openReparseDrawer(targets: LibraryDocumentDTO[]) {
     const usableTargets = targets.filter((doc) => doc.activeVersionId);
     if (usableTargets.length === 0) {
@@ -216,20 +273,24 @@ export function LibraryDocuments() {
     }
   }
 
-  async function handleBatchAction(action: "delete" | "disable") {
+  async function handleBatchAction(action: "delete" | "disable", strongConfirmation = false) {
     if (selectedIds.size === 0) return;
     const actionLabel = { delete: "删除", reparse: "重新解析", disable: "停用" }[action];
-    const ok = await confirm({
-      title: `批量${actionLabel}`,
-      description: `确定要${actionLabel}选中的 ${selectedIds.size} 个文档吗？`,
-      variant: action === "delete" ? "destructive" : "default",
-      confirmLabel: actionLabel,
-    });
-    if (!ok) return;
+
+    if (action === "delete" && !strongConfirmation) {
+      // 对于删除操作，先检查是否有需要强确认的文档
+      const ok = await confirm({
+        title: `批量${actionLabel}`,
+        description: `确定要${actionLabel}选中的 ${selectedIds.size} 个文档吗？此操作将删除文档的所有版本。`,
+        variant: "destructive",
+        confirmLabel: actionLabel,
+      });
+      if (!ok) return;
+    }
 
     setBatchLoading(true);
     try {
-      const result = await batchAction(Array.from(selectedIds), action);
+      const result = await batchAction(Array.from(selectedIds), action, strongConfirmation);
       setFeedback({
         variant: result.failed.length > 0 ? "warning" : "success",
         title: `批量${actionLabel}完成`,
@@ -238,11 +299,25 @@ export function LibraryDocuments() {
       setSelectedIds(new Set());
       await loadData(searchTerm, pageNo);
     } catch (error) {
-      setFeedback({
-        variant: "error",
-        title: `批量${actionLabel}失败`,
-        message: error instanceof Error ? error.message : "请稍后重试。",
-      });
+      const message = error instanceof Error ? error.message : "请稍后重试。";
+      if (message.includes("DOCUMENT_DELETE_REQUIRES_CONFIRMATION")) {
+        // 需要强确认，提示用户
+        const ok = await confirm({
+          title: "需要确认",
+          description: `部分文档存在历史 QA 引用，删除后相关证据将显示"引用文件已被清理"。是否继续删除？`,
+          variant: "destructive",
+          confirmLabel: "我确认清理",
+        });
+        if (ok) {
+          await handleBatchAction(action, true);
+        }
+      } else {
+        setFeedback({
+          variant: "error",
+          title: `批量${actionLabel}失败`,
+          message,
+        });
+      }
     } finally {
       setBatchLoading(false);
     }
@@ -355,7 +430,7 @@ export function LibraryDocuments() {
                   </TableHead>
                   <TableHead>文档名称</TableHead>
                   <TableHead>状态</TableHead>
-                  <TableHead>活跃源文件版本</TableHead>
+                  <TableHead>文件版本</TableHead>
                   <TableHead>最新解析状态</TableHead>
                   <TableHead>更新时间</TableHead>
                   <TableHead>操作</TableHead>
@@ -392,12 +467,7 @@ export function LibraryDocuments() {
                     </TableCell>
                     <TableCell>
                       {doc.activeVersionNo ? (
-                        <div>
-                          <span className="font-mono text-sm">v{doc.activeVersionNo}</span>
-                          {doc.activeVersionFileName && (
-                            <p className="max-w-[180px] truncate text-xs text-stone-gray">{doc.activeVersionFileName}</p>
-                          )}
-                        </div>
+                        <span className="font-mono text-sm">v{doc.activeVersionNo}</span>
                       ) : (
                         <span className="text-stone-gray">-</span>
                       )}
@@ -413,18 +483,7 @@ export function LibraryDocuments() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          title="预览"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/library/${libraryId}/documents/${doc.documentId}?tab=preview`);
-                          }}
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          title="下载"
+                          title="下载激活版本"
                           onClick={(e) => {
                             e.stopPropagation();
                             void handleDownload(doc);
@@ -435,7 +494,7 @@ export function LibraryDocuments() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          title="重解析"
+                          title="重解析激活版本"
                           onClick={(e) => {
                             e.stopPropagation();
                             openReparseDrawer([doc]);
@@ -446,24 +505,14 @@ export function LibraryDocuments() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          title="详情"
+                          title="删除文档"
+                          className="text-red-600 hover:text-red-700"
                           onClick={(e) => {
                             e.stopPropagation();
-                            navigate(`/library/${libraryId}/documents/${doc.documentId}`);
+                            void handleDeleteDocument(doc);
                           }}
                         >
-                          <FileText className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          title="权限"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/library/${libraryId}/members`);
-                          }}
-                        >
-                          <Users className="w-4 h-4" />
+                          <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
                     </TableCell>

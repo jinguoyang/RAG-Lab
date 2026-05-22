@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.schemas.auth import CurrentUserResponse
 from app.tables import (
-    binding_revisions,
+    chunk_revisions,
     documents,
     ingest_jobs,
     library_parse_jobs,
@@ -71,9 +71,9 @@ def check_document_version_delete_permission(
 
     # 3. 检查是否有活跃的 BindingRevision
     active_binding = session.execute(
-        select(binding_revisions.c.binding_revision_id).where(
-            binding_revisions.c.document_version_id == version_id,
-            binding_revisions.c.status == "active",
+        select(chunk_revisions.c.chunk_revision_id).where(
+            chunk_revisions.c.document_version_id == version_id,
+            chunk_revisions.c.status == "active",
         )
     ).first()
     if active_binding is not None:

@@ -154,13 +154,14 @@ export function LibraryManagement() {
 
         {/* 搜索 */}
         <div className="flex items-center gap-4">
-          <div className="flex-1 max-w-md">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-gray pointer-events-none" />
             <Input
+              className="pl-9"
               placeholder="搜索文档库名称..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && void handleSearchSubmit()}
-              icon={<Search className="w-4 h-4" />}
             />
           </div>
           <Button variant="secondary" onClick={() => void handleSearchSubmit()}>

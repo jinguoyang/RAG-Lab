@@ -71,7 +71,7 @@ class ChunkDTO(BaseModel):
     versionId: str
     documentId: str
     kbId: str
-    bindingRevisionId: str | None = None
+    chunkRevisionId: str | None = None
     parseRevisionId: str | None = None
     documentVersionId: str | None = None
     chunkIndex: int
