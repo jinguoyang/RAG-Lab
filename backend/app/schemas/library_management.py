@@ -20,7 +20,6 @@ class LibraryDTO(BaseModel):
     ownerId: str
     name: str
     description: str | None
-    visibility: str
     status: str
     documentCount: int = 0
     createdAt: str
@@ -34,7 +33,6 @@ class LibraryDetailDTO(BaseModel):
     ownerId: str
     name: str
     description: str | None
-    visibility: str
     status: str
     documentCount: int = 0
     createdAt: str
@@ -46,7 +44,6 @@ class CreateLibraryRequest(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=128)
     description: str | None = None
-    visibility: Literal["public", "personal", "partial"] = "personal"
 
 
 class UpdateLibraryRequest(BaseModel):
@@ -54,7 +51,6 @@ class UpdateLibraryRequest(BaseModel):
 
     name: str | None = Field(None, min_length=1, max_length=128)
     description: str | None = None
-    visibility: Literal["public", "personal", "partial"] | None = None
 
 
 class LibraryMemberDTO(BaseModel):
