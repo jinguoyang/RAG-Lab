@@ -505,7 +505,7 @@ def get_kb_delete_impact(
     config_count = session.execute(
         select(func.count())
         .select_from(config_revisions)
-        .where(config_revisions.c.knowledge_base_id == kb_id)
+        .where(config_revisions.c.kb_id == kb_id)
     ).scalar_one()
 
     inactive_apps = session.execute(
@@ -662,7 +662,7 @@ def delete_knowledge_base(
     # 6. 软删除 config_revisions
     session.execute(
         update(config_revisions)
-        .where(config_revisions.c.knowledge_base_id == kb_id)
+        .where(config_revisions.c.kb_id == kb_id)
         .values(
             deleted_at=now,
             deleted_by=deleted_by,
