@@ -9153,6 +9153,23 @@
             }
           },
           {
+            "name": "versionId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Versionid"
+            }
+          },
+          {
             "name": "X-Dev-User",
             "in": "header",
             "required": false,
@@ -9414,6 +9431,23 @@
             }
           },
           {
+            "name": "parseRevisionId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parserevisionid"
+            }
+          },
+          {
             "name": "X-Dev-User",
             "in": "header",
             "required": false,
@@ -9448,6 +9482,158 @@
                     }
                   ],
                   "title": "Response Get Document Text Route Api V1 Library Documents  Document Id  Text Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/library/documents/{document_id}/versions/{version_id}/parse-revisions": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "List Parse Revisions",
+        "description": "列出源文件版本下的解析版本。",
+        "operationId": "list_parse_revisions_api_v1_library_documents__document_id__versions__version_id__parse_revisions_get",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LibraryParseRevisionDTO"
+                  },
+                  "title": "Response List Parse Revisions Api V1 Library Documents  Document Id  Versions  Version Id  Parse Revisions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Create Parse Revision",
+        "description": "基于指定源文件版本创建新的解析版本。",
+        "operationId": "create_parse_revision_api_v1_library_documents__document_id__versions__version_id__parse_revisions_post",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryReparseRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryParseRevisionCreateResponse"
                 }
               }
             }
@@ -9660,6 +9846,76 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LibraryVersionActivateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/library/documents/{document_id}/versions/{version_id}/deletion-impact": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Get Deletion Impact",
+        "description": "分析删除指定版本的影响。",
+        "operationId": "get_deletion_impact_api_v1_library_documents__document_id__versions__version_id__deletion_impact_get",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletionImpactAnalysis"
                 }
               }
             }
@@ -10723,7 +10979,11 @@
             "type": "string",
             "enum": [
               "read_only",
-              "document_manage"
+              "document_manage",
+              "library_viewer",
+              "library_binder",
+              "library_editor",
+              "library_manager"
             ],
             "title": "Permissionlevel"
           }
@@ -11731,6 +11991,11 @@
               }
             ],
             "title": "Securitylevel"
+          },
+          "forceUpload": {
+            "type": "boolean",
+            "title": "Forceupload",
+            "default": false
           }
         },
         "type": "object",
@@ -11899,6 +12164,39 @@
             "type": "string",
             "title": "Kbid"
           },
+          "bindingRevisionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bindingrevisionid"
+          },
+          "parseRevisionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parserevisionid"
+          },
+          "documentVersionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Documentversionid"
+          },
           "chunkIndex": {
             "type": "integer",
             "title": "Chunkindex"
@@ -11924,6 +12222,61 @@
               }
             ],
             "title": "Section"
+          },
+          "startOffset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startoffset"
+          },
+          "endOffset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endoffset"
+          },
+          "sectionPath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sectionpath"
+          },
+          "heading": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heading"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
           },
           "content": {
             "type": "string",
@@ -12643,16 +12996,6 @@
               }
             ],
             "title": "Description"
-          },
-          "visibility": {
-            "type": "string",
-            "enum": [
-              "public",
-              "personal",
-              "partial"
-            ],
-            "title": "Visibility",
-            "default": "personal"
           }
         },
         "type": "object",
@@ -12687,6 +13030,58 @@
         ],
         "title": "CurrentUserResponse",
         "description": "当前用户响应，供前端初始化登录态和能力摘要。"
+      },
+      "DeletionImpactAnalysis": {
+        "properties": {
+          "canDelete": {
+            "type": "boolean",
+            "title": "Candelete"
+          },
+          "blockingReasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Blockingreasons"
+          },
+          "isActiveVersion": {
+            "type": "boolean",
+            "title": "Isactiveversion"
+          },
+          "activeBindingCount": {
+            "type": "integer",
+            "title": "Activebindingcount"
+          },
+          "pendingJobsCount": {
+            "type": "integer",
+            "title": "Pendingjobscount"
+          },
+          "qaEvidenceCount": {
+            "type": "integer",
+            "title": "Qaevidencecount"
+          },
+          "qaCitationCount": {
+            "type": "integer",
+            "title": "Qacitationcount"
+          },
+          "requiresStrongConfirmation": {
+            "type": "boolean",
+            "title": "Requiresstrongconfirmation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "canDelete",
+          "blockingReasons",
+          "isActiveVersion",
+          "activeBindingCount",
+          "pendingJobsCount",
+          "qaEvidenceCount",
+          "qaCitationCount",
+          "requiresStrongConfirmation"
+        ],
+        "title": "DeletionImpactAnalysis",
+        "description": "删除影响分析结果。"
       },
       "DependencyConfigItemDTO": {
         "properties": {
@@ -13398,28 +13793,83 @@
       },
       "DocumentUploadResponse": {
         "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "success"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": "上传成功"
+          },
           "document": {
-            "$ref": "#/components/schemas/DocumentDTO"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DocumentDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "version": {
-            "$ref": "#/components/schemas/DocumentVersionDTO"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DocumentVersionDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "ingestJob": {
-            "$ref": "#/components/schemas/IngestJobDTO"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IngestJobDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "storedFile": {
-            "$ref": "#/components/schemas/StoredFileDTO"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StoredFileDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "duplicateInfo": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duplicateinfo"
+          },
+          "fileHash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filehash"
           }
         },
         "type": "object",
-        "required": [
-          "document",
-          "version",
-          "ingestJob",
-          "storedFile"
-        ],
         "title": "DocumentUploadResponse",
-        "description": "上传成功后一次性返回文档、首版本和 queued 作业。"
+        "description": "上传成功后一次性返回文档、首版本和 queued 作业，或文件重复检查结果。"
       },
       "DocumentVersionActivateRequest": {
         "properties": {
@@ -13546,6 +13996,29 @@
           "updatedAt": {
             "type": "string",
             "title": "Updatedat"
+          },
+          "sourceModality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcemodality"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
           }
         },
         "type": "object",
@@ -15667,6 +16140,17 @@
             },
             "type": "array",
             "title": "Documentids"
+          },
+          "versionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Versionid"
           }
         },
         "type": "object",
@@ -15753,6 +16237,50 @@
             ],
             "title": "Errormessage"
           },
+          "activeBindingRevisionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activebindingrevisionid"
+          },
+          "bindingRevisionStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bindingrevisionstatus"
+          },
+          "bindingRevisionChunkCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bindingrevisionchunkcount"
+          },
+          "bindingRevisionVersionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bindingrevisionversionid"
+          },
           "createdAt": {
             "type": "string",
             "title": "Createdat"
@@ -15810,10 +16338,6 @@
             ],
             "title": "Description"
           },
-          "visibility": {
-            "type": "string",
-            "title": "Visibility"
-          },
           "status": {
             "type": "string",
             "title": "Status"
@@ -15838,7 +16362,6 @@
           "ownerId",
           "name",
           "description",
-          "visibility",
           "status",
           "createdAt",
           "updatedAt"
@@ -15871,10 +16394,6 @@
             ],
             "title": "Description"
           },
-          "visibility": {
-            "type": "string",
-            "title": "Visibility"
-          },
           "status": {
             "type": "string",
             "title": "Status"
@@ -15899,7 +16418,6 @@
           "ownerId",
           "name",
           "description",
-          "visibility",
           "status",
           "createdAt",
           "updatedAt"
@@ -15950,6 +16468,50 @@
               }
             ],
             "title": "Activeversionid"
+          },
+          "activeVersionNo": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activeversionno"
+          },
+          "activeVersionFileName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activeversionfilename"
+          },
+          "latestParseStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latestparsestatus"
+          },
+          "latestParseRevisionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latestparserevisionid"
           },
           "createdAt": {
             "type": "string",
@@ -16092,6 +16654,17 @@
             ],
             "title": "Filesize"
           },
+          "fileChecksum": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filechecksum"
+          },
           "status": {
             "type": "string",
             "title": "Status"
@@ -16138,7 +16711,7 @@
           "updatedAt"
         ],
         "title": "LibraryDocumentVersionDTO",
-        "description": "文档库版本 DTO，精简为文本提取状态。"
+        "description": "文档库源文件版本 DTO。"
       },
       "LibraryFullTextResponse": {
         "properties": {
@@ -16293,6 +16866,144 @@
         "title": "LibraryParseJobDTO",
         "description": "文档库解析作业 DTO。"
       },
+      "LibraryParseRevisionCreateResponse": {
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "title": "Jobid"
+          },
+          "parseRevisionId": {
+            "type": "string",
+            "title": "Parserevisionid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "jobId",
+          "parseRevisionId",
+          "status"
+        ],
+        "title": "LibraryParseRevisionCreateResponse",
+        "description": "创建解析版本后的排队响应。"
+      },
+      "LibraryParseRevisionDTO": {
+        "properties": {
+          "parseRevisionId": {
+            "type": "string",
+            "title": "Parserevisionid"
+          },
+          "documentVersionId": {
+            "type": "string",
+            "title": "Documentversionid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "contentFormat": {
+            "type": "string",
+            "title": "Contentformat"
+          },
+          "contentLength": {
+            "type": "integer",
+            "title": "Contentlength"
+          },
+          "contentHash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contenthash"
+          },
+          "parserName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parsername"
+          },
+          "parserVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parserversion"
+          },
+          "parseOptions": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Parseoptions"
+          },
+          "errorCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errorcode"
+          },
+          "errorMessage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errormessage"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "createdBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdby"
+          }
+        },
+        "type": "object",
+        "required": [
+          "parseRevisionId",
+          "documentVersionId",
+          "status",
+          "contentFormat",
+          "contentLength",
+          "contentHash",
+          "parserName",
+          "parserVersion",
+          "parseOptions",
+          "createdAt"
+        ],
+        "title": "LibraryParseRevisionDTO",
+        "description": "文档库解析版本 DTO，不包含知识库分块数量。"
+      },
       "LibraryParsedChunkDTO": {
         "properties": {
           "content": {
@@ -16372,6 +17083,61 @@
         ],
         "title": "LibraryParsedChunksResponse",
         "description": "结构化解析分块响应。"
+      },
+      "LibraryReparseRequest": {
+        "properties": {
+          "parserName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parsername",
+            "default": "auto"
+          },
+          "parserVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parserversion"
+          },
+          "contentFormat": {
+            "type": "string",
+            "enum": [
+              "markdown",
+              "text"
+            ],
+            "title": "Contentformat",
+            "default": "markdown"
+          },
+          "parseOptions": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Parseoptions"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "title": "LibraryReparseRequest",
+        "description": "创建解析版本请求。"
       },
       "LibraryStatsResponse": {
         "properties": {
@@ -18199,6 +18965,99 @@
           "redactionStatus": {
             "type": "string",
             "title": "Redactionstatus"
+          },
+          "sourceStatus": {
+            "type": "string",
+            "title": "Sourcestatus",
+            "default": "available"
+          },
+          "documentName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Documentname"
+          },
+          "versionNo": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Versionno"
+          },
+          "bindingRevisionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bindingrevisionid"
+          },
+          "parseRevisionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parserevisionid"
+          },
+          "documentVersionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Documentversionid"
+          },
+          "pageNo": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pageno"
+          },
+          "sectionPath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sectionpath"
+          },
+          "chunkStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunkstatus"
           }
         },
         "type": "object",
@@ -18853,6 +19712,28 @@
           "updatedAt": {
             "type": "string",
             "title": "Updatedat"
+          },
+          "knowledgeBaseName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledgebasename"
+          },
+          "knowledgeBaseStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledgebasestatus"
           }
         },
         "type": "object",
@@ -19314,7 +20195,11 @@
             "type": "string",
             "enum": [
               "read_only",
-              "document_manage"
+              "document_manage",
+              "library_viewer",
+              "library_binder",
+              "library_editor",
+              "library_manager"
             ],
             "title": "Permissionlevel"
           }
@@ -19351,22 +20236,6 @@
               }
             ],
             "title": "Description"
-          },
-          "visibility": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "public",
-                  "personal",
-                  "partial"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Visibility"
           }
         },
         "type": "object",
