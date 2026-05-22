@@ -1,5 +1,6 @@
-import { apiDelete, apiGet, apiPatchJson, apiPostJson } from "./apiClient";
+import { apiDelete, apiDeleteJson, apiGet, apiPatchJson, apiPostJson } from "./apiClient";
 import type {
+  KbDeleteImpact,
   KbMemberBinding,
   KbMemberCreateRequest,
   KbMemberSubjectOption,
@@ -43,6 +44,14 @@ export async function disableKnowledgeBase(kbId: string): Promise<KnowledgeBase>
 
 export async function enableKnowledgeBase(kbId: string): Promise<KnowledgeBase> {
   return apiPostJson<KnowledgeBase>(`/knowledge-bases/${kbId}/enable`, {});
+}
+
+export async function fetchKbDeleteImpact(kbId: string): Promise<KbDeleteImpact> {
+  return apiGet<KbDeleteImpact>(`/knowledge-bases/${kbId}/delete-impact`);
+}
+
+export async function deleteKnowledgeBase(kbId: string, confirmName: string): Promise<void> {
+  return apiDeleteJson<void>(`/knowledge-bases/${kbId}`, { confirmName });
 }
 
 interface FetchKbMembersParams {

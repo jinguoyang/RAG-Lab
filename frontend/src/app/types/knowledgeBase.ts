@@ -115,3 +115,29 @@ export interface EffectivePermissionSimulationResponse {
   sources: PermissionSource[];
   deniedReasons: string[];
 }
+
+export interface KbDeleteImpactBlocker {
+  activeRagApps: Array<{ appId: string; name: string }>;
+  runningJobs: Array<{ jobId: string; status: string }>;
+}
+
+export interface KbDeleteImpactCascade {
+  bindings: number;
+  kbDocuments: number;
+  chunks: number;
+  configRevisions: number;
+  inactiveRagApps: Array<{ appId: string; name: string; status: string }>;
+  kbMembers: number;
+}
+
+export interface KbDeleteImpactUnaffected {
+  libraryDocuments: number;
+  description: string;
+}
+
+export interface KbDeleteImpact {
+  kbName: string;
+  blockers: KbDeleteImpactBlocker;
+  cascadeData: KbDeleteImpactCascade;
+  unaffected: KbDeleteImpactUnaffected;
+}
