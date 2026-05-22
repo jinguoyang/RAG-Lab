@@ -391,6 +391,7 @@ def _make_run_ingest_job_mocks():
         "version_id": version_id,
         "document_id": doc_id,
         "status": "pending",
+        "result_summary": {},
     }
     version_row = {
         "version_id": version_id,
@@ -541,6 +542,7 @@ def test_run_ingest_job_parse_revision_options_contain_source_modality():
         patch("app.services.document_service._write_chunk_access_filters", return_value={}),
         patch("app.services.document_service.build_chunk_index_payload", return_value={"content": "x"}),
         patch("app.services.document_service._create_index_sync_job", return_value=(None, "success", None)),
+        patch("app.services.document_service._read_ingest_binding_revision", return_value=None),
         patch("app.services.document_service.create_parse_revision") as mock_create_rev,
     ):
         run_ingest_job(
@@ -576,6 +578,7 @@ def test_run_ingest_job_version_metadata_contains_vision_text_provider():
         patch("app.services.document_service._write_chunk_access_filters", return_value={}),
         patch("app.services.document_service.build_chunk_index_payload", return_value={"content": "x"}),
         patch("app.services.document_service._create_index_sync_job", return_value=(None, "success", None)),
+        patch("app.services.document_service._read_ingest_binding_revision", return_value=None),
         patch("app.services.document_service.create_parse_revision"),
     ):
         run_ingest_job(
@@ -625,6 +628,7 @@ def test_run_ingest_job_image_chunk_content_not_empty():
         patch("app.services.document_service._write_chunk_access_filters", return_value={}),
         patch("app.services.document_service.build_chunk_index_payload", return_value={"content": "x"}),
         patch("app.services.document_service._create_index_sync_job", return_value=(None, "success", None)),
+        patch("app.services.document_service._read_ingest_binding_revision", return_value=None),
         patch("app.services.document_service.create_parse_revision"),
     ):
         run_ingest_job(
@@ -668,6 +672,7 @@ def test_run_ingest_job_image_chunk_metadata_source_modality():
         patch("app.services.document_service._write_chunk_access_filters", return_value={}),
         patch("app.services.document_service.build_chunk_index_payload", return_value={"content": "x"}),
         patch("app.services.document_service._create_index_sync_job", return_value=(None, "success", None)),
+        patch("app.services.document_service._read_ingest_binding_revision", return_value=None),
         patch("app.services.document_service.create_parse_revision"),
     ):
         run_ingest_job(
@@ -710,6 +715,7 @@ def test_run_ingest_job_image_chunk_metadata_source_file_name():
         patch("app.services.document_service._write_chunk_access_filters", return_value={}),
         patch("app.services.document_service.build_chunk_index_payload", return_value={"content": "x"}),
         patch("app.services.document_service._create_index_sync_job", return_value=(None, "success", None)),
+        patch("app.services.document_service._read_ingest_binding_revision", return_value=None),
         patch("app.services.document_service.create_parse_revision"),
     ):
         run_ingest_job(
@@ -756,6 +762,7 @@ def test_run_ingest_job_image_dense_payload_contains_content_and_filters():
         patch("app.services.document_service._write_chunk_access_filters", return_value={}),
         patch("app.services.document_service.build_chunk_index_payload", side_effect=capture_payload),
         patch("app.services.document_service._create_index_sync_job", return_value=(None, "success", None)),
+        patch("app.services.document_service._read_ingest_binding_revision", return_value=None),
         patch("app.services.document_service.create_parse_revision"),
     ):
         run_ingest_job(
@@ -797,6 +804,7 @@ def test_run_ingest_job_image_chunk_no_visual_index():
         patch("app.services.document_service._write_chunk_access_filters", return_value={}),
         patch("app.services.document_service.build_chunk_index_payload", return_value={"content": "x"}),
         patch("app.services.document_service._create_index_sync_job") as mock_sync,
+        patch("app.services.document_service._read_ingest_binding_revision", return_value=None),
         patch("app.services.document_service.create_parse_revision"),
     ):
         mock_sync.return_value = (None, "success", None)

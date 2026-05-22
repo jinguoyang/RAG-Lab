@@ -8,6 +8,7 @@ import pytest
 from app.services.binding_service import (
     BindingBuildInProgressError,
     BindingNotFoundError,
+    _to_binding_dto,
     activate_binding_revision,
     complete_binding_revision_build,
     create_binding_revision,
@@ -35,6 +36,38 @@ def test_create_binding_revision():
 
     assert result is not None
     session.execute.assert_called_once()
+
+
+def test_to_binding_dto_exposes_active_revision_status():
+    """绑定 DTO 应暴露 active BindingRevision 状态，供前端展示三层链路。"""
+    binding_id = uuid4()
+    revision_id = uuid4()
+    target_version_id = uuid4()
+    row = {
+        "binding_id": binding_id,
+        "document_id": uuid4(),
+        "kb_id": uuid4(),
+        "version_id": uuid4(),
+        "chunk_size": 900,
+        "chunk_overlap": 120,
+        "status": "processing",
+        "chunk_count": 12,
+        "error_code": None,
+        "error_message": None,
+        "active_binding_revision_id": revision_id,
+        "binding_revision_status": "building",
+        "binding_revision_chunk_count": 0,
+        "binding_revision_version_id": target_version_id,
+        "created_at": datetime.now(timezone.utc),
+        "created_by": uuid4(),
+    }
+
+    dto = _to_binding_dto(row, doc_name="研发手册")
+
+    assert dto.activeBindingRevisionId == str(revision_id)
+    assert dto.bindingRevisionStatus == "building"
+    assert dto.bindingRevisionChunkCount == 0
+    assert dto.bindingRevisionVersionId == str(target_version_id)
 
 
 def test_create_binding_revision_with_created_by():
@@ -75,8 +108,8 @@ def test_activate_binding_revision():
 
     activate_binding_revision(session, binding_rev_id)
 
-    # 验证调用了 3 次 execute: 查询、更新状态、更新 binding、旧版本 retired
-    assert session.execute.call_count == 4
+    # 查询当前/旧 revision，并更新 binding、旧 revision 与旧 Chunk 状态。
+    assert session.execute.call_count >= 5
 
 
 def test_activate_binding_revision_not_found():

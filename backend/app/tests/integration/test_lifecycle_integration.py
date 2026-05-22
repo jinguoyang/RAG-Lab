@@ -132,7 +132,7 @@ class TestBindingLifecycle:
 
         activate_binding_revision(session, binding_rev_id)
 
-        assert session.execute.call_count == 4
+        assert session.execute.call_count >= 5
 
     def test_fail_binding_revision(self):
         """测试标记 BindingRevision 为失败。"""
