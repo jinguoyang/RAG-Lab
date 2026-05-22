@@ -27,18 +27,6 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function visibilityLabel(v: string) {
-  if (v === "public") return "公开";
-  if (v === "partial") return "部分";
-  return "个人";
-}
-
-function visibilityVariant(v: string) {
-  if (v === "public") return "success";
-  if (v === "partial") return "info";
-  return "default";
-}
-
 function parseStatusLabel(status?: string | null) {
   if (status === "success") return "解析成功";
   if (status === "failed") return "解析失败";
@@ -274,11 +262,9 @@ export function LibraryDocuments() {
           ]}
           actions={
             <div className="flex items-center gap-2">
-              {library?.visibility === "partial" && (
-                <Button variant="secondary" onClick={() => navigate(`/library/${libraryId}/members`)}>
-                  <Users className="w-4 h-4 mr-2" /> 成员管理
-                </Button>
-              )}
+              <Button variant="secondary" onClick={() => navigate(`/library/${libraryId}/members`)}>
+                <Users className="w-4 h-4 mr-2" /> 成员管理
+              </Button>
               <Button onClick={() => setIsUploadOpen(true)}>
                 <Upload className="w-4 h-4 mr-2" /> 上传文档
               </Button>
@@ -293,7 +279,6 @@ export function LibraryDocuments() {
 
         {library && (
           <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border-cream bg-ivory px-4 py-3 text-sm">
-            <Badge variant={visibilityVariant(library.visibility)}>{visibilityLabel(library.visibility)}</Badge>
             <span className="text-stone-gray">{library.documentCount} 个文档</span>
             <span className="text-stone-gray">最近更新 {new Date(library.updatedAt).toLocaleString("zh-CN")}</span>
           </div>
