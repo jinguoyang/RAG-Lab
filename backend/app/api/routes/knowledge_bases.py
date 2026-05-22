@@ -10,6 +10,8 @@ from app.core.database import get_db_session
 from app.schemas.auth import CurrentUserResponse
 from app.schemas.common import PageResponse
 from app.schemas.knowledge_base import (
+    KbDeleteImpactDTO,
+    KbDeleteRequest,
     KbMemberBindingDTO,
     KbMemberCreateRequest,
     KbMemberSubjectOptionDTO,
@@ -27,7 +29,9 @@ from app.services.dictionary_service import DictionaryValidationError
 from app.services.permission_service import get_kb_permission_summary, simulate_effective_permission
 from app.services.knowledge_base_service import (
     KnowledgeBaseActiveRagAppsError,
+    KnowledgeBaseConfirmNameMismatchError,
     KnowledgeBaseIndexCapabilityLockedError,
+    KnowledgeBaseRunningJobsError,
     KbMemberBindingConflictError,
     KbMemberBindingNotFoundError,
     KbMemberSubjectNotFoundError,
@@ -36,8 +40,10 @@ from app.services.knowledge_base_service import (
     KnowledgeBasePermissionError,
     create_knowledge_base,
     create_kb_member,
+    delete_knowledge_base,
     disable_knowledge_base,
     enable_knowledge_base,
+    get_kb_delete_impact,
     get_knowledge_base,
     list_knowledge_bases,
     list_kb_members,
@@ -108,6 +114,16 @@ def _raise_kb_management_error(exc: Exception) -> None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="KB_HAS_ACTIVE_RAG_APPS",
+        ) from exc
+    if isinstance(exc, KnowledgeBaseConfirmNameMismatchError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="CONFIRM_NAME_MISMATCH: confirm name does not match knowledge base name.",
+        ) from exc
+    if isinstance(exc, KnowledgeBaseRunningJobsError):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="RUNNING_JOBS_EXIST: knowledge base has running ingest jobs.",
         ) from exc
     if isinstance(exc, DictionaryValidationError):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -203,6 +219,33 @@ def enable_knowledge_base_endpoint(
     """恢复启用知识库，重新允许上传、配置保存和 QA 调试等写操作。"""
     try:
         return enable_knowledge_base(session, current_user, kb_id)
+    except Exception as exc:
+        _raise_kb_management_error(exc)
+
+
+@router.get("/{kb_id}/delete-impact", response_model=KbDeleteImpactDTO)
+def get_kb_delete_impact_endpoint(
+    kb_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> KbDeleteImpactDTO:
+    """查询删除知识库会影响的数据范围。"""
+    try:
+        return get_kb_delete_impact(session, current_user, kb_id)
+    except Exception as exc:
+        _raise_kb_management_error(exc)
+
+
+@router.delete("/{kb_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_knowledge_base_endpoint(
+    kb_id: UUID,
+    request: KbDeleteRequest,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> None:
+    """删除知识库及级联数据，需输入名称确认。"""
+    try:
+        delete_knowledge_base(session, current_user, kb_id, request.confirmName)
     except Exception as exc:
         _raise_kb_management_error(exc)
 
