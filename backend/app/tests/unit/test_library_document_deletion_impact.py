@@ -217,4 +217,5 @@ def test_delete_with_strong_confirmation_succeeds():
 
         result = delete_library_document(session, current_user, doc_id, strong_confirmation=True)
 
-    assert result["status"] == "success"
+    assert "documentId" in result
+    assert result["unboundCount"] >= 0

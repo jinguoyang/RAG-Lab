@@ -927,7 +927,7 @@ def rechunk_document(
     # 1. 校验 binding 存在
     binding_row = session.execute(
         select(document_kb_bindings).where(
-            document_kb_bindings.c.knowledge_base_id == kb_uuid,
+            document_kb_bindings.c.kb_id == kb_uuid,
             document_kb_bindings.c.document_id == doc_uuid,
         )
     ).mappings().first()

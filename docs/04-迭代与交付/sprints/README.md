@@ -6,10 +6,17 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 
 - Sprint 35 已完成，主题为前端动作驱动的真实数据验收硬化，所有 Backlog（B-146、B-150 至 B-155）已 Done。
 - Sprint 36 已完成，主题为文档库基础框架与文档解析，实现数据库迁移、上传/列表/详情 API、P15/P16 前端页面、PDF/Markdown 预览组件和验收脚本。
-- Sprint 37 至 Sprint 38 已规划，主题为 E28 文档库后续功能，范围见 [E28 文档库功能实施计划](../plans/2026-05-19-e28-document-library.md)。
-- Sprint 40 至 Sprint 43 已规划，主题为 E30 三层架构模型收口，范围见 [E30 三层架构模型收口实施计划](../plans/2026-05-21-e30-three-layer-architecture-refactor.md)。
-- Sprint 44 已规划，主题为 E31 图片 RAG 第一阶段，范围见 [图片多模态 RAG 第一阶段实施计划](../plans/2026-05-21-image-rag-phase1.md)。
-- 下一版本为 V1.9，计划承接 E23 图快照保留与配置治理、E24 文档解析能力增强；E27 RAG App 运行治理与接入可见性已完成。E28 文档库功能作为后续文档库 V1.0 规划进入 Sprint 36 至 Sprint 38。
+- Sprint 37 已完成，主题为 E28 文档库后续功能：文本预览 API、绑定服务、分块向量化、文档删除、重试机制、TXT/DOCX 预览组件和使用情况查询。
+- Sprint 38 已完成，主题为 E28 文档库增强：权限收口、批量操作、自动重试、统计端点、RBAC 权限检查和前端统计卡片。
+- Sprint 39 已完成，主题为 E29 UI 一致性统一。
+- Sprint 40 已完成，主题为 E30 三层架构基线：ParseRevision/ChunkRevision 表创建、chunks/document_kb_bindings 表结构改造、权限收口和数据迁移。
+- Sprint 41 已完成，主题为 E30 后端生命周期改造：ParseRevision 创建、文件 hash 重复检查、source_status 字段和三层架构后端重构。
+- Sprint 42 已完成，主题为 E30 前端体验改造：删除影响分析、版本选择器、证据回溯链路、成员权限页面和应用管理增强。
+- Sprint 43 已完成，主题为 E30 回归验收：Playwright E2E 测试基础设施、主链路/删除/权限回归测试和文档同步检查。
+- Sprint 44 已完成，主题为 E31 图片 RAG 第一阶段：VisionTextProvider 抽象、图片解析 Pipeline、图片 Chunk 入库和 Citation 来源回溯。
+- Sprint 45 已完成，主题为 BindingRevision → ChunkRevision 后端重命名：DB 迁移、标识符全量替换、strategy/params 字段化、rechunk API 和单元测试。
+- Sprint 46 待开发，主题为 ChunkRevision 前端改造与文档同步。
+- 下一版本为 V1.9，计划承接 E23 图快照保留与配置治理、E24 文档解析能力增强；E27 RAG App 运行治理与接入可见性已完成。E28 文档库功能已全部完成。
 - Sprint 01 至 Sprint 26 已完成，对应 V1.0 至 V1.7。
 - Sprint 27 至 Sprint 29 已完成 E22 知识库治理工作流强化范围：P05 支持治理问题定位和治理后验证摘要，P06 支持批量治理和索引同步作业，P07 支持 Chunk 治理标记、索引重建和作业查看。
 - Sprint 30 已完成 E25 的第一轮交付：RAG 应用定义、App API Key、blocking 对话接口、会话/消息/调用记录和最小接口抽样验证。
@@ -35,14 +42,16 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 | Sprint 34 | V1.8 | App Runtime 治理回流与输入能力评估 | Done | `sprint21-40/Sprint-34.md` |
 | Sprint 35 | V1.8 收尾 | 前端动作驱动的真实数据验收硬化 | Done | `sprint21-40/Sprint-35.md` |
 | Sprint 36 | 文档库 V1.0 | 文档库基础模型、上传、文本提取和 PDF/Markdown 预览 | Done | `sprint21-40/Sprint-36.md` |
-| Sprint 37 | 文档库 V1.0 | 文档预览完善、知识库绑定和绑定后切块向量化 | Planned | `sprint21-40/Sprint-37.md` |
-| Sprint 38 | 文档库 V1.0 | 权限收口、批量操作、大文件体验、错误处理和测试覆盖 | Planned | `sprint21-40/Sprint-38.md` |
+| Sprint 37 | 文档库 V1.0 | 文档预览完善、知识库绑定和绑定后切块向量化 | Done | `sprint21-40/Sprint-37.md` |
+| Sprint 38 | 文档库 V1.0 | 权限收口、批量操作、大文件体验、错误处理和测试覆盖 | Done | `sprint21-40/Sprint-38.md` |
 | Sprint 39 | UI V1.1 | UI/交互风格统一 — 文档库、应用中心、字典管理对齐知识库 | Done | `sprint21-40/Sprint-39.md` |
-| Sprint 40 | 架构演进 V2.0 | 三层架构模型基线与权限收口 | Planned | `sprint21-40/Sprint-40.md` |
-| Sprint 41 | 架构演进 V2.0 | 三层架构后端生命周期改造 | Planned | `sprint41-60/Sprint-41.md` |
-| Sprint 42 | 架构演进 V2.0 | 三层架构前端体验改造 | Planned | `sprint41-60/Sprint-42.md` |
-| Sprint 43 | 架构演进 V2.0 | 三层架构回归验收与文档同步 | Planned | `sprint41-60/Sprint-43.md` |
-| Sprint 44 | 多模态 RAG Phase 1 | 图片 RAG 第一阶段：视觉文本 Chunk 闭环 | Planned | `sprint41-60/Sprint-44.md` |
+| Sprint 40 | 架构演进 V2.0 | 三层架构模型基线与权限收口 | Done | `sprint21-40/Sprint-40.md` |
+| Sprint 41 | 架构演进 V2.0 | 三层架构后端生命周期改造 | Done | `sprint41-60/Sprint-41.md` |
+| Sprint 42 | 架构演进 V2.0 | 三层架构前端体验改造 | Done | `sprint41-60/Sprint-42.md` |
+| Sprint 43 | 架构演进 V2.0 | 三层架构回归验收与文档同步 | Done | `sprint41-60/Sprint-43.md` |
+| Sprint 44 | 多模态 RAG Phase 1 | 图片 RAG 第一阶段：视觉文本 Chunk 闭环 | Done | `sprint41-60/Sprint-44.md` |
+| Sprint 45 | 架构演进 V2.0 | BindingRevision → ChunkRevision 后端重命名与 Rechunk | Done | `sprint41-60/Sprint-45.md` |
+| Sprint 46 | 架构演进 V2.0 | ChunkRevision 前端改造与文档同步 | Ready | `sprint41-60/Sprint-46.md` |
 
 ## 3. 单个 Sprint 文档约定
 

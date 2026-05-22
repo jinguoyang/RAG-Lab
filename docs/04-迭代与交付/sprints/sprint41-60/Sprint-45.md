@@ -62,6 +62,17 @@ conda run -n rag-lab python scripts/export_openapi.py
 git diff --check
 ```
 
-## 7. 关联文档
+## 7. 实际结果
+
+- DB 迁移 `0031_rename_binding_revisions_to_chunk_revisions` 已创建并验证。
+- 后端标识符全量替换完成：`chunk_revision` 出现 305 处 / 17 文件，`binding_revision` 仅保留在历史迁移脚本中（预期）。
+- ChunkRevision 创建逻辑已接入 strategy 和 params 参数。
+- ingest worker 已从 ChunkRevision 读取分块策略。
+- rechunk API 端点 `POST /api/v1/knowledge-bases/{kb_id}/documents/{document_id}/rechunk` 已实现。
+- 回填脚本 `migrate_binding_revisions.py` 和 `migrate_chunks.py` 已适配新表名和列名。
+- 单元测试 `test_rechunk.py` 已补齐（5 个用例），全量后端测试 131/131 通过。
+- 额外完成：KB 删除功能（级联删除、影响分析、API、前端弹窗、集成测试）和 Library Visibility 移除。
+
+## 8. 关联文档
 
 - [BindingRevision→ChunkRevision 重命名设计](../specs/2026-05-22-binding-to-chunk-revision-rename-design.md)

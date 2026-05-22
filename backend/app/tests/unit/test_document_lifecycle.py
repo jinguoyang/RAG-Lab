@@ -280,8 +280,6 @@ def test_list_chunks_filters_active_chunk_revision(db, admin_user):
             document_id=library_doc_id,
             kb_id=kb_id,
             version_id=version_id,
-            chunk_size=900,
-            chunk_overlap=120,
             status="active",
             chunk_count=1,
             error_code=None,

@@ -249,5 +249,9 @@ export async function apiDeleteJson<T>(path: string, body: unknown): Promise<T> 
     await throwApiError(response);
   }
 
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   return response.json() as Promise<T>;
 }

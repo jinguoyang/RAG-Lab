@@ -36,3 +36,4 @@ Release 面向版本发布，汇总跨 Epic、跨 Sprint 的交付范围、验�
 
 - V1.8 已完成所有 Backlog（Sprint 30-35），真实 Provider 网络级复测已在当前环境通过。切换测试或预生产环境后仍需重新执行复测并回填。
 - V1.9 规划中，E23 图快照保留治理和 E24 文档解析增强均为 Ready 状态，待排入 Sprint；E27 RAG App 运行治理与接入可见性已完成。
+- E28 文档库功能已全部完成（Sprint 36-38），E29 UI 一致性已完成（Sprint 39），E30 三层架构 Sprint 40-45 已完成、Sprint 46 待开发，E31 图片 RAG 第一阶段已完成（Sprint 44）。
