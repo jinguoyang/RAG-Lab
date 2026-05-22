@@ -1065,16 +1065,28 @@ def run_ingest_job(
             parser_name = "library_reuse"
             parser_version = "library_reuse"
         elif is_rechunk:
-            # Rechunk: reuse existing parsed_chunks from version metadata, skip re-parsing
+            # Rechunk: try to reuse parsed_chunks, fall back to re-parsing
             version_meta = version_row.get("metadata") or {}
             rechunk_parsed = version_meta.get("parsed_chunks")
-            if not rechunk_parsed:
-                raise DocumentConflictError(
-                    "Cannot rechunk: version metadata has no stored parsed_chunks."
-                )
-            parsed_chunks = [_DictAsObj(d) for d in rechunk_parsed]
-            parser_name = version_meta.get("parserName", "rechunk_reuse")
-            parser_version = version_meta.get("parserVersion", "rechunk_reuse")
+            if rechunk_parsed:
+                parsed_chunks = [_DictAsObj(d) for d in rechunk_parsed]
+                parser_name = version_meta.get("parserName", "rechunk_reuse")
+                parser_version = version_meta.get("parserVersion", "rechunk_reuse")
+            else:
+                # No stored parsed_chunks: re-parse from source file
+                if chunk_strategy == "fixed_size":
+                    parsed_document = parse_document(
+                        file_name,
+                        file_row["mime_type"] if file_row else None,
+                        source_bytes or b"",
+                        chunk_size=chunk_params.get("chunk_size", 900),
+                        chunk_overlap=chunk_params.get("chunk_overlap", 120),
+                    )
+                else:
+                    raise ValueError(f"Unsupported chunking strategy: {chunk_strategy}")
+                parsed_chunks = parsed_document.chunks
+                parser_name = parsed_document.parser_name
+                parser_version = parsed_document.parser_version
         else:
             if chunk_strategy == "fixed_size":
                 parsed_document = parse_document(
@@ -1091,11 +1103,12 @@ def run_ingest_job(
             parser_version = parsed_document.parser_version
         stage_timings["parse"] = round(time.perf_counter() - stage_started_at, 3)
 
-        # 解析完成后创建 ParseRevision（rechunk 跳过，复用已有 ParseRevision）
+        # 解析完成后创建 ParseRevision（仅复用 parsed_chunks 时跳过）
+        rechunk_reused_chunks = is_rechunk and parser_name == "rechunk_reuse"
         content_text = "\n\n".join(chunk.content for chunk in parsed_chunks if chunk.content)
         is_image = parser_name == "vision_text"
         content_format = "markdown" if (parser_name == "markdown" or is_image) else "text"
-        if is_rechunk:
+        if rechunk_reused_chunks:
             generated_parse_revision_id = (
                 chunk_revision_row["parse_revision_id"]
                 if chunk_revision_row is not None
