@@ -6,6 +6,7 @@ import { Button } from "../components/rag/Button";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "../components/rag/Card";
 import { Input } from "../components/rag/Input";
 import { StatusBadge } from "../components/rag/Badge";
+import { KbDeleteDialog } from "../components/rag/KbDeleteDialog";
 import { useConfirmDialog } from "../components/rag/ConfirmDialog";
 import {
   Dialog,
@@ -15,19 +16,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../components/ui/dialog";
-import { Edit3, Power, Plus, Search } from "lucide-react";
+import { Edit3, Power, Plus, Search, Trash2 } from "lucide-react";
 import { toKnowledgeBaseCard } from "../adapters/knowledgeBaseAdapter";
 import { chooseActiveDictionaryValue, dictionaryItemsToOptions, fetchDictionaryItemsWithFallback } from "../services/dictionaryService";
 import {
   createKnowledgeBase,
+  deleteKnowledgeBase,
   disableKnowledgeBase,
   enableKnowledgeBase,
+  fetchKbDeleteImpact,
   fetchKnowledgeBases,
   updateKnowledgeBase,
 } from "../services/knowledgeBaseService";
 import { fetchDocuments } from "../services/documentService";
 import type { DictionaryItemDTO } from "../types/dictionary";
-import type { KnowledgeBase, KnowledgeBaseCreateRequest } from "../types/knowledgeBase";
+import type { KbDeleteImpact, KnowledgeBase, KnowledgeBaseCreateRequest } from "../types/knowledgeBase";
 
 interface KnowledgeBaseFormState {
   name: string;
@@ -251,6 +254,50 @@ export function PlatformHome() {
     }
   };
 
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteImpact, setDeleteImpact] = useState<KbDeleteImpact | null>(null);
+  const [deleteImpactLoading, setDeleteImpactLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [kbToDelete, setKbToDelete] = useState<KnowledgeBase | null>(null);
+
+  const handleOpenDeleteDialog = async (event: MouseEvent<HTMLButtonElement>, kb: KnowledgeBase) => {
+    event.stopPropagation();
+    setKbToDelete(kb);
+    setDeleteDialogOpen(true);
+    setDeleteImpactLoading(true);
+    try {
+      const impact = await fetchKbDeleteImpact(kb.kbId);
+      setDeleteImpact(impact);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "获取删除影响信息失败。");
+      setDeleteDialogOpen(false);
+    } finally {
+      setDeleteImpactLoading(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!kbToDelete || !deleteImpact) return;
+    setDeleting(true);
+    try {
+      await deleteKnowledgeBase(kbToDelete.kbId, deleteImpact.kbName);
+      setDeleteDialogOpen(false);
+      setKbToDelete(null);
+      await loadKnowledgeBases(keyword);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "知识库删除失败。";
+      setErrorMessage(
+        message.includes("CONFIRM_NAME_MISMATCH")
+          ? "名称不匹配，请重新输入。"
+          : message.includes("KB_HAS_ACTIVE_RAG_APPS")
+            ? "该知识库仍有关联的活跃应用。请先停用相关应用。"
+            : message,
+      );
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="p-8 max-w-7xl mx-auto">
       <PageHeader
@@ -353,6 +400,15 @@ export function PlatformHome() {
                   >
                     <Power className="h-4 w-4" />
                     <span className="sr-only">{isDisabled ? "恢复启用" : "停用"}</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    title="删除知识库"
+                    onClick={(event) => handleOpenDeleteDialog(event, kb)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span className="sr-only">删除</span>
                   </Button>
                 </CardFooter>
               </Card>
@@ -464,6 +520,15 @@ export function PlatformHome() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <KbDeleteDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        impact={deleteImpact}
+        loading={deleteImpactLoading}
+        onConfirm={handleConfirmDelete}
+        deleting={deleting}
+      />
     </div>
   );
 }

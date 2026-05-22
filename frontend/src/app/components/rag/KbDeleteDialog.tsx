@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Trash2 } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Button } from "@/components/rag/Button";
-import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../ui/dialog";
+import { Button } from "./Button";
+import { Input } from "../ui/input";
 import type { KbDeleteImpact } from "@/types/knowledgeBase";
 
 interface KbDeleteDialogProps {
