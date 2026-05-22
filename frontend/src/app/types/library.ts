@@ -2,7 +2,6 @@ import type { PageResponse } from "./knowledgeBase";
 
 export type LibraryDocumentStatus = "active" | "disabled" | "archived";
 export type LibraryParseJobStatus = "queued" | "running" | "success" | "failed" | "cancelled";
-export type LibraryVisibility = "public" | "personal" | "partial";
 export type LibraryMemberPermissionLevel =
   | "read_only"
   | "document_manage"
@@ -32,7 +31,6 @@ export interface LibraryDTO {
   ownerId: string;
   name: string;
   description: string | null;
-  visibility: LibraryVisibility;
   status: string;
   documentCount: number;
   createdAt: string;
