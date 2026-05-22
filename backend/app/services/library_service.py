@@ -329,7 +329,6 @@ def create_library_upload(
                     library_id=library_id,
                     owner_id=actor_id,
                     name="默认文档库",
-                    visibility="personal",
                     status="active",
                     created_at=now,
                     created_by=actor_id,
