@@ -446,8 +446,6 @@ def bind_documents_to_kb(
                 document_id=doc_id,
                 kb_id=kb_id,
                 version_id=kb_version_id,
-                chunk_size=chunk_params.get("chunk_size", 900),
-                chunk_overlap=chunk_params.get("chunk_overlap", 120),
                 status="pending",
                 chunk_count=0,
                 created_by=actor_id,
@@ -806,6 +804,21 @@ def switch_binding_version(
     ).mappings().first()
     parse_revision_id = parse_rev["parse_revision_id"] if parse_rev else uuid4()
 
+    # 继承当前 active ChunkRevision 的分块策略
+    active_rev_id = binding_row.get("active_chunk_revision_id")
+    inherited_strategy = "fixed_size"
+    inherited_params = None
+    if active_rev_id:
+        active_rev = session.execute(
+            select(chunk_revisions).where(
+                chunk_revisions.c.chunk_revision_id == active_rev_id,
+                chunk_revisions.c.deleted_at.is_(None),
+            )
+        ).mappings().first()
+        if active_rev:
+            inherited_strategy = active_rev.get("strategy", "fixed_size")
+            inherited_params = active_rev.get("params")
+
     # 创建新的 BindingRevision（状态为 building）
     chunk_revision_id = create_chunk_revision(
         session=session,
@@ -814,8 +827,8 @@ def switch_binding_version(
         document_id=lib_doc_id,
         document_version_id=target_library_version_id,
         parse_revision_id=parse_revision_id,
-        strategy="fixed_size",
-        params=None,
+        strategy=inherited_strategy,
+        params=inherited_params,
         created_by=actor_id,
     )
 

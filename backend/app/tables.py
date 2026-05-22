@@ -370,6 +370,8 @@ chunk_revisions = sa.Table(
     sa.Column("retired_at", sa.DateTime(timezone=True), nullable=True),
     sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
     sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("strategy", sa.String(length=32), nullable=False, server_default="fixed_size"),
+    sa.Column("params", postgresql.JSONB(), nullable=False, server_default="{}"),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
 )
 

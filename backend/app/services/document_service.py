@@ -480,7 +480,7 @@ def _to_chunk_dto(row: RowMapping) -> ChunkDTO:
         versionId=str(row["version_id"]),
         documentId=str(row["document_id"]),
         kbId=str(row["kb_id"]),
-        bindingRevisionId=str(row["chunk_revision_id"]) if row.get("chunk_revision_id") else None,
+        chunkRevisionId=str(row["chunk_revision_id"]) if row.get("chunk_revision_id") else None,
         parseRevisionId=str(row["parse_revision_id"]) if row.get("parse_revision_id") else None,
         documentVersionId=str(row["document_version_id"]) if row.get("document_version_id") else None,
         chunkIndex=row["chunk_index"],
