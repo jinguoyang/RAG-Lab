@@ -350,7 +350,6 @@ export async function fetchLibraries(params: {
 export async function createLibrary(body: {
   name: string;
   description?: string;
-  visibility: "public" | "personal" | "partial";
 }): Promise<LibraryDTO> {
   return apiPostJson<LibraryDTO>("/library", body);
 }
@@ -361,7 +360,7 @@ export async function fetchLibraryDetail(libraryId: string): Promise<LibraryDTO>
 
 export async function updateLibrary(
   libraryId: string,
-  body: { name?: string; description?: string; visibility?: string },
+  body: { name?: string; description?: string },
 ): Promise<LibraryDTO> {
   return apiPatchJson<LibraryDTO>(`/library/${libraryId}`, body);
 }
