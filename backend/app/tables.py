@@ -176,7 +176,6 @@ document_libraries = sa.Table(
     sa.Column("owner_id", postgresql.UUID(as_uuid=True), nullable=False),
     sa.Column("name", sa.String(length=128), nullable=False),
     sa.Column("description", sa.Text(), nullable=True),
-    sa.Column("visibility", sa.String(length=16), nullable=False),
     sa.Column("status", sa.String(length=16), nullable=False),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
