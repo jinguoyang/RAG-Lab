@@ -7,6 +7,10 @@ from sqlalchemy.orm import Session
 from app.schemas.auth import CurrentUserResponse
 from app.schemas.common import PageResponse
 from app.schemas.knowledge_base import (
+    KbDeleteImpactCascadeDTO,
+    KbDeleteImpactDTO,
+    KbDeleteImpactBlockerDTO,
+    KbDeleteImpactUnaffectedDTO,
     KbMemberBindingDTO,
     KbMemberCreateRequest,
     KbMemberSubjectOptionDTO,
@@ -20,7 +24,7 @@ from app.services.dictionary_service import require_active_dict_item
 from app.services.audit_service import write_audit_log
 from app.services.default_pipeline import build_default_pipeline_definition
 from app.services.permission_service import has_kb_permission, kb_visibility_condition
-from app.tables import config_revisions, documents, kb_member_bindings, knowledge_bases, rag_apps, user_groups, users
+from app.tables import chunks, config_revisions, document_kb_bindings, documents, ingest_jobs, kb_member_bindings, knowledge_bases, rag_apps, user_groups, users
 
 
 class KnowledgeBasePermissionError(Exception):
@@ -41,6 +45,14 @@ class KnowledgeBaseIndexCapabilityLockedError(Exception):
 
 class KnowledgeBaseActiveRagAppsError(Exception):
     """知识库仍绑定启用中的 RAG App，不能直接停用。"""
+
+
+class KnowledgeBaseConfirmNameMismatchError(Exception):
+    """删除确认名称不匹配。"""
+
+
+class KnowledgeBaseRunningJobsError(Exception):
+    """存在运行中的摄入任务，无法删除。"""
 
 
 class KbMemberBindingNotFoundError(Exception):
@@ -434,6 +446,113 @@ def enable_knowledge_base(
     )
     session.commit()
     return _to_dto(row)
+
+
+def get_kb_delete_impact(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+) -> KbDeleteImpactDTO:
+    """查询删除知识库会影响的数据范围。"""
+    kb_row = _read_visible_kb_row(session, current_user, kb_id)
+
+    # 阻断条件：活跃 RAG 应用
+    active_apps = session.execute(
+        select(rag_apps.c.app_id, rag_apps.c.name)
+        .where(
+            rag_apps.c.kb_id == kb_id,
+            rag_apps.c.status == "active",
+            rag_apps.c.deleted_at.is_(None),
+        )
+    ).mappings().all()
+
+    # 阻断条件：运行中的 ingest_job
+    running_jobs = session.execute(
+        select(ingest_jobs.c.job_id, ingest_jobs.c.status)
+        .where(
+            ingest_jobs.c.kb_id == kb_id,
+            ingest_jobs.c.status.in_(["pending", "processing"]),
+        )
+    ).mappings().all()
+
+    # 级联数据统计
+    binding_count = session.execute(
+        select(func.count())
+        .select_from(document_kb_bindings)
+        .where(
+            document_kb_bindings.c.kb_id == kb_id,
+            document_kb_bindings.c.status.in_(["active", "processing", "pending", "failed"]),
+        )
+    ).scalar_one()
+
+    kb_doc_count = session.execute(
+        select(func.count())
+        .select_from(documents)
+        .where(
+            documents.c.kb_id == kb_id,
+            documents.c.deleted_at.is_(None),
+        )
+    ).scalar_one()
+
+    chunk_count = session.execute(
+        select(func.count())
+        .select_from(chunks)
+        .where(
+            chunks.c.kb_id == kb_id,
+        )
+    ).scalar_one()
+
+    config_count = session.execute(
+        select(func.count())
+        .select_from(config_revisions)
+        .where(config_revisions.c.knowledge_base_id == kb_id)
+    ).scalar_one()
+
+    inactive_apps = session.execute(
+        select(rag_apps.c.app_id, rag_apps.c.name, rag_apps.c.status)
+        .where(
+            rag_apps.c.kb_id == kb_id,
+            rag_apps.c.status.in_(["disabled", "archived"]),
+            rag_apps.c.deleted_at.is_(None),
+        )
+    ).mappings().all()
+
+    member_count = session.execute(
+        select(func.count())
+        .select_from(kb_member_bindings)
+        .where(kb_member_bindings.c.kb_id == kb_id)
+    ).scalar_one()
+
+    # 不受影响的数据
+    library_doc_count = session.execute(
+        select(func.count())
+        .select_from(documents)
+        .where(
+            documents.c.kb_id == kb_id,
+            documents.c.library_id.is_not(None),
+            documents.c.deleted_at.is_(None),
+        )
+    ).scalar_one()
+
+    return KbDeleteImpactDTO(
+        kbName=kb_row["name"],
+        blockers=KbDeleteImpactBlockerDTO(
+            activeRagApps=[{"appId": str(r["app_id"]), "name": r["name"]} for r in active_apps],
+            runningJobs=[{"jobId": str(r["job_id"]), "status": r["status"]} for r in running_jobs],
+        ),
+        cascadeData=KbDeleteImpactCascadeDTO(
+            bindings=binding_count,
+            kbDocuments=kb_doc_count,
+            chunks=chunk_count,
+            configRevisions=config_count,
+            inactiveRagApps=[{"appId": str(r["app_id"]), "name": r["name"], "status": r["status"]} for r in inactive_apps],
+            kbMembers=member_count,
+        ),
+        unaffected=KbDeleteImpactUnaffectedDTO(
+            libraryDocuments=library_doc_count,
+            description="文件库中的源文档不会被删除",
+        ),
+    )
 
 
 def create_knowledge_base(
