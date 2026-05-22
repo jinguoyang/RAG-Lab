@@ -89,7 +89,6 @@ def _ensure_library_access(
         permission_code=permission_code,
         library_id=library_id,
         library_owner_id=UUID(str(lib_row["owner_id"])),
-        library_visibility=lib_row["visibility"],
     ):
         raise LibraryPermissionError
     return lib_row
@@ -263,31 +262,27 @@ def _ensure_owner(
 
     # 获取文档库信息以进行可见性判断
     library_owner_id = None
-    library_visibility = None
     library_id = row.get("library_id")
     if library_id:
         lib_row = session.execute(
-            select(document_libraries.c.owner_id, document_libraries.c.visibility).where(
+            select(document_libraries.c.owner_id).where(
                 document_libraries.c.library_id == library_id,
                 document_libraries.c.deleted_at.is_(None),
             )
         ).mappings().first()
         if lib_row:
             library_owner_id = UUID(str(lib_row["owner_id"]))
-            library_visibility = lib_row["visibility"]
 
     # 回退：如果没有 library_id，使用 owner_id
     if library_owner_id is None:
         owner_id = row.get("owner_id")
         if owner_id:
             library_owner_id = UUID(str(owner_id))
-            library_visibility = "personal"
 
     if not has_library_access(
         session, current_user, permission_code,
         library_id=UUID(str(library_id)) if library_id else None,
         library_owner_id=library_owner_id,
-        library_visibility=library_visibility,
     ):
         raise LibraryPermissionError
     return row

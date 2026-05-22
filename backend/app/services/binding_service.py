@@ -15,6 +15,7 @@ from app.schemas.binding import (
 )
 from app.tables import (
     binding_revisions,
+    chunks,
     document_kb_bindings,
     document_libraries,
     document_versions,
@@ -132,6 +133,15 @@ def activate_binding_revision(
 
     if not binding_rev:
         raise BindingNotFoundError
+    old_active_revision_ids = list(
+        session.execute(
+            select(binding_revisions.c.binding_revision_id).where(
+                binding_revisions.c.binding_id == binding_rev["binding_id"],
+                binding_revisions.c.status == "active",
+                binding_revisions.c.binding_revision_id != binding_revision_id,
+            )
+        ).scalars().all()
+    )
 
     # 更新状态为 active
     session.execute(
@@ -163,6 +173,15 @@ def activate_binding_revision(
             retired_at=now,
         )
     )
+    if old_active_revision_ids:
+        session.execute(
+            update(chunks)
+            .where(
+                chunks.c.binding_revision_id.in_(old_active_revision_ids),
+                chunks.c.status == "active",
+            )
+            .values(status="retired", retired_at=now)
+        )
 
 
 def fail_binding_revision(
@@ -215,7 +234,6 @@ def _ensure_library_owner(
             permission_code="library.document.read",
             library_id=library_uuid,
             library_owner_id=UUID(str(lib_row["owner_id"])),
-            library_visibility=lib_row["visibility"],
         ):
             raise BindingDocumentNotFoundError
     elif UUID(str(row["owner_id"])) != user_id:
@@ -259,9 +277,52 @@ def _to_binding_dto(row: dict, doc_name: str = "") -> LibraryBindingDTO:
         chunkCount=row["chunk_count"],
         errorCode=row.get("error_code"),
         errorMessage=row.get("error_message"),
+        activeBindingRevisionId=str(row["active_binding_revision_id"]) if row.get("active_binding_revision_id") else None,
+        bindingRevisionStatus=row.get("binding_revision_status"),
+        bindingRevisionChunkCount=row.get("binding_revision_chunk_count"),
+        bindingRevisionVersionId=str(row["binding_revision_version_id"]) if row.get("binding_revision_version_id") else None,
         createdAt=row["created_at"].isoformat(),
         createdBy=str(row["created_by"]) if row.get("created_by") else None,
     )
+
+
+def _attach_binding_revision_summary(session: Session, row: dict) -> dict:
+    """补充最适合前端展示的 BindingRevision 摘要。
+
+    切换版本时会先出现 building revision，active revision 仍保留可用。
+    前端需要优先看到正在构建的 revision，否则用户会误以为切换没有生效。
+    """
+    revision = session.execute(
+        select(binding_revisions).where(
+            binding_revisions.c.binding_id == row["binding_id"],
+            binding_revisions.c.status == "building",
+            binding_revisions.c.deleted_at.is_(None),
+        ).order_by(binding_revisions.c.created_at.desc()).limit(1)
+    ).mappings().first()
+
+    if revision is None and row.get("active_binding_revision_id"):
+        revision = session.execute(
+            select(binding_revisions).where(
+                binding_revisions.c.binding_revision_id == row["active_binding_revision_id"],
+                binding_revisions.c.deleted_at.is_(None),
+            ).limit(1)
+        ).mappings().first()
+
+    if revision is None:
+        revision = session.execute(
+            select(binding_revisions).where(
+                binding_revisions.c.binding_id == row["binding_id"],
+                binding_revisions.c.deleted_at.is_(None),
+            ).order_by(binding_revisions.c.created_at.desc()).limit(1)
+        ).mappings().first()
+
+    if revision is None:
+        return row
+
+    row["binding_revision_status"] = revision["status"]
+    row["binding_revision_chunk_count"] = revision["chunk_count"]
+    row["binding_revision_version_id"] = revision["document_version_id"]
+    return row
 
 
 def bind_documents_to_kb(
@@ -396,15 +457,26 @@ def bind_documents_to_kb(
         ).mappings().first()
         parse_revision_id = parse_rev["parse_revision_id"] if parse_rev else uuid4()
 
-        # 创建 BindingRevision
-        create_binding_revision(
+        # 创建 BindingRevision：记录库文档源版本，KB 侧版本仍由 document_kb_bindings.version_id 追踪。
+        binding_revision_id = create_binding_revision(
             session=session,
             binding_id=binding_id,
             knowledge_base_id=kb_id,
             document_id=doc_id,
-            document_version_id=kb_version_id,
+            document_version_id=latest_version["version_id"],
             parse_revision_id=parse_revision_id,
             created_by=actor_id,
+        )
+        session.execute(
+            update(document_versions)
+            .where(document_versions.c.version_id == kb_version_id)
+            .values(
+                metadata={
+                    "library_document_id": str(doc_id),
+                    "library_version_id": str(latest_version["version_id"]),
+                    "binding_revision_id": str(binding_revision_id),
+                }
+            )
         )
 
         session.execute(
@@ -417,7 +489,7 @@ def bind_documents_to_kb(
                 status="queued",
                 stage="queued",
                 progress=0,
-                result_summary={},
+                result_summary={"binding_revision_id": str(binding_revision_id)},
                 created_by=actor_id,
             )
         )
@@ -616,7 +688,7 @@ def list_kb_bindings(
 
     result: list[LibraryBindingDTO] = []
     for row in rows:
-        row_dict = dict(row)
+        row_dict = _attach_binding_revision_summary(session, dict(row))
         # 获取文档名称
         lib_doc = session.execute(
             select(documents.c.name).where(
@@ -810,4 +882,5 @@ def switch_binding_version(
         select(document_kb_bindings).where(document_kb_bindings.c.binding_id == binding_id)
     ).mappings().one()
 
-    return _to_binding_dto(dict(updated_binding), doc_name=doc_name)
+    row_dict = _attach_binding_revision_summary(session, dict(updated_binding))
+    return _to_binding_dto(row_dict, doc_name=doc_name)

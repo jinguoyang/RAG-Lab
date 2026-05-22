@@ -569,7 +569,6 @@ def has_library_access(
     permission_code: str,
     library_id: UUID | None = None,
     library_owner_id: UUID | None = None,
-    library_visibility: str | None = None,
 ) -> bool:
     """判断当前用户是否具备文档库级别的权限。
 
@@ -577,12 +576,7 @@ def has_library_access(
     1. 平台管理员 → 通过
     2. 拥有 library.document.admin 权限 → 通过
     3. 是文档库所有者 → 通过
-    4. visibility=public → 任何用户可读
-    5. visibility=personal → 仅 owner
-    6. visibility=partial → 查 library_member_bindings
-       - read_only/library_viewer → read/download
-       - document_manage/library_editor → document/version management
-       - library_binder/library_manager → bind/member management according to role
+    4. 查 library_member_bindings，按角色授予对应权限
     """
     user_id = _user_id(current_user)
 
@@ -603,41 +597,30 @@ def has_library_access(
     if library_owner_id is not None and user_id == library_owner_id:
         return True
 
-    # 需要 library_id 和 visibility 来做进一步判断
-    if library_id is None or library_visibility is None:
+    # 需要 library_id 来查成员绑定
+    if library_id is None:
         # 没有库信息时，回退到平台角色权限检查
         if permission_code in platform_denied:
             return False
         return permission_code in platform_allowed
 
-    # public 库：任何用户可读
-    if library_visibility == "public" and permission_code == "library.document.read":
-        return True
+    # 查 library_member_bindings
+    group_ids = _active_group_ids(session, user_id)
+    levels = _library_member_permission_levels(session, library_id, user_id, group_ids)
 
-    # personal 库：仅 owner（已在上面通过）
-    if library_visibility == "personal":
+    granted_permissions: set[str] = set()
+    if "read_only" in levels or "library_viewer" in levels:
+        granted_permissions |= _READ_ONLY_PERMISSIONS
+    if "library_binder" in levels:
+        granted_permissions |= _BINDER_PERMISSIONS
+    if "document_manage" in levels or "library_editor" in levels:
+        granted_permissions |= _EDITOR_PERMISSIONS
+    if "library_manager" in levels:
+        granted_permissions |= _MANAGE_PERMISSIONS
+
+    if permission_code in platform_denied:
         return False
-
-    # partial 库：查 library_member_bindings
-    if library_visibility == "partial":
-        group_ids = _active_group_ids(session, user_id)
-        levels = _library_member_permission_levels(session, library_id, user_id, group_ids)
-
-        granted_permissions: set[str] = set()
-        if "read_only" in levels or "library_viewer" in levels:
-            granted_permissions |= _READ_ONLY_PERMISSIONS
-        if "library_binder" in levels:
-            granted_permissions |= _BINDER_PERMISSIONS
-        if "document_manage" in levels or "library_editor" in levels:
-            granted_permissions |= _EDITOR_PERMISSIONS
-        if "library_manager" in levels:
-            granted_permissions |= _MANAGE_PERMISSIONS
-
-        if permission_code in platform_denied:
-            return False
-        return permission_code in granted_permissions
-
-    return False
+    return permission_code in granted_permissions
 
 
 def check_library_owner_or_admin(
@@ -675,9 +658,8 @@ def library_visibility_condition(current_user: CurrentUserResponse):
     - 库未软删除
     - 且满足以下之一：
       a. 当前用户是库所有者
-      b. visibility='public'
-      c. visibility='partial' 且当前用户在 library_member_bindings 中
-      d. 平台管理员
+      b. 当前用户在 library_member_bindings 中
+      c. 平台管理员
     """
     user_id = _user_id(current_user)
     active_group_ids = (
@@ -706,8 +688,7 @@ def library_visibility_condition(current_user: CurrentUserResponse):
     )
     return (document_libraries.c.deleted_at.is_(None)) & (
         (document_libraries.c.owner_id == user_id)
-        | (document_libraries.c.visibility == "public")
-        | ((document_libraries.c.visibility == "partial") & member_exists)
+        | member_exists
         | (current_user.user.platformRole == "platform_admin")
     )
 

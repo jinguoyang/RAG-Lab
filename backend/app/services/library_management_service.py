@@ -152,7 +152,6 @@ def get_library_detail(
         permission_code="library.document.read",
         library_id=library_id,
         library_owner_id=UUID(str(row["owner_id"])),
-        library_visibility=row["visibility"],
     ):
         raise LibraryPermissionError
 
