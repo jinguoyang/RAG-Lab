@@ -74,7 +74,7 @@ def main() -> None:
     _assert_contains(
         library_detail,
         "has_library_access",
-        "get_library_detail must enforce library visibility/read access.",
+        "get_library_detail must enforce library read access.",
     )
     _assert_contains(
         bind_docs,

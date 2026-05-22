@@ -81,8 +81,8 @@ def seed_test_data(payload: SeedPayload, db: Session = Depends(get_db_session)):
         row = db.execute(
             text(
                 """
-                INSERT INTO document_libraries (name, owner_id, visibility, status)
-                VALUES (:name, :owner_id, 'private', 'active')
+                INSERT INTO document_libraries (name, owner_id, status)
+                VALUES (:name, :owner_id, 'active')
                 RETURNING library_id
                 """
             ),
