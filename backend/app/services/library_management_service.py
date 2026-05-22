@@ -19,6 +19,7 @@ from app.services.permission_service import (
     _user_id,
     check_library_owner_or_admin,
     has_library_access,
+    library_visibility_condition,
 )
 from app.tables import document_kb_bindings, document_libraries, document_versions, documents, library_member_bindings
 
@@ -98,7 +99,8 @@ def list_libraries(
     page_size: int = 20,
     keyword: str | None = None,
 ) -> LibraryPageResponse:
-    base_query = select(document_libraries).where(document_libraries.c.deleted_at.is_(None))
+    visibility_cond = library_visibility_condition(current_user)
+    base_query = select(document_libraries).where(visibility_cond)
     if keyword and keyword.strip():
         safe_keyword = keyword.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         base_query = base_query.where(document_libraries.c.name.ilike(f"%{safe_keyword}%", escape="\\"))
