@@ -57,6 +57,9 @@ export interface QARunEvidenceDTO {
   sourceStatus?: string;  // "available" | "source_deleted"
   documentName?: string | null;
   versionNo?: number | null;
+  bindingRevisionId?: string | null;
+  parseRevisionId?: string | null;
+  documentVersionId?: string | null;
   pageNo?: number | null;
   sectionPath?: string | null;
   chunkStatus?: string | null;

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { NavLink } from "react-router";
+import { NavLink, useNavigate } from "react-router";
 import * as Tabs from "@radix-ui/react-tabs";
 import {
   Copy,
@@ -11,8 +11,10 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
+  ShieldCheck,
   ShieldOff,
   Trash2,
+  Users,
   X,
 } from "lucide-react";
 import { Alert } from "../components/rag/Alert";
@@ -121,6 +123,7 @@ function buildQARunHistoryLink(kbId: string, runId: string): string {
 }
 
 export function RagAppManagement() {
+  const navigate = useNavigate();
   const confirmDialog = useConfirmDialog();
   const [apps, setApps] = useState<RagAppDTO[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
@@ -162,6 +165,10 @@ export function RagAppManagement() {
   const appRows = useMemo(() => apps.map(toRagAppViewModel), [apps]);
   const selectedAppView = selectedApp ? toRagAppViewModel(selectedApp) : null;
   const keyRows = useMemo(() => apiKeys.map(toRagAppApiKeyViewModel), [apiKeys]);
+  const activeApiKeyCount = useMemo(
+    () => apiKeys.filter((key) => key.status === "active" && (!key.expiresAt || new Date(key.expiresAt) >= new Date())).length,
+    [apiKeys],
+  );
   const invocationRows = useMemo(() => invocations.map(toAppInvocationViewModel), [invocations]);
   const conversationRows = useMemo(() => groupInvocationsByConversation(invocations), [invocations]);
   const conversationMessageRows = useMemo(
@@ -740,6 +747,48 @@ export function RagAppManagement() {
                     )}
                   </div>
                 )}
+
+                <div className="rounded-lg border border-border-cream bg-ivory p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-serif text-lg text-near-black">权限管理</h3>
+                      <p className="mt-1 text-sm text-stone-gray">应用不单独维护成员，访问边界由所属知识库和 API Key 共同决定。</p>
+                    </div>
+                    <ShieldCheck className="h-5 w-5 text-terracotta" />
+                  </div>
+                  <div className="mt-4 grid gap-2 text-sm">
+                    <div className="flex items-center justify-between rounded-lg border border-border-cream bg-parchment px-3 py-2">
+                      <span className="text-stone-gray">应用开关</span>
+                      <Badge variant={statusBadgeVariant(selectedApp.status)}>{selectedAppView.statusLabel}</Badge>
+                    </div>
+                    <div className="flex items-center justify-between rounded-lg border border-border-cream bg-parchment px-3 py-2">
+                      <span className="text-stone-gray">知识库访问</span>
+                      <Badge
+                        variant={
+                          selectedApp.knowledgeBaseStatus === "active" ? "success" :
+                          selectedApp.knowledgeBaseStatus === "disabled" ? "warning" :
+                          "inactive"
+                        }
+                      >
+                        {selectedApp.knowledgeBaseStatus === "active" ? "运行中" :
+                         selectedApp.knowledgeBaseStatus === "disabled" ? "已停用" :
+                         selectedApp.knowledgeBaseStatus ?? "未知"}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between rounded-lg border border-border-cream bg-parchment px-3 py-2">
+                      <span className="text-stone-gray">可用 API Key</span>
+                      <Badge variant={activeApiKeyCount > 0 ? "success" : "inactive"}>{activeApiKeyCount}</Badge>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" onClick={() => navigate(`/kb/${selectedApp.kbId}/members`)}>
+                      <Users className="mr-1 h-3 w-3" /> 管理知识库权限
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setActiveTab("keys")}>
+                      <KeyRound className="mr-1 h-3 w-3" /> 管理 API Key
+                    </Button>
+                  </div>
+                </div>
 
                 <Tabs.Root value={activeTab} onValueChange={(v) => setActiveTab(v as DetailTab)} className="rounded-lg border border-border-cream bg-ivory">
                   <Tabs.List className="flex border-b border-border-cream text-sm">

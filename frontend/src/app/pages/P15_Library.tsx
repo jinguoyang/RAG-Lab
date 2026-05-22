@@ -64,7 +64,9 @@ export function Library() {
     try {
       const data = await fetchLibraryStats();
       setStats(data);
-    } catch {}
+    } catch {
+      // 统计卡片是辅助信息，加载失败不阻断文档库主列表。
+    }
   }, []);
 
   useEffect(() => {

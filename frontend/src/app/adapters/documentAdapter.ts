@@ -203,8 +203,8 @@ export function toChunkView(chunk: ChunkDTO): ChunkViewModel {
     id: chunk.chunkId,
     indexLabel: `#${chunk.chunkIndex}`,
     pageLabel: chunk.pageNo ? `P${chunk.pageNo}` : "-",
-    section: chunk.section || "-",
-    preview: chunk.content.length > 120 ? `${chunk.content.slice(0, 120)}...` : chunk.content,
+    section: chunk.sectionPath || chunk.heading || chunk.section || "-",
+    preview: (chunk.summary || chunk.content).length > 120 ? `${(chunk.summary || chunk.content).slice(0, 120)}...` : (chunk.summary || chunk.content),
     tokenCount: chunk.tokenCount,
     metadataText: JSON.stringify(chunk.metadata),
   };

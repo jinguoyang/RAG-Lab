@@ -26,6 +26,10 @@ export interface QADebugResultViewModel {
     meta: string;
     documentId?: string | null;
     chunkId?: string | null;
+    sourceModality?: string | null;
+    sourceFileId?: string | null;
+    region?: string | null;
+    visionConfidence?: string | null;
   }[];
   diagnostics: {
     recalled: string;
@@ -276,9 +280,13 @@ export function toQADebugResult(detail: QARunDetailDTO): QADebugResultViewModel 
     citations: detail.citations.map((citation, index) => {
       const evidence = evidenceById.get(citation.evidenceId);
       const location = citation.locationSnapshot;
+      const sourceSnapshot = evidence?.sourceSnapshot ?? {};
       const documentName = readString(location, "documentName");
       const chunkIndex = typeof location.chunkIndex === "number" ? `#${location.chunkIndex}` : null;
-      const section = readString(location, "section");
+      const section = readString(location, "sectionPath") ?? readString(location, "section");
+      const bindingRevisionId = readString(location, "bindingRevisionId") ?? readString(sourceSnapshot, "bindingRevisionId");
+      const parseRevisionId = readString(location, "parseRevisionId") ?? readString(sourceSnapshot, "parseRevisionId");
+      const sourceModality = readString(location, "sourceModality") ?? readString(sourceSnapshot, "sourceModality");
       return {
         id: String(index + 1),
         type: "document",
@@ -286,10 +294,16 @@ export function toQADebugResult(detail: QARunDetailDTO): QADebugResultViewModel 
         snippet: evidence?.contentSnapshot || "当前证据策略未返回正文快照。",
         meta: [
           `Evidence ID: ${citation.evidenceId}`,
+          bindingRevisionId ? `BR: ${bindingRevisionId.slice(0, 8)}` : null,
+          parseRevisionId ? `PR: ${parseRevisionId.slice(0, 8)}` : null,
           section ? `Section: ${section}` : null,
         ].filter(Boolean).join(" | "),
         documentId: readString(location, "documentId"),
         chunkId: readString(location, "chunkId") ?? evidence?.chunkId ?? null,
+        sourceModality,
+        sourceFileId: readString(location, "sourceFileId") ?? readString(sourceSnapshot, "sourceFileId"),
+        region: readString(location, "region") ?? readString(sourceSnapshot, "region"),
+        visionConfidence: readString(sourceSnapshot, "visionConfidence"),
       };
     }),
     diagnostics: {

@@ -31,6 +31,7 @@ export interface DocumentVersionDTO {
   tokenCount: number | null;
   createdAt: string;
   updatedAt: string;
+  sourceModality?: string | null;
 }
 
 export interface IndexStageViewModel {
@@ -59,14 +60,22 @@ export interface ChunkDTO {
   versionId: string;
   documentId: string;
   kbId: string;
+  bindingRevisionId: string | null;
+  parseRevisionId: string | null;
+  documentVersionId: string | null;
   chunkIndex: number;
   pageNo: number | null;
   section: string | null;
+  startOffset: number | null;
+  endOffset: number | null;
+  sectionPath: string | null;
+  heading: string | null;
+  summary: string | null;
   content: string;
   contentHash: string | null;
   tokenCount: number | null;
   securityLevel: string;
-  status: "active" | "inactive" | "deleted";
+  status: "active" | "inactive" | "retired" | "deleted";
   metadata: Record<string, unknown>;
   createdAt: string;
 }

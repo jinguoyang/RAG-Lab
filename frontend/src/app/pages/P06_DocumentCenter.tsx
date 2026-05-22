@@ -21,10 +21,13 @@ import {
   runBulkDocumentGovernance,
   uploadDocument,
 } from "../services/documentService";
-import { fetchLibraryDocuments, fetchLibraryVersions, bindDocumentsToKB } from "../services/libraryService";
+import { fetchLibraryDocuments, fetchLibraryVersions, bindDocumentsToKB, listKBBindings, switchBindingVersion } from "../services/libraryService";
+import { fetchKbPermissionSummary } from "../services/knowledgeBaseService";
 import type { BulkDocumentGovernanceRequest, DocumentDTO, IndexStageViewModel, IndexSyncJobDTO, IngestJobDTO, JobStatus } from "../types/document";
-import type { LibraryDocumentDTO, LibraryDocumentVersionDTO } from "../types/library";
+import type { LibraryBindingDTO, LibraryDocumentDTO, LibraryDocumentVersionDTO } from "../types/library";
 import type { DictionaryItemDTO } from "../types/dictionary";
+import type { PermissionSummary } from "../types/knowledgeBase";
+import { bindingRevisionStatusLabel, bindingRevisionStatusVariant } from "../utils/threeLayerPresentation";
 
 const DOCUMENT_PAGE_SIZE = 10;
 type BatchOperation = BulkDocumentGovernanceRequest["operation"];
@@ -33,6 +36,14 @@ const BATCH_OPERATION_LABELS: Record<BatchOperation, string> = {
   reparse: "批量重解析",
   disable: "批量停用",
   rebuild_index: "批量重建索引",
+};
+
+const PERMISSION_LABELS: Record<string, string> = {
+  "kb.view": "查看知识库",
+  "kb.member.manage": "成员管理",
+  "kb.document.read": "查看文档",
+  "kb.document.upload": "上传/重建",
+  "kb.document.download": "下载原文",
 };
 
 function indexStageVariant(status: IndexStageViewModel["status"]) {
@@ -86,20 +97,28 @@ export function DocumentCenter() {
   const [versionPickerVersions, setVersionPickerVersions] = useState<LibraryDocumentVersionDTO[]>([]);
   const [versionPickerLoading, setVersionPickerLoading] = useState(false);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const [kbBindings, setKbBindings] = useState<LibraryBindingDTO[]>([]);
+  const [switchTarget, setSwitchTarget] = useState<LibraryBindingDTO | null>(null);
+  const [switchVersions, setSwitchVersions] = useState<LibraryDocumentVersionDTO[]>([]);
+  const [selectedSwitchVersionId, setSelectedSwitchVersionId] = useState<string | null>(null);
+  const [switchLoading, setSwitchLoading] = useState(false);
+  const [permissionSummary, setPermissionSummary] = useState<PermissionSummary | null>(null);
 
   async function loadData(keyword = searchTerm, nextPageNo = pageNo) {
     if (!kbId) return;
     setLoading(true);
     try {
-      const [documentPage, jobPage] = await Promise.all([
+      const [documentPage, jobPage, bindingRows] = await Promise.all([
         fetchDocuments(kbId, { keyword, pageNo: nextPageNo, pageSize: DOCUMENT_PAGE_SIZE }),
         fetchIngestJobs(kbId),
+        listKBBindings(kbId),
       ]);
       const indexSyncPage = await fetchIndexSyncJobs(kbId);
       setDocuments(documentPage.items);
       setDocumentTotal(documentPage.total);
       setPageNo(documentPage.pageNo);
       setJobs(jobPage.items);
+      setKbBindings(bindingRows);
       setIndexSyncJobs(indexSyncPage.items);
       setSelectedDocumentIds((current) => current.filter((documentId) => documentPage.items.some((item) => item.documentId === documentId)));
     } catch (error) {
@@ -114,7 +133,11 @@ export function DocumentCenter() {
   }
 
   useEffect(() => {
+    if (!kbId) return;
     void loadData("", 1);
+    void fetchKbPermissionSummary(kbId).then(setPermissionSummary).catch(() => {
+      setPermissionSummary(null);
+    });
   }, [kbId]);
 
   useEffect(() => {
@@ -414,6 +437,49 @@ export function DocumentCenter() {
     }
   }
 
+  async function openSwitchDrawer(binding: LibraryBindingDTO) {
+    setSwitchTarget(binding);
+    setSelectedSwitchVersionId(null);
+    setSwitchVersions([]);
+    setSwitchLoading(true);
+    try {
+      const versions = await fetchLibraryVersions(binding.documentId);
+      setSwitchVersions(versions.filter((v) => v.parseStatus === "success"));
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "版本加载失败",
+        message: error instanceof Error ? error.message : "请稍后重试。",
+      });
+    } finally {
+      setSwitchLoading(false);
+    }
+  }
+
+  async function handleSwitchBindingVersion() {
+    if (!switchTarget || !selectedSwitchVersionId) return;
+    setSwitchLoading(true);
+    try {
+      const updated = await switchBindingVersion(kbId, switchTarget.bindingId, selectedSwitchVersionId);
+      setKbBindings((current) => current.map((binding) => binding.bindingId === updated.bindingId ? updated : binding));
+      setFeedback({
+        variant: "success",
+        title: "版本切换已提交",
+        message: "新的 BindingRevision 已进入构建流程；构建完成前旧 active revision 继续可检索。",
+      });
+      setSwitchTarget(null);
+      await loadData(searchTerm, pageNo);
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "版本切换失败",
+        message: error instanceof Error ? error.message : "请确认目标版本已解析成功。",
+      });
+    } finally {
+      setSwitchLoading(false);
+    }
+  }
+
   const totalPages = Math.max(1, Math.ceil(documentTotal / DOCUMENT_PAGE_SIZE));
   const currentPageSelected = filteredRows.length > 0 && filteredRows.every((row) => selectedDocumentIds.includes(row.id));
 
@@ -627,6 +693,82 @@ export function DocumentCenter() {
         </div>
 
         <aside className="space-y-4">
+          <div className="rounded-xl border border-border-cream bg-ivory p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-serif text-lg text-near-black">知识库权限</h3>
+                <p className="mt-1 text-sm text-stone-gray">当前账号在该知识库上的有效权限摘要。</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => navigate(`/kb/${kbId}/members`)}>
+                管理
+              </Button>
+            </div>
+            {permissionSummary ? (
+              <div className="mt-4 space-y-3 text-sm">
+                <div className="flex flex-wrap gap-2">
+                  {(permissionSummary.roles.length > 0 ? permissionSummary.roles : ["无角色"]).slice(0, 4).map((role) => (
+                    <Badge key={role} variant={role === "无角色" ? "inactive" : "info"}>{role}</Badge>
+                  ))}
+                  {permissionSummary.inheritedFromPlatformRole && <Badge variant="success">平台继承</Badge>}
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  {Object.entries(PERMISSION_LABELS).map(([code, label]) => (
+                    <div key={code} className="flex items-center justify-between rounded-lg border border-border-cream bg-parchment px-3 py-2">
+                      <span className="text-stone-gray">{label}</span>
+                      <Badge variant={permissionSummary.permissions.includes(code) ? "success" : "inactive"}>
+                        {permissionSummary.permissions.includes(code) ? "允许" : "无"}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+                {permissionSummary.deniedReasons.length > 0 && (
+                  <Alert variant="warning" title="存在拒绝原因">
+                    {permissionSummary.deniedReasons.join("；")}
+                  </Alert>
+                )}
+              </div>
+            ) : (
+              <p className="mt-4 text-sm text-stone-gray">权限摘要暂不可用，可进入成员页查看角色配置。</p>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-border-cream bg-ivory p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-serif text-lg text-near-black">三层绑定状态</h3>
+                <p className="mt-1 text-sm text-stone-gray">展示文档库版本到知识库 BindingRevision 的当前状态。</p>
+              </div>
+              <Badge variant="info">{kbBindings.length}</Badge>
+            </div>
+            <div className="mt-4 space-y-3">
+              {kbBindings.length === 0 ? (
+                <p className="text-sm text-stone-gray">暂无文档库绑定。</p>
+              ) : (
+                kbBindings.slice(0, 6).map((binding) => (
+                  <div key={binding.bindingId} className="rounded-lg border border-border-cream bg-parchment p-3 text-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium text-near-black truncate">{binding.documentName || binding.documentId}</p>
+                        <p className="mt-1 font-mono text-xs text-stone-gray">{binding.bindingId.slice(0, 8)}</p>
+                      </div>
+                      <Badge variant={bindingRevisionStatusVariant(binding.bindingRevisionStatus)}>
+                        {bindingRevisionStatusLabel(binding.bindingRevisionStatus)}
+                      </Badge>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-stone-gray">
+                      <span>Chunk: {binding.bindingRevisionChunkCount ?? binding.chunkCount}</span>
+                      <span>版本: {(binding.bindingRevisionVersionId ?? binding.versionId).slice(0, 8)}</span>
+                    </div>
+                    {binding.errorMessage && <p className="mt-2 text-xs text-error-red">{binding.errorMessage}</p>}
+                    <Button variant="ghost" size="sm" className="mt-2" onClick={() => void openSwitchDrawer(binding)}>
+                      切换版本
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
           <div className="rounded-xl border border-border-cream bg-ivory p-5">
             <h3 className="font-serif text-lg text-near-black">最近入库作业</h3>
             <p className="mt-1 text-sm text-stone-gray">来自 `/ingest-jobs` 的真实作业状态。</p>
@@ -860,6 +1002,55 @@ export function DocumentCenter() {
               onClick={() => void handleBindWithSelectedVersion()}
             >
               {bindingLoading ? "绑定中..." : "使用此版本绑定"}
+            </Button>
+          </div>
+        </DrawerSection>
+      </Drawer>
+
+      <Drawer isOpen={!!switchTarget} onClose={() => setSwitchTarget(null)} title={`切换绑定版本 — ${switchTarget?.documentName ?? ""}`}>
+        <DrawerSection title="可用库文档版本">
+          {switchLoading ? (
+            <p className="text-center text-stone-gray py-8">加载版本列表...</p>
+          ) : switchVersions.length === 0 ? (
+            <p className="text-center text-stone-gray py-8">暂无可切换的已解析版本</p>
+          ) : (
+            <div className="space-y-2">
+              {switchVersions.map((v) => (
+                <label
+                  key={v.versionId}
+                  className="flex items-start gap-3 p-3 rounded-lg border border-border-cream bg-parchment cursor-pointer hover:bg-border-cream/30"
+                >
+                  <input
+                    type="radio"
+                    name="switch-version-picker"
+                    checked={selectedSwitchVersionId === v.versionId}
+                    onChange={() => setSelectedSwitchVersionId(v.versionId)}
+                    className="mt-1"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-near-black">v{v.versionNo}</p>
+                    <p className="text-xs text-stone-gray">{v.fileName ?? "—"}</p>
+                    <div className="mt-1 flex flex-wrap gap-2 text-xs text-stone-gray">
+                      <span>Chunks: {v.chunkCount}</span>
+                      {v.tokenCount != null && <span>Tokens: {v.tokenCount}</span>}
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+        </DrawerSection>
+        <DrawerSection>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setSwitchTarget(null)}>
+              取消
+            </Button>
+            <Button
+              variant="primary"
+              disabled={switchLoading || !selectedSwitchVersionId}
+              onClick={() => void handleSwitchBindingVersion()}
+            >
+              {switchLoading ? "提交中..." : "提交切换"}
             </Button>
           </div>
         </DrawerSection>

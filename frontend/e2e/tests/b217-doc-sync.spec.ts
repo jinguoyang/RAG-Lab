@@ -14,6 +14,7 @@ test.describe("B-217: 文档同步校验", () => {
       "conda run -n rag-lab python scripts/export_openapi.py",
       { cwd: path.join(ROOT, "backend"), encoding: "utf-8", shell: true }
     );
+    expect(typeof result).toBe("string");
     const openapiPath = path.join(ROOT, "docs/06-发布与运维/openapi.json");
     expect(fs.existsSync(openapiPath)).toBe(true);
 
@@ -28,8 +29,10 @@ test.describe("B-217: 文档同步校验", () => {
         "conda run -n rag-lab python scripts/check_api_contract.py",
         { cwd: path.join(ROOT, "backend"), encoding: "utf-8", stdio: "pipe", shell: true }
       );
-    } catch (error: any) {
-      const output = error.stdout || error.stderr || "";
+    } catch (error: unknown) {
+      const output = error && typeof error === "object" && ("stdout" in error || "stderr" in error)
+        ? `${"stdout" in error ? String(error.stdout) : ""}${"stderr" in error ? String(error.stderr) : ""}`
+        : "";
       console.log("Contract check output:", output);
     }
   });

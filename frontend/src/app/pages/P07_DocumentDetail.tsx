@@ -1,7 +1,7 @@
 import * as Tabs from "@radix-ui/react-tabs";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "react-router";
-import { ChevronLeft, ChevronRight, Database, Eye, FileSymlink, RefreshCw, RotateCcw, Save, XCircle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Database, Eye, FileSymlink, Image as ImageIcon, RefreshCw, RotateCcw, Save, XCircle } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
@@ -44,6 +44,10 @@ function readChunkGovernance(chunk: ChunkDTO | null): { excluded: boolean; note:
     excluded: record.excluded === true,
     note: typeof record.note === "string" ? record.note : "",
   };
+}
+
+function shortTraceId(value: string | null | undefined): string {
+  return value ? value.slice(0, 8) : "-";
 }
 
 /**
@@ -318,7 +322,7 @@ export function DocumentDetail() {
 
       <PageHeader
         title={document?.name || "文档详情"}
-        description="查看文档版本、Chunk、入库作业，并执行重解析与 active version 切换。"
+        description="查看文档版本、当前 BindingRevision Chunk、入库作业，并执行重解析与 active version 切换。"
         actions={
           <>
             <Button variant="outline" disabled={loading} onClick={() => void loadData()}>
@@ -356,15 +360,22 @@ export function DocumentDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="rounded-xl border border-border-cream bg-ivory p-4">
           <p className="text-xs text-stone-gray">Active Version</p>
-          <p className="mt-2 font-serif text-xl text-near-black">{activeVersion ? `v${activeVersion.versionNo}` : "未生成"}</p>
+          <div className="mt-2 flex items-center gap-2">
+            <span className="font-serif text-xl text-near-black">{activeVersion ? `v${activeVersion.versionNo}` : "未生成"}</span>
+            {activeVersion?.sourceModality === "image" && (
+              <Badge variant="info"><ImageIcon className="w-3 h-3 mr-1 inline" />图片</Badge>
+            )}
+          </div>
         </div>
         <div className="rounded-xl border border-border-cream bg-ivory p-4">
-          <p className="text-xs text-stone-gray">Chunk Count</p>
-          <p className="mt-2 font-serif text-xl text-near-black">{activeVersion?.chunkCount ?? 0}</p>
+          <p className="text-xs text-stone-gray">Active BindingRevision</p>
+          <p className="mt-2 font-mono text-base text-near-black">{shortTraceId(chunks[0]?.bindingRevisionId)}</p>
+          <p className="mt-1 text-xs text-stone-gray">当前页 Chunk 来自该入库版本</p>
         </div>
         <div className="rounded-xl border border-border-cream bg-ivory p-4">
-          <p className="text-xs text-stone-gray">Retrieval Ready</p>
-          <p className="mt-2 font-serif text-xl text-near-black">{activeVersion?.retrievalReady ? "已就绪" : "未就绪"}</p>
+          <p className="text-xs text-stone-gray">ParseRevision</p>
+          <p className="mt-2 font-mono text-base text-near-black">{shortTraceId(chunks[0]?.parseRevisionId)}</p>
+          <p className="mt-1 text-xs text-stone-gray">{activeVersion?.retrievalReady ? "检索已就绪" : "检索未就绪"}</p>
         </div>
       </div>
 
@@ -374,7 +385,7 @@ export function DocumentDetail() {
             版本（{versionRows.length}）
           </Tabs.Trigger>
           <Tabs.Trigger value="chunks" className="pb-2 text-stone-gray font-medium hover:text-near-black data-[state=active]:text-terracotta data-[state=active]:border-b-2 data-[state=active]:border-terracotta transition-all">
-            Chunks（{chunkTotal}）
+            当前 BindingRevision Chunks（{chunkTotal}）
           </Tabs.Trigger>
           <Tabs.Trigger value="jobs" className="pb-2 text-stone-gray font-medium hover:text-near-black data-[state=active]:text-terracotta data-[state=active]:border-b-2 data-[state=active]:border-terracotta transition-all">
             入库作业（{jobRows.length}）
@@ -444,10 +455,12 @@ export function DocumentDetail() {
             <TableHeader>
               <TableRow>
                 <TableHead>序号</TableHead>
+                <TableHead>回溯版本</TableHead>
                 <TableHead>页码</TableHead>
-                <TableHead>章节</TableHead>
+                <TableHead>章节 / 位置</TableHead>
                 <TableHead>正文摘要</TableHead>
                 <TableHead>Token</TableHead>
+                <TableHead>状态</TableHead>
                 <TableHead>操作</TableHead>
               </TableRow>
             </TableHeader>
@@ -455,10 +468,17 @@ export function DocumentDetail() {
               {chunkRows.map((chunk, index) => (
                 <TableRow key={chunk.id}>
                   <TableCell mono>{chunk.indexLabel}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col gap-1 text-xs">
+                      <span className="font-mono text-near-black">BR {shortTraceId(chunks[index].bindingRevisionId)}</span>
+                      <span className="font-mono text-stone-gray">PR {shortTraceId(chunks[index].parseRevisionId)}</span>
+                    </div>
+                  </TableCell>
                   <TableCell>{chunk.pageLabel}</TableCell>
                   <TableCell>{chunk.section}</TableCell>
                   <TableCell className="max-w-xl text-stone-gray">{chunk.preview}</TableCell>
                   <TableCell>{chunk.tokenCount ?? "-"}</TableCell>
+                  <TableCell><StatusBadge status={chunks[index].status === "active" ? "success" : chunks[index].status === "retired" ? "cancelled" : "failed"} /></TableCell>
                   <TableCell>
                     <Button variant="outline" size="sm" onClick={() => void openChunk(chunks[index])}>
                       <Eye className="w-4 h-4 mr-2" /> 查看
@@ -609,9 +629,28 @@ export function DocumentDetail() {
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div><span className="text-stone-gray">Chunk ID：</span><span className="font-mono">{selectedChunk.chunkId}</span></div>
                 <div><span className="text-stone-gray">序号：</span>{selectedChunk.chunkIndex}</div>
-                <div><span className="text-stone-gray">章节：</span>{selectedChunk.section || "-"}</div>
+                <div><span className="text-stone-gray">状态：</span>{selectedChunk.status}</div>
+                <div><span className="text-stone-gray">页码：</span>{selectedChunk.pageNo ?? "-"}</div>
+                <div><span className="text-stone-gray">章节：</span>{selectedChunk.sectionPath || selectedChunk.heading || selectedChunk.section || "-"}</div>
                 <div><span className="text-stone-gray">Token：</span>{selectedChunk.tokenCount ?? "-"}</div>
+                <div><span className="text-stone-gray">BindingRevision：</span><span className="font-mono">{selectedChunk.bindingRevisionId || "-"}</span></div>
+                <div><span className="text-stone-gray">ParseRevision：</span><span className="font-mono">{selectedChunk.parseRevisionId || "-"}</span></div>
+                <div><span className="text-stone-gray">DocumentVersion：</span><span className="font-mono">{selectedChunk.documentVersionId || "-"}</span></div>
+                <div><span className="text-stone-gray">Offset：</span>{selectedChunk.startOffset ?? "-"} - {selectedChunk.endOffset ?? "-"}</div>
               </div>
+              {selectedChunk.metadata?.sourceModality === "image" && (
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                  <Badge variant="info">
+                    <ImageIcon className="w-3 h-3 mr-1 inline" />图片证据
+                  </Badge>
+                  {typeof selectedChunk.metadata.region === "string" && (
+                    <span className="text-stone-gray">区域: {selectedChunk.metadata.region}</span>
+                  )}
+                  {typeof selectedChunk.metadata.visionConfidence === "string" && (
+                    <span className="text-stone-gray">解析置信度: {selectedChunk.metadata.visionConfidence}</span>
+                  )}
+                </div>
+              )}
             </DrawerSection>
             <DrawerSection title="正文">
               <pre className="whitespace-pre-wrap break-words rounded-lg border border-border-cream bg-parchment p-4 text-sm leading-relaxed text-near-black">

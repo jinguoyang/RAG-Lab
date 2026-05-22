@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
-import { BookmarkPlus, Copy, Eye, FileDown, GitCompare, PlayCircle, Search, Sparkles, ThumbsDown, ThumbsUp } from "lucide-react";
+import { BookmarkPlus, Copy, Download, Eye, FileDown, GitCompare, Image as ImageIcon, PlayCircle, Search, Sparkles, ThumbsDown, ThumbsUp } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
@@ -32,6 +32,7 @@ import {
   updateQARunCollaboration,
   updateQARunFeedback,
 } from "../services/qaRunService";
+import { downloadLibraryDocument } from "../services/libraryService";
 import type { EvaluationRunDetailDTO, EvaluationSampleDTO, QARunCollaborationDTO, QARunCompareDTO, QARunDetailDTO } from "../types/qaRun";
 import { fetchTokenUsage, fetchCostSummary } from "../services/observabilityService";
 import type { TokenUsageResponse, CostSummaryResponse } from "../types/observability";
@@ -39,6 +40,10 @@ import type { DictionaryItemDTO } from "../types/dictionary";
 
 type RatingStatus = "up" | "down" | "none";
 type HistoryRecord = QAHistoryRecordViewModel;
+
+function shortTraceId(value: string | null | undefined): string {
+  return value ? value.slice(0, 8) : "-";
+}
 
 /**
  * QA 历史页接入 E8 历史详情、人工标注、回放和评估样本接口。
@@ -324,6 +329,22 @@ export function QAHistory() {
       setFeedback({ variant: "error", title: "加入评估样本失败", message: error instanceof Error ? error.message : "请检查评估样本管理权限。" });
     } finally {
       setActionLoading(null);
+    }
+  }
+
+  async function handleDownloadImageSource(documentId: string) {
+    try {
+      const result = await downloadLibraryDocument(documentId);
+      const url = URL.createObjectURL(result.blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = result.fileName ?? "source-image";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setFeedback({ variant: "warning", title: "下载失败", message: "无法下载原图文件。" });
     }
   }
 
@@ -772,44 +793,81 @@ export function QAHistory() {
                 </div>
                 {selectedDetail?.evidence.slice(0, 5).map((evidence) => {
                   const isDeleted = evidence.sourceStatus === "source_deleted";
+                  const sourceSnapshot = evidence.sourceSnapshot ?? {};
+                  const isImage = sourceSnapshot.sourceModality === "image";
+                  const snapshotDocumentId = typeof sourceSnapshot.documentId === "string" ? sourceSnapshot.documentId : null;
+                  const region = typeof sourceSnapshot.region === "string" ? sourceSnapshot.region : null;
+                  const visionConfidence = typeof sourceSnapshot.visionConfidence === "string" ? sourceSnapshot.visionConfidence : null;
                   return (
                     <div
                       key={evidence.evidenceId}
                       className={`rounded-lg border border-border-cream bg-parchment p-3 text-sm ${isDeleted ? "opacity-60" : ""}`}
                     >
                       <div className="flex items-center justify-between">
-                        <div className="font-mono text-xs text-stone-gray">{evidence.chunkId}</div>
+                        <div className="flex items-center gap-2">
+                          <div className="font-mono text-xs text-stone-gray">{evidence.chunkId}</div>
+                          {isImage && <Badge variant="info">图片证据</Badge>}
+                        </div>
                         {isDeleted && <Badge variant="inactive">已清理</Badge>}
                       </div>
                       {isDeleted ? (
                         <p className="mt-2 text-stone-gray italic">引用文件已被清理</p>
                       ) : (
-                        <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">
-                          {evidence.documentName && (
-                            <>
-                              <Badge variant="info">{evidence.documentName}</Badge>
-                              <span className="text-stone-gray">→</span>
-                            </>
+                        <>
+                          <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">
+                            {evidence.documentName && (
+                              <>
+                                <Badge variant="info">{evidence.documentName}</Badge>
+                                <span className="text-stone-gray">→</span>
+                              </>
+                            )}
+                            {evidence.versionNo != null && (
+                              <>
+                                <Badge variant="info">v{evidence.versionNo}</Badge>
+                                <span className="text-stone-gray">→</span>
+                              </>
+                            )}
+                            {evidence.bindingRevisionId && (
+                              <>
+                                <Badge variant="default">BR {shortTraceId(evidence.bindingRevisionId)}</Badge>
+                                <span className="text-stone-gray">→</span>
+                              </>
+                            )}
+                            {evidence.parseRevisionId && (
+                              <>
+                                <Badge variant="default">PR {shortTraceId(evidence.parseRevisionId)}</Badge>
+                                <span className="text-stone-gray">→</span>
+                              </>
+                            )}
+                            {evidence.pageNo != null && (
+                              <>
+                                <Badge variant="info">p.{evidence.pageNo}</Badge>
+                                <span className="text-stone-gray">→</span>
+                              </>
+                            )}
+                            {evidence.sectionPath && (
+                              <Badge variant="info">{evidence.sectionPath}</Badge>
+                            )}
+                            {evidence.chunkStatus && evidence.chunkStatus !== "active" && (
+                              <Badge variant="warning">{evidence.chunkStatus}</Badge>
+                            )}
+                          </div>
+                          {isImage && (
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-stone-gray">
+                              {region && <span>区域: {region}</span>}
+                              {visionConfidence && <span>解析置信度: {visionConfidence}</span>}
+                              {snapshotDocumentId && (
+                                <button
+                                  type="button"
+                                  className="inline-flex items-center gap-1 text-terracotta hover:text-terracotta/80"
+                                  onClick={() => void handleDownloadImageSource(snapshotDocumentId)}
+                                >
+                                  <Download className="w-3 h-3" /> 查看原图
+                                </button>
+                              )}
+                            </div>
                           )}
-                          {evidence.versionNo != null && (
-                            <>
-                              <Badge variant="info">v{evidence.versionNo}</Badge>
-                              <span className="text-stone-gray">→</span>
-                            </>
-                          )}
-                          {evidence.pageNo != null && (
-                            <>
-                              <Badge variant="info">p.{evidence.pageNo}</Badge>
-                              <span className="text-stone-gray">→</span>
-                            </>
-                          )}
-                          {evidence.sectionPath && (
-                            <Badge variant="info">{evidence.sectionPath}</Badge>
-                          )}
-                          {evidence.chunkStatus && evidence.chunkStatus !== "active" && (
-                            <Badge variant="warning">{evidence.chunkStatus}</Badge>
-                          )}
-                        </div>
+                        </>
                       )}
                       <p className={`mt-2 ${isDeleted ? "text-stone-gray" : "text-near-black"}`}>
                         {evidence.contentSnapshot || "当前证据策略未返回正文快照。"}

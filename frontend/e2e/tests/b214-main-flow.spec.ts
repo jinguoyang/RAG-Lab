@@ -7,10 +7,8 @@ const API_URL = process.env.TEST_API_URL || "http://localhost:8000";
 const TEST_FILE_PATH = "e2e/fixtures/test-files/sample.txt";
 
 test.describe("B-214: 三层主链路 E2E", () => {
-  let seedResult: Awaited<ReturnType<typeof seedTestData>>;
-
   test.beforeAll(async () => {
-    seedResult = await seedTestData(BASE_SEED);
+    await seedTestData(BASE_SEED);
   });
 
   test("Step 1: 上传文档到文档库", async ({ page }) => {

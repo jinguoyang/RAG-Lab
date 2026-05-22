@@ -27,6 +27,7 @@ import type {
   PermissionSummary,
 } from "../types/knowledgeBase";
 import type { DictionaryItemDTO } from "../types/dictionary";
+import { permissionSourceLabel } from "../utils/threeLayerPresentation";
 
 const ROLE_LABELS: Record<KbRole, string> = {
   kb_owner: "知识库管理员",
@@ -310,6 +311,25 @@ export function MembersAndPermissions() {
         <p>知识库角色控制文档绑定、索引管理、QA 操作和成员管理权限。文档库权限在文档库中单独管理，智能应用权限在应用中管理。</p>
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
+        <div className="bg-ivory border border-border-cream rounded-lg p-4">
+          <p className="font-medium text-near-black">平台层</p>
+          <p className="mt-1 text-stone-gray">平台管理员可继承跨资源管理权限。</p>
+        </div>
+        <div className="bg-ivory border border-border-cream rounded-lg p-4">
+          <p className="font-medium text-near-black">文档库层</p>
+          <p className="mt-1 text-stone-gray">文档上传、版本和绑定权限在文档库成员中维护。</p>
+        </div>
+        <div className="bg-ivory border border-border-cream rounded-lg p-4">
+          <p className="font-medium text-near-black">知识库层</p>
+          <p className="mt-1 text-stone-gray">本页维护知识库成员、QA 和索引治理权限。</p>
+        </div>
+        <div className="bg-ivory border border-border-cream rounded-lg p-4">
+          <p className="font-medium text-near-black">应用层</p>
+          <p className="mt-1 text-stone-gray">应用和 API Key 受所属知识库状态约束。</p>
+        </div>
+      </div>
+
       {errorMessage && (
         <Alert variant="error" title="操作失败">
           {errorMessage}
@@ -372,8 +392,20 @@ export function MembersAndPermissions() {
                 <div className="font-medium text-near-black">
                   {simulationResult.allowed ? "允许" : "拒绝"} · {simulationResult.requestedPermissionCode || "全部权限"}
                 </div>
-                <div className="mt-2 text-stone-gray">
-                  来源：{simulationResult.sources.map((source) => `${source.sourceName || source.sourceType}:${source.effect}`).join("、") || "无"}
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {simulationResult.sources.length === 0 ? (
+                    <span className="text-stone-gray">无有效 allow 来源</span>
+                  ) : (
+                    simulationResult.sources.map((source, index) => (
+                      <Badge
+                        key={`${source.sourceType}-${source.sourceId}-${source.permissionCode}-${index}`}
+                        variant={source.effect === "deny" ? "error" : source.sourceType === "groupKbRole" ? "info" : "default"}
+                        className="text-xs"
+                      >
+                        {permissionSourceLabel(source)}
+                      </Badge>
+                    ))
+                  )}
                 </div>
                 <div className="mt-1 text-stone-gray">
                   拒绝原因：{simulationResult.deniedReasons.join("、") || "无显式拒绝"}

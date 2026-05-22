@@ -15,13 +15,16 @@ import {
   AlignLeft,
   Info,
   FileText,
+  Image as ImageIcon,
   Save,
   History as HistoryIcon,
   Copy,
+  Download,
 } from "lucide-react";
 import * as Tabs from "@radix-ui/react-tabs";
 import { toQADebugResult, type QARewriteTraceViewModel } from "../adapters/qaRunAdapter";
 import { createQARun, fetchQARunDetail, fetchQARunStatus } from "../services/qaRunService";
+import { downloadLibraryDocument } from "../services/libraryService";
 import {
   buildReplayOverrideParams,
   readRewriteEnabled,
@@ -75,6 +78,10 @@ interface ScenarioPayload {
     meta: string;
     documentId?: string | null;
     chunkId?: string | null;
+    sourceModality?: string | null;
+    sourceFileId?: string | null;
+    region?: string | null;
+    visionConfidence?: string | null;
   }[];
   diagnostics: {
     recalled: string;
@@ -554,6 +561,22 @@ export function QADebug() {
     navigate(`/kb/${kbId}/graph`);
   }
 
+  async function handleDownloadImageSource(documentId: string) {
+    try {
+      const result = await downloadLibraryDocument(documentId);
+      const url = URL.createObjectURL(result.blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = result.fileName ?? "source-image";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setFeedback({ variant: "warning", title: "下载失败", message: "无法下载原图文件。" });
+    }
+  }
+
   return (
     <div className="flex flex-col h-full bg-parchment">
       <div className="shrink-0 p-4 border-b border-border-cream bg-ivory flex items-center justify-between">
@@ -943,33 +966,59 @@ export function QADebug() {
 
                 <Tabs.Content value="evidence" className="p-0 outline-none">
                   <div className="divide-y divide-border-cream">
-                    {result.citations.map((citation) => (
-                      <div
-                        key={citation.id}
-                        className="p-4 hover:bg-border-cream/20 transition-colors cursor-pointer"
-                        onClick={() => handleOpenCitation(citation)}
-                      >
-                        <div className="flex gap-3">
-                          <div className="mt-1 bg-terracotta text-white w-6 h-6 rounded flex items-center justify-center text-xs font-bold shrink-0">
-                            [{citation.id}]
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2 mb-1">
-                              {citation.type === "document" ? (
-                                <FileText className="w-3 h-3 text-stone-gray" />
-                              ) : (
-                                <Network className="w-3 h-3 text-stone-gray" />
-                              )}
-                              <span className="text-sm font-medium text-near-black">{citation.title}</span>
+                    {result.citations.map((citation) => {
+                      const isImage = citation.sourceModality === "image";
+                      return (
+                        <div
+                          key={citation.id}
+                          className="p-4 hover:bg-border-cream/20 transition-colors cursor-pointer"
+                          onClick={() => handleOpenCitation(citation)}
+                        >
+                          <div className="flex gap-3">
+                            <div className="mt-1 bg-terracotta text-white w-6 h-6 rounded flex items-center justify-center text-xs font-bold shrink-0">
+                              [{citation.id}]
                             </div>
-                            <p className="text-sm text-stone-gray font-serif italic mb-2">
-                              {citation.snippet}
-                            </p>
-                            <div className="text-xs text-olive-gray font-mono">{citation.meta}</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                {isImage ? (
+                                  <ImageIcon className="w-3 h-3 text-terracotta" />
+                                ) : citation.type === "document" ? (
+                                  <FileText className="w-3 h-3 text-stone-gray" />
+                                ) : (
+                                  <Network className="w-3 h-3 text-stone-gray" />
+                                )}
+                                <span className="text-sm font-medium text-near-black">{citation.title}</span>
+                                {isImage && (
+                                  <Badge variant="info">图片证据</Badge>
+                                )}
+                              </div>
+                              {isImage && (
+                                <div className="flex flex-wrap items-center gap-2 mb-1 text-xs text-stone-gray">
+                                  {citation.region && <span>区域: {citation.region}</span>}
+                                  {citation.visionConfidence && <span>解析置信度: {citation.visionConfidence}</span>}
+                                  {citation.documentId && (
+                                    <Button
+                                      variant="ghost"
+                                      className="h-auto p-0 text-xs text-terracotta hover:text-terracotta/80"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        void handleDownloadImageSource(citation.documentId!);
+                                      }}
+                                    >
+                                      <Download className="w-3 h-3 mr-1" /> 查看原图
+                                    </Button>
+                                  )}
+                                </div>
+                              )}
+                              <p className="text-sm text-stone-gray font-serif italic mb-2">
+                                {citation.snippet}
+                              </p>
+                              <div className="text-xs text-olive-gray font-mono">{citation.meta}</div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </Tabs.Content>
               </Tabs.Root>
