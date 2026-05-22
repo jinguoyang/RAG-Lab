@@ -88,6 +88,9 @@ class QARunEvidenceDTO(BaseModel):
     sourceStatus: str = "available"  # "available" | "source_deleted"
     documentName: str | None = None
     versionNo: int | None = None
+    bindingRevisionId: str | None = None
+    parseRevisionId: str | None = None
+    documentVersionId: str | None = None
     pageNo: int | None = None
     sectionPath: str | None = None
     chunkStatus: str | None = None  # "active" | "retired" | "deleted"

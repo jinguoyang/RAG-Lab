@@ -35,6 +35,7 @@ from app.tables import (
     binding_revisions,
     chunk_access_filters,
     chunks,
+    document_kb_bindings,
     document_versions,
     documents,
     graph_chunk_refs,
@@ -479,9 +480,17 @@ def _to_chunk_dto(row: RowMapping) -> ChunkDTO:
         versionId=str(row["version_id"]),
         documentId=str(row["document_id"]),
         kbId=str(row["kb_id"]),
+        bindingRevisionId=str(row["binding_revision_id"]) if row.get("binding_revision_id") else None,
+        parseRevisionId=str(row["parse_revision_id"]) if row.get("parse_revision_id") else None,
+        documentVersionId=str(row["document_version_id"]) if row.get("document_version_id") else None,
         chunkIndex=row["chunk_index"],
         pageNo=row["page_no"],
         section=row["section"],
+        startOffset=row.get("start_offset"),
+        endOffset=row.get("end_offset"),
+        sectionPath=row.get("section_path"),
+        heading=row.get("heading"),
+        summary=row.get("summary"),
         content=row["content"],
         contentHash=row["content_hash"],
         tokenCount=row["token_count"],
@@ -490,6 +499,66 @@ def _to_chunk_dto(row: RowMapping) -> ChunkDTO:
         metadata=row["metadata"],
         createdAt=row["created_at"].isoformat(),
     )
+
+
+def _read_active_binding_revision_id(
+    session: Session,
+    kb_id: UUID,
+    version_id: UUID,
+) -> UUID | None:
+    """读取当前 KB 版本对应的 active BindingRevision，用于过滤当前可检索 Chunk。"""
+    return session.execute(
+        select(document_kb_bindings.c.active_binding_revision_id)
+        .where(
+            document_kb_bindings.c.kb_id == kb_id,
+            document_kb_bindings.c.version_id == version_id,
+            document_kb_bindings.c.status.in_(["pending", "processing", "active"]),
+        )
+        .limit(1)
+    ).scalar_one_or_none()
+
+
+def _read_ingest_binding_revision(
+    session: Session,
+    job_row: RowMapping,
+    version_row: RowMapping,
+) -> RowMapping | None:
+    """从入库任务、版本 metadata 或绑定表中定位本次构建的 BindingRevision。"""
+    result_summary = job_row["result_summary"] or {}
+    version_metadata = version_row["metadata"] or {}
+    binding_revision_id_str = result_summary.get("binding_revision_id") or version_metadata.get("binding_revision_id")
+    if binding_revision_id_str:
+        return session.execute(
+            select(binding_revisions)
+            .where(
+                binding_revisions.c.binding_revision_id == UUID(str(binding_revision_id_str)),
+                binding_revisions.c.deleted_at.is_(None),
+            )
+            .limit(1)
+        ).mappings().first()
+
+    binding_row = session.execute(
+        select(document_kb_bindings.c.binding_id)
+        .where(
+            document_kb_bindings.c.kb_id == job_row["kb_id"],
+            document_kb_bindings.c.version_id == version_row["version_id"],
+            document_kb_bindings.c.status.in_(["pending", "processing", "active"]),
+        )
+        .limit(1)
+    ).mappings().first()
+    if binding_row is None:
+        return None
+
+    return session.execute(
+        select(binding_revisions)
+        .where(
+            binding_revisions.c.binding_id == binding_row["binding_id"],
+            binding_revisions.c.status == "building",
+            binding_revisions.c.deleted_at.is_(None),
+        )
+        .order_by(binding_revisions.c.created_at.desc())
+        .limit(1)
+    ).mappings().first()
 
 
 def _to_index_sync_job_dto(row: RowMapping) -> IndexSyncJobDTO:
@@ -919,6 +988,8 @@ def run_ingest_job(
     ).mappings().first()
     if version_row is None or document_row is None:
         raise DocumentConflictError("Document version not found.")
+    binding_revision_row = _read_ingest_binding_revision(session, job_row, version_row)
+    binding_revision_id = binding_revision_row["binding_revision_id"] if binding_revision_row else None
 
     storage = storage_provider or get_object_storage_provider()
     file_row = None
@@ -1008,7 +1079,7 @@ def run_ingest_job(
                 "model": vision_settings.vision_text_model or vision_settings.llm_model,
                 "maxImageSide": vision_settings.vision_text_max_image_side,
             }
-        create_parse_revision(
+        generated_parse_revision_id = create_parse_revision(
             session=session,
             document_version_id=version_row["version_id"],
             content_format=content_format,
@@ -1018,6 +1089,11 @@ def run_ingest_job(
             parser_version=parser_version,
             parse_options=parse_options_for_revision,
             created_by=UUID(current_user.user.userId),
+        )
+        chunk_parse_revision_id = (
+            binding_revision_row["parse_revision_id"]
+            if binding_revision_row is not None
+            else generated_parse_revision_id
         )
         old_chunk_ids = [
             row[0]
@@ -1068,6 +1144,7 @@ def run_ingest_job(
         )
         for index, parsed in enumerate(parsed_chunks, start=1):
             content = parsed.content
+            parsed_metadata = parsed.metadata or {}
             embedding = embedding_provider.embed_query(content)
             row = session.execute(
                 insert(chunks)
@@ -1076,6 +1153,9 @@ def run_ingest_job(
                     version_id=version_row["version_id"],
                     document_id=document_row["document_id"],
                     kb_id=kb_row["kb_id"],
+                    binding_revision_id=binding_revision_id,
+                    parse_revision_id=chunk_parse_revision_id,
+                    document_version_id=version_row["version_id"],
                     chunk_index=index,
                     page_no=parsed.page_no,
                     section=parsed.section,
@@ -1084,8 +1164,11 @@ def run_ingest_job(
                     token_count=parsed.token_count,
                     security_level=document_row["security_level"],
                     status="active",
+                    section_path=parsed_metadata.get("sectionPath") or parsed_metadata.get("section_path") or parsed.section,
+                    heading=parsed_metadata.get("heading") or parsed.section,
+                    summary=parsed_metadata.get("summary"),
                     metadata={
-                        **parsed.metadata,
+                        **parsed_metadata,
                         "sourceFileName": file_name,
                         "embeddingProvider": get_settings().embedding_provider,
                         "embeddingModel": get_settings().embedding_model,
@@ -1324,6 +1407,7 @@ def run_ingest_job(
                     f"{item['targetStore']}: {item['errorMessage']}" for item in index_errors
                 ) if index_errors else None,
                 metadata={
+                    **(version_row["metadata"] or {}),
                     "parserName": parser_name,
                     "parserVersion": parser_version,
                     "sourceFileName": file_name,
@@ -1354,6 +1438,7 @@ def run_ingest_job(
                     f"{item['targetStore']}: {item['errorMessage']}" for item in index_errors
                 ) if index_errors else None,
                 result_summary={
+                    **({"binding_revision_id": str(binding_revision_id)} if binding_revision_id else {}),
                     "chunkCount": len(chunk_rows),
                     "tokenCount": total_tokens,
                     "parserName": parser_name,
@@ -1369,7 +1454,15 @@ def run_ingest_job(
             )
             .returning(ingest_jobs)
         ).mappings().one()
+        if binding_revision_id is not None and ingest_final_status == "success":
+            from app.services.binding_service import complete_binding_revision_build
+
+            complete_binding_revision_build(session, binding_revision_id, len(chunk_rows))
     except (DocumentParseError, ProviderError) as exc:
+        if binding_revision_id is not None:
+            from app.services.binding_service import fail_binding_revision
+
+            fail_binding_revision(session, binding_revision_id, str(exc))
         error_code = exc.error_code if isinstance(exc, DocumentParseError) else "INGEST_EMBEDDING_FAILED"
         session.execute(
             update(document_versions)
@@ -1423,6 +1516,10 @@ def run_ingest_job(
             .returning(ingest_jobs)
         ).mappings().one()
     except Exception as exc:
+        if binding_revision_id is not None:
+            from app.services.binding_service import fail_binding_revision
+
+            fail_binding_revision(session, binding_revision_id, str(exc))
         session.execute(
             update(document_versions)
             .where(document_versions.c.version_id == version_row["version_id"])
@@ -2333,17 +2430,20 @@ def list_chunks(
     page_no: int,
     page_size: int,
 ) -> PageResponse[ChunkDTO] | None:
-    """分页读取指定版本 Chunk；无正文读取权时不返回资源细节。"""
+    """分页读取当前可检索 Chunk；绑定文档优先限定 active BindingRevision。"""
     if get_document_detail(session, current_user, kb_id, document_id) is None:
         return None
     _ensure_permission(session, current_user, kb_id, "kb.chunk.read")
 
+    active_binding_revision_id = _read_active_binding_revision_id(session, kb_id, version_id)
     condition = (
         (chunks.c.kb_id == kb_id)
         & (chunks.c.document_id == document_id)
         & (chunks.c.version_id == version_id)
         & (chunks.c.status == "active")
     )
+    if active_binding_revision_id is not None:
+        condition = condition & (chunks.c.binding_revision_id == active_binding_revision_id)
     total = session.execute(select(func.count()).select_from(chunks).where(condition)).scalar_one()
     rows = session.execute(
         select(chunks)
@@ -2366,14 +2466,19 @@ def get_chunk(
     kb_id: UUID,
     chunk_id: UUID,
 ) -> ChunkDTO | None:
-    """读取单个 Chunk 正文，按 `kb.chunk.read` 做最终后端鉴权。"""
+    """读取单个 Chunk 正文，允许历史 Evidence 回溯 retired Chunk。"""
     if _read_visible_knowledge_base(session, current_user, kb_id) is None:
         return None
     _ensure_permission(session, current_user, kb_id, "kb.chunk.read")
 
     row = session.execute(
         select(chunks)
-        .where(chunks.c.kb_id == kb_id, chunks.c.chunk_id == chunk_id, chunks.c.status == "active")
+        .where(
+            chunks.c.kb_id == kb_id,
+            chunks.c.chunk_id == chunk_id,
+            chunks.c.status.in_(["active", "retired"]),
+            chunks.c.deleted_at.is_(None),
+        )
         .limit(1)
     ).mappings().first()
     return _to_chunk_dto(row) if row else None

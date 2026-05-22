@@ -17,6 +17,10 @@ class LibraryBindingDTO(BaseModel):
     chunkCount: int
     errorCode: str | None = None
     errorMessage: str | None = None
+    activeBindingRevisionId: str | None = None
+    bindingRevisionStatus: str | None = None
+    bindingRevisionChunkCount: int | None = None
+    bindingRevisionVersionId: str | None = None
     createdAt: str
     createdBy: str | None = None
 

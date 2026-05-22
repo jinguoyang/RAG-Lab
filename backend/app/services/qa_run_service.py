@@ -53,6 +53,7 @@ from app.tables import (
     chunks,
     chunk_access_filters,
     config_revisions,
+    document_kb_bindings,
     documents,
     document_versions,
     evaluation_results,
@@ -602,9 +603,15 @@ def _authorize_provider_candidates(
                 chunks.c.kb_id,
                 chunks.c.document_id,
                 chunks.c.version_id,
+                chunks.c.binding_revision_id,
+                chunks.c.parse_revision_id,
+                chunks.c.document_version_id,
                 chunks.c.chunk_index,
                 chunks.c.page_no,
                 chunks.c.section,
+                chunks.c.section_path,
+                chunks.c.heading,
+                chunks.c.summary,
                 chunks.c.content,
                 chunks.c.security_level,
                 chunks.c.status,
@@ -615,6 +622,14 @@ def _authorize_provider_candidates(
             .select_from(
                 chunks.join(document_versions, chunks.c.version_id == document_versions.c.version_id)
                 .join(documents, chunks.c.document_id == documents.c.document_id)
+                .outerjoin(
+                    document_kb_bindings,
+                    sa.and_(
+                        document_kb_bindings.c.kb_id == chunks.c.kb_id,
+                        document_kb_bindings.c.version_id == chunks.c.version_id,
+                        document_kb_bindings.c.status.in_(["pending", "processing", "active"]),
+                    ),
+                )
             )
             .where(
                 chunks.c.chunk_id.in_(chunk_ids),
@@ -623,6 +638,11 @@ def _authorize_provider_candidates(
                 document_versions.c.status == "active",
                 documents.c.status == "active",
                 documents.c.deleted_at.is_(None),
+                sa.or_(
+                    document_kb_bindings.c.active_binding_revision_id.is_(None),
+                    chunks.c.binding_revision_id.is_(None),
+                    chunks.c.binding_revision_id == document_kb_bindings.c.active_binding_revision_id,
+                ),
             )
         ).mappings()
         filter_rows = session.execute(
@@ -676,9 +696,15 @@ def _authorize_provider_candidates(
                 "documentName": chunk_row["document_name"],
                 "versionId": str(chunk_row["version_id"]),
                 "versionNo": chunk_row["version_no"],
+                "bindingRevisionId": str(chunk_row["binding_revision_id"]) if chunk_row["binding_revision_id"] else None,
+                "parseRevisionId": str(chunk_row["parse_revision_id"]) if chunk_row["parse_revision_id"] else None,
+                "documentVersionId": str(chunk_row["document_version_id"]) if chunk_row["document_version_id"] else None,
                 "chunkIndex": chunk_row["chunk_index"],
                 "pageNo": chunk_row["page_no"],
                 "section": chunk_row["section"],
+                "sectionPath": chunk_row["section_path"],
+                "heading": chunk_row["heading"],
+                "summary": chunk_row["summary"],
                 "securityLevel": chunk_row["security_level"],
                 "truthSource": "postgres_chunks",
             },
@@ -1371,10 +1397,15 @@ def _execute_provider_qa_run(
                     "documentId": candidate.metadata.get("documentId"),
                     "documentName": candidate.metadata.get("documentName"),
                     "versionId": candidate.metadata.get("versionId"),
+                    "bindingRevisionId": candidate.metadata.get("bindingRevisionId"),
+                    "parseRevisionId": candidate.metadata.get("parseRevisionId"),
+                    "documentVersionId": candidate.metadata.get("documentVersionId"),
                     "chunkId": candidate.metadata.get("chunkId"),
                     "chunkIndex": candidate.metadata.get("chunkIndex"),
                     "pageNo": candidate.metadata.get("pageNo"),
                     "section": candidate.metadata.get("section"),
+                    "sectionPath": candidate.metadata.get("sectionPath"),
+                    "heading": candidate.metadata.get("heading"),
                     "matchedChannels": candidate.metadata.get("matchedChannels", [candidate.source_type]),
                     # Image-specific location fields (B-222)
                     "sourceModality": candidate.metadata.get("sourceModality"),
@@ -1691,6 +1722,9 @@ def get_qa_run_detail(
             select(
                 chunks.c.chunk_id,
                 chunks.c.status.label("chunk_status"),
+                chunks.c.binding_revision_id,
+                chunks.c.parse_revision_id,
+                chunks.c.document_version_id,
                 chunks.c.page_no,
                 chunks.c.section_path,
                 document_versions.c.version_no,
@@ -1745,6 +1779,9 @@ def get_qa_run_detail(
                 redactionStatus="source_deleted",
                 sourceStatus="source_deleted",
                 documentName=metadata.get("document_name"),
+                bindingRevisionId=str(metadata.get("binding_revision_id")) if metadata.get("binding_revision_id") else None,
+                parseRevisionId=str(metadata.get("parse_revision_id")) if metadata.get("parse_revision_id") else None,
+                documentVersionId=str(metadata.get("document_version_id")) if metadata.get("document_version_id") else None,
             )
 
         drop_reason = _chunk_access_filter_drop_reason(filters_by_chunk_id.get(evidence_row["chunk_id"]), access_filter)
@@ -1761,6 +1798,9 @@ def get_qa_run_detail(
                 sourceStatus=metadata.get("source_status", "available"),
                 documentName=metadata.get("document_name"),
                 versionNo=metadata.get("version_no"),
+                bindingRevisionId=str(metadata.get("binding_revision_id")) if metadata.get("binding_revision_id") else None,
+                parseRevisionId=str(metadata.get("parse_revision_id")) if metadata.get("parse_revision_id") else None,
+                documentVersionId=str(metadata.get("document_version_id")) if metadata.get("document_version_id") else None,
                 pageNo=metadata.get("page_no"),
                 sectionPath=metadata.get("section_path"),
                 chunkStatus=metadata.get("chunk_status"),
@@ -1775,6 +1815,9 @@ def get_qa_run_detail(
             sourceStatus=metadata.get("source_status", "available"),
             documentName=metadata.get("document_name"),
             versionNo=metadata.get("version_no"),
+            bindingRevisionId=str(metadata.get("binding_revision_id")) if metadata.get("binding_revision_id") else None,
+            parseRevisionId=str(metadata.get("parse_revision_id")) if metadata.get("parse_revision_id") else None,
+            documentVersionId=str(metadata.get("document_version_id")) if metadata.get("document_version_id") else None,
             pageNo=metadata.get("page_no"),
             sectionPath=metadata.get("section_path"),
             chunkStatus=metadata.get("chunk_status"),

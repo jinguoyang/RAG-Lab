@@ -71,9 +71,17 @@ class ChunkDTO(BaseModel):
     versionId: str
     documentId: str
     kbId: str
+    bindingRevisionId: str | None = None
+    parseRevisionId: str | None = None
+    documentVersionId: str | None = None
     chunkIndex: int
     pageNo: int | None
     section: str | None
+    startOffset: int | None = None
+    endOffset: int | None = None
+    sectionPath: str | None = None
+    heading: str | None = None
+    summary: str | None = None
     content: str
     contentHash: str | None
     tokenCount: int | None
