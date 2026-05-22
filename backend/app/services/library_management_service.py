@@ -19,7 +19,6 @@ from app.services.permission_service import (
     _user_id,
     check_library_owner_or_admin,
     has_library_access,
-    library_visibility_condition,
 )
 from app.tables import document_kb_bindings, document_libraries, document_versions, documents, library_member_bindings
 
@@ -46,7 +45,6 @@ def _to_library_dto(row, document_count: int = 0) -> LibraryDTO:
         ownerId=str(row["owner_id"]),
         name=row["name"],
         description=row.get("description"),
-        visibility=row["visibility"],
         status=row["status"],
         documentCount=document_count,
         createdAt=row["created_at"].isoformat(),
@@ -78,7 +76,6 @@ def create_library(
             owner_id=actor_id,
             name=request.name,
             description=request.description,
-            visibility=request.visibility,
             status="active",
             created_at=now,
             created_by=actor_id,
@@ -101,9 +98,7 @@ def list_libraries(
     page_size: int = 20,
     keyword: str | None = None,
 ) -> LibraryPageResponse:
-    visibility_cond = library_visibility_condition(current_user)
-
-    base_query = select(document_libraries).where(visibility_cond)
+    base_query = select(document_libraries).where(document_libraries.c.deleted_at.is_(None))
     if keyword and keyword.strip():
         safe_keyword = keyword.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         base_query = base_query.where(document_libraries.c.name.ilike(f"%{safe_keyword}%", escape="\\"))
@@ -161,7 +156,6 @@ def get_library_detail(
         ownerId=str(row["owner_id"]),
         name=row["name"],
         description=row.get("description"),
-        visibility=row["visibility"],
         status=row["status"],
         documentCount=doc_count,
         createdAt=row["created_at"].isoformat(),
@@ -192,8 +186,6 @@ def update_library(
         values["name"] = request.name
     if request.description is not None:
         values["description"] = request.description
-    if request.visibility is not None:
-        values["visibility"] = request.visibility
 
     session.execute(
         update(document_libraries)
