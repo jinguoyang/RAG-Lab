@@ -3,16 +3,19 @@ import { Outlet, NavLink, useParams } from "react-router";
 import { LayoutDashboard, FileText, Settings, Stethoscope, History, Network, Shield, ChevronLeft } from "lucide-react";
 import { Button } from "../components/rag/Button";
 import { Badge } from "../components/rag/Badge";
-import { fetchKnowledgeBase } from "../services/knowledgeBaseService";
-import type { KnowledgeBase } from "../types/knowledgeBase";
+import { fetchKnowledgeBase, fetchKbPermissionSummary } from "../services/knowledgeBaseService";
+import type { KnowledgeBase, PermissionSummary } from "../types/knowledgeBase";
 
 export function KBLayout() {
   const { kbId } = useParams();
   const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBase | null>(null);
+  const [summary, setSummary] = useState<PermissionSummary | null>(null);
   const knowledgeBaseName = knowledgeBase?.name || "知识库";
   const activeConfigLabel = knowledgeBase?.activeConfigRevisionId
     ? `生效配置：${knowledgeBase.activeConfigRevisionId}`
     : "生效配置：未配置";
+
+  const canManageMembers = summary?.permissions.includes("kb.member.manage") ?? false;
 
   const navItems = [
     { to: `/kb/${kbId}`, label: "概览", icon: <LayoutDashboard className="w-4 h-4" />, end: true },
@@ -21,7 +24,9 @@ export function KBLayout() {
     { to: `/kb/${kbId}/qa`, label: "QA 调试", icon: <Stethoscope className="w-4 h-4" /> },
     { to: `/kb/${kbId}/history`, label: "QA 历史", icon: <History className="w-4 h-4" /> },
     { to: `/kb/${kbId}/graph`, label: "图谱分析", icon: <Network className="w-4 h-4" /> },
-    { to: `/kb/${kbId}/members`, label: "成员与权限", icon: <Shield className="w-4 h-4" /> },
+    ...(canManageMembers
+      ? [{ to: `/kb/${kbId}/members`, label: "成员与权限", icon: <Shield className="w-4 h-4" /> }]
+      : []),
   ];
 
   useEffect(() => {
@@ -56,6 +61,17 @@ export function KBLayout() {
       ignore = true;
       window.removeEventListener("raglab:knowledge-base-changed", handleKnowledgeBaseChanged);
     };
+  }, [kbId]);
+
+  useEffect(() => {
+    if (!kbId) {
+      setSummary(null);
+      return;
+    }
+
+    fetchKbPermissionSummary(kbId)
+      .then(setSummary)
+      .catch(() => setSummary(null));
   }, [kbId]);
 
   return (

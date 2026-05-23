@@ -133,7 +133,7 @@ export interface DocumentDeleteResponse {
 }
 
 export interface BulkDocumentGovernanceRequest {
-  operation: "reparse" | "disable" | "rebuild_index";
+  operation: "reparse" | "disable" | "rebuild_index" | "full_governance";
   documentIds: string[];
   confirmImpact: boolean;
   reason?: string | null;

@@ -19,7 +19,7 @@ test.describe("B-215: 删除和清理回归", () => {
     await versionRow.locator("text=删除").first().click();
 
     await expect(
-      page.locator("text=/无法删除|不能删除|active.*引用|BindingRevision/").first()
+      page.locator("text=/无法删除|不能删除|active.*引用|ChunkRevision/").first()
     ).toBeVisible({ timeout: 10_000 });
   });
 

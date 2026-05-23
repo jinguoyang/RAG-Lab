@@ -396,20 +396,18 @@ export function LibraryDocuments() {
         </div>
 
         {/* 批量操作栏 */}
-        {selectedIds.size > 0 && (
-          <div className="flex items-center gap-3 p-3 bg-parchment rounded-lg border border-border-cream">
-            <span className="text-sm text-near-black">已选 {selectedIds.size} 个文档</span>
-            <Button variant="ghost" size="sm" disabled={batchLoading} onClick={() => openReparseDrawer(documents.filter((doc) => selectedIds.has(doc.documentId)))}>
-              <RefreshCw className="w-4 h-4 mr-1" /> 重新解析
-            </Button>
-            <Button variant="ghost" size="sm" disabled={batchLoading} onClick={() => void handleBatchAction("disable")}>
-              <Power className="w-4 h-4 mr-1" /> 停用
-            </Button>
-            <Button variant="ghost" size="sm" disabled={batchLoading} onClick={() => void handleBatchAction("delete")} className="text-red-600 hover:text-red-700">
-              <Trash2 className="w-4 h-4 mr-1" /> 删除
-            </Button>
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border-cream bg-ivory p-4">
+          <span className="text-sm text-stone-gray">已选 {selectedIds.size} 个文档</span>
+          <Button variant="outline" disabled={batchLoading || selectedIds.size === 0} onClick={() => openReparseDrawer(documents.filter((doc) => selectedIds.has(doc.documentId)))}>
+            <RefreshCw className="w-4 h-4 mr-2" /> 重新解析
+          </Button>
+          <Button variant="outline" disabled={batchLoading || selectedIds.size === 0} onClick={() => void handleBatchAction("disable")}>
+            <Power className="w-4 h-4 mr-2" /> 停用
+          </Button>
+          <Button variant="destructive" disabled={batchLoading || selectedIds.size === 0} onClick={() => void handleBatchAction("delete")}>
+            <Trash2 className="w-4 h-4 mr-2" /> 删除
+          </Button>
+        </div>
 
         {/* 文档列表 */}
         {loading ? (
@@ -533,26 +531,26 @@ export function LibraryDocuments() {
             </Table>
 
             {/* 分页 */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-stone-gray">共 {total} 个文档</span>
+            {total > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-stone-gray">
+                <span>共 {total} 个文档</span>
                 <div className="flex items-center gap-2">
                   <Button
-                    variant="secondary"
+                    variant="outline"
                     size="sm"
-                    disabled={pageNo <= 1}
+                    disabled={loading || pageNo <= 1}
                     onClick={() => void loadData(searchTerm, pageNo - 1)}
                   >
-                    <ChevronLeft className="w-4 h-4" />
+                    <ChevronLeft className="w-4 h-4 mr-1" /> 上一页
                   </Button>
-                  <span className="text-sm text-near-black">{pageNo} / {totalPages}</span>
+                  <span className="min-w-20 text-center text-near-black">{pageNo} / {totalPages}</span>
                   <Button
-                    variant="secondary"
+                    variant="outline"
                     size="sm"
-                    disabled={pageNo >= totalPages}
+                    disabled={loading || pageNo >= totalPages}
                     onClick={() => void loadData(searchTerm, pageNo + 1)}
                   >
-                    <ChevronRight className="w-4 h-4" />
+                    下一页 <ChevronRight className="w-4 h-4 ml-1" />
                   </Button>
                 </div>
               </div>

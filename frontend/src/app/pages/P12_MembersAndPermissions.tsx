@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
@@ -6,7 +6,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from ".
 import { Input } from "../components/rag/Input";
 import { Alert } from "../components/rag/Alert";
 import { useConfirmDialog } from "../components/rag/ConfirmDialog";
-import { ChevronLeft, ChevronRight, RefreshCw, Search, ShieldAlert, Trash2, UserPlus, Users } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, RefreshCw, Search, Trash2, UserPlus, Users } from "lucide-react";
 import { Badge } from "../components/rag/Badge";
 import { dictionaryLabel, fetchDictionaryItemsWithFallback } from "../services/dictionaryService";
 import {
@@ -15,11 +15,9 @@ import {
   fetchKbMembers,
   fetchKbPermissionSummary,
   searchKbMemberSubjects,
-  simulateEffectivePermission,
   updateKbMemberRole,
 } from "../services/knowledgeBaseService";
 import type {
-  EffectivePermissionSimulationResponse,
   KbMemberBinding,
   KbMemberSubjectOption,
   KbMemberSubjectType,
@@ -27,7 +25,6 @@ import type {
   PermissionSummary,
 } from "../types/knowledgeBase";
 import type { DictionaryItemDTO } from "../types/dictionary";
-import { permissionSourceLabel } from "../utils/threeLayerPresentation";
 
 const ROLE_LABELS: Record<KbRole, string> = {
   kb_owner: "知识库管理员",
@@ -73,9 +70,6 @@ export function MembersAndPermissions() {
   const [subjectSearch, setSubjectSearch] = useState("");
   const [subjectOptions, setSubjectOptions] = useState<KbMemberSubjectOption[]>([]);
   const [selectedSubject, setSelectedSubject] = useState<KbMemberSubjectOption | null>(null);
-  const [simulationUserId, setSimulationUserId] = useState("");
-  const [simulationPermissionCode, setSimulationPermissionCode] = useState("kb.view");
-  const [simulationResult, setSimulationResult] = useState<EffectivePermissionSimulationResponse | null>(null);
   const [isSubjectDropdownOpen, setIsSubjectDropdownOpen] = useState(false);
   const [isSearchingSubjects, setIsSearchingSubjects] = useState(false);
   const [kbRole, setKbRole] = useState<KbRole>("kb_viewer");
@@ -98,6 +92,21 @@ export function MembersAndPermissions() {
     (role: KbRole) => dictionaryLabel(kbRoleItems, role, ROLE_LABELS[role] || role),
     [kbRoleItems],
   );
+
+  const kbPermissions = summary?.permissions.filter((p) => p.startsWith("kb.")) ?? [];
+  const permContainerRef = useRef<HTMLDivElement>(null);
+  const [isPermExpanded, setIsPermExpanded] = useState(false);
+  const [needsExpand, setNeedsExpand] = useState(false);
+
+  useEffect(() => {
+    const el = permContainerRef.current;
+    if (!el) return;
+    if (isPermExpanded) {
+      setNeedsExpand(true);
+      return;
+    }
+    setNeedsExpand(el.scrollHeight > el.clientHeight + 1);
+  }, [kbPermissions, isPermExpanded]);
 
   const loadMembers = useCallback(async () => {
     if (!kbId) {
@@ -208,26 +217,6 @@ export function MembersAndPermissions() {
     }
   };
 
-  const handleSimulatePermission = async () => {
-    if (!kbId || !simulationUserId.trim()) {
-      setErrorMessage("请先输入要模拟的用户 ID。");
-      return;
-    }
-
-    setIsSaving(true);
-    setErrorMessage(null);
-    try {
-      setSimulationResult(
-        await simulateEffectivePermission(kbId, simulationUserId.trim(), simulationPermissionCode.trim() || "kb.view"),
-      );
-    } catch {
-      setSimulationResult(null);
-      setErrorMessage("权限解释模拟失败，请确认用户 ID 有效且当前账号可管理成员。");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const handleRoleChange = async (member: KbMemberBinding, nextRole: KbRole) => {
     if (!kbId || nextRole === member.kbRole) {
       return;
@@ -298,125 +287,49 @@ export function MembersAndPermissions() {
         }
       />
 
-      <div className="bg-warning-amber/10 border border-warning-amber/20 rounded-lg p-4 flex gap-3 text-warning-amber text-sm mb-4">
-        <ShieldAlert className="w-5 h-5 shrink-0 mt-0.5" />
-        <div>
-          <p className="font-medium text-near-black">重要安全提示</p>
-          <p className="mt-1">角色绑定修改会立即生效。被移出“知识库读者”或“QA 操作员”角色的用户将失去运行诊断查询的权限。</p>
-        </div>
-      </div>
-
-      <div className="bg-parchment border border-border-cream rounded-lg p-4 text-sm text-stone-gray">
-        <p className="font-medium text-near-black mb-1">权限说明</p>
-        <p>知识库角色控制文档绑定、索引管理、QA 操作和成员管理权限。文档库权限在文档库中单独管理，智能应用权限在应用中管理。</p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
-        <div className="bg-ivory border border-border-cream rounded-lg p-4">
-          <p className="font-medium text-near-black">平台层</p>
-          <p className="mt-1 text-stone-gray">平台管理员可继承跨资源管理权限。</p>
-        </div>
-        <div className="bg-ivory border border-border-cream rounded-lg p-4">
-          <p className="font-medium text-near-black">文档库层</p>
-          <p className="mt-1 text-stone-gray">文档上传、版本和绑定权限在文档库成员中维护。</p>
-        </div>
-        <div className="bg-ivory border border-border-cream rounded-lg p-4">
-          <p className="font-medium text-near-black">知识库层</p>
-          <p className="mt-1 text-stone-gray">本页维护知识库成员、QA 和索引治理权限。</p>
-        </div>
-        <div className="bg-ivory border border-border-cream rounded-lg p-4">
-          <p className="font-medium text-near-black">应用层</p>
-          <p className="mt-1 text-stone-gray">应用和 API Key 受所属知识库状态约束。</p>
-        </div>
-      </div>
-
       {errorMessage && (
         <Alert variant="error" title="操作失败">
           {errorMessage}
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 shrink-0">
-        <div className="bg-ivory border border-border-cream rounded-lg p-4">
-          <p className="text-xs text-stone-gray mb-1">当前角色</p>
-          <p className="text-sm font-medium text-near-black">{summary?.roles.map((role) => roleLabel(role as KbRole)).join(" / ") || "无"}</p>
-        </div>
-        <div className="bg-ivory border border-border-cream rounded-lg p-4">
-          <p className="text-xs text-stone-gray mb-1">成员管理</p>
-          <p className="text-sm font-medium text-near-black">{canManageMembers ? "可管理" : "只读"}</p>
-        </div>
-        <div className="bg-ivory border border-border-cream rounded-lg p-4 lg:col-span-2">
-          <p className="text-xs text-stone-gray mb-1">有效权限</p>
-          <div className="flex flex-wrap gap-1.5">
-            {summary?.permissions.slice(0, 8).map((perm) => (
-              <Badge key={perm} variant="default" className="text-xs">{perm}</Badge>
-            ))}
-            {(summary?.permissions.length ?? 0) > 8 && (
-              <Badge variant="default" className="text-xs">+{(summary?.permissions.length ?? 0) - 8}</Badge>
-            )}
-            {(!summary?.permissions || summary.permissions.length === 0) && (
-              <span className="text-sm text-stone-gray">暂无权限</span>
-            )}
-          </div>
-          {summary?.inheritedFromPlatformRole && (
-            <p className="mt-2 text-xs text-stone-gray">部分权限继承自平台角色</p>
+      <div className="bg-ivory border border-border-cream rounded-lg p-4 shrink-0 space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-stone-gray mr-1">当前角色</span>
+          {summary?.roles.map((role) => (
+            <Badge key={role} variant="info" className="text-xs">{roleLabel(role as KbRole)}</Badge>
+          ))}
+          {(!summary?.roles || summary.roles.length === 0) && (
+            <span className="text-xs text-stone-gray">无</span>
           )}
         </div>
-      </div>
-
-      {canManageMembers && (
-        <div className="grid grid-cols-1 xl:grid-cols-[minmax(240px,1fr)_220px_auto_minmax(300px,1.4fr)] gap-3 shrink-0 bg-ivory border border-border-cream rounded-lg p-4 items-start">
-          <div>
-            <p className="text-sm font-medium text-near-black mb-2">权限解释</p>
-            <Input
-              value={simulationUserId}
-              onChange={(event) => setSimulationUserId(event.target.value)}
-              placeholder="输入用户 ID"
-              className="bg-white"
-            />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-near-black mb-2">权限码</p>
-            <Input
-              value={simulationPermissionCode}
-              onChange={(event) => setSimulationPermissionCode(event.target.value)}
-              className="bg-white"
-            />
-          </div>
-          <Button variant="outline" onClick={() => void handleSimulatePermission()} disabled={isSaving} className="mt-7 h-10">
-            模拟
-          </Button>
-          <div className="rounded-lg border border-border-cream bg-parchment p-3 text-sm">
-            {simulationResult ? (
-              <>
-                <div className="font-medium text-near-black">
-                  {simulationResult.allowed ? "允许" : "拒绝"} · {simulationResult.requestedPermissionCode || "全部权限"}
-                </div>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {simulationResult.sources.length === 0 ? (
-                    <span className="text-stone-gray">无有效 allow 来源</span>
-                  ) : (
-                    simulationResult.sources.map((source, index) => (
-                      <Badge
-                        key={`${source.sourceType}-${source.sourceId}-${source.permissionCode}-${index}`}
-                        variant={source.effect === "deny" ? "error" : source.sourceType === "groupKbRole" ? "info" : "default"}
-                        className="text-xs"
-                      >
-                        {permissionSourceLabel(source)}
-                      </Badge>
-                    ))
-                  )}
-                </div>
-                <div className="mt-1 text-stone-gray">
-                  拒绝原因：{simulationResult.deniedReasons.join("、") || "无显式拒绝"}
-                </div>
-              </>
-            ) : (
-              <p className="text-stone-gray">输入用户 ID 后可查看有效权限来源和拒绝原因。</p>
+        <div className="flex items-start gap-2">
+          <span className="text-xs text-stone-gray shrink-0 leading-5">权限</span>
+          <div className="relative flex-1 min-w-0">
+            <div
+              ref={permContainerRef}
+              className={`flex flex-wrap gap-1.5 ${isPermExpanded ? "" : "max-h-6 overflow-hidden"}`}
+            >
+              {kbPermissions.map((perm) => (
+                <Badge key={perm} variant="default" className="text-xs">{perm}</Badge>
+              ))}
+              {kbPermissions.length === 0 && (
+                <span className="text-xs text-stone-gray">暂无权限</span>
+              )}
+            </div>
+            {needsExpand && (
+              <button
+                type="button"
+                onClick={() => setIsPermExpanded((v) => !v)}
+                className="absolute right-0 top-0 flex items-center gap-1 px-2 py-0.5 text-xs text-focus-blue hover:text-near-black bg-ivory"
+              >
+                {isPermExpanded ? "收起" : "展开"}
+                <ChevronDown className={`w-3 h-3 transition-transform ${isPermExpanded ? "rotate-180" : ""}`} />
+              </button>
             )}
           </div>
         </div>
-      )}
+      </div>
 
       {canManageMembers && (
         <div className="grid grid-cols-1 xl:grid-cols-[140px_minmax(280px,1fr)_220px_auto] gap-3 shrink-0 bg-ivory border border-border-cream rounded-lg p-4 items-start">
@@ -528,7 +441,6 @@ export function MembersAndPermissions() {
               <TableHead>主体（用户 / 用户组）</TableHead>
               <TableHead>类型</TableHead>
               <TableHead>角色</TableHead>
-              <TableHead>来源</TableHead>
               <TableHead>更新时间</TableHead>
               <TableHead>操作</TableHead>
             </TableRow>
@@ -536,12 +448,12 @@ export function MembersAndPermissions() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={6} className="text-stone-gray">加载中...</TableCell>
+                <TableCell colSpan={5} className="text-stone-gray">加载中...</TableCell>
               </TableRow>
             )}
             {!isLoading && members.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="text-stone-gray">暂无成员绑定</TableCell>
+                <TableCell colSpan={5} className="text-stone-gray">暂无成员绑定</TableCell>
               </TableRow>
             )}
             {!isLoading && members.map((member) => (
@@ -570,18 +482,6 @@ export function MembersAndPermissions() {
                   ) : (
                     roleLabel(member.kbRole)
                   )}
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-1.5">
-                    {member.subjectType === "group" ? (
-                      <>
-                        <Users className="w-3.5 h-3.5 text-focus-blue" />
-                        <span className="text-focus-blue text-xs">用户组</span>
-                      </>
-                    ) : (
-                      <span className="text-stone-gray text-xs">直接授权</span>
-                    )}
-                  </div>
                 </TableCell>
                 <TableCell>{formatDate(member.updatedAt)}</TableCell>
                 <TableCell>

@@ -181,7 +181,7 @@ export function toVersionRow(
     createdAtLabel: formatDateTime(version.createdAt),
     active: version.versionId === activeVersionId,
     indexStages: [
-      { key: "milvus", label: "Dense / Milvus", status: version.denseIndexStatus },
+      { key: "milvus", label: "Milvus", status: version.denseIndexStatus },
       { key: "opensearch", label: "OpenSearch", status: version.sparseIndexStatus },
       { key: "graph_index", label: "Neo4j", status: version.graphIndexStatus },
     ],

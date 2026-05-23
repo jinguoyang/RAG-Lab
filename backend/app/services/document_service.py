@@ -2322,6 +2322,27 @@ def run_bulk_document_governance(
             errors=errors,
         )
 
+    if operation == "full_governance":
+        affected: list[str] = []
+        errors: list[str] = []
+        for document_id in document_ids:
+            try:
+                response = reparse_document(session, current_user, kb_id, document_id, reason)
+                if response is None:
+                    errors.append(f"{document_id}: document not found")
+                else:
+                    affected.append(str(document_id))
+            except Exception as exc:
+                errors.append(f"{document_id}: {exc}")
+        return BulkDocumentGovernanceResponse(
+            operation=operation,
+            requestedCount=len(document_ids),
+            successCount=len(affected),
+            failedCount=len(errors),
+            affectedIds=affected,
+            errors=errors,
+        )
+
     if operation == "disable":
         result = session.execute(
             update(documents)
