@@ -43,7 +43,7 @@ class TestChunkRevisionsCreation:
     """验证 chunk_revisions 表创建和插入。"""
 
     def test_chunk_revisions_creation(self, db):
-        """插入一条 binding_revision 并验证它存在。"""
+        """插入一条 chunk_revision 并验证它存在。"""
         binding_rev_id = str(uuid4())
         binding_id = str(uuid4())
         kb_id = str(uuid4())
@@ -125,11 +125,11 @@ class TestChunksTableMigration:
                 """
                 INSERT INTO chunks
                     (chunk_id, version_id, document_id, kb_id, chunk_index,
-                     content, security_level, status, metadata, created_at,
+                     content, status, metadata, created_at,
                      chunk_revision_id, parse_revision_id, document_version_id)
                 VALUES
                     (:chunk_id, :version_id, :doc_id, :kb_id, 0,
-                     'test content', 'internal', 'active', '{}', datetime('now'),
+                     'test content', 'active', '{}', datetime('now'),
                      :bind_rev_id, :parse_rev_id, :doc_ver_id)
                 """
             ),
@@ -167,7 +167,7 @@ class TestDataIntegrityAfterMigration:
     """验证完整数据链的 JOIN 完整性。"""
 
     def test_data_integrity_after_migration(self, db):
-        """插入完整数据链 (parse_revision -> binding_revision -> chunk) 并验证 JOIN 关系。"""
+        """插入完整数据链 (parse_revision -> chunk_revision -> chunk) 并验证 JOIN 关系。"""
         parse_rev_id = str(uuid4())
         binding_rev_id = str(uuid4())
         binding_id = str(uuid4())
@@ -190,7 +190,7 @@ class TestDataIntegrityAfterMigration:
             {"id": parse_rev_id, "doc_ver_id": doc_version_id},
         )
 
-        # 2. 插入 binding_revision（引用 parse_revision）
+        # 2. 插入 chunk_revision（引用 parse_revision）
         db.execute(
             text(
                 """
@@ -212,17 +212,17 @@ class TestDataIntegrityAfterMigration:
             },
         )
 
-        # 3. 插入 chunk（引用 binding_revision 和 parse_revision）
+        # 3. 插入 chunk（引用 chunk_revision 和 parse_revision）
         db.execute(
             text(
                 """
                 INSERT INTO chunks
                     (chunk_id, version_id, document_id, kb_id, chunk_index,
-                     content, security_level, status, metadata, created_at,
+                     content, status, metadata, created_at,
                      chunk_revision_id, parse_revision_id, document_version_id)
                 VALUES
                     (:chunk_id, :version_id, :doc_id, :kb_id, 0,
-                     'integrity test content', 'internal', 'active', '{}', datetime('now'),
+                     'integrity test content', 'active', '{}', datetime('now'),
                      :bind_rev_id, :parse_rev_id, :doc_ver_id)
                 """
             ),
@@ -238,7 +238,7 @@ class TestDataIntegrityAfterMigration:
         )
         db.flush()
 
-        # 验证 JOIN：chunk -> binding_revision -> parse_revision
+        # 验证 JOIN：chunk -> chunk_revision -> parse_revision
         row = db.execute(
             text(
                 """

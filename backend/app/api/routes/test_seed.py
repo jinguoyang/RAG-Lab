@@ -128,11 +128,11 @@ def seed_test_data(payload: SeedPayload, db: Session = Depends(get_db_session)):
             text(
                 """
                 INSERT INTO knowledge_bases
-                    (name, owner_id, default_security_level,
+                    (name, owner_id,
                      sparse_index_enabled, graph_index_enabled,
                      sparse_required_for_activation, graph_required_for_activation,
                      status, metadata)
-                VALUES (:name, :owner_id, 'public', false, false, false, false, 'active', '{}')
+                VALUES (:name, :owner_id, false, false, false, false, 'active', '{}')
                 RETURNING kb_id
                 """
             ),

@@ -203,7 +203,6 @@ class MilvusDenseRetrievalProvider(DenseRetrievalProvider):
         schema.add_field("content_hash", DataType.VARCHAR, max_length=128)
         schema.add_field("page_no", DataType.INT64)
         schema.add_field("section", DataType.VARCHAR, max_length=1024)
-        schema.add_field("security_level", DataType.VARCHAR, max_length=64)
         schema.add_field("document_status", DataType.VARCHAR, max_length=32)
         schema.add_field("version_status", DataType.VARCHAR, max_length=32)
         schema.add_field("chunk_status", DataType.VARCHAR, max_length=32)
@@ -544,8 +543,7 @@ class Neo4jGraphRetrievalProvider(GraphRetrievalProvider):
                             chunk.version_id = $version_id,
                             chunk.document_id = $document_id,
                             chunk.summary = $summary,
-                            chunk.section = $section,
-                            chunk.security_level = $security_level
+                            chunk.section = $section
                         """,
                         chunk_id=item.chunk_id,
                         kb_id=payload["kbId"],
@@ -553,7 +551,6 @@ class Neo4jGraphRetrievalProvider(GraphRetrievalProvider):
                         document_id=payload["documentId"],
                         summary=item.summary,
                         section=payload.get("section"),
-                        security_level=payload.get("securityLevel"),
                     )
                     for entity in item.entities:
                         session.run(
@@ -881,6 +878,29 @@ class LocalLlmProvider(LlmProvider):
         return f"这是基于 Provider 链路生成的本地降级回答：{query}\n证据摘要：{summary}"
 
 
+def _normalize_rewritten_query(query: str, content: str) -> str:
+    """约束 Query Rewrite 输出，防止答案型长文本拖慢检索链路。"""
+    rewritten = (content or "").strip()
+    if not rewritten:
+        return query
+
+    non_empty_lines = [line.strip() for line in rewritten.splitlines() if line.strip()]
+    answer_like = (
+        len(non_empty_lines) > 1
+        or "```" in rewritten
+        or "###" in rewritten
+        or re.search(r"(^|\n)\s*[-*]\s+", rewritten) is not None
+        or re.search(r"(^|\n)\s*\d+[.)、]\s+", rewritten) is not None
+    )
+    if answer_like:
+        return query
+
+    rewritten = re.sub(r"\s+", " ", rewritten).strip(" \t\r\n\"'`")
+    if len(rewritten) > 160:
+        return query
+    return rewritten or query
+
+
 class HttpLlmProvider(LlmProvider):
     """OpenAI-compatible Chat Completion Provider，通过 endpoint 接入真实 LLM。"""
 
@@ -897,11 +917,19 @@ class HttpLlmProvider(LlmProvider):
     def rewrite_query(self, query: str) -> str:
         content = self._chat(
             [
-                {"role": "system", "content": "Rewrite the user query for retrieval. Return only the rewritten query."},
+                {
+                    "role": "system",
+                    "content": (
+                        "Rewrite the user query for retrieval. Return one short search query only. "
+                        "Do not answer the question, do not use markdown, bullets, numbering, or explanations. "
+                        "Keep the result within 160 characters."
+                    ),
+                },
                 {"role": "user", "content": query},
-            ]
+            ],
+            max_tokens=64,
         )
-        return content.strip() or query
+        return _normalize_rewritten_query(query, content)
 
     def extract_graph(self, chunk_payloads: list[dict]) -> list[ChunkGraphExtraction]:
         """调用真实 LLM 从 Chunk 中抽取可写入 Neo4j 的实体关系 JSON。"""
@@ -1006,18 +1034,31 @@ class HttpLlmProvider(LlmProvider):
             temperature=temperature,
         )
 
-    def _chat(self, messages: list[dict[str, str]], temperature: float | None = None) -> str:
+    def _chat(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> str:
+        """调用 OpenAI-compatible chat 接口，并允许短任务限制输出长度。"""
         import httpx
 
         self.last_usage = {}
         headers = {"Content-Type": "application/json"}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
+        request_json = {
+            "model": self._model,
+            "messages": messages,
+            "temperature": temperature if temperature is not None else 0.2,
+        }
+        if max_tokens is not None:
+            request_json["max_tokens"] = max_tokens
         try:
             response = httpx.post(
                 self._endpoint,
                 headers=headers,
-                json={"model": self._model, "messages": messages, "temperature": temperature if temperature is not None else 0.2},
+                json=request_json,
                 timeout=60,
             )
             response.raise_for_status()
@@ -1162,7 +1203,6 @@ def _to_milvus_row(payload: dict) -> dict:
         "content_hash": payload.get("contentHash") or "",
         "page_no": payload.get("pageNo") or 0,
         "section": payload.get("section") or "",
-        "security_level": payload.get("securityLevel") or "",
         "document_status": payload.get("documentStatus") or "",
         "version_status": payload.get("versionStatus") or "",
         "chunk_status": payload.get("chunkStatus") or "",

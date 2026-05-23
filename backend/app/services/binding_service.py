@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import func, insert, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.schemas.auth import CurrentUserResponse
@@ -94,7 +94,7 @@ def create_chunk_revision(
     params: dict | None = None,
     created_by: UUID | None = None,
 ) -> UUID:
-    """创建 BindingRevision 记录，状态为 building。
+    """创建 ChunkRevision 记录，状态为 building。
 
     Returns: chunk_revision_id
     """
@@ -126,7 +126,7 @@ def activate_chunk_revision(
     session: Session,
     chunk_revision_id: UUID,
 ) -> None:
-    """激活 BindingRevision，将旧 active 版本置为 retired。"""
+    """激活 ChunkRevision，将旧 active 版本置为 retired。"""
     now = datetime.now(timezone.utc)
 
     binding_rev = session.execute(
@@ -166,7 +166,7 @@ def activate_chunk_revision(
         )
     )
 
-    # 将旧的 active BindingRevision 置为 retired
+    # 将旧的 active ChunkRevision 置为 retired
     session.execute(
         update(chunk_revisions).where(
             chunk_revisions.c.binding_id == binding_rev["binding_id"],
@@ -193,7 +193,7 @@ def fail_chunk_revision(
     chunk_revision_id: UUID,
     error_message: str | None = None,
 ) -> None:
-    """标记 BindingRevision 为失败。"""
+    """标记 ChunkRevision 为失败。"""
     session.execute(
         update(chunk_revisions).where(
             chunk_revisions.c.chunk_revision_id == chunk_revision_id,
@@ -269,14 +269,15 @@ def _ensure_kb_permission(
 
 def _to_binding_dto(row: dict, doc_name: str = "") -> LibraryBindingDTO:
     """将绑定行转换为 DTO。"""
+    chunk_params = row.get("chunk_revision_params") or {}
     return LibraryBindingDTO(
         bindingId=str(row["binding_id"]),
         documentId=str(row["document_id"]),
         documentName=doc_name,
         kbId=str(row["kb_id"]),
         versionId=str(row["version_id"]),
-        chunkSize=row["chunk_size"],
-        chunkOverlap=row["chunk_overlap"],
+        chunkSize=row.get("chunk_size", chunk_params.get("chunk_size", 0)),
+        chunkOverlap=row.get("chunk_overlap", chunk_params.get("chunk_overlap", 0)),
         status=row["status"],
         chunkCount=row["chunk_count"],
         errorCode=row.get("error_code"),
@@ -291,7 +292,7 @@ def _to_binding_dto(row: dict, doc_name: str = "") -> LibraryBindingDTO:
 
 
 def _attach_chunk_revision_summary(session: Session, row: dict) -> dict:
-    """补充最适合前端展示的 BindingRevision 摘要。
+    """补充最适合前端展示的 ChunkRevision 摘要。
 
     切换版本时会先出现 building revision，active revision 仍保留可用。
     前端需要优先看到正在构建的 revision，否则用户会误以为切换没有生效。
@@ -326,6 +327,7 @@ def _attach_chunk_revision_summary(session: Session, row: dict) -> dict:
     row["chunk_revision_status"] = revision["status"]
     row["chunk_revision_chunk_count"] = revision["chunk_count"]
     row["chunk_revision_version_id"] = revision["document_version_id"]
+    row["chunk_revision_params"] = revision["params"] or {}
     return row
 
 
@@ -403,7 +405,6 @@ def bind_documents_to_kb(
                 owner_id=actor_id,
                 name=doc_name,
                 source_type="library_bind",
-                security_level=lib_doc_row["security_level"],
                 status="active",
                 metadata={"library_document_id": str(doc_id)},
                 created_by=actor_id,
@@ -462,7 +463,7 @@ def bind_documents_to_kb(
         ).mappings().first()
         parse_revision_id = parse_rev["parse_revision_id"] if parse_rev else uuid4()
 
-        # 创建 BindingRevision：记录库文档源版本，KB 侧版本仍由 document_kb_bindings.version_id 追踪。
+        # 创建 ChunkRevision：记录库文档源版本，KB 侧版本仍由 document_kb_bindings.version_id 追踪。
         chunk_revision_id = create_chunk_revision(
             session=session,
             binding_id=binding_id,
@@ -512,7 +513,12 @@ def bind_documents_to_kb(
             ).values(status="processing").returning(document_kb_bindings)
         ).mappings().one()
 
-        bindings.append(_to_binding_dto(dict(binding_row), doc_name=doc_name))
+        row_dict = dict(binding_row)
+        row_dict["chunk_revision_params"] = chunk_params
+        row_dict["chunk_revision_status"] = "building"
+        row_dict["chunk_revision_chunk_count"] = 0
+        row_dict["chunk_revision_version_id"] = latest_version["version_id"]
+        bindings.append(_to_binding_dto(row_dict, doc_name=doc_name))
         dispatch_targets.append((job_id, binding_row["binding_id"]))
 
     session.commit()
@@ -713,7 +719,7 @@ def complete_chunk_revision_build(
     chunk_revision_id: UUID,
     chunk_count: int,
 ) -> None:
-    """完成 BindingRevision 构建并激活。
+    """完成 ChunkRevision 构建并激活。
 
     此函数在 Chunk 生成和索引同步完成后调用。
     """
@@ -733,6 +739,20 @@ def complete_chunk_revision_build(
 
     # 激活新版本（会自动将旧版本置为 retired）
     activate_chunk_revision(session, chunk_revision_id)
+    binding_id_subquery = (
+        select(chunk_revisions.c.binding_id)
+        .where(chunk_revisions.c.chunk_revision_id == chunk_revision_id)
+        .scalar_subquery()
+    )
+    session.execute(
+        update(document_kb_bindings)
+        .where(document_kb_bindings.c.binding_id == binding_id_subquery)
+        .values(
+            status="active",
+            chunk_count=chunk_count,
+            updated_at=func.now(),
+        )
+    )
 
 
 def switch_binding_version(
@@ -819,7 +839,7 @@ def switch_binding_version(
             inherited_strategy = active_rev.get("strategy", "fixed_size")
             inherited_params = active_rev.get("params")
 
-    # 创建新的 BindingRevision（状态为 building）
+    # 创建新的 ChunkRevision（状态为 building）
     chunk_revision_id = create_chunk_revision(
         session=session,
         binding_id=binding_id,
@@ -925,10 +945,14 @@ def rechunk_document(
     actor_id = UUID(current_user)
 
     # 1. 校验 binding 存在
+    kb_version_ids = select(document_versions.c.version_id).where(document_versions.c.document_id == doc_uuid)
     binding_row = session.execute(
         select(document_kb_bindings).where(
             document_kb_bindings.c.kb_id == kb_uuid,
-            document_kb_bindings.c.document_id == doc_uuid,
+            or_(
+                document_kb_bindings.c.document_id == doc_uuid,
+                document_kb_bindings.c.version_id.in_(kb_version_ids),
+            ),
         )
     ).mappings().first()
     if not binding_row:
@@ -992,7 +1016,7 @@ def rechunk_document(
             kb_id=kb_uuid,
             document_id=kb_doc_id,
             version_id=binding_row["version_id"],
-            job_type="rechunk",
+            job_type="reparse",
             status="queued",
             stage="queued",
             progress=0,

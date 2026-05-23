@@ -1,8 +1,8 @@
-import * as Tabs from "@radix-ui/react-tabs";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "react-router";
 import { ChevronLeft, ChevronRight, Database, Eye, FileSymlink, Image as ImageIcon, RefreshCw, RotateCcw, Save, XCircle } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
+import { UnderlineTabs, UnderlineTabsList, UnderlineTabsTrigger, UnderlineTabsContent } from "../components/rag/UnderlineTabs";
 import { Button } from "../components/rag/Button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
 import { Alert } from "../components/rag/Alert";
@@ -20,7 +20,7 @@ import {
   fetchIndexSyncJobs,
   fetchIngestJobs,
   rebuildIndexSync,
-  reparseDocument,
+  rechunkDocument,
   retryIngestJob,
   updateChunkGovernance,
 } from "../services/documentService";
@@ -67,6 +67,9 @@ export function DocumentDetail() {
   const [chunkPageNo, setChunkPageNo] = useState(1);
   const [chunkTotal, setChunkTotal] = useState(0);
   const [selectedChunk, setSelectedChunk] = useState<ChunkDTO | null>(null);
+  const [isRechunkOpen, setIsRechunkOpen] = useState(false);
+  const [chunkSizeInput, setChunkSizeInput] = useState(900);
+  const [chunkOverlapInput, setChunkOverlapInput] = useState(120);
   const [governanceExcluded, setGovernanceExcluded] = useState(false);
   const [governanceNoteInput, setGovernanceNoteInput] = useState("");
   const [rebuildTargetStore, setRebuildTargetStore] = useState("milvus");
@@ -161,21 +164,20 @@ export function DocumentDetail() {
     }
   }, [kbId, location.state]);
 
-  async function handleReparse() {
-    const ok = await confirm({
-      title: "确认重解析文档？",
-      description: "重解析会生成新的文档版本和 Chunk，不会删除旧版本。新版本需要切换后才会成为 active version。",
-      confirmText: "重解析",
-    });
-    if (!ok || !kbId || !docId) return;
-
-    setActionLoading("reparse");
+  async function handleRechunk() {
+    if (!kbId || !docId) return;
+    if (chunkOverlapInput >= chunkSizeInput) {
+      setFeedback({ variant: "warning", title: "分块参数无效", message: "重叠长度必须小于分块长度。" });
+      return;
+    }
+    setActionLoading("rechunk");
     try {
-      await reparseDocument(kbId, docId, "P07 手动重解析");
-      setFeedback({ variant: "success", title: "重解析已完成", message: "已生成新版本和 Chunk，可在版本列表中切换生效。" });
+      await rechunkDocument(kbId, docId, { chunkSize: chunkSizeInput, chunkOverlap: chunkOverlapInput });
+      setFeedback({ variant: "success", title: "重分块已提交", message: "新的 ChunkRevision 已进入构建流程。" });
+      setIsRechunkOpen(false);
       await loadData(1);
     } catch (error) {
-      setFeedback({ variant: "error", title: "重解析失败", message: error instanceof Error ? error.message : "请稍后重试。" });
+      setFeedback({ variant: "error", title: "重分块失败", message: error instanceof Error ? error.message : "请稍后重试。" });
     } finally {
       setActionLoading(null);
     }
@@ -322,14 +324,14 @@ export function DocumentDetail() {
 
       <PageHeader
         title={document?.name || "文档详情"}
-        description="查看文档版本、当前 BindingRevision Chunk、入库作业，并执行重解析与 active version 切换。"
+        description="查看文档版本、当前 ChunkRevision Chunk、入库作业，并执行重分块与 active version 切换。"
         actions={
           <>
             <Button variant="outline" disabled={loading} onClick={() => void loadData()}>
               <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} /> {loading ? "刷新中..." : "刷新"}
             </Button>
-            <Button variant="primary" disabled={actionLoading === "reparse"} onClick={() => void handleReparse()}>
-              <FileSymlink className="w-4 h-4 mr-2" /> 重解析
+            <Button variant="primary" disabled={actionLoading === "rechunk"} onClick={() => setIsRechunkOpen(true)}>
+              <RotateCcw className="w-4 h-4 mr-2" /> 重分块
             </Button>
           </>
         }
@@ -337,7 +339,6 @@ export function DocumentDetail() {
           document && (
             <>
               <Badge variant="info">文档 ID：{document.documentId}</Badge>
-              <Badge variant="default">密级：{document.securityLevel}</Badge>
               <Badge variant={document.status === "active" ? "success" : "inactive"}>状态：{document.status}</Badge>
             </>
           )
@@ -368,8 +369,8 @@ export function DocumentDetail() {
           </div>
         </div>
         <div className="rounded-xl border border-border-cream bg-ivory p-4">
-          <p className="text-xs text-stone-gray">Active BindingRevision</p>
-          <p className="mt-2 font-mono text-base text-near-black">{shortTraceId(chunks[0]?.bindingRevisionId)}</p>
+          <p className="text-xs text-stone-gray">Active ChunkRevision</p>
+          <p className="mt-2 font-mono text-base text-near-black">{shortTraceId(chunks[0]?.chunkRevisionId)}</p>
           <p className="mt-1 text-xs text-stone-gray">当前页 Chunk 来自该入库版本</p>
         </div>
         <div className="rounded-xl border border-border-cream bg-ivory p-4">
@@ -379,23 +380,23 @@ export function DocumentDetail() {
         </div>
       </div>
 
-      <Tabs.Root value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
-        <Tabs.List className="flex border-b border-border-cream gap-6 mb-6">
-          <Tabs.Trigger value="versions" className="pb-2 text-stone-gray font-medium hover:text-near-black data-[state=active]:text-terracotta data-[state=active]:border-b-2 data-[state=active]:border-terracotta transition-all">
+      <UnderlineTabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+        <UnderlineTabsList className="mb-6">
+          <UnderlineTabsTrigger value="versions">
             版本（{versionRows.length}）
-          </Tabs.Trigger>
-          <Tabs.Trigger value="chunks" className="pb-2 text-stone-gray font-medium hover:text-near-black data-[state=active]:text-terracotta data-[state=active]:border-b-2 data-[state=active]:border-terracotta transition-all">
-            当前 BindingRevision Chunks（{chunkTotal}）
-          </Tabs.Trigger>
-          <Tabs.Trigger value="jobs" className="pb-2 text-stone-gray font-medium hover:text-near-black data-[state=active]:text-terracotta data-[state=active]:border-b-2 data-[state=active]:border-terracotta transition-all">
+          </UnderlineTabsTrigger>
+          <UnderlineTabsTrigger value="chunks">
+            Chunks（{chunkTotal}）
+          </UnderlineTabsTrigger>
+          <UnderlineTabsTrigger value="jobs">
             入库作业（{jobRows.length}）
-          </Tabs.Trigger>
-          <Tabs.Trigger value="indexSync" className="pb-2 text-stone-gray font-medium hover:text-near-black data-[state=active]:text-terracotta data-[state=active]:border-b-2 data-[state=active]:border-terracotta transition-all">
+          </UnderlineTabsTrigger>
+          <UnderlineTabsTrigger value="indexSync">
             索引同步作业（{indexSyncJobs.length}）
-          </Tabs.Trigger>
-        </Tabs.List>
+          </UnderlineTabsTrigger>
+        </UnderlineTabsList>
 
-        <Tabs.Content value="versions" className="flex-1 overflow-auto outline-none">
+        <UnderlineTabsContent value="versions" className="flex-1 overflow-auto outline-none">
           <Table>
             <TableHeader>
               <TableRow>
@@ -448,9 +449,9 @@ export function DocumentDetail() {
               })}
             </TableBody>
           </Table>
-        </Tabs.Content>
+        </UnderlineTabsContent>
 
-        <Tabs.Content value="chunks" className="flex-1 overflow-auto outline-none space-y-3">
+        <UnderlineTabsContent value="chunks" className="flex-1 overflow-auto outline-none space-y-3">
           <Table>
             <TableHeader>
               <TableRow>
@@ -470,7 +471,7 @@ export function DocumentDetail() {
                   <TableCell mono>{chunk.indexLabel}</TableCell>
                   <TableCell>
                     <div className="flex flex-col gap-1 text-xs">
-                      <span className="font-mono text-near-black">BR {shortTraceId(chunks[index].bindingRevisionId)}</span>
+                      <span className="font-mono text-near-black">CR {shortTraceId(chunks[index].chunkRevisionId)}</span>
                       <span className="font-mono text-stone-gray">PR {shortTraceId(chunks[index].parseRevisionId)}</span>
                     </div>
                   </TableCell>
@@ -509,9 +510,9 @@ export function DocumentDetail() {
               </Button>
             </div>
           </div>
-        </Tabs.Content>
+        </UnderlineTabsContent>
 
-        <Tabs.Content value="jobs" className="flex-1 overflow-auto outline-none">
+        <UnderlineTabsContent value="jobs" className="flex-1 overflow-auto outline-none">
           <Table>
             <TableHeader>
               <TableRow>
@@ -540,6 +541,9 @@ export function DocumentDetail() {
                             {stage.label}: {formatIndexStageStatus(stage.status)}
                           </Badge>
                         ))}
+                        {row.graphExtractionErrorCount > 0 && (
+                          <Badge variant="warning">Graph 抽取部分失败: {row.graphExtractionErrorCount}</Badge>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>{row.progress}%</TableCell>
@@ -572,9 +576,9 @@ export function DocumentDetail() {
               })}
             </TableBody>
           </Table>
-        </Tabs.Content>
+        </UnderlineTabsContent>
 
-        <Tabs.Content value="indexSync" className="flex-1 overflow-auto outline-none space-y-4">
+        <UnderlineTabsContent value="indexSync" className="flex-1 overflow-auto outline-none space-y-4">
           <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border-cream bg-ivory p-4">
             <span className="text-sm text-stone-gray">目标副本</span>
             <select
@@ -619,8 +623,8 @@ export function DocumentDetail() {
               )}
             </TableBody>
           </Table>
-        </Tabs.Content>
-      </Tabs.Root>
+        </UnderlineTabsContent>
+      </UnderlineTabs>
 
       <Drawer isOpen={Boolean(selectedChunk)} onClose={() => setSelectedChunk(null)} title="Chunk 详情" width="640px">
         {selectedChunk && (
@@ -633,7 +637,7 @@ export function DocumentDetail() {
                 <div><span className="text-stone-gray">页码：</span>{selectedChunk.pageNo ?? "-"}</div>
                 <div><span className="text-stone-gray">章节：</span>{selectedChunk.sectionPath || selectedChunk.heading || selectedChunk.section || "-"}</div>
                 <div><span className="text-stone-gray">Token：</span>{selectedChunk.tokenCount ?? "-"}</div>
-                <div><span className="text-stone-gray">BindingRevision：</span><span className="font-mono">{selectedChunk.bindingRevisionId || "-"}</span></div>
+                <div><span className="text-stone-gray">ChunkRevision：</span><span className="font-mono">{selectedChunk.chunkRevisionId || "-"}</span></div>
                 <div><span className="text-stone-gray">ParseRevision：</span><span className="font-mono">{selectedChunk.parseRevisionId || "-"}</span></div>
                 <div><span className="text-stone-gray">DocumentVersion：</span><span className="font-mono">{selectedChunk.documentVersionId || "-"}</span></div>
                 <div><span className="text-stone-gray">Offset：</span>{selectedChunk.startOffset ?? "-"} - {selectedChunk.endOffset ?? "-"}</div>
@@ -689,6 +693,43 @@ export function DocumentDetail() {
             </DrawerSection>
           </>
         )}
+      </Drawer>
+
+      <Drawer isOpen={isRechunkOpen} onClose={() => setIsRechunkOpen(false)} title="调整分块策略">
+        <DrawerSection title="固定长度分块">
+          <div className="space-y-4">
+            <div>
+              <label className="mb-1 block text-sm text-olive-gray">分块长度</label>
+              <input
+                type="number"
+                min={100}
+                max={4000}
+                value={chunkSizeInput}
+                onChange={(event) => setChunkSizeInput(Number(event.target.value))}
+                className="w-full rounded-[8px] border border-border-cream bg-white px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm text-olive-gray">重叠长度</label>
+              <input
+                type="number"
+                min={0}
+                max={1000}
+                value={chunkOverlapInput}
+                onChange={(event) => setChunkOverlapInput(Number(event.target.value))}
+                className="w-full rounded-[8px] border border-border-cream bg-white px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+        </DrawerSection>
+        <DrawerSection>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setIsRechunkOpen(false)}>取消</Button>
+            <Button variant="primary" disabled={actionLoading === "rechunk"} onClick={() => void handleRechunk()}>
+              {actionLoading === "rechunk" ? "提交中..." : "提交重分块"}
+            </Button>
+          </div>
+        </DrawerSection>
       </Drawer>
     </div>
   );

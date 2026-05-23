@@ -50,7 +50,7 @@ def check_document_version_delete_permission(
     依次检查：
     1. 是否有 library.version.delete 权限
     2. 该版本是否是文档的当前活跃版本
-    3. 该版本是否有活跃的 BindingRevision
+    3. 该版本是否有活跃的 ChunkRevision
     4. 该版本是否有待处理/运行中的解析或入库任务
 
     Returns:
@@ -69,7 +69,7 @@ def check_document_version_delete_permission(
     if active_version_id is not None and active_version_id == version_id:
         return False, "该版本是文档的当前活跃版本，不能删除"
 
-    # 3. 检查是否有活跃的 BindingRevision
+    # 3. 检查是否有活跃的 ChunkRevision
     active_binding = session.execute(
         select(chunk_revisions.c.chunk_revision_id).where(
             chunk_revisions.c.document_version_id == version_id,

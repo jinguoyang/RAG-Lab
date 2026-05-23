@@ -184,7 +184,7 @@ def analyze_document_version_deletion_impact(
 
     is_active_version = (doc == document_version_id)
 
-    # 2. 检查是否存在 active BindingRevision
+    # 2. 检查是否存在 active ChunkRevision
     active_binding_count = session.execute(
         select(func.count()).select_from(chunk_revisions).where(
             chunk_revisions.c.document_version_id == document_version_id,
@@ -227,7 +227,7 @@ def analyze_document_version_deletion_impact(
 
     if active_binding_count > 0:
         can_delete = False
-        blocking_reasons.append(f"该版本正在支撑 {active_binding_count} 个知识库的 active BindingRevision")
+        blocking_reasons.append(f"该版本正在支撑 {active_binding_count} 个知识库的 active ChunkRevision")
 
     if pending_ingest_jobs > 0:
         can_delete = False
@@ -296,7 +296,7 @@ def delete_document_version(
             )
         )
 
-    # 4.2 清理 retired/failed BindingRevision
+    # 4.2 清理 retired/failed ChunkRevision
     session.execute(
         update(chunk_revisions).where(
             chunk_revisions.c.document_version_id == document_version_id,
@@ -422,7 +422,6 @@ def _to_document_dto(row: RowMapping) -> DocumentDTO:
         kbId=str(row["kb_id"]),
         name=row["name"],
         sourceType=row["source_type"],
-        securityLevel=row["security_level"],
         status=row["status"],
         activeVersionId=str(row["active_version_id"]) if row["active_version_id"] else None,
         createdAt=row["created_at"].isoformat(),
@@ -494,7 +493,6 @@ def _to_chunk_dto(row: RowMapping) -> ChunkDTO:
         content=row["content"],
         contentHash=row["content_hash"],
         tokenCount=row["token_count"],
-        securityLevel=row["security_level"],
         status=row["status"],
         metadata=row["metadata"],
         createdAt=row["created_at"].isoformat(),
@@ -506,7 +504,7 @@ def _read_active_chunk_revision_id(
     kb_id: UUID,
     version_id: UUID,
 ) -> UUID | None:
-    """读取当前 KB 版本对应的 active BindingRevision，用于过滤当前可检索 Chunk。"""
+    """读取当前 KB 版本对应的 active ChunkRevision，用于过滤当前可检索 Chunk。"""
     return session.execute(
         select(document_kb_bindings.c.active_chunk_revision_id)
         .where(
@@ -523,7 +521,7 @@ def _read_ingest_chunk_revision(
     job_row: RowMapping,
     version_row: RowMapping,
 ) -> RowMapping | None:
-    """从入库任务、版本 metadata 或绑定表中定位本次构建的 BindingRevision。"""
+    """从入库任务、版本 metadata 或绑定表中定位本次构建的 ChunkRevision。"""
     result_summary = job_row["result_summary"] or {}
     version_metadata = version_row["metadata"] or {}
     chunk_revision_id_str = result_summary.get("chunk_revision_id") or version_metadata.get("chunk_revision_id")
@@ -891,7 +889,6 @@ def _write_chunk_access_filters(
                 permission_code=access_filter.permission_code,
                 allow_subject_keys=access_filter.allow_subject_keys,
                 deny_subject_keys=access_filter.deny_subject_keys,
-                security_level=row["security_level"],
                 document_status="active",
                 version_status=version_status,
                 chunk_status=row["status"],
@@ -1021,7 +1018,7 @@ def run_ingest_job(
 
     try:
         job_type = job_row.get("job_type", "upload_parse")
-        is_rechunk = job_type == "rechunk"
+        is_rechunk = job_type == "rechunk" or (job_type == "reparse" and chunk_revision_row is not None)
 
         # Check if we can reuse parsed chunks from library
         parsed_chunks_from_library = None
@@ -1207,7 +1204,6 @@ def run_ingest_job(
                     content=content,
                     content_hash=sha256(content.encode("utf-8")).hexdigest(),
                     token_count=parsed.token_count,
-                    security_level=document_row["security_level"],
                     status="active",
                     section_path=parsed_metadata.get("sectionPath") or parsed_metadata.get("section_path") or parsed.section,
                     heading=parsed_metadata.get("heading") or parsed.section,
@@ -1736,7 +1732,6 @@ def create_document_upload(
     mime_type: str | None,
     file_bytes: bytes,
     name: str | None,
-    security_level: str | None,
     storage_provider: ObjectStorageProvider | None = None,
     force_upload: bool = False,
 ) -> DocumentUploadResponse | None:
@@ -1750,8 +1745,6 @@ def create_document_upload(
     if kb_row["status"] == "disabled":
         raise KnowledgeBaseDisabledError
     _ensure_permission(session, current_user, kb_id, "kb.document.upload")
-    resolved_security_level = security_level or kb_row["default_security_level"]
-    require_active_dict_item(session, "security_level", resolved_security_level, "securityLevel")
     require_active_dict_item(session, "document_source_type", "upload", "sourceType")
     require_active_dict_item(session, "file_role", "source", "fileRole")
 
@@ -1808,7 +1801,6 @@ def create_document_upload(
                 kb_id=kb_id,
                 name=document_name,
                 source_type="upload",
-                security_level=resolved_security_level,
                 status="active",
                 metadata={},
                 created_by=actor_id,
@@ -2475,7 +2467,7 @@ def list_chunks(
     page_no: int,
     page_size: int,
 ) -> PageResponse[ChunkDTO] | None:
-    """分页读取当前可检索 Chunk；绑定文档优先限定 active BindingRevision。"""
+    """分页读取当前可检索 Chunk；绑定文档优先限定 active ChunkRevision。"""
     if get_document_detail(session, current_user, kb_id, document_id) is None:
         return None
     _ensure_permission(session, current_user, kb_id, "kb.chunk.read")

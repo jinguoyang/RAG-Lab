@@ -31,7 +31,7 @@ export function KBLayout() {
     }
 
     let ignore = false;
-    fetchKnowledgeBase(kbId)
+    const loadKnowledgeBase = () => fetchKnowledgeBase(kbId)
       .then((kb) => {
         if (!ignore) {
           setKnowledgeBase(kb);
@@ -42,9 +42,19 @@ export function KBLayout() {
           setKnowledgeBase(null);
         }
       });
+    const handleKnowledgeBaseChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ kbId?: string }>).detail;
+      if (!detail?.kbId || detail.kbId === kbId) {
+        void loadKnowledgeBase();
+      }
+    };
+
+    void loadKnowledgeBase();
+    window.addEventListener("raglab:knowledge-base-changed", handleKnowledgeBaseChanged);
 
     return () => {
       ignore = true;
+      window.removeEventListener("raglab:knowledge-base-changed", handleKnowledgeBaseChanged);
     };
   }, [kbId]);
 

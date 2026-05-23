@@ -97,6 +97,20 @@ function readString(source: Record<string, unknown>, key: string): string | null
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+function readChunkRevisionId(...sources: Record<string, unknown>[]): string | null {
+  for (const source of sources) {
+    const value =
+      readString(source, "chunkRevisionId") ??
+      readString(source, "bindingRevisionId") ??
+      readString(source, "chunk_revision_id") ??
+      readString(source, "binding_revision_id");
+    if (value) {
+      return value;
+    }
+  }
+  return null;
+}
+
 function readNestedNumber(source: Record<string, unknown>, path: string[]): number | null {
   let current: unknown = source;
   for (const key of path) {
@@ -284,7 +298,7 @@ export function toQADebugResult(detail: QARunDetailDTO): QADebugResultViewModel 
       const documentName = readString(location, "documentName");
       const chunkIndex = typeof location.chunkIndex === "number" ? `#${location.chunkIndex}` : null;
       const section = readString(location, "sectionPath") ?? readString(location, "section");
-      const bindingRevisionId = readString(location, "bindingRevisionId") ?? readString(sourceSnapshot, "bindingRevisionId");
+      const chunkRevisionId = readChunkRevisionId(location, sourceSnapshot);
       const parseRevisionId = readString(location, "parseRevisionId") ?? readString(sourceSnapshot, "parseRevisionId");
       const sourceModality = readString(location, "sourceModality") ?? readString(sourceSnapshot, "sourceModality");
       return {
@@ -294,7 +308,7 @@ export function toQADebugResult(detail: QARunDetailDTO): QADebugResultViewModel 
         snippet: evidence?.contentSnapshot || "当前证据策略未返回正文快照。",
         meta: [
           `Evidence ID: ${citation.evidenceId}`,
-          bindingRevisionId ? `BR: ${bindingRevisionId.slice(0, 8)}` : null,
+          chunkRevisionId ? `BR: ${chunkRevisionId.slice(0, 8)}` : null,
           parseRevisionId ? `PR: ${parseRevisionId.slice(0, 8)}` : null,
           section ? `Section: ${section}` : null,
         ].filter(Boolean).join(" | "),

@@ -322,10 +322,6 @@ export function KBOverview() {
                 </div>
               </div>
               <div>
-                <p className="text-xs text-stone-gray mb-1">默认安全级别</p>
-                <p className="text-near-black">{knowledgeBase?.defaultSecurityLevel || "public"}</p>
-              </div>
-              <div>
                 <p className="text-xs text-stone-gray mb-1">状态</p>
                 <p className="text-near-black">{knowledgeBase?.status || "active"}</p>
               </div>

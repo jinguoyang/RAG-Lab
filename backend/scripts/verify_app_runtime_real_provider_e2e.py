@@ -73,7 +73,6 @@ def _upload_and_ingest_document(kb_id: UUID, marker: str) -> UUID:
                 "The retrieval answer should reference this marker."
             ).encode("utf-8"),
             name=f"app-runtime-real-provider-{marker}.txt",
-            security_level="public",
         )
     finally:
         document_service.enqueue_ingest_job = original_enqueue

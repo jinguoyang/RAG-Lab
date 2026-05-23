@@ -613,7 +613,6 @@ def _authorize_provider_candidates(
                 chunks.c.heading,
                 chunks.c.summary,
                 chunks.c.content,
-                chunks.c.security_level,
                 chunks.c.status,
                 chunks.c.metadata,
                 document_versions.c.version_no,
@@ -705,7 +704,6 @@ def _authorize_provider_candidates(
                 "sectionPath": chunk_row["section_path"],
                 "heading": chunk_row["heading"],
                 "summary": chunk_row["summary"],
-                "securityLevel": chunk_row["security_level"],
                 "truthSource": "postgres_chunks",
             },
         )

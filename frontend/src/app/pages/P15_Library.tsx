@@ -6,9 +6,8 @@ import { Button } from "../components/rag/Button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
 import { Input } from "../components/rag/Input";
 import { Alert } from "../components/rag/Alert";
-import { Badge, StatusBadge } from "../components/rag/Badge";
+import { StatusBadge } from "../components/rag/Badge";
 import { Card, CardContent } from "../components/rag/Card";
-import { chooseActiveDictionaryValue, dictionaryItemsToOptions, fetchDictionaryItemsWithFallback } from "../services/dictionaryService";
 import {
   fetchLibraryDocuments,
   uploadLibraryDocumentWithProgress,
@@ -17,7 +16,6 @@ import {
   batchAction,
 } from "../services/libraryService";
 import type { LibraryDocumentDTO, LibraryParseJobStatus, LibraryStatsResponse, UploadProgress } from "../types/library";
-import type { DictionaryItemDTO } from "../types/dictionary";
 
 const PAGE_SIZE = 20;
 
@@ -44,8 +42,6 @@ export function Library() {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadName, setUploadName] = useState("");
-  const [uploadLevel, setUploadLevel] = useState("internal");
-  const [securityLevelItems, setSecurityLevelItems] = useState<DictionaryItemDTO[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -101,14 +97,6 @@ export function Library() {
     void loadData("", 1);
   }, [statusFilter]);
 
-  useEffect(() => {
-    void fetchDictionaryItemsWithFallback("security_level").then((items) => {
-      setSecurityLevelItems(items);
-      setUploadLevel((current) => chooseActiveDictionaryValue(items, current, "internal"));
-    });
-  }, []);
-
-  const securityLevelOptions = useMemo(() => dictionaryItemsToOptions(securityLevelItems), [securityLevelItems]);
 
   async function handleSearchSubmit() {
     await loadData(searchTerm, 1);
@@ -122,7 +110,7 @@ export function Library() {
     setUploading(true);
     setUploadProgress(null);
     try {
-      const upload = uploadLibraryDocumentWithProgress(selectedFile, uploadName, uploadLevel);
+      const upload = uploadLibraryDocumentWithProgress(selectedFile, uploadName);
       upload.onProgress((progress) => setUploadProgress(progress));
       await upload.promise;
       setFeedback({ variant: "success", title: "上传成功", message: "文档已上传，文本提取任务已创建。" });
@@ -313,7 +301,6 @@ export function Library() {
                     />
                   </TableHead>
                   <TableHead>文档名称</TableHead>
-                  <TableHead>密级</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>创建时间</TableHead>
                   <TableHead>更新时间</TableHead>
@@ -345,9 +332,6 @@ export function Library() {
                         <FileText className="w-4 h-4 text-stone-gray" />
                         <span className="truncate max-w-[300px]">{doc.name}</span>
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="info">{doc.securityLevel}</Badge>
                     </TableCell>
                     <TableCell>
                       <StatusBadge status={doc.status === "active" ? "active" : doc.status === "disabled" ? "inactive" : "draft"} />
@@ -437,18 +421,6 @@ export function Library() {
                   onChange={(e) => setUploadName(e.target.value)}
                   placeholder="留空则使用文件名"
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-near-black mb-1">密级</label>
-                <select
-                  className="w-full border border-border-cream rounded-md px-3 py-2 text-sm bg-white"
-                  value={uploadLevel}
-                  onChange={(e) => setUploadLevel(e.target.value)}
-                >
-                  {securityLevelOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
               </div>
             </div>
             {uploading && uploadProgress && (

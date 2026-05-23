@@ -21,15 +21,11 @@ assertContains("src/app/types/dictionary.ts", "DictionaryItemDTO");
 assertContains("src/app/pages/P14_DictionaryManagement.tsx", "DictionaryManagement");
 assertContains("src/app/routes.tsx", "DictionaryManagement");
 assertContains("src/app/layouts/PlatformLayout.tsx", "/dictionaries");
-assertContains("src/app/pages/P02_PlatformHome.tsx", "fetchDictionaryItemsWithFallback(\"security_level\")");
 assertContains("src/app/pages/P03_UserManagement.tsx", "fetchDictionaryBundle([\"platform_role\", \"security_level\"])");
-assertContains("src/app/pages/P06_DocumentCenter.tsx", "fetchDictionaryItemsWithFallback(\"security_level\")");
 assertContains("src/app/pages/P10_QAHistory.tsx", "fetchDictionaryItemsWithFallback(\"feedback_status\")");
 assertContains("src/app/pages/P12_MembersAndPermissions.tsx", "fetchDictionaryItemsWithFallback(\"kb_role\")");
 assertContains("src/app/pages/P13_RagAppManagement.tsx", "fetchDictionaryItemsWithFallback(\"feedback_status\")");
-assertContains("src/app/pages/P02_PlatformHome.tsx", "chooseActiveDictionaryValue");
 assertContains("src/app/pages/P03_UserManagement.tsx", "chooseActiveDictionaryValue");
-assertContains("src/app/pages/P06_DocumentCenter.tsx", "chooseActiveDictionaryValue");
 assertContains("src/app/pages/P13_RagAppManagement.tsx", "chooseActiveDictionaryValue");
 
 console.log("system dictionary frontend wiring verified");

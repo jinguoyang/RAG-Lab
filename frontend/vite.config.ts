@@ -19,6 +19,10 @@ export default defineConfig({
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
+  build: {
+    // DOCX 预览会按需加载 mammoth，阈值只覆盖这个独立解析包。
+    chunkSizeWarningLimit: 600,
+  },
   server: {
     proxy: {
       '/api': {

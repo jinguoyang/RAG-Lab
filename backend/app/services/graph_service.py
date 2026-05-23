@@ -386,7 +386,6 @@ def list_supporting_chunks(
                 documentName=chunk_row["document_name"],
                 chunkIndex=chunk_row["chunk_index"],
                 contentPreview=_preview(chunk_row["content"]),
-                securityLevel=chunk_row["security_level"],
                 refType=row["ref_type"],
                 metadata=metadata,
             )

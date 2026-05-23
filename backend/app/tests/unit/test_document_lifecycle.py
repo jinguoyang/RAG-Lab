@@ -159,7 +159,7 @@ def test_create_parse_revision_default_parse_options():
 
 
 def test_to_chunk_dto_exposes_traceability_fields():
-    """Chunk DTO 应暴露 BindingRevision、ParseRevision 和正文位置回溯信息。"""
+    """Chunk DTO 应暴露 ChunkRevision、ParseRevision 和正文位置回溯信息。"""
     now = datetime.now(timezone.utc)
     chunk_revision_id = uuid4()
     parse_revision_id = uuid4()
@@ -175,7 +175,6 @@ def test_to_chunk_dto_exposes_traceability_fields():
         "content": "chunk content",
         "content_hash": "abc123",
         "token_count": 42,
-        "security_level": "internal",
         "status": "active",
         "metadata": {},
         "created_at": now,
@@ -202,7 +201,7 @@ def test_to_chunk_dto_exposes_traceability_fields():
 
 
 def test_list_chunks_filters_active_chunk_revision(db, admin_user):
-    """知识库文档页只展示当前 active BindingRevision 对应的 active Chunk。"""
+    """知识库文档页只展示当前 active ChunkRevision 对应的 active Chunk。"""
     now = datetime.now(timezone.utc)
     kb_id = uuid4()
     owner_id = uuid4()
@@ -221,7 +220,6 @@ def test_list_chunks_filters_active_chunk_revision(db, admin_user):
             name="测试知识库",
             description=None,
             owner_id=owner_id,
-            default_security_level="internal",
             sparse_index_enabled=False,
             graph_index_enabled=False,
             sparse_required_for_activation=False,
@@ -243,7 +241,6 @@ def test_list_chunks_filters_active_chunk_revision(db, admin_user):
             owner_id=owner_id,
             name="绑定文档",
             source_type="library_bind",
-            security_level="internal",
             status="active",
             active_version_id=version_id,
             metadata={"library_document_id": str(library_doc_id)},
@@ -340,7 +337,6 @@ def test_list_chunks_filters_active_chunk_revision(db, admin_user):
         "section": "概述",
         "content_hash": "hash",
         "token_count": 10,
-        "security_level": "internal",
         "status": "active",
         "metadata": {},
         "created_at": now,

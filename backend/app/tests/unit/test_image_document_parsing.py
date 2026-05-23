@@ -406,7 +406,6 @@ def _make_run_ingest_job_mocks():
         "source_type": "upload",
         "active_version_id": version_id,
         "status": "active",
-        "security_level": "default",
     }
     file_row = {
         "file_id": file_id,
@@ -470,7 +469,6 @@ def _make_run_ingest_job_mocks():
         "token_count": 10,
         "metadata": {},
         "status": "active",
-        "security_level": "default",
     }
 
     def _select_result(mapping):

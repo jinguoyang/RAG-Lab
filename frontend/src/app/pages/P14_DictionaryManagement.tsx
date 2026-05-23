@@ -39,8 +39,8 @@ function typeName(typeCode: DictionaryTypeCode): string {
  * 仅维护运营字典的展示名、排序、状态和少量新增项，权限契约类 code 仍由后端白名单保护。
  */
 export function DictionaryManagement() {
-  const [selectedType, setSelectedType] = useState<DictionaryTypeCode>("security_level");
-  const [items, setItems] = useState<DictionaryItemDTO[]>(SYSTEM_DICTIONARY_FALLBACKS.security_level);
+  const [selectedType, setSelectedType] = useState<DictionaryTypeCode>("document_source_type");
+  const [items, setItems] = useState<DictionaryItemDTO[]>(SYSTEM_DICTIONARY_FALLBACKS.document_source_type);
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [form, setForm] = useState<ItemForm>(EMPTY_FORM);
   const [isLoading, setIsLoading] = useState(false);
@@ -140,7 +140,7 @@ export function DictionaryManagement() {
       <div className="p-8 max-w-7xl mx-auto space-y-6">
         <PageHeader
           title="字典管理"
-          description="维护密级、来源、角色展示名和反馈标签。"
+          description="维护来源、角色展示名和反馈标签。"
           actions={
             <Button variant="outline" onClick={() => void loadItems()} disabled={isLoading}>
               <RefreshCw className="mr-2 h-4 w-4" /> 刷新

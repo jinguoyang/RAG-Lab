@@ -1,7 +1,6 @@
 export type DictionaryStatus = "active" | "disabled";
 
 export type DictionaryTypeCode =
-  | "security_level"
   | "document_source_type"
   | "file_role"
   | "platform_role"

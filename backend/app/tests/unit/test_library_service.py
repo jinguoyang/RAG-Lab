@@ -83,7 +83,6 @@ class TestLibraryParseRevisions:
                 library_id=None,
                 name="demo.txt",
                 source_type="upload",
-                security_level="internal",
                 status="active",
                 active_version_id=version_id,
                 metadata={},

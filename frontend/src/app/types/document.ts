@@ -9,7 +9,6 @@ export interface DocumentDTO {
   kbId: string;
   name: string;
   sourceType: string;
-  securityLevel: string;
   status: DocumentStatus;
   activeVersionId: string | null;
   createdAt: string;
@@ -60,7 +59,7 @@ export interface ChunkDTO {
   versionId: string;
   documentId: string;
   kbId: string;
-  bindingRevisionId: string | null;
+  chunkRevisionId: string | null;
   parseRevisionId: string | null;
   documentVersionId: string | null;
   chunkIndex: number;
@@ -74,7 +73,6 @@ export interface ChunkDTO {
   content: string;
   contentHash: string | null;
   tokenCount: number | null;
-  securityLevel: string;
   status: "active" | "inactive" | "retired" | "deleted";
   metadata: Record<string, unknown>;
   createdAt: string;
@@ -186,7 +184,6 @@ export interface DocumentRowViewModel {
   id: string;
   name: string;
   status: JobStatus;
-  securityLevel: string;
   updatedAtLabel: string;
 }
 
@@ -211,6 +208,7 @@ export interface IngestJobViewModel {
   progress: number;
   createdAtLabel: string;
   errorMessage: string;
+  graphExtractionErrorCount: number;
   indexStages: IndexStageViewModel[];
 }
 

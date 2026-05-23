@@ -93,7 +93,7 @@ def test_analyze_deletion_impact_active_binding():
     result = analyze_document_version_deletion_impact(session, version_id)
 
     assert result["can_delete"] is False
-    assert any("active BindingRevision" in r for r in result["blocking_reasons"])
+    assert any("active ChunkRevision" in r for r in result["blocking_reasons"])
 
 
 def test_analyze_deletion_impact_pending_jobs():

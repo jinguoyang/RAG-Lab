@@ -19,7 +19,6 @@ class KnowledgeBaseDTO(BaseModel):
     name: str
     description: str | None = None
     ownerId: str
-    defaultSecurityLevel: str
     sparseIndexEnabled: bool
     graphIndexEnabled: bool
     requiredForActivation: RequiredForActivationDTO
@@ -35,7 +34,6 @@ class KnowledgeBaseCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     description: str | None = None
     ownerId: UUID | None = None
-    defaultSecurityLevel: str = Field(default="public", min_length=1, max_length=32)
     sparseIndexEnabled: bool = False
     graphIndexEnabled: bool = False
     requiredForActivation: RequiredForActivationDTO | None = None
@@ -56,7 +54,6 @@ class KnowledgeBaseUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=128)
     description: str | None = None
     ownerId: UUID | None = None
-    defaultSecurityLevel: str | None = Field(default=None, min_length=1, max_length=32)
     sparseIndexEnabled: bool | None = None
     graphIndexEnabled: bool | None = None
     requiredForActivation: RequiredForActivationDTO | None = None

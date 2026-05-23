@@ -7,6 +7,7 @@ interface DrawerProps {
   title?: string;
   width?: '480px' | '560px' | '640px';
   className?: string;
+  allowSidebarInteraction?: boolean;
 }
 
 export function Drawer({
@@ -15,7 +16,8 @@ export function Drawer({
   children,
   title,
   width = '560px',
-  className = ''
+  className = '',
+  allowSidebarInteraction = false,
 }: DrawerProps) {
   useEffect(() => {
     if (isOpen) {
@@ -34,7 +36,7 @@ export function Drawer({
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-near-black/40 z-40 transition-opacity"
+        className={`fixed ${allowSidebarInteraction ? "inset-y-0 left-64 right-0" : "inset-0"} bg-near-black/40 z-40 transition-opacity`}
         onClick={onClose}
       />
 

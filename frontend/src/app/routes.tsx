@@ -1,55 +1,54 @@
 import { createBrowserRouter } from "react-router";
+import type { ComponentType } from "react";
 import { PlatformLayout } from "./layouts/PlatformLayout";
 import { KBLayout } from "./layouts/KBLayout";
 
-import { Login } from "./pages/P01_Login";
-import { PlatformHome } from "./pages/P02_PlatformHome";
-import { UserManagement } from "./pages/P03_UserManagement";
-import { UserGroupManagement } from "./pages/P04_UserGroupManagement";
-import { KBOverview } from "./pages/P05_KBOverview";
-import { DocumentCenter } from "./pages/P06_DocumentCenter";
-import { DocumentDetail } from "./pages/P07_DocumentDetail";
-import { ConfigCenter } from "./pages/P08_ConfigCenter";
-import { QADebug } from "./pages/P09_QADebug";
-import { QAHistory } from "./pages/P10_QAHistory";
-import { GraphSearchAnalysis } from "./pages/P11_GraphSearchAnalysis";
-import { MembersAndPermissions } from "./pages/P12_MembersAndPermissions";
-import { RagAppManagement } from "./pages/P13_RagAppManagement";
-import { DictionaryManagement } from "./pages/P14_DictionaryManagement";
-import { LibraryDetail } from "./pages/P16_LibraryDetail";
-import { LibraryManagement } from "./pages/P17_LibraryManagement";
-import { LibraryDocuments } from "./pages/P18_LibraryDocuments";
-import { LibraryMembers } from "./pages/P19_LibraryMembers";
+function PageLoading() {
+  return (
+    <div className="flex h-full min-h-40 items-center justify-center text-sm text-stone-gray">
+      加载中...
+    </div>
+  );
+}
+
+function lazyPage<T extends Record<string, unknown>>(loader: () => Promise<T>, exportName: keyof T) {
+  return async () => ({
+    Component: (await loader())[exportName] as ComponentType,
+    HydrateFallback: PageLoading,
+  });
+}
 
 export const router = createBrowserRouter([
-  { path: "/login", Component: Login },
+  { path: "/login", lazy: lazyPage(() => import("./pages/P01_Login"), "Login") },
   {
     path: "/",
     Component: PlatformLayout,
+    HydrateFallback: PageLoading,
     children: [
-      { index: true, Component: PlatformHome },
-      { path: "users", Component: UserManagement },
-      { path: "groups", Component: UserGroupManagement },
-      { path: "rag-apps", Component: RagAppManagement },
-      { path: "dictionaries", Component: DictionaryManagement },
-      { path: "library", Component: LibraryManagement },
-      { path: "library/:libraryId", Component: LibraryDocuments },
-      { path: "library/:libraryId/documents/:docId", Component: LibraryDetail },
-      { path: "library/:libraryId/members", Component: LibraryMembers },
+      { index: true, lazy: lazyPage(() => import("./pages/P02_PlatformHome"), "PlatformHome") },
+      { path: "users", lazy: lazyPage(() => import("./pages/P03_UserManagement"), "UserManagement") },
+      { path: "groups", lazy: lazyPage(() => import("./pages/P04_UserGroupManagement"), "UserGroupManagement") },
+      { path: "rag-apps", lazy: lazyPage(() => import("./pages/P13_RagAppManagement"), "RagAppManagement") },
+      { path: "dictionaries", lazy: lazyPage(() => import("./pages/P14_DictionaryManagement"), "DictionaryManagement") },
+      { path: "library", lazy: lazyPage(() => import("./pages/P17_LibraryManagement"), "LibraryManagement") },
+      { path: "library/:libraryId", lazy: lazyPage(() => import("./pages/P18_LibraryDocuments"), "LibraryDocuments") },
+      { path: "library/:libraryId/documents/:docId", lazy: lazyPage(() => import("./pages/P16_LibraryDetail"), "LibraryDetail") },
+      { path: "library/:libraryId/members", lazy: lazyPage(() => import("./pages/P19_LibraryMembers"), "LibraryMembers") },
     ],
   },
   {
     path: "/kb/:kbId",
     Component: KBLayout,
+    HydrateFallback: PageLoading,
     children: [
-      { index: true, Component: KBOverview },
-      { path: "docs", Component: DocumentCenter },
-      { path: "docs/:docId", Component: DocumentDetail },
-      { path: "config", Component: ConfigCenter },
-      { path: "qa", Component: QADebug },
-      { path: "history", Component: QAHistory },
-      { path: "graph", Component: GraphSearchAnalysis },
-      { path: "members", Component: MembersAndPermissions },
+      { index: true, lazy: lazyPage(() => import("./pages/P05_KBOverview"), "KBOverview") },
+      { path: "docs", lazy: lazyPage(() => import("./pages/P06_DocumentCenter"), "DocumentCenter") },
+      { path: "docs/:docId", lazy: lazyPage(() => import("./pages/P07_DocumentDetail"), "DocumentDetail") },
+      { path: "config", lazy: lazyPage(() => import("./pages/P08_ConfigCenter"), "ConfigCenter") },
+      { path: "qa", lazy: lazyPage(() => import("./pages/P09_QADebug"), "QADebug") },
+      { path: "history", lazy: lazyPage(() => import("./pages/P10_QAHistory"), "QAHistory") },
+      { path: "graph", lazy: lazyPage(() => import("./pages/P11_GraphSearchAnalysis"), "GraphSearchAnalysis") },
+      { path: "members", lazy: lazyPage(() => import("./pages/P12_MembersAndPermissions"), "MembersAndPermissions") },
     ],
   },
 ]);

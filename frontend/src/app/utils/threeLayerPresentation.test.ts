@@ -1,26 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
-  bindingRevisionStatusLabel,
-  bindingRevisionStatusVariant,
+  chunkRevisionStatusLabel,
+  chunkRevisionStatusVariant,
   layerLabel,
   permissionSourceLabel,
 } from "./threeLayerPresentation";
 
 describe("threeLayerPresentation", () => {
-  it("maps BindingRevision statuses to stable Chinese labels and badge variants", () => {
-    expect(bindingRevisionStatusLabel("building")).toBe("构建中");
-    expect(bindingRevisionStatusVariant("building")).toBe("running");
-    expect(bindingRevisionStatusLabel("active")).toBe("已激活");
-    expect(bindingRevisionStatusVariant("active")).toBe("success");
-    expect(bindingRevisionStatusLabel("retired")).toBe("已退役");
-    expect(bindingRevisionStatusVariant("retired")).toBe("inactive");
-    expect(bindingRevisionStatusLabel("failed")).toBe("构建失败");
-    expect(bindingRevisionStatusVariant("failed")).toBe("error");
+  it("maps ChunkRevision statuses to stable Chinese labels and badge variants", () => {
+    expect(chunkRevisionStatusLabel("building")).toBe("构建中");
+    expect(chunkRevisionStatusVariant("building")).toBe("running");
+    expect(chunkRevisionStatusLabel("active")).toBe("已激活");
+    expect(chunkRevisionStatusVariant("active")).toBe("success");
+    expect(chunkRevisionStatusLabel("retired")).toBe("已退役");
+    expect(chunkRevisionStatusVariant("retired")).toBe("inactive");
+    expect(chunkRevisionStatusLabel("failed")).toBe("构建失败");
+    expect(chunkRevisionStatusVariant("failed")).toBe("error");
   });
 
-  it("keeps unknown BindingRevision status visible instead of hiding it", () => {
-    expect(bindingRevisionStatusLabel("paused")).toBe("paused");
-    expect(bindingRevisionStatusVariant("paused")).toBe("default");
+  it("keeps unknown ChunkRevision status visible instead of hiding it", () => {
+    expect(chunkRevisionStatusLabel("paused")).toBe("paused");
+    expect(chunkRevisionStatusVariant("paused")).toBe("default");
   });
 
   it("names the three product layers consistently", () => {

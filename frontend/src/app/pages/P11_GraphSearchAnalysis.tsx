@@ -284,7 +284,6 @@ export function GraphSearchAnalysis() {
                   <li key={chunk.id} className="rounded-md border border-border-cream bg-parchment p-3">
                     <div className="flex items-center justify-between gap-3">
                       <span className="font-mono text-xs text-terracotta">{chunk.documentName} · {chunk.location}</span>
-                      <Badge variant="default">{chunk.securityLevel}</Badge>
                     </div>
                     <p className="mt-2 text-stone-gray leading-relaxed">{chunk.preview}</p>
                   </li>

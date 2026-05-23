@@ -1,10 +1,12 @@
-"""BindingRevision 生命周期单元测试。"""
+"""ChunkRevision 生命周期单元测试。"""
 from datetime import datetime, timezone
 from uuid import uuid4
 from unittest.mock import Mock, patch, MagicMock
 
 import pytest
+from pydantic import ValidationError
 
+from app.schemas.binding import RechunkRequest
 from app.services.binding_service import (
     BindingBuildInProgressError,
     BindingNotFoundError,
@@ -17,7 +19,7 @@ from app.services.binding_service import (
 
 
 def test_create_chunk_revision():
-    """测试创建 BindingRevision"""
+    """测试创建 ChunkRevision"""
     session = Mock()
     binding_id = uuid4()
     kb_id = uuid4()
@@ -70,8 +72,52 @@ def test_to_binding_dto_exposes_active_revision_status():
     assert dto.chunkRevisionVersionId == str(target_version_id)
 
 
+def test_to_binding_dto_uses_chunk_revision_params_when_binding_row_has_no_chunk_fields():
+    """绑定表不存分块参数时，DTO 应从 ChunkRevision 参数回填。"""
+    row = {
+        "binding_id": uuid4(),
+        "document_id": uuid4(),
+        "kb_id": uuid4(),
+        "version_id": uuid4(),
+        "status": "processing",
+        "chunk_count": 0,
+        "active_chunk_revision_id": None,
+        "chunk_revision_params": {"chunk_size": 900, "chunk_overlap": 120},
+        "created_at": datetime.now(timezone.utc),
+        "created_by": uuid4(),
+    }
+
+    dto = _to_binding_dto(row, doc_name="研发手册")
+
+    assert dto.chunkSize == 900
+    assert dto.chunkOverlap == 120
+
+
+def test_rechunk_request_accepts_valid_fixed_size_params():
+    """重分块请求只允许明确合法的固定长度参数进入队列。"""
+    request = RechunkRequest(params={"chunk_size": 900, "chunk_overlap": 120})
+
+    assert request.strategy == "fixed_size"
+    assert request.params == {"chunk_size": 900, "chunk_overlap": 120}
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"strategy": "semantic", "params": {"chunk_size": 900, "chunk_overlap": 120}},
+        {"params": {"chunk_size": 0, "chunk_overlap": 0}},
+        {"params": {"chunk_size": 900, "chunk_overlap": 900}},
+        {"params": {"chunk_size": 900, "chunk_overlap": -1}},
+    ],
+)
+def test_rechunk_request_rejects_invalid_params(payload):
+    """非法重分块参数应在 API 入参阶段失败，避免异步 Worker 才暴露错误。"""
+    with pytest.raises(ValidationError):
+        RechunkRequest(**payload)
+
+
 def test_create_chunk_revision_with_created_by():
-    """测试创建 BindingRevision 时记录创建人"""
+    """测试创建 ChunkRevision 时记录创建人"""
     session = Mock()
     user_id = uuid4()
 
@@ -92,7 +138,7 @@ def test_create_chunk_revision_with_created_by():
 
 
 def test_activate_chunk_revision():
-    """测试激活 BindingRevision"""
+    """测试激活 ChunkRevision"""
     session = Mock()
     binding_rev_id = uuid4()
     binding_id = uuid4()
@@ -113,7 +159,7 @@ def test_activate_chunk_revision():
 
 
 def test_activate_chunk_revision_not_found():
-    """测试激活不存在的 BindingRevision"""
+    """测试激活不存在的 ChunkRevision"""
     session = Mock()
     mock_result = MagicMock()
     mock_result.mappings.return_value.first.return_value = None
@@ -124,7 +170,7 @@ def test_activate_chunk_revision_not_found():
 
 
 def test_fail_chunk_revision():
-    """测试标记 BindingRevision 为失败"""
+    """测试标记 ChunkRevision 为失败"""
     session = Mock()
     binding_rev_id = uuid4()
 
@@ -134,13 +180,13 @@ def test_fail_chunk_revision():
 
 
 def test_complete_chunk_revision_build():
-    """测试完成构建并激活"""
+    """测试完成构建时同步 ChunkRevision 与绑定摘要状态。"""
     session = Mock()
     binding_rev_id = uuid4()
 
     with patch("app.services.binding_service.activate_chunk_revision") as mock_activate:
         complete_chunk_revision_build(session, binding_rev_id, chunk_count=10)
 
-        # 验证调用了 execute (更新状态) 和 activate_chunk_revision
-        session.execute.assert_called_once()
+        # 验证调用了 execute 更新 revision 与 binding 摘要，并激活 revision。
+        assert session.execute.call_count == 2
         mock_activate.assert_called_once_with(session, binding_rev_id)

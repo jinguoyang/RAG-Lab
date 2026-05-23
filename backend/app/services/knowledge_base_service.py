@@ -74,7 +74,6 @@ def _to_dto(row: RowMapping) -> KnowledgeBaseDTO:
         name=row["name"],
         description=row["description"],
         ownerId=str(row["owner_id"]),
-        defaultSecurityLevel=row["default_security_level"],
         sparseIndexEnabled=row["sparse_index_enabled"],
         graphIndexEnabled=row["graph_index_enabled"],
         requiredForActivation=RequiredForActivationDTO(
@@ -333,8 +332,6 @@ def update_knowledge_base(
     _ensure_kb_manage_permission(session, current_user, kb_id)
     kb_row = ensure_knowledge_base_writable(session, current_user, kb_id)
     _ensure_index_capabilities_mutable(session, kb_id, kb_row, request)
-    if request.defaultSecurityLevel is not None:
-        require_active_dict_item(session, "security_level", request.defaultSecurityLevel, "defaultSecurityLevel")
 
     update_values = {"updated_by": UUID(current_user.user.userId), "updated_at": func.now()}
     requested_fields = request.model_fields_set
@@ -344,8 +341,6 @@ def update_knowledge_base(
         update_values["description"] = request.description
     if "ownerId" in requested_fields and request.ownerId is not None:
         update_values["owner_id"] = request.ownerId
-    if "defaultSecurityLevel" in requested_fields and request.defaultSecurityLevel is not None:
-        update_values["default_security_level"] = request.defaultSecurityLevel
     if "sparseIndexEnabled" in requested_fields and request.sparseIndexEnabled is not None:
         update_values["sparse_index_enabled"] = request.sparseIndexEnabled
     if "graphIndexEnabled" in requested_fields and request.graphIndexEnabled is not None:
@@ -743,7 +738,6 @@ def create_knowledge_base(
     request: KnowledgeBaseCreateRequest,
 ) -> KnowledgeBaseDTO:
     """创建知识库基础记录，并生成默认 active Revision 供 QA 直接运行。"""
-    require_active_dict_item(session, "security_level", request.defaultSecurityLevel, "defaultSecurityLevel")
     owner_id = request.ownerId or UUID(current_user.user.userId)
     activation = request.requiredForActivation or RequiredForActivationDTO(
         sparse=request.sparseIndexEnabled,
@@ -772,7 +766,6 @@ def create_knowledge_base(
             name=request.name,
             description=request.description,
             owner_id=owner_id,
-            default_security_level=request.defaultSecurityLevel,
             sparse_index_enabled=request.sparseIndexEnabled,
             graph_index_enabled=request.graphIndexEnabled,
             sparse_required_for_activation=activation.sparse,

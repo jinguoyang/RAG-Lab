@@ -2,7 +2,7 @@ from typing import Annotated
 from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -44,7 +44,6 @@ from app.services.document_service import (
     DocumentSourceFileUnavailableError,
     activate_document_version,
     cancel_ingest_job,
-    create_document_upload,
     delete_document,
     download_document_source,
     get_chunk,
@@ -103,45 +102,6 @@ def read_documents(
 ) -> PageResponse[DocumentDTO]:
     """分页返回当前知识库文档列表。"""
     response = list_documents(session, current_user, kb_id, page_no, page_size, keyword)
-    if response is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found.")
-    return response
-
-
-@router.post("", response_model=DocumentUploadResponse, status_code=status.HTTP_201_CREATED)
-async def upload_document(
-    kb_id: UUID,
-    file: Annotated[UploadFile, File()],
-    name: Annotated[str | None, Form()] = None,
-    security_level: Annotated[str | None, Form(alias="securityLevel")] = None,
-    force_upload: Annotated[bool, Form(alias="forceUpload")] = False,
-    current_user: CurrentUserResponse = Depends(get_current_user),
-    session: Session = Depends(get_db_session),
-) -> DocumentUploadResponse:
-    """上传文档元数据，并创建首个版本和 queued 入库作业。"""
-    file_bytes = await file.read()
-    if not file_bytes:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty.")
-
-    try:
-        response = create_document_upload(
-            session=session,
-            current_user=current_user,
-            kb_id=kb_id,
-            file_name=file.filename or "uploaded-document",
-            mime_type=file.content_type,
-            file_bytes=file_bytes,
-            name=name,
-            security_level=security_level,
-            force_upload=force_upload,
-        )
-    except (KnowledgeBaseDisabledError, DocumentPermissionError, DocumentConflictError, DocumentIngestEnqueueError, DictionaryValidationError) as exc:
-        _raise_document_error(exc)
-    except ObjectStorageError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="STORAGE_WRITE_FAILED: object storage write failed.",
-        ) from exc
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found.")
     return response

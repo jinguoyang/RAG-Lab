@@ -393,7 +393,6 @@ def create_library_upload(
             library_id=library_id,
             name=document_name,
             source_type="upload",
-            security_level="internal",
             status="active",
             metadata={},
             created_by=actor_id,
@@ -694,7 +693,7 @@ def analyze_document_deletion_impact(
             "requires_strong_confirmation": False,
         }
 
-    # 2. 检查是否存在 active BindingRevision（任一版本）
+    # 2. 检查是否存在 active ChunkRevision（任一版本）
     active_binding_count = session.execute(
         select(func.count()).select_from(chunk_revisions).where(
             chunk_revisions.c.document_version_id.in_(versions),
@@ -757,7 +756,7 @@ def delete_library_document(
     """软删除文档并级联清理所有绑定。
 
     按照设计文档第7节要求，执行删除前检查：
-    - 任一版本被 active BindingRevision 使用则禁止删除
+    - 任一版本被 active ChunkRevision 使用则禁止删除
     - 任一版本存在 pending/running 任务则禁止删除
     - 存在历史 QA 引用则允许但需强确认
     """

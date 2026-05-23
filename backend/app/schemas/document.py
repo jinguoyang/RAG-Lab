@@ -19,7 +19,6 @@ class DocumentDTO(BaseModel):
     kbId: str
     name: str
     sourceType: str
-    securityLevel: str
     status: str
     activeVersionId: str | None
     createdAt: str
@@ -85,7 +84,6 @@ class ChunkDTO(BaseModel):
     content: str
     contentHash: str | None
     tokenCount: int | None
-    securityLevel: str
     status: str
     metadata: dict = Field(default_factory=dict)
     createdAt: str

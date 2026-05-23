@@ -44,7 +44,6 @@ class ChunkAccessFilterContext:
     permission_code: str
     allow_subject_keys: list[str]
     deny_subject_keys: list[str]
-    security_level: str
     document_status: str
     version_status: str
     chunk_status: str
@@ -57,7 +56,6 @@ class ChunkAccessFilterContext:
             "permissionCode": self.permission_code,
             "allowSubjectKeys": self.allow_subject_keys,
             "denySubjectKeys": self.deny_subject_keys,
-            "securityLevel": self.security_level,
             "documentStatus": self.document_status,
             "versionStatus": self.version_status,
             "chunkStatus": self.chunk_status,
@@ -448,7 +446,6 @@ def build_chunk_access_filter_context(
         "permissionCode": "kb.chunk.read",
         "allowSubjectKeys": allow_subject_keys,
         "denySubjectKeys": deny_subject_keys,
-        "securityLevel": current_user.user.securityLevel,
         "documentStatus": "active",
         "versionStatus": "active",
         "chunkStatus": "active",
@@ -459,7 +456,6 @@ def build_chunk_access_filter_context(
         permission_code="kb.chunk.read",
         allow_subject_keys=allow_subject_keys,
         deny_subject_keys=deny_subject_keys,
-        security_level=current_user.user.securityLevel,
         document_status="active",
         version_status="active",
         chunk_status="active",

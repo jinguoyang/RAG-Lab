@@ -100,7 +100,7 @@ class TestChunkRevisionLifecycle:
     """绑定生命周期测试。"""
 
     def test_create_chunk_revision(self):
-        """测试创建 BindingRevision。"""
+        """测试创建 ChunkRevision。"""
         session = Mock()
 
         result = create_chunk_revision(
@@ -116,7 +116,7 @@ class TestChunkRevisionLifecycle:
         session.execute.assert_called_once()
 
     def test_activate_chunk_revision(self):
-        """测试激活 BindingRevision。"""
+        """测试激活 ChunkRevision。"""
         session = Mock()
         binding_rev_id = uuid4()
         binding_id = uuid4()
@@ -135,7 +135,7 @@ class TestChunkRevisionLifecycle:
         assert session.execute.call_count >= 5
 
     def test_fail_chunk_revision(self):
-        """测试标记 BindingRevision 为失败。"""
+        """测试标记 ChunkRevision 为失败。"""
         session = Mock()
 
         fail_chunk_revision(session, uuid4())

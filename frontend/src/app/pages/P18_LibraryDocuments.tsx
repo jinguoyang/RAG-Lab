@@ -113,6 +113,17 @@ export function LibraryDocuments() {
     void loadData("", 1);
   }, [statusFilter]);
 
+  useEffect(() => {
+    const hasRunningParse = documents.some((doc) => doc.parseStatus === "pending" || doc.parseStatus === "running");
+    if (!hasRunningParse) return;
+
+    const timer = window.setInterval(() => {
+      void loadData(searchTerm, pageNo);
+    }, 3000);
+
+    return () => window.clearInterval(timer);
+  }, [documents, loadData, pageNo, searchTerm]);
+
   async function handleSearchSubmit() {
     await loadData(searchTerm, 1);
   }

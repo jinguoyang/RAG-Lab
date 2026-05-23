@@ -54,7 +54,6 @@ export interface GraphSupportingChunkDTO {
   documentName: string;
   chunkIndex: number;
   contentPreview: string;
-  securityLevel: string;
   refType: string;
   metadata: Record<string, unknown>;
 }

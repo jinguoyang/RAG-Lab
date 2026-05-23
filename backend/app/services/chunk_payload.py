@@ -36,7 +36,6 @@ def build_chunk_index_payload(
         "sectionPath": chunk.get("section_path"),
         "heading": chunk.get("heading"),
         "summary": chunk.get("summary"),
-        "securityLevel": chunk.get("security_level"),
         "documentStatus": document_status,
         "versionStatus": version_status,
         "chunkStatus": chunk.get("status"),

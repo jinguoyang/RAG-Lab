@@ -26,11 +26,6 @@ function item(typeCode: DictionaryTypeCode, code: string, name: string, sortOrde
 }
 
 export const SYSTEM_DICTIONARY_FALLBACKS: Record<DictionaryTypeCode, DictionaryItemDTO[]> = {
-  security_level: [
-    item("security_level", "public", "公开", 10),
-    item("security_level", "internal", "内部", 20),
-    item("security_level", "confidential", "机密", 30),
-  ],
   document_source_type: [
     item("document_source_type", "upload", "上传", 10),
     item("document_source_type", "sync", "同步", 20),
@@ -62,7 +57,6 @@ export const SYSTEM_DICTIONARY_FALLBACKS: Record<DictionaryTypeCode, DictionaryI
 };
 
 export const SYSTEM_DICTIONARY_TYPES: Array<{ code: DictionaryTypeCode; name: string; fixedCodes?: boolean }> = [
-  { code: "security_level", name: "密级" },
   { code: "document_source_type", name: "文档来源" },
   { code: "file_role", name: "文件角色" },
   { code: "platform_role", name: "平台角色", fixedCodes: true },
@@ -75,23 +69,24 @@ export async function fetchDictionaryTypes(): Promise<DictionaryTypeDTO[]> {
 }
 
 export async function fetchDictionaryItems(
-  typeCode: DictionaryTypeCode,
+  typeCode: string,
   activeOnly = true,
 ): Promise<DictionaryItemDTO[]> {
   const params = new URLSearchParams({ activeOnly: String(activeOnly) });
   return apiGet<DictionaryItemDTO[]>(`/dictionaries/${typeCode}/items?${params.toString()}`);
 }
 
-export async function fetchDictionaryItemsWithFallback(typeCode: DictionaryTypeCode): Promise<DictionaryItemDTO[]> {
+export async function fetchDictionaryItemsWithFallback(typeCode: string): Promise<DictionaryItemDTO[]> {
   try {
     const items = await fetchDictionaryItems(typeCode, true);
-    return items.length > 0 ? items : SYSTEM_DICTIONARY_FALLBACKS[typeCode];
+    if (items.length > 0) return items;
   } catch {
-    return SYSTEM_DICTIONARY_FALLBACKS[typeCode];
+    // fall through to fallback
   }
+  return (SYSTEM_DICTIONARY_FALLBACKS as Record<string, DictionaryItemDTO[]>)[typeCode] ?? [];
 }
 
-export async function fetchDictionaryBundle<T extends readonly DictionaryTypeCode[]>(
+export async function fetchDictionaryBundle<T extends readonly string[]>(
   typeCodes: T,
 ): Promise<Record<T[number], DictionaryItemDTO[]>> {
   const entries = await Promise.all(

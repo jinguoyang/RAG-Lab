@@ -158,7 +158,7 @@ class TestCheckDocumentVersionDeletePermission:
         assert "该版本是文档的当前活跃版本" in reason
 
     def test_active_binding(self):
-        """版本有活跃的 BindingRevision → False。"""
+        """版本有活跃的 ChunkRevision → False。"""
         user = self._make_user()
         library_id = uuid4()
         document_id = uuid4()

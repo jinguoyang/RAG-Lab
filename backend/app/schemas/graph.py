@@ -94,7 +94,6 @@ class GraphSupportingChunkDTO(BaseModel):
     documentName: str
     chunkIndex: int
     contentPreview: str
-    securityLevel: str
     refType: str
     metadata: dict[str, Any]
 

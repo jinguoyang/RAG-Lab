@@ -1,14 +1,13 @@
-import * as Tabs from "@radix-ui/react-tabs";
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { Copy, Download, FileText, RefreshCw, Settings2, Trash2, Upload } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
+import { UnderlineTabs, UnderlineTabsList, UnderlineTabsTrigger, UnderlineTabsContent } from "../components/rag/UnderlineTabs";
 import { Button } from "../components/rag/Button";
 import { Badge, StatusBadge } from "../components/rag/Badge";
 import { Alert } from "../components/rag/Alert";
 import { PdfPreview } from "../components/rag/PdfPreview";
 import { TextPreview } from "../components/rag/TextPreview";
-import { DocxPreview } from "../components/rag/DocxPreview";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
 import { Drawer, DrawerSection } from "../components/rag/Drawer";
 import { Input } from "../components/rag/Input";
@@ -34,6 +33,10 @@ import type {
   ParseRevisionDTO,
   UploadProgress,
 } from "../types/library";
+
+const DocxPreview = lazy(async () => ({
+  default: (await import("../components/rag/DocxPreview")).DocxPreview,
+}));
 
 function getPreviewType(fileName: string): "pdf" | "markdown" | "text" | "docx" | "unsupported" {
   const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
@@ -340,8 +343,8 @@ export function LibraryDetail() {
           </Alert>
         )}
 
-        <Tabs.Root value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
-          <Tabs.List className="mb-6 flex gap-6 border-b border-border-cream">
+        <UnderlineTabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
+          <UnderlineTabsList className="mb-6">
             {[
               ["overview", "概览"],
               ["versions", "源文件版本"],
@@ -349,13 +352,13 @@ export function LibraryDetail() {
               ["preview", "预览"],
               ["usage", "使用影响"],
             ].map(([value, label]) => (
-              <Tabs.Trigger key={value} value={value} className="pb-2 font-medium text-stone-gray transition-all hover:text-near-black data-[state=active]:border-b-2 data-[state=active]:border-terracotta data-[state=active]:text-terracotta">
+              <UnderlineTabsTrigger key={value} value={value}>
                 {label}
-              </Tabs.Trigger>
+              </UnderlineTabsTrigger>
             ))}
-          </Tabs.List>
+          </UnderlineTabsList>
 
-          <Tabs.Content value="overview" className="space-y-6 outline-none">
+          <UnderlineTabsContent value="overview" className="space-y-6 outline-none">
             <div className="rounded-lg border border-border-cream bg-ivory p-6">
               <h2 className="mb-4 font-serif text-near-black">文档信息</h2>
               <div className="grid gap-4 text-sm md:grid-cols-2">
@@ -383,9 +386,9 @@ export function LibraryDetail() {
                 <p className="mt-2 font-serif text-xl text-near-black">{usages.length}</p>
               </div>
             </div>
-          </Tabs.Content>
+          </UnderlineTabsContent>
 
-          <Tabs.Content value="versions" className="space-y-4 outline-none">
+          <UnderlineTabsContent value="versions" className="space-y-4 outline-none">
             <div className="flex items-center justify-between">
               <h2 className="font-serif text-near-black">源文件版本</h2>
               <Button onClick={() => setShowUpload(true)}><Upload className="mr-2 h-4 w-4" /> 上传新版本</Button>
@@ -435,9 +438,9 @@ export function LibraryDetail() {
                 })}
               </TableBody>
             </Table>
-          </Tabs.Content>
+          </UnderlineTabsContent>
 
-          <Tabs.Content value="parse" className="space-y-4 outline-none">
+          <UnderlineTabsContent value="parse" className="space-y-4 outline-none">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <h2 className="font-serif text-near-black">解析版本</h2>
@@ -493,13 +496,15 @@ export function LibraryDetail() {
                 ))}
               </TableBody>
             </Table>
-          </Tabs.Content>
+          </UnderlineTabsContent>
 
-          <Tabs.Content value="preview" className="space-y-6 outline-none">
+          <UnderlineTabsContent value="preview" className="space-y-6 outline-none">
             {previewType === "pdf" ? (
               <PdfPreview documentId={docId} fileName={doc.name} />
             ) : previewType === "docx" ? (
-              <DocxPreview documentId={docId} />
+              <Suspense fallback={<Alert variant="info" title="正在加载 DOCX 预览器" message="首次打开 DOCX 预览时需要加载解析组件。" />}>
+                <DocxPreview documentId={docId} />
+              </Suspense>
             ) : previewType === "markdown" || previewType === "text" || selectedParseRevision ? (
               <TextPreview documentId={docId} parseRevisionId={selectedParseRevision?.parseRevisionId} />
             ) : (
@@ -508,9 +513,9 @@ export function LibraryDetail() {
                 <p className="text-stone-gray">暂不支持此文件格式的在线预览</p>
               </div>
             )}
-          </Tabs.Content>
+          </UnderlineTabsContent>
 
-          <Tabs.Content value="usage" className="outline-none">
+          <UnderlineTabsContent value="usage" className="outline-none">
             {usages.length === 0 ? (
               <div className="rounded-lg border border-border-cream bg-ivory py-12 text-center text-stone-gray">该文档尚未绑定到任何知识库</div>
             ) : (
@@ -535,11 +540,11 @@ export function LibraryDetail() {
                 </TableBody>
               </Table>
             )}
-          </Tabs.Content>
-        </Tabs.Root>
+          </UnderlineTabsContent>
+        </UnderlineTabs>
 
         {showUpload && (
-          <Drawer title="上传新源文件版本" onClose={() => { setShowUpload(false); setUploadFile(null); setUploadProgress(null); }}>
+          <Drawer isOpen={showUpload} title="上传新源文件版本" onClose={() => { setShowUpload(false); setUploadFile(null); setUploadProgress(null); }}>
             <DrawerSection>
               <div className="space-y-4">
                 <input
@@ -571,7 +576,7 @@ export function LibraryDetail() {
         )}
 
         {showReparse && selectedVersion && (
-          <Drawer title={`重解析源文件 v${selectedVersion.versionNo}`} onClose={() => setShowReparse(false)}>
+          <Drawer isOpen={showReparse} title={`重解析源文件 v${selectedVersion.versionNo}`} onClose={() => setShowReparse(false)}>
             <DrawerSection>
               <div className="space-y-4">
                 <div className="rounded-lg border border-border-cream bg-parchment p-3 text-sm text-stone-gray">
@@ -635,7 +640,7 @@ export function LibraryDetail() {
         )}
 
         {deleteDrawer && (
-          <Drawer title={`删除源文件版本 v${deleteDrawer.versionNo}`} onClose={() => { setDeleteDrawer(null); setDeleteImpact(null); }}>
+          <Drawer isOpen={!!deleteDrawer} title={`删除源文件版本 v${deleteDrawer.versionNo}`} onClose={() => { setDeleteDrawer(null); setDeleteImpact(null); }}>
             <DrawerSection>
               {deleteImpactLoading ? (
                 <div className="py-8 text-center text-stone-gray">正在分析影响...</div>

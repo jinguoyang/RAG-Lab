@@ -242,10 +242,10 @@ export interface LibraryBindingDTO {
   chunkCount: number;
   errorCode?: string | null;
   errorMessage?: string | null;
-  activeBindingRevisionId?: string | null;
-  bindingRevisionStatus?: string | null;
-  bindingRevisionChunkCount?: number | null;
-  bindingRevisionVersionId?: string | null;
+  activeChunkRevisionId?: string | null;
+  chunkRevisionStatus?: string | null;
+  chunkRevisionChunkCount?: number | null;
+  chunkRevisionVersionId?: string | null;
   createdAt: string;
   createdBy?: string | null;
 }

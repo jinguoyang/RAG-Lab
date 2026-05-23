@@ -30,7 +30,6 @@ export interface GraphChunkViewModel {
   documentName: string;
   location: string;
   preview: string;
-  securityLevel: string;
 }
 
 function compactNumber(value: number | null): string {
@@ -93,6 +92,5 @@ export function chunkToViewModel(chunk: GraphSupportingChunkDTO): GraphChunkView
     documentName: chunk.documentName,
     location: `chunk ${chunk.chunkIndex}`,
     preview: chunk.contentPreview,
-    securityLevel: chunk.securityLevel,
   };
 }

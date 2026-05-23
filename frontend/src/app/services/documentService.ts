@@ -1,4 +1,4 @@
-import { apiDeleteJson, apiDownload, apiGet, apiPatchJson, apiPostForm, apiPostJson } from "./apiClient";
+import { apiDeleteJson, apiDownload, apiGet, apiPatchJson, apiPostJson } from "./apiClient";
 import type { ApiDownload } from "./apiClient";
 import type {
   BulkDocumentGovernanceRequest,
@@ -36,22 +36,6 @@ export async function fetchDocuments(
   }
 
   return apiGet<DocumentPage>(`/knowledge-bases/${kbId}/documents?${params.toString()}`);
-}
-
-export async function uploadDocument(
-  kbId: string,
-  file: File,
-  name: string,
-  securityLevel: string,
-): Promise<DocumentUploadResponse> {
-  const body = new FormData();
-  body.set("file", file);
-  if (name.trim()) {
-    body.set("name", name.trim());
-  }
-  body.set("securityLevel", securityLevel);
-
-  return apiPostForm<DocumentUploadResponse>(`/knowledge-bases/${kbId}/documents`, body);
 }
 
 export async function fetchDocumentDetail(
@@ -106,6 +90,20 @@ export async function reparseDocument(
     `/knowledge-bases/${kbId}/documents/${documentId}/reparse`,
     { reason },
   );
+}
+
+export async function rechunkDocument(
+  kbId: string,
+  documentId: string,
+  params: { chunkSize: number; chunkOverlap: number },
+): Promise<{ job_id: string; chunk_revision_id: string; strategy: string; params: Record<string, unknown> }> {
+  return apiPostJson(`/knowledge-bases/${kbId}/documents/${documentId}/rechunk`, {
+    strategy: "fixed_size",
+    params: {
+      chunk_size: params.chunkSize,
+      chunk_overlap: params.chunkOverlap,
+    },
+  });
 }
 
 export async function activateDocumentVersion(

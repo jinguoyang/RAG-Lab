@@ -89,6 +89,11 @@ function readJobErrorSummary(job: IngestJobDTO): Record<string, { status?: unkno
   return summary as Record<string, { status?: unknown }>;
 }
 
+function readGraphExtractionErrorCount(job: IngestJobDTO): number {
+  const errors = job.resultSummary?.graphExtractionErrors;
+  return Array.isArray(errors) ? errors.length : 0;
+}
+
 function inferMissingReplicaStatus(job: IngestJobDTO, key: "milvus" | "opensearch" | "neo4j"): IndexStageViewModel["status"] {
   const message = (job.errorMessage || "").toLowerCase();
   if (message.includes(key)) {
@@ -158,7 +163,6 @@ export function toDocumentRow(document: DocumentDTO): DocumentRowViewModel {
     id: document.documentId,
     name: document.name,
     status: document.status === "active" ? "success" : "cancelled",
-    securityLevel: document.securityLevel,
     updatedAtLabel: formatDateTime(document.updatedAt),
   };
 }
@@ -194,6 +198,7 @@ export function toIngestJobView(job: IngestJobDTO): IngestJobViewModel {
     progress: job.progress,
     createdAtLabel: formatDateTime(job.createdAt),
     errorMessage: job.errorMessage || "-",
+    graphExtractionErrorCount: readGraphExtractionErrorCount(job),
     indexStages: toJobIndexStages(job),
   };
 }

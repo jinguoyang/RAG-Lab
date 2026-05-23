@@ -57,6 +57,8 @@ export interface QARunEvidenceDTO {
   sourceStatus?: string;  // "available" | "source_deleted"
   documentName?: string | null;
   versionNo?: number | null;
+  chunkRevisionId?: string | null;
+  /** 兼容旧运行记录，后端新字段为 chunkRevisionId。 */
   bindingRevisionId?: string | null;
   parseRevisionId?: string | null;
   documentVersionId?: string | null;

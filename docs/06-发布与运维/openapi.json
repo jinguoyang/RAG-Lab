@@ -12164,7 +12164,7 @@
             "type": "string",
             "title": "Kbid"
           },
-          "bindingRevisionId": {
+          "chunkRevisionId": {
             "anyOf": [
               {
                 "type": "string"
@@ -12173,7 +12173,7 @@
                 "type": "null"
               }
             ],
-            "title": "Bindingrevisionid"
+            "title": "Chunkrevisionid"
           },
           "parseRevisionId": {
             "anyOf": [
@@ -16237,7 +16237,7 @@
             ],
             "title": "Errormessage"
           },
-          "activeBindingRevisionId": {
+          "activeChunkRevisionId": {
             "anyOf": [
               {
                 "type": "string"
@@ -16246,9 +16246,9 @@
                 "type": "null"
               }
             ],
-            "title": "Activebindingrevisionid"
+            "title": "Activechunkrevisionid"
           },
-          "bindingRevisionStatus": {
+          "chunkRevisionStatus": {
             "anyOf": [
               {
                 "type": "string"
@@ -16257,9 +16257,9 @@
                 "type": "null"
               }
             ],
-            "title": "Bindingrevisionstatus"
+            "title": "Chunkrevisionstatus"
           },
-          "bindingRevisionChunkCount": {
+          "chunkRevisionChunkCount": {
             "anyOf": [
               {
                 "type": "integer"
@@ -16268,9 +16268,9 @@
                 "type": "null"
               }
             ],
-            "title": "Bindingrevisionchunkcount"
+            "title": "Chunkrevisionchunkcount"
           },
-          "bindingRevisionVersionId": {
+          "chunkRevisionVersionId": {
             "anyOf": [
               {
                 "type": "string"
@@ -16279,7 +16279,7 @@
                 "type": "null"
               }
             ],
-            "title": "Bindingrevisionversionid"
+            "title": "Chunkrevisionversionid"
           },
           "createdAt": {
             "type": "string",
@@ -18993,7 +18993,7 @@
             ],
             "title": "Versionno"
           },
-          "bindingRevisionId": {
+          "chunkRevisionId": {
             "anyOf": [
               {
                 "type": "string"
@@ -19002,7 +19002,7 @@
                 "type": "null"
               }
             ],
-            "title": "Bindingrevisionid"
+            "title": "Chunkrevisionid"
           },
           "parseRevisionId": {
             "anyOf": [

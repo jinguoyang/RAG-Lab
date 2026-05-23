@@ -831,8 +831,13 @@ export function ConfigCenter() {
 
     setActivatingRevision(true);
     try {
-      await activateConfigRevision(kbId, pendingActivation);
+      const activation = await activateConfigRevision(kbId, pendingActivation);
       await loadRevisions({ syncEditorToActive: true });
+      window.dispatchEvent(
+        new CustomEvent("raglab:knowledge-base-changed", {
+          detail: { kbId, activeConfigRevisionId: activation.activeConfigRevisionId },
+        }),
+      );
       setFeedback({
         variant: "warning",
         title: "生效版本已切换",
@@ -1393,6 +1398,7 @@ export function ConfigCenter() {
         onClose={() => setIsRevisionDrawerOpen(false)}
         title="版本历史"
         width="640px"
+        allowSidebarInteraction
       >
         <DrawerSection title="版本列表">
           <div className="space-y-3">

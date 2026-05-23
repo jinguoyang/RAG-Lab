@@ -3,14 +3,14 @@ import type { PermissionSource } from "../types/knowledgeBase";
 type BadgeVariant = "default" | "success" | "error" | "warning" | "info" | "queued" | "running" | "draft" | "saved" | "active" | "inactive";
 type ProductLayer = "library" | "knowledgeBase" | "app";
 
-const BINDING_REVISION_LABELS: Record<string, string> = {
+const CHUNK_REVISION_LABELS: Record<string, string> = {
   building: "构建中",
   active: "已激活",
   retired: "已退役",
   failed: "构建失败",
 };
 
-const BINDING_REVISION_VARIANTS: Record<string, BadgeVariant> = {
+const CHUNK_REVISION_VARIANTS: Record<string, BadgeVariant> = {
   building: "running",
   active: "success",
   retired: "inactive",
@@ -24,20 +24,20 @@ const LAYER_LABELS: Record<ProductLayer, string> = {
 };
 
 /**
- * 将后端 BindingRevision 状态转换为稳定展示文案。
+ * 将后端 ChunkRevision 状态转换为稳定展示文案。
  * 未识别状态保持原样，便于发现后端新增状态而不是静默吞掉。
  */
-export function bindingRevisionStatusLabel(status: string | null | undefined): string {
+export function chunkRevisionStatusLabel(status: string | null | undefined): string {
   if (!status) return "未创建";
-  return BINDING_REVISION_LABELS[status] ?? status;
+  return CHUNK_REVISION_LABELS[status] ?? status;
 }
 
 /**
- * 将 BindingRevision 状态映射到现有 Badge 变体，避免页面各自定义颜色。
+ * 将 ChunkRevision 状态映射到现有 Badge 变体，避免页面各自定义颜色。
  */
-export function bindingRevisionStatusVariant(status: string | null | undefined): BadgeVariant {
+export function chunkRevisionStatusVariant(status: string | null | undefined): BadgeVariant {
   if (!status) return "queued";
-  return BINDING_REVISION_VARIANTS[status] ?? "default";
+  return CHUNK_REVISION_VARIANTS[status] ?? "default";
 }
 
 export function layerLabel(layer: ProductLayer): string {

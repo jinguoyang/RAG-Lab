@@ -31,7 +31,6 @@ const FIELD_LABELS: Record<string, string> = {
   displayName: "显示名称",
   email: "邮箱",
   platformRole: "平台角色",
-  securityLevel: "密级",
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {

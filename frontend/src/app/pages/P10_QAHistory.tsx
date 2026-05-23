@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router";
 import { BookmarkPlus, Copy, Download, Eye, FileDown, GitCompare, Image as ImageIcon, PlayCircle, Search, Sparkles, ThumbsDown, ThumbsUp } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
+import { UnderlineTabs, UnderlineTabsList, UnderlineTabsTrigger, UnderlineTabsContent } from "../components/rag/UnderlineTabs";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
 import { Input } from "../components/rag/Input";
 import { Alert } from "../components/rag/Alert";
@@ -305,7 +306,7 @@ export function QAHistory() {
         rating === "down" ? "manual_review_required" : undefined,
         rating === "up" ? "人工标注：正确" : rating === "down" ? "人工标注：错误或不满意" : undefined,
       );
-      setHistory((current) => current.map((run) => (run.id === runId ? { ...run, rating, failureType: response.failureType || run.failureType } : run)));
+      setHistory((current) => current.map((run) => (run.id === runId ? { ...run, rating, feedbackStatus: response.feedbackStatus, failureType: response.failureType || run.failureType } : run)));
       if (selectedDetail?.runId === runId) {
         setSelectedDetail({ ...selectedDetail, feedbackStatus: response.feedbackStatus, feedbackNote: response.feedbackNote, failureType: response.failureType });
       }
@@ -407,7 +408,6 @@ export function QAHistory() {
       <PageHeader
         title="QA 历史与监控"
         description="查看历史运行、人工反馈、失败归因、回放上下文与评估样本。"
-        actions={<Badge variant="info">评估样本：{evaluationCount}</Badge>}
       />
 
       {feedback && (
@@ -416,214 +416,229 @@ export function QAHistory() {
         </Alert>
       )}
 
-      <div className="flex flex-wrap items-center gap-4 shrink-0">
-        <div className="relative w-80">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-gray" />
-          <Input
-            placeholder="搜索 query 或 run ID..."
-            className="pl-9"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") void loadHistory(searchTerm);
-            }}
-          />
-        </div>
-        <select
-          className="px-3 py-2 bg-ivory border border-border-cream rounded-md text-sm text-near-black focus:outline-none"
-          value={feedbackFilter}
-          onChange={(e) => setFeedbackFilter(e.target.value)}
-        >
-          <option value="">全部反馈</option>
-          {feedbackStatusItems.map((item) => (
-            <option key={item.code} value={item.code} disabled={item.status !== "active"}>
-              {item.name}
-            </option>
-          ))}
-        </select>
-        <select
-          className="px-3 py-2 bg-ivory border border-border-cream rounded-md text-sm text-near-black focus:outline-none"
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-        >
-          <option value="">全部状态</option>
-          <option value="success">成功</option>
-          <option value="partial">部分成功</option>
-          <option value="failed">失败</option>
-          <option value="cancelled">已取消</option>
-        </select>
-        <Button variant="outline" onClick={() => void loadHistory(searchTerm)}>
-          {loading ? "加载中..." : "搜索"}
-        </Button>
-        <Button variant="outline" onClick={() => setEvaluationSamplesDrawerOpen(true)}>
-          <BookmarkPlus className="w-4 h-4 mr-2" /> 查看评估集
-        </Button>
-        <Button variant="primary" onClick={() => void runEvaluationBatch()} disabled={actionLoading === "evaluation-create" || evaluationCount <= 0}>
-          <PlayCircle className="w-4 h-4 mr-2" /> 触发评估回归
-        </Button>
-      </div>
+      <UnderlineTabs defaultValue="runs" className="flex-1 flex flex-col min-h-0">
+        <UnderlineTabsList className="mb-6">
+          <UnderlineTabsTrigger value="runs">运行记录</UnderlineTabsTrigger>
+          <UnderlineTabsTrigger value="observability">观测概览</UnderlineTabsTrigger>
+          <UnderlineTabsTrigger value="evaluation">评估批次</UnderlineTabsTrigger>
+        </UnderlineTabsList>
 
-      <div className="flex-1 overflow-auto border border-border-cream rounded-xl">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>运行 ID</TableHead>
-              <TableHead className="w-1/3">问题</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>用户</TableHead>
-              <TableHead>版本</TableHead>
-              <TableHead>反馈</TableHead>
-              <TableHead>失败类型</TableHead>
-              <TableHead>操作</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {history.map((run) => (
-              <TableRow key={run.id}>
-                <TableCell mono>{run.id}</TableCell>
-                <TableCell className="font-medium text-near-black max-w-[260px] truncate" title={run.query}>
-                  {run.query}
-                </TableCell>
-                <TableCell><StatusBadge status={run.status} /></TableCell>
-                <TableCell>{run.user}</TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="default">{run.rev}</Badge>
-                    {run.hasOverrides && <Badge variant="warning">存在覆盖参数</Badge>}
-                    {run.sourceRunId && <Badge variant="info">复跑</Badge>}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-1">
-                    {run.rating === "up" && <ThumbsUp className="w-4 h-4 text-success-green fill-success-green/20" />}
-                    {run.rating === "down" && <ThumbsDown className="w-4 h-4 text-error-red fill-error-red/20" />}
-                    {run.rating === "none" && <span className="text-stone-gray">-</span>}
-                    <span className="text-xs text-stone-gray">{dictionaryLabel(feedbackStatusItems, run.feedbackStatus, run.feedbackStatus)}</span>
-                  </div>
-                </TableCell>
-                <TableCell className="text-stone-gray">{run.failureType}</TableCell>
-                <TableCell>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => void openRun(run)} title="查看详情">
-                      <Eye className="w-4 h-4 text-terracotta" />
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => void replayRun(run)} title="回放到调试器">
-                      <PlayCircle className="w-4 h-4 text-terracotta" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-
-      <div className="shrink-0 border border-border-cream rounded-xl p-4 bg-ivory space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-near-black">观测概览</h3>
-          <Badge variant="default">{tokenUsage?.runCount ?? 0} 次运行</Badge>
-        </div>
-        {tokenUsage && costSummary ? (
-          <div className="space-y-3">
-            <div className="grid grid-cols-3 gap-4 text-sm">
-              <div className="rounded-lg border border-border-cream bg-parchment p-3">
-                <div className="text-stone-gray">总 Token</div>
-                <div className="text-lg font-medium text-near-black">{tokenUsage.totalTokens.toLocaleString()}</div>
-                <div className="text-xs text-stone-gray">
-                  输入 {tokenUsage.totalInputTokens.toLocaleString()} / 输出 {tokenUsage.totalOutputTokens.toLocaleString()}
-                </div>
-              </div>
-              <div className="rounded-lg border border-border-cream bg-parchment p-3">
-                <div className="text-stone-gray">估算成本</div>
-                <div className="text-lg font-medium text-near-black">
-                  {costSummary.estimatedCostUsd != null ? `$${costSummary.estimatedCostUsd.toFixed(4)}` : "-"}
-                </div>
-                <div className="text-xs text-stone-gray truncate" title={costSummary.pricingNote}>{costSummary.pricingNote}</div>
-              </div>
-              <div className="rounded-lg border border-border-cream bg-parchment p-3">
-                <div className="text-stone-gray">运行次数</div>
-                <div className="text-lg font-medium text-near-black">{tokenUsage.runCount}</div>
-              </div>
+        <UnderlineTabsContent value="runs" className="flex-1 flex flex-col overflow-hidden space-y-4">
+          <div className="flex flex-wrap items-center gap-4 shrink-0">
+            <div className="relative w-80">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-gray" />
+              <Input
+                placeholder="搜索 query 或 run ID..."
+                className="pl-9"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") void loadHistory(searchTerm);
+                }}
+              />
             </div>
-            {tokenUsage.steps.length > 0 && (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>阶段</TableHead>
-                    <TableHead>调用次数</TableHead>
-                    <TableHead>输入 Token</TableHead>
-                    <TableHead>输出 Token</TableHead>
-                    <TableHead>总 Token</TableHead>
-                    <TableHead>平均延迟</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {tokenUsage.steps.map((step) => (
-                    <TableRow key={step.stepKey}>
-                      <TableCell className="font-medium">{step.stepKey}</TableCell>
-                      <TableCell>{step.totalCalls}</TableCell>
-                      <TableCell>{step.totalInputTokens.toLocaleString()}</TableCell>
-                      <TableCell>{step.totalOutputTokens.toLocaleString()}</TableCell>
-                      <TableCell>{step.totalTokens.toLocaleString()}</TableCell>
-                      <TableCell>{step.avgLatencyMs != null ? `${step.avgLatencyMs} ms` : "-"}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
+            <select
+              className="px-3 py-2 bg-ivory border border-border-cream rounded-md text-sm text-near-black focus:outline-none"
+              value={feedbackFilter}
+              onChange={(e) => setFeedbackFilter(e.target.value)}
+            >
+              <option value="">全部反馈</option>
+              {feedbackStatusItems.map((item) => (
+                <option key={item.code} value={item.code} disabled={item.status !== "active"}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+            <select
+              className="px-3 py-2 bg-ivory border border-border-cream rounded-md text-sm text-near-black focus:outline-none"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="">全部状态</option>
+              <option value="success">成功</option>
+              <option value="partial">部分成功</option>
+              <option value="failed">失败</option>
+              <option value="cancelled">已取消</option>
+            </select>
+            <Button variant="outline" onClick={() => void loadHistory(searchTerm)}>
+              {loading ? "加载中..." : "搜索"}
+            </Button>
           </div>
-        ) : (
-          <p className="text-sm text-stone-gray">暂无观测数据。运行 QA 调试后将自动聚合 Token 消耗和成本估算。</p>
-        )}
-      </div>
 
-      <div className="shrink-0 border border-border-cream rounded-xl p-4 bg-ivory space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-near-black">评估运行批次</h3>
-          <Badge variant="default">{evaluationRuns.length} 批次</Badge>
-        </div>
-        <div className="max-h-48 overflow-auto space-y-2">
-          {evaluationRuns.length === 0 ? (
-            <p className="text-sm text-stone-gray">暂无评估运行。请先从历史运行详情中加入评估集，再触发评估回归。</p>
+          <div className="flex-1 overflow-auto border border-border-cream rounded-xl">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>运行 ID</TableHead>
+                  <TableHead className="w-1/3">问题</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>用户</TableHead>
+                  <TableHead>版本</TableHead>
+                  <TableHead>反馈</TableHead>
+                  <TableHead>失败类型</TableHead>
+                  <TableHead>操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {history.map((run) => (
+                  <TableRow key={run.id}>
+                    <TableCell mono>{run.id}</TableCell>
+                    <TableCell className="font-medium text-near-black max-w-[260px] truncate" title={run.query}>
+                      {run.query}
+                    </TableCell>
+                    <TableCell><StatusBadge status={run.status} /></TableCell>
+                    <TableCell>{run.user}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="default">{run.rev}</Badge>
+                        {run.hasOverrides && <Badge variant="warning">存在覆盖参数</Badge>}
+                        {run.sourceRunId && <Badge variant="info">复跑</Badge>}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        {run.rating === "up" && <ThumbsUp className="w-4 h-4 text-success-green fill-success-green/20" />}
+                        {run.rating === "down" && <ThumbsDown className="w-4 h-4 text-error-red fill-error-red/20" />}
+                        {run.rating === "none" && <span className="text-stone-gray">-</span>}
+                        <span className="text-xs text-stone-gray">{dictionaryLabel(feedbackStatusItems, run.feedbackStatus, run.feedbackStatus)}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-stone-gray">{run.failureType}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => void openRun(run)} title="查看详情">
+                          <Eye className="w-4 h-4 text-terracotta" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => void replayRun(run)} title="回放到调试器">
+                          <PlayCircle className="w-4 h-4 text-terracotta" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </UnderlineTabsContent>
+
+        <UnderlineTabsContent value="observability" className="flex-1 overflow-auto space-y-4 p-4 border border-border-cream rounded-xl bg-ivory">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-near-black">观测概览</h3>
+            <Badge variant="default">{tokenUsage?.runCount ?? 0} 次运行</Badge>
+          </div>
+          {tokenUsage && costSummary ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div className="rounded-lg border border-border-cream bg-parchment p-3">
+                  <div className="text-stone-gray">总 Token</div>
+                  <div className="text-lg font-medium text-near-black">{tokenUsage.totalTokens.toLocaleString()}</div>
+                  <div className="text-xs text-stone-gray">
+                    输入 {tokenUsage.totalInputTokens.toLocaleString()} / 输出 {tokenUsage.totalOutputTokens.toLocaleString()}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border-cream bg-parchment p-3">
+                  <div className="text-stone-gray">估算成本</div>
+                  <div className="text-lg font-medium text-near-black">
+                    {costSummary.estimatedCostUsd != null ? `$${costSummary.estimatedCostUsd.toFixed(4)}` : "-"}
+                  </div>
+                  <div className="text-xs text-stone-gray truncate" title={costSummary.pricingNote}>{costSummary.pricingNote}</div>
+                </div>
+                <div className="rounded-lg border border-border-cream bg-parchment p-3">
+                  <div className="text-stone-gray">运行次数</div>
+                  <div className="text-lg font-medium text-near-black">{tokenUsage.runCount}</div>
+                </div>
+              </div>
+              {tokenUsage.steps.length > 0 && (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>阶段</TableHead>
+                      <TableHead>调用次数</TableHead>
+                      <TableHead>输入 Token</TableHead>
+                      <TableHead>输出 Token</TableHead>
+                      <TableHead>总 Token</TableHead>
+                      <TableHead>平均延迟</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {tokenUsage.steps.map((step) => (
+                      <TableRow key={step.stepKey}>
+                        <TableCell className="font-medium">{step.stepKey}</TableCell>
+                        <TableCell>{step.totalCalls}</TableCell>
+                        <TableCell>{step.totalInputTokens.toLocaleString()}</TableCell>
+                        <TableCell>{step.totalOutputTokens.toLocaleString()}</TableCell>
+                        <TableCell>{step.totalTokens.toLocaleString()}</TableCell>
+                        <TableCell>{step.avgLatencyMs != null ? `${step.avgLatencyMs} ms` : "-"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
           ) : (
-            evaluationRuns.map((run) => (
-              <div key={run.evaluationRunId} className="rounded-lg border border-border-cream bg-parchment p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-medium text-near-black">{run.evaluationRunId.slice(0, 8)}</div>
-                    <div className="text-xs text-stone-gray">
-                      状态 {run.status} · 通过率 {(run.passRate * 100).toFixed(1)}% · 失败 {run.failedSamples}
+            <p className="text-sm text-stone-gray">暂无观测数据。运行 QA 调试后将自动聚合 Token 消耗和成本估算。</p>
+          )}
+        </UnderlineTabsContent>
+
+        <UnderlineTabsContent value="evaluation" className="flex-1 overflow-auto space-y-4">
+          <div className="flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-3">
+              <h3 className="text-sm font-medium text-near-black">评估运行批次</h3>
+              <Badge variant="default">{evaluationRuns.length} 批次</Badge>
+              <Badge variant="info">评估样本：{evaluationCount}</Badge>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setEvaluationSamplesDrawerOpen(true)}>
+                <BookmarkPlus className="w-4 h-4 mr-2" /> 查看评估集
+              </Button>
+              <Button variant="primary" onClick={() => void runEvaluationBatch()} disabled={actionLoading === "evaluation-create" || evaluationCount <= 0}>
+                <PlayCircle className="w-4 h-4 mr-2" /> 触发评估回归
+              </Button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-auto space-y-2">
+            {evaluationRuns.length === 0 ? (
+              <p className="text-sm text-stone-gray">暂无评估运行。请先从历史运行详情中加入评估集，再触发评估回归。</p>
+            ) : (
+              evaluationRuns.map((run) => (
+                <div key={run.evaluationRunId} className="rounded-lg border border-border-cream bg-parchment p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-medium text-near-black">{run.evaluationRunId.slice(0, 8)}</div>
+                      <div className="text-xs text-stone-gray">
+                        状态 {run.status} · 通过率 {(run.passRate * 100).toFixed(1)}% · 失败 {run.failedSamples}
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="sm" title="查看运行详情" onClick={() => void openEvaluationRun(run.evaluationRunId)}>
+                        <Eye className="w-4 h-4 text-terracotta" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        title="导出 CSV"
+                        disabled={actionLoading === `evaluation-export-${run.evaluationRunId}-csv`}
+                        onClick={() => void exportRun(run.evaluationRunId, "csv")}
+                      >
+                        <FileDown className="w-4 h-4 text-terracotta" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        title="生成优化草稿"
+                        disabled={actionLoading === `evaluation-draft-${run.evaluationRunId}`}
+                        onClick={() => void createOptimizationDraft(run.evaluationRunId)}
+                      >
+                        <Sparkles className="w-4 h-4 text-terracotta" />
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="sm" title="查看运行详情" onClick={() => void openEvaluationRun(run.evaluationRunId)}>
-                      <Eye className="w-4 h-4 text-terracotta" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      title="导出 CSV"
-                      disabled={actionLoading === `evaluation-export-${run.evaluationRunId}-csv`}
-                      onClick={() => void exportRun(run.evaluationRunId, "csv")}
-                    >
-                      <FileDown className="w-4 h-4 text-terracotta" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      title="生成优化草稿"
-                      disabled={actionLoading === `evaluation-draft-${run.evaluationRunId}`}
-                      onClick={() => void createOptimizationDraft(run.evaluationRunId)}
-                    >
-                      <Sparkles className="w-4 h-4 text-terracotta" />
-                    </Button>
-                  </div>
                 </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
+              ))
+            )}
+          </div>
+        </UnderlineTabsContent>
+      </UnderlineTabs>
 
       <Drawer
         isOpen={selectedRun !== null}
@@ -827,9 +842,9 @@ export function QAHistory() {
                                 <span className="text-stone-gray">→</span>
                               </>
                             )}
-                            {evidence.bindingRevisionId && (
+                            {(evidence.chunkRevisionId ?? evidence.bindingRevisionId) && (
                               <>
-                                <Badge variant="default">BR {shortTraceId(evidence.bindingRevisionId)}</Badge>
+                                <Badge variant="default">CR {shortTraceId(evidence.chunkRevisionId ?? evidence.bindingRevisionId)}</Badge>
                                 <span className="text-stone-gray">→</span>
                               </>
                             )}

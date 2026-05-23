@@ -18,7 +18,6 @@ import {
 } from "../components/ui/dialog";
 import { Edit3, Power, Plus, Search, Trash2 } from "lucide-react";
 import { toKnowledgeBaseCard } from "../adapters/knowledgeBaseAdapter";
-import { chooseActiveDictionaryValue, dictionaryItemsToOptions, fetchDictionaryItemsWithFallback } from "../services/dictionaryService";
 import {
   createKnowledgeBase,
   deleteKnowledgeBase,
@@ -29,14 +28,12 @@ import {
   updateKnowledgeBase,
 } from "../services/knowledgeBaseService";
 import { fetchDocuments } from "../services/documentService";
-import type { DictionaryItemDTO } from "../types/dictionary";
 import type { KbDeleteImpact, KnowledgeBase, KnowledgeBaseCreateRequest } from "../types/knowledgeBase";
 
 interface KnowledgeBaseFormState {
   name: string;
   description: string;
   ownerId: string;
-  defaultSecurityLevel: string;
   sparseIndexEnabled: boolean;
   graphIndexEnabled: boolean;
   sparseRequiredForActivation: boolean;
@@ -49,7 +46,6 @@ const EMPTY_FORM: KnowledgeBaseFormState = {
   name: "",
   description: "",
   ownerId: "",
-  defaultSecurityLevel: "public",
   sparseIndexEnabled: false,
   graphIndexEnabled: false,
   sparseRequiredForActivation: false,
@@ -61,7 +57,6 @@ function toFormState(kb: KnowledgeBase): KnowledgeBaseFormState {
     name: kb.name,
     description: kb.description ?? "",
     ownerId: kb.ownerId,
-    defaultSecurityLevel: kb.defaultSecurityLevel,
     sparseIndexEnabled: kb.sparseIndexEnabled,
     graphIndexEnabled: kb.graphIndexEnabled,
     sparseRequiredForActivation: kb.requiredForActivation.sparse,
@@ -74,7 +69,6 @@ function buildRequestPayload(form: KnowledgeBaseFormState): KnowledgeBaseCreateR
     name: form.name.trim(),
     description: form.description.trim() || null,
     ownerId: form.ownerId.trim() || null,
-    defaultSecurityLevel: form.defaultSecurityLevel.trim() || "public",
     sparseIndexEnabled: form.sparseIndexEnabled,
     graphIndexEnabled: form.graphIndexEnabled,
     requiredForActivation: {
@@ -100,8 +94,6 @@ export function PlatformHome() {
   const [form, setForm] = useState<KnowledgeBaseFormState>(EMPTY_FORM);
   const [indexCapabilityLocked, setIndexCapabilityLocked] = useState(false);
   const [indexCapabilityLockLoading, setIndexCapabilityLockLoading] = useState(false);
-  const [securityLevelItems, setSecurityLevelItems] = useState<DictionaryItemDTO[]>([]);
-  const [securityLevelOptions, setSecurityLevelOptions] = useState(dictionaryItemsToOptions([]));
 
   const kbCards = useMemo(() => knowledgeBases.map(toKnowledgeBaseCard), [knowledgeBases]);
   const indexCapabilityControlsDisabled = indexCapabilityLocked || indexCapabilityLockLoading;
@@ -132,24 +124,10 @@ export function PlatformHome() {
     };
   }, [keyword, loadKnowledgeBases]);
 
-  useEffect(() => {
-    void fetchDictionaryItemsWithFallback("security_level").then((items) => {
-      setSecurityLevelItems(items);
-      setSecurityLevelOptions(dictionaryItemsToOptions(items));
-      setForm((current) => ({
-        ...current,
-        defaultSecurityLevel: chooseActiveDictionaryValue(items, current.defaultSecurityLevel, "public"),
-      }));
-    });
-  }, []);
-
   const openCreateDialog = () => {
     setDialogMode("create");
     setEditingKb(null);
-    setForm({
-      ...EMPTY_FORM,
-      defaultSecurityLevel: chooseActiveDictionaryValue(securityLevelItems, EMPTY_FORM.defaultSecurityLevel, "public"),
-    });
+    setForm(EMPTY_FORM);
     setIndexCapabilityLocked(false);
     setIndexCapabilityLockLoading(false);
     setIsDialogOpen(true);
@@ -159,13 +137,7 @@ export function PlatformHome() {
     event.stopPropagation();
     setDialogMode("edit");
     setEditingKb(kb);
-    setForm((() => {
-      const nextForm = toFormState(kb);
-      return {
-        ...nextForm,
-        defaultSecurityLevel: chooseActiveDictionaryValue(securityLevelItems, nextForm.defaultSecurityLevel, "public"),
-      };
-    })());
+    setForm(toFormState(kb));
     setIndexCapabilityLocked(false);
     setIndexCapabilityLockLoading(true);
     setIsDialogOpen(true);
@@ -424,7 +396,7 @@ export function PlatformHome() {
                 {dialogMode === "edit" ? "编辑知识库" : "新建知识库"}
               </DialogTitle>
               <DialogDescription className="text-sm text-olive-gray">
-                维护基础信息、默认密级和索引能力开关。
+                维护基础信息和索引能力开关。
               </DialogDescription>
             </DialogHeader>
 
@@ -443,26 +415,10 @@ export function PlatformHome() {
                 />
               </label>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <label className="grid gap-2 text-sm text-near-black">
-                  负责人 ID
-                  <Input value={form.ownerId} onChange={(event) => setForm({ ...form, ownerId: event.target.value })} />
-                </label>
-                <label className="grid gap-2 text-sm text-near-black">
-                  默认密级
-                  <select
-                    value={form.defaultSecurityLevel}
-                    onChange={(event) => setForm({ ...form, defaultSecurityLevel: event.target.value })}
-                    className="h-10 rounded-[10px] border border-border-warm bg-white px-3 text-sm text-near-black outline-none focus:ring-2 focus:ring-focus-blue"
-                  >
-                    {securityLevelOptions.map((option) => (
-                      <option key={option.value} value={option.value} disabled={option.disabled}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
+              <label className="grid gap-2 text-sm text-near-black">
+                负责人 ID
+                <Input value={form.ownerId} onChange={(event) => setForm({ ...form, ownerId: event.target.value })} />
+              </label>
 
               <div className="grid gap-3 rounded-lg border border-border-cream bg-parchment p-4">
                 {dialogMode === "edit" && indexCapabilityLocked && (

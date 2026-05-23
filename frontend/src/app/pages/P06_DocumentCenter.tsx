@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Search, Upload, Download, FileWarning, Eye, ChevronLeft, ChevronRight, Database, RefreshCw, Trash2, FolderOpen } from "lucide-react";
+import { Search, Download, FileWarning, Eye, ChevronLeft, ChevronRight, Database, RefreshCw, Trash2, FolderOpen } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
@@ -10,7 +10,6 @@ import { Badge, StatusBadge } from "../components/rag/Badge";
 import { Drawer, DrawerSection } from "../components/rag/Drawer";
 import { useConfirmDialog } from "../components/rag/ConfirmDialog";
 import { formatIndexStageStatus, toDocumentRow, toIngestJobView } from "../adapters/documentAdapter";
-import { chooseActiveDictionaryValue, dictionaryItemsToOptions, dictionaryLabel, fetchDictionaryItemsWithFallback } from "../services/dictionaryService";
 import {
   fetchDocuments,
   fetchIndexSyncJobs,
@@ -19,15 +18,13 @@ import {
   downloadDocumentSource,
   rebuildIndexSync,
   runBulkDocumentGovernance,
-  uploadDocument,
 } from "../services/documentService";
 import { fetchLibraryDocuments, fetchLibraryVersions, bindDocumentsToKB, listKBBindings, switchBindingVersion } from "../services/libraryService";
 import { fetchKbPermissionSummary } from "../services/knowledgeBaseService";
 import type { BulkDocumentGovernanceRequest, DocumentDTO, IndexStageViewModel, IndexSyncJobDTO, IngestJobDTO, JobStatus } from "../types/document";
 import type { LibraryBindingDTO, LibraryDocumentDTO, LibraryDocumentVersionDTO } from "../types/library";
-import type { DictionaryItemDTO } from "../types/dictionary";
 import type { PermissionSummary } from "../types/knowledgeBase";
-import { bindingRevisionStatusLabel, bindingRevisionStatusVariant } from "../utils/threeLayerPresentation";
+import { chunkRevisionStatusLabel, chunkRevisionStatusVariant } from "../utils/threeLayerPresentation";
 
 const DOCUMENT_PAGE_SIZE = 10;
 type BatchOperation = BulkDocumentGovernanceRequest["operation"];
@@ -73,14 +70,7 @@ export function DocumentCenter() {
   const [indexRebuildTargetStore, setIndexRebuildTargetStore] = useState("neo4j");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | JobStatus>("");
-  const [isUploadOpen, setIsUploadOpen] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploadName, setUploadName] = useState("");
-  const [uploadLevel, setUploadLevel] = useState("public");
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [securityLevelItems, setSecurityLevelItems] = useState<DictionaryItemDTO[]>([]);
   const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [downloadingDocumentId, setDownloadingDocumentId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{
     variant: "success" | "info" | "warning" | "error";
@@ -140,16 +130,9 @@ export function DocumentCenter() {
     });
   }, [kbId]);
 
-  useEffect(() => {
-    void fetchDictionaryItemsWithFallback("security_level").then((items) => {
-      setSecurityLevelItems(items);
-      setUploadLevel((current) => chooseActiveDictionaryValue(items, current, "public"));
-    });
-  }, []);
 
   const rows = useMemo(() => documents.map(toDocumentRow), [documents]);
   const jobRows = useMemo(() => jobs.map(toIngestJobView), [jobs]);
-  const securityLevelOptions = useMemo(() => dictionaryItemsToOptions(securityLevelItems), [securityLevelItems]);
   const filteredRows = useMemo(
     () => rows.filter((row) => !statusFilter || row.status === statusFilter),
     [rows, statusFilter],
@@ -157,44 +140,6 @@ export function DocumentCenter() {
 
   async function handleSearchSubmit() {
     await loadData(searchTerm, 1);
-  }
-
-  async function handleUploadSubmit() {
-    if (!selectedFile || !kbId) {
-      setFeedback({
-        variant: "warning",
-        title: "请选择文件",
-        message: "上传接口需要真实文件对象，才能生成文件大小和 checksum。",
-      });
-      return;
-    }
-
-    setUploading(true);
-    try {
-      await uploadDocument(kbId, selectedFile, uploadName, uploadLevel);
-      setFeedback({
-        variant: "success",
-        title: "上传请求已创建",
-        message: "文档、首个版本和 queued 入库作业已写入数据库。",
-      });
-      setSelectedFile(null);
-      setUploadName("");
-      setIsUploadOpen(false);
-      await loadData(searchTerm, 1);
-    } catch (error) {
-      setFeedback({
-        variant: "error",
-        title: "上传失败",
-        message: error instanceof Error ? error.message : "请稍后重试。",
-      });
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  function handleUploadFileChange(file: File | null) {
-    setSelectedFile(file);
-    setUploadName(file?.name ?? "");
   }
 
   async function handlePageChange(nextPageNo: number) {
@@ -465,7 +410,7 @@ export function DocumentCenter() {
       setFeedback({
         variant: "success",
         title: "版本切换已提交",
-        message: "新的 BindingRevision 已进入构建流程；构建完成前旧 active revision 继续可检索。",
+        message: "新的 ChunkRevision 已进入构建流程；构建完成前旧 active revision 继续可检索。",
       });
       setSwitchTarget(null);
       await loadData(searchTerm, pageNo);
@@ -493,11 +438,8 @@ export function DocumentCenter() {
             <Button variant="outline" disabled>
               <Download className="w-4 h-4 mr-2" /> 导出筛选结果
             </Button>
-            <Button variant="outline" onClick={handleOpenLibraryPicker}>
+            <Button variant="primary" onClick={handleOpenLibraryPicker}>
               <FolderOpen className="w-4 h-4 mr-2" /> 从文档库添加
-            </Button>
-            <Button variant="primary" onClick={() => setIsUploadOpen(true)}>
-              <Upload className="w-4 h-4 mr-2" /> 上传文档
             </Button>
           </>
         }
@@ -593,7 +535,6 @@ export function DocumentCenter() {
                     </TableHead>
                     <TableHead>文档名</TableHead>
                     <TableHead className="w-20 whitespace-nowrap">状态</TableHead>
-                    <TableHead className="w-20 whitespace-nowrap">密级</TableHead>
                     <TableHead className="w-36 whitespace-nowrap">更新时间</TableHead>
                     <TableHead className="w-36 text-right whitespace-nowrap">操作</TableHead>
                   </TableRow>
@@ -618,9 +559,6 @@ export function DocumentCenter() {
                       </TableCell>
                       <TableCell className="whitespace-nowrap">
                         <StatusBadge status={doc.status} />
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        <Badge variant="default">{dictionaryLabel(securityLevelItems, doc.securityLevel, doc.securityLevel)}</Badge>
                       </TableCell>
                       <TableCell className="whitespace-nowrap">{doc.updatedAtLabel}</TableCell>
                       <TableCell className="text-right whitespace-nowrap">
@@ -736,7 +674,7 @@ export function DocumentCenter() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="font-serif text-lg text-near-black">三层绑定状态</h3>
-                <p className="mt-1 text-sm text-stone-gray">展示文档库版本到知识库 BindingRevision 的当前状态。</p>
+                <p className="mt-1 text-sm text-stone-gray">展示文档库版本到知识库 ChunkRevision 的当前状态。</p>
               </div>
               <Badge variant="info">{kbBindings.length}</Badge>
             </div>
@@ -751,13 +689,13 @@ export function DocumentCenter() {
                         <p className="font-medium text-near-black truncate">{binding.documentName || binding.documentId}</p>
                         <p className="mt-1 font-mono text-xs text-stone-gray">{binding.bindingId.slice(0, 8)}</p>
                       </div>
-                      <Badge variant={bindingRevisionStatusVariant(binding.bindingRevisionStatus)}>
-                        {bindingRevisionStatusLabel(binding.bindingRevisionStatus)}
+                      <Badge variant={chunkRevisionStatusVariant(binding.chunkRevisionStatus)}>
+                        {chunkRevisionStatusLabel(binding.chunkRevisionStatus)}
                       </Badge>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-2 text-xs text-stone-gray">
-                      <span>Chunk: {binding.bindingRevisionChunkCount ?? binding.chunkCount}</span>
-                      <span>版本: {(binding.bindingRevisionVersionId ?? binding.versionId).slice(0, 8)}</span>
+                      <span>Chunk: {binding.chunkRevisionChunkCount ?? binding.chunkCount}</span>
+                      <span>版本: {(binding.chunkRevisionVersionId ?? binding.versionId).slice(0, 8)}</span>
                     </div>
                     {binding.errorMessage && <p className="mt-2 text-xs text-error-red">{binding.errorMessage}</p>}
                     <Button variant="ghost" size="sm" className="mt-2" onClick={() => void openSwitchDrawer(binding)}>
@@ -847,59 +785,6 @@ export function DocumentCenter() {
         </aside>
       </div>
 
-      <Drawer isOpen={isUploadOpen} onClose={() => setIsUploadOpen(false)} title="上传文档" width="560px">
-        <DrawerSection title="上传信息">
-          <div className="space-y-4">
-            <div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="sr-only"
-                onChange={(event) => handleUploadFileChange(event.target.files?.[0] ?? null)}
-              />
-              <div className="flex flex-wrap items-center gap-3">
-                <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-                  <Upload className="w-4 h-4 mr-2" /> 选择文件
-                </Button>
-                <span className="text-sm text-stone-gray">
-                  {selectedFile ? selectedFile.name : "未选择文件"}
-                </span>
-              </div>
-            </div>
-            <Input
-              label="文档名称"
-              value={uploadName}
-              onChange={(event) => setUploadName(event.target.value)}
-              helperText="留空时后端会使用原始文件名。"
-            />
-            <div>
-              <label className="block mb-2 text-sm font-medium text-near-black">文档密级</label>
-              <select
-                className="w-full px-3 py-2 bg-ivory border border-border-cream rounded-[10px]"
-                value={uploadLevel}
-                onChange={(event) => setUploadLevel(event.target.value)}
-              >
-                {securityLevelOptions.map((option) => (
-                  <option key={option.value} value={option.value} disabled={option.disabled}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </DrawerSection>
-        <DrawerSection title="提交结果">
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setIsUploadOpen(false)}>
-              取消
-            </Button>
-            <Button variant="primary" disabled={uploading} onClick={() => void handleUploadSubmit()}>
-              {uploading ? "提交中..." : "创建上传任务"}
-            </Button>
-          </div>
-        </DrawerSection>
-      </Drawer>
-
       {/* 文档库选择弹窗 */}
       {showLibraryPicker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -937,7 +822,7 @@ export function DocumentCenter() {
                       />
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-near-black truncate">{doc.name}</p>
-                        <p className="text-xs text-stone-gray">{doc.sourceType} | {doc.securityLevel}</p>
+                        <p className="text-xs text-stone-gray">{doc.sourceType}</p>
                       </div>
                     </label>
                   ))}

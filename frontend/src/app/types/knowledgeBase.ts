@@ -3,7 +3,6 @@ export interface KnowledgeBase {
   name: string;
   description: string | null;
   ownerId: string;
-  defaultSecurityLevel: string;
   sparseIndexEnabled: boolean;
   graphIndexEnabled: boolean;
   requiredForActivation: {
@@ -30,7 +29,6 @@ export interface KnowledgeBaseCreateRequest {
   name: string;
   description?: string | null;
   ownerId?: string | null;
-  defaultSecurityLevel: string;
   sparseIndexEnabled: boolean;
   graphIndexEnabled: boolean;
   requiredForActivation?: {
