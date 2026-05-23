@@ -425,7 +425,6 @@ export function DocumentDetail() {
                 <TableHead>章节 / 位置</TableHead>
                 <TableHead>正文摘要</TableHead>
                 <TableHead>Token</TableHead>
-                <TableHead>状态</TableHead>
                 <TableHead>操作</TableHead>
               </TableRow>
             </TableHeader>
@@ -443,7 +442,6 @@ export function DocumentDetail() {
                   <TableCell>{chunk.section}</TableCell>
                   <TableCell className="max-w-xl text-stone-gray">{chunk.preview}</TableCell>
                   <TableCell>{chunk.tokenCount ?? "-"}</TableCell>
-                  <TableCell><StatusBadge status={chunks[index].status === "active" ? "success" : chunks[index].status === "retired" ? "cancelled" : "failed"} /></TableCell>
                   <TableCell>
                     <Button variant="outline" size="sm" onClick={() => void openChunk(chunks[index])}>
                       <Eye className="w-4 h-4 mr-2" /> 查看
