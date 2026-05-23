@@ -1,12 +1,12 @@
-# 合并入库/索引同步 Tab 实施计划
+# 合并入库与索引同步 Tab 实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> 本文为本次页面收敛的实施记录，状态以实际代码和验证结果为准。
 
-**Goal:** 将文档详情页的"入库作业"和"索引同步作业"两个 tab 合并为一个"处理作业" tab，同时精简 Chunks tab 的状态列、合并处理作业的状态与阶段列、去掉处理链路中的文字标签只保留颜色 Badge。
+**目标：** 将文档详情页的“入库作业”和“索引同步作业”两个 Tab 合并为一个“处理作业” Tab，同时精简 Chunks Tab 的状态列、合并处理作业的状态与阶段列、处理链路 Badge 只保留阶段标签并用颜色表达状态。
 
-**Architecture:** 在 `P07_DocumentDetail.tsx` 中移除 indexSync tab 及其相关 state/API 调用，在 jobs tab 中将状态和阶段合并为一列，处理链路 Badge 只用颜色区分。Chunks tab 移除状态列。adapter 和 types 保持不变（后端 DTO 不变，只改前端展示逻辑）。
+**架构：** 在 `P07_DocumentDetail.tsx` 中移除 `indexSync` Tab 及其相关状态和 API 调用，在 `jobs` Tab 中收敛处理链路展示。前端 `documentService` 和 `types/document.ts` 同步清理已经没有调用方的旧客户端封装，后端 DTO 和接口不在本次页面收敛中删除。
 
-**Tech Stack:** React, TypeScript, Radix UnderlineTabs, Badge/StatusBadge 组件
+**技术栈：** React、TypeScript、Radix Tabs、Badge/StatusBadge 组件
 
 ---
 
@@ -14,19 +14,19 @@
 
 | 文件 | 操作 | 说明 |
 |------|------|------|
-| `frontend/src/app/pages/P07_DocumentDetail.tsx` | Modify | 主要改动文件：合并 tab、删 indexSync 相关代码、精简表格列 |
-| `frontend/src/app/adapters/documentAdapter.ts` | 不变 | adapter 逻辑不变，`formatIndexStageStatus` 仍用于版本 tab |
-| `frontend/src/app/types/document.ts` | 不变 | DTO 类型不变 |
-| `frontend/src/app/services/documentService.ts` | 不变 | API 函数保留（其他页面可能用到） |
+| `frontend/src/app/pages/P07_DocumentDetail.tsx` | 修改 | 主要改动文件：合并 Tab、删除 `indexSync` 页面状态、精简表格列 |
+| `frontend/src/app/adapters/documentAdapter.ts` | 修改 | 调整副本状态标签和作业视图字段 |
+| `frontend/src/app/types/document.ts` | 修改 | 清理前端无调用方的旧 IndexSync 展示类型 |
+| `frontend/src/app/services/documentService.ts` | 修改 | 清理前端无调用方的旧 reparse/index-sync 客户端函数 |
 
 ---
 
-### Task 1: 移除 indexSync tab 及相关 state 和 API 调用
+### 任务 1：移除 indexSync Tab 及相关 state 和 API 调用
 
-**Files:**
-- Modify: `frontend/src/app/pages/P07_DocumentDetail.tsx`
+**涉及文件：**
+- 修改：`frontend/src/app/pages/P07_DocumentDetail.tsx`
 
-- [ ] **Step 1: 移除 indexSyncJobs state 和 rebuildTargetStore state**
+- [x] **步骤 1：移除 indexSyncJobs state 和 rebuildTargetStore state**
 
 删除以下 state 声明：
 ```tsx
@@ -36,7 +36,7 @@ const [indexSyncJobs, setIndexSyncJobs] = useState<IndexSyncJobDTO[]>([]);
 const [rebuildTargetStore, setRebuildTargetStore] = useState("milvus");
 ```
 
-- [ ] **Step 2: 移除 loadData 中的 fetchIndexSyncJobs 调用**
+- [x] **步骤 2：移除 loadData 中的 fetchIndexSyncJobs 调用**
 
 在 `loadData` 函数中，将：
 ```tsx
@@ -60,11 +60,11 @@ const [nextDetail, nextVersions, nextJobs] = await Promise.all([
 // 删除 setIndexSyncJobs 那一行
 ```
 
-- [ ] **Step 3: 移除 handleDocumentIndexRebuild 函数**
+- [x] **步骤 3：移除 handleDocumentIndexRebuild 函数**
 
 删除整个 `handleDocumentIndexRebuild` 函数（约第 278-303 行）。
 
-- [ ] **Step 4: 移除 tab trigger 和 tab content**
+- [x] **步骤 4：移除 Tab trigger 和 Tab content**
 
 删除 indexSync 的 trigger：
 ```tsx
@@ -75,7 +75,7 @@ const [nextDetail, nextVersions, nextJobs] = await Promise.all([
 
 删除整个 `<UnderlineTabsContent value="indexSync"> ... </UnderlineTabsContent>` 块（约第 581-626 行）。
 
-- [ ] **Step 5: 清理未使用的 import**
+- [x] **步骤 5：清理未使用的 import**
 
 从 import 中移除不再使用的：
 - `Database` (lucide-react) — 仅用于重建索引按钮
@@ -85,26 +85,21 @@ const [nextDetail, nextVersions, nextJobs] = await Promise.all([
 
 检查 `formatIndexStageStatus` 是否仍被版本 tab 使用 — 如果是则保留。
 
-- [ ] **Step 6: 验证并提交**
+- [x] **步骤 6：验证**
 
 在浏览器中打开文档详情页，确认：
 - 只有 3 个 tab（版本、Chunks、处理作业）
 - 页面无报错
 - 版本 tab 的副本状态 Badge 仍正常显示
 
-```bash
-git add frontend/src/app/pages/P07_DocumentDetail.tsx
-git commit -m "feat: remove indexSync tab, merge into jobs tab"
-```
-
 ---
 
-### Task 2: 将入库作业 tab 重命名为"处理作业"并合并状态+阶段列
+### 任务 2：将入库作业 Tab 重命名为“处理作业”并合并状态和阶段展示
 
-**Files:**
-- Modify: `frontend/src/app/pages/P07_DocumentDetail.tsx`
+**涉及文件：**
+- 修改：`frontend/src/app/pages/P07_DocumentDetail.tsx`
 
-- [ ] **Step 1: 重命名 tab trigger**
+- [x] **步骤 1：重命名 Tab trigger**
 
 将：
 ```tsx
@@ -120,7 +115,7 @@ git commit -m "feat: remove indexSync tab, merge into jobs tab"
 </UnderlineTabsTrigger>
 ```
 
-- [ ] **Step 2: 合并状态和阶段列为一列**
+- [x] **步骤 2：合并状态和阶段展示**
 
 将 jobs tab 的表头从：
 ```tsx
@@ -145,7 +140,7 @@ git commit -m "feat: remove indexSync tab, merge into jobs tab"
 <TableHead>操作</TableHead>
 ```
 
-- [ ] **Step 3: 合并状态和阶段的 TableCell**
+- [x] **步骤 3：调整状态和阶段的 TableCell**
 
 将：
 ```tsx
@@ -163,7 +158,7 @@ git commit -m "feat: remove indexSync tab, merge into jobs tab"
 </TableCell>
 ```
 
-- [ ] **Step 4: 处理链路 Badge 去掉文字，只保留颜色**
+- [x] **步骤 4：处理链路 Badge 只保留阶段标签，状态通过颜色和悬浮提示表达**
 
 将：
 ```tsx
@@ -185,7 +180,7 @@ git commit -m "feat: remove indexSync tab, merge into jobs tab"
 
 这样 Badge 只显示阶段名（如"解析"、"Milvus"），通过颜色区分状态，hover 时 title 显示完整信息。
 
-- [ ] **Step 5: 验证并提交**
+- [x] **步骤 5：验证**
 
 在浏览器中确认：
 - tab 名称显示为"处理作业"
@@ -193,19 +188,14 @@ git commit -m "feat: remove indexSync tab, merge into jobs tab"
 - 处理链路 Badge 只显示阶段名，颜色正确区分状态
 - hover Badge 显示完整状态信息
 
-```bash
-git add frontend/src/app/pages/P07_DocumentDetail.tsx
-git commit -m "feat: merge status/stage column, badges show color only"
-```
-
 ---
 
-### Task 3: Chunks tab 移除状态列
+### 任务 3：Chunks Tab 移除状态列
 
-**Files:**
-- Modify: `frontend/src/app/pages/P07_DocumentDetail.tsx`
+**涉及文件：**
+- 修改：`frontend/src/app/pages/P07_DocumentDetail.tsx`
 
-- [ ] **Step 1: 移除表头中的状态列**
+- [x] **步骤 1：移除表头中的状态列**
 
 将：
 ```tsx
@@ -230,37 +220,32 @@ git commit -m "feat: merge status/stage column, badges show color only"
 <TableHead>操作</TableHead>
 ```
 
-- [ ] **Step 2: 移除表格行中的状态单元格**
+- [x] **步骤 2：移除表格行中的状态单元格**
 
 删除：
 ```tsx
 <TableCell><StatusBadge status={chunks[index].status === "active" ? "success" : chunks[index].status === "retired" ? "cancelled" : "failed"} /></TableCell>
 ```
 
-- [ ] **Step 3: 更新空状态 colSpan**
+- [x] **步骤 3：确认无需保留旧空状态 colSpan**
 
 如果有空状态行，将 `colSpan` 从 8 改为 7（如果有的话）。
 
-- [ ] **Step 4: 验证并提交**
+- [x] **步骤 4：验证**
 
 在浏览器中确认：
 - Chunks 表格没有状态列
 - 其他列正常显示
 - 分页正常
 
-```bash
-git add frontend/src/app/pages/P07_DocumentDetail.tsx
-git commit -m "feat: remove status column from chunks tab"
-```
-
 ---
 
-### Task 4: 版本 tab 处理链路同步去掉文字
+### 任务 4：版本 Tab 处理链路同步收敛
 
-**Files:**
-- Modify: `frontend/src/app/pages/P07_DocumentDetail.tsx`
+**涉及文件：**
+- 修改：`frontend/src/app/pages/P07_DocumentDetail.tsx`
 
-- [ ] **Step 1: 版本 tab 的副本状态 Badge 也去掉文字**
+- [x] **步骤 1：版本 Tab 的副本状态 Badge 只显示阶段标签**
 
 将版本 tab 中的：
 ```tsx
@@ -280,20 +265,15 @@ git commit -m "feat: remove status column from chunks tab"
 ))}
 ```
 
-- [ ] **Step 2: 验证并提交**
+- [x] **步骤 2：验证**
 
 在浏览器中确认版本 tab 的副本状态列只显示阶段名 Badge，颜色区分状态。
 
-```bash
-git add frontend/src/app/pages/P07_DocumentDetail.tsx
-git commit -m "feat: version tab badges show color only, consistent with jobs tab"
-```
-
 ---
 
-### Task 5: 最终验证
+### 任务 5：最终验证
 
-- [ ] **Step 1: 全量功能验证**
+- [x] **步骤 1：全量功能验证**
 
 在浏览器中打开文档详情页，逐一检查：
 
@@ -304,7 +284,7 @@ git commit -m "feat: version tab badges show color only, consistent with jobs ta
 5. 不存在"重建索引"按钮
 6. 页面无 console error
 
-- [ ] **Step 2: 确认无残留引用**
+- [x] **步骤 2：确认无残留引用**
 
 检查 `P07_DocumentDetail.tsx` 中不再引用：
 - `indexSyncJobs` state

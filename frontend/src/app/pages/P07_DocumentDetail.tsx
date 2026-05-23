@@ -167,11 +167,11 @@ export function DocumentDetail() {
     setActionLoading("rechunk");
     try {
       await rechunkDocument(kbId, docId, { chunkSize: chunkSizeInput, chunkOverlap: chunkOverlapInput });
-      setFeedback({ variant: "success", title: "重新治理已提交", message: "新的 ChunkRevision 已进入构建流程。" });
+      setFeedback({ variant: "success", title: "重分块已提交", message: "新的 ChunkRevision 已进入构建流程。" });
       setIsRechunkOpen(false);
       await loadData(1);
     } catch (error) {
-      setFeedback({ variant: "error", title: "重新治理失败", message: error instanceof Error ? error.message : "请稍后重试。" });
+      setFeedback({ variant: "error", title: "重分块失败", message: error instanceof Error ? error.message : "请稍后重试。" });
     } finally {
       setActionLoading(null);
     }
@@ -291,14 +291,14 @@ export function DocumentDetail() {
 
       <PageHeader
         title={document?.name || "文档详情"}
-        description="查看文档版本、Chunks、处理作业，并执行重新治理与 active version 切换。"
+        description="查看文档版本、Chunks、处理作业，并执行重分块与 active version 切换。"
         actions={
           <>
             <Button variant="outline" disabled={loading} onClick={() => void loadData()}>
               <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} /> {loading ? "刷新中..." : "刷新"}
             </Button>
             <Button variant="primary" disabled={actionLoading === "rechunk"} onClick={() => setIsRechunkOpen(true)}>
-              <RotateCcw className="w-4 h-4 mr-2" /> 重新治理
+              <RotateCcw className="w-4 h-4 mr-2" /> 重分块
             </Button>
           </>
         }
@@ -640,7 +640,7 @@ export function DocumentDetail() {
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setIsRechunkOpen(false)}>取消</Button>
             <Button variant="primary" disabled={actionLoading === "rechunk"} onClick={() => void handleRechunk()}>
-              {actionLoading === "rechunk" ? "提交中..." : "提交重新治理"}
+              {actionLoading === "rechunk" ? "提交中..." : "提交重分块"}
             </Button>
           </div>
         </DrawerSection>

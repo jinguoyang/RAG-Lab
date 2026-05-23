@@ -358,7 +358,7 @@ export function DocumentCenter() {
     <div className="p-8 max-w-7xl mx-auto space-y-8">
       <PageHeader
         title="文档中心"
-        description="管理文档元数据、版本入口与最近 ingest 作业。"
+        description="管理已绑定文档、版本入口与知识库治理动作。"
         actions={
           <Button variant="primary" onClick={handleOpenLibraryPicker}>
             <FolderOpen className="w-4 h-4 mr-2" /> 从文档库添加
@@ -420,7 +420,7 @@ export function DocumentCenter() {
               </div>
               <h3 className="text-lg font-serif text-near-black">暂无文档</h3>
               <p className="mt-2 text-sm text-stone-gray">
-                上传文档后会立即生成文档对象、首个版本和 queued 入库作业。
+                从文档库添加文档后，会在当前知识库生成可检索的 ChunkRevision。
               </p>
             </div>
           ) : (

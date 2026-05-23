@@ -149,35 +149,9 @@ export interface BulkDocumentGovernanceResponse {
   errors: string[];
 }
 
-export interface IndexSyncJobDTO {
-  syncJobId: string;
-  kbId: string;
-  targetStore: string;
-  syncType: string;
-  scope: Record<string, unknown>;
-  requiredForActivation: boolean;
-  status: JobStatus;
-  errorMessage: string | null;
-  createdAt: string;
-  startedAt: string | null;
-  finishedAt: string | null;
-}
-
-export interface IndexSyncRebuildRequest {
-  targetStore: string;
-  documentId?: string | null;
-  versionId?: string | null;
-}
-
 export interface DocumentDetailDTO {
   document: DocumentDTO;
   activeVersion: DocumentVersionDTO | null;
-}
-
-export interface DocumentUploadResponse {
-  document: DocumentDTO;
-  version: DocumentVersionDTO;
-  ingestJob: IngestJobDTO;
 }
 
 export interface DocumentRowViewModel {
@@ -225,4 +199,3 @@ export interface ChunkViewModel {
 export type DocumentPage = PageResponse<DocumentDTO>;
 export type IngestJobPage = PageResponse<IngestJobDTO>;
 export type ChunkPage = PageResponse<ChunkDTO>;
-export type IndexSyncJobPage = PageResponse<IndexSyncJobDTO>;

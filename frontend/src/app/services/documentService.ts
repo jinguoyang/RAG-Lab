@@ -10,12 +10,8 @@ import type {
   DocumentDeleteResponse,
   DocumentPage,
   DocumentQualitySummaryDTO,
-  DocumentUploadResponse,
   DocumentVersionActivateResponse,
   DocumentVersionDTO,
-  IndexSyncJobDTO,
-  IndexSyncJobPage,
-  IndexSyncRebuildRequest,
   IngestJobDTO,
   IngestJobPage,
 } from "../types/document";
@@ -79,17 +75,6 @@ export async function fetchDocumentVersions(
   documentId: string,
 ): Promise<DocumentVersionDTO[]> {
   return apiGet<DocumentVersionDTO[]>(`/knowledge-bases/${kbId}/documents/${documentId}/versions`);
-}
-
-export async function reparseDocument(
-  kbId: string,
-  documentId: string,
-  reason?: string,
-): Promise<DocumentUploadResponse> {
-  return apiPostJson<DocumentUploadResponse>(
-    `/knowledge-bases/${kbId}/documents/${documentId}/reparse`,
-    { reason },
-  );
 }
 
 export async function rechunkDocument(
@@ -166,17 +151,4 @@ export async function retryIngestJob(kbId: string, jobId: string): Promise<Inges
 
 export async function cancelIngestJob(kbId: string, jobId: string): Promise<IngestJobDTO> {
   return apiPostJson<IngestJobDTO>(`/knowledge-bases/${kbId}/ingest-jobs/${jobId}/cancel`, {});
-}
-
-export async function fetchIndexSyncJobs(kbId: string, documentId?: string): Promise<IndexSyncJobPage> {
-  const params = new URLSearchParams({ pageNo: "1", pageSize: "20" });
-  if (documentId) {
-    params.set("documentId", documentId);
-  }
-
-  return apiGet<IndexSyncJobPage>(`/knowledge-bases/${kbId}/index-sync-jobs?${params.toString()}`);
-}
-
-export async function rebuildIndexSync(kbId: string, request: IndexSyncRebuildRequest): Promise<IndexSyncJobDTO> {
-  return apiPostJson<IndexSyncJobDTO>(`/knowledge-bases/${kbId}/index-sync-jobs/rebuild`, request);
 }
