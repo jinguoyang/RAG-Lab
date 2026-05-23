@@ -385,9 +385,11 @@ export function DocumentDetail() {
                     <TableCell>
                       <div className="flex flex-wrap gap-1.5">
                         {row.indexStages.map((stage) => (
-                          <Badge key={stage.key} variant={indexStageVariant(stage.status)}>
-                            {stage.label}: {formatIndexStageStatus(stage.status)}
-                          </Badge>
+                          <span key={stage.key} title={`${stage.label}: ${formatIndexStageStatus(stage.status)}`}>
+                            <Badge variant={indexStageVariant(stage.status)}>
+                              {stage.label}
+                            </Badge>
+                          </span>
                         ))}
                       </div>
                     </TableCell>
