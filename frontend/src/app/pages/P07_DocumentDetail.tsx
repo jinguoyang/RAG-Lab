@@ -481,9 +481,8 @@ export function DocumentDetail() {
             <TableHeader>
               <TableRow>
                 <TableHead>作业 ID</TableHead>
-                <TableHead>状态/阶段</TableHead>
-                <TableHead>处理链路</TableHead>
                 <TableHead>进度</TableHead>
+                <TableHead>处理链路</TableHead>
                 <TableHead>创建时间</TableHead>
                 <TableHead>错误信息</TableHead>
                 <TableHead>操作</TableHead>
@@ -498,7 +497,7 @@ export function DocumentDetail() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <StatusBadge status={row.status} />
-                        <span className="text-xs text-stone-gray">{row.stage}</span>
+                        <span className="text-xs text-stone-gray">{row.progress}%（{row.stage}）</span>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -515,7 +514,6 @@ export function DocumentDetail() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell>{row.progress}%</TableCell>
                     <TableCell>{row.createdAtLabel}</TableCell>
                     <TableCell className="max-w-xs text-stone-gray">{row.errorMessage}</TableCell>
                     <TableCell>
