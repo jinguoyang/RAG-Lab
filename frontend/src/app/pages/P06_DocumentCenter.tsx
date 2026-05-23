@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Search, Download, FileWarning, Eye, ChevronLeft, ChevronRight, RefreshCw, Trash2, FolderOpen } from "lucide-react";
+import { Download, FileWarning, Eye, RefreshCw, Trash2, FolderOpen } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
-import { Input } from "../components/rag/Input";
 import { Alert } from "../components/rag/Alert";
 import { StatusBadge } from "../components/rag/Badge";
 import { Drawer, DrawerSection } from "../components/rag/Drawer";
+import { DocumentListLayout } from "../components/rag/DocumentListLayout";
 import { useConfirmDialog } from "../components/rag/ConfirmDialog";
 import { toDocumentRow } from "../adapters/documentAdapter";
 import {
@@ -372,49 +372,47 @@ export function DocumentCenter() {
         </Alert>
       )}
 
-      <div className="space-y-6">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="relative w-full max-w-80">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-gray" />
-              <Input
-                placeholder="按文档名搜索..."
-                className="pl-9"
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") void handleSearchSubmit();
-                }}
-              />
-            </div>
-            <Button variant="outline" onClick={() => void handleSearchSubmit()}>
-              搜索
-            </Button>
-            <select
-              className="px-3 py-2 bg-ivory border border-border-cream rounded-md text-sm text-near-black focus:outline-none focus:ring-1 focus:ring-focus-blue"
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as "" | JobStatus)}
-            >
-              <option value="">全部状态</option>
-              <option value="success">可见文档</option>
-              <option value="cancelled">非活动</option>
-            </select>
-            <div className="ml-auto text-sm text-stone-gray">
+      <DocumentListLayout
+          search={{
+            placeholder: "按文档名搜索...",
+            value: searchTerm,
+            onChange: setSearchTerm,
+            onSearch: () => void handleSearchSubmit(),
+          }}
+          statusFilter={{
+            value: statusFilter,
+            onChange: (value) => setStatusFilter(value as "" | JobStatus),
+            options: [
+              { value: "", label: "全部状态" },
+              { value: "success", label: "可见文档" },
+              { value: "cancelled", label: "非活动" },
+            ],
+          }}
+          headerExtra={
+            <span className="text-sm text-stone-gray">
               {loading ? "加载中..." : `共 ${documentTotal} 条，当前页 ${filteredRows.length} 条`}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border-cream bg-ivory p-4">
-            <span className="text-sm text-stone-gray">已选 {selectedDocumentIds.length} 个文档</span>
-            <Button variant="outline" disabled={loading || selectedDocumentIds.length === 0} onClick={() => void handleBatchGovernance()}>
-              <RefreshCw className="w-4 h-4 mr-2" /> 重新治理
-            </Button>
-            <Button variant="destructive" disabled={loading || selectedDocumentIds.length === 0} onClick={() => void handleBatchDelete()}>
-              <Trash2 className="w-4 h-4 mr-2" /> 批量删除
-            </Button>
-          </div>
-
-          {filteredRows.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border-warm bg-ivory p-10 text-center">
+            </span>
+          }
+          batch={{
+            selectedCount: selectedDocumentIds.length,
+            actions: [
+              {
+                label: "重新治理",
+                icon: <RefreshCw className="w-4 h-4" />,
+                onClick: () => void handleBatchGovernance(),
+              },
+              {
+                label: "批量删除",
+                icon: <Trash2 className="w-4 h-4" />,
+                variant: "destructive",
+                onClick: () => void handleBatchDelete(),
+              },
+            ],
+          }}
+          loading={loading}
+          emptyMessage="暂无文档"
+          emptyIcon={
+            <>
               <div className="mx-auto mb-3 w-12 h-12 rounded-full bg-parchment flex items-center justify-center">
                 <FileWarning className="w-5 h-5 text-stone-gray" />
               </div>
@@ -422,8 +420,17 @@ export function DocumentCenter() {
               <p className="mt-2 text-sm text-stone-gray">
                 从文档库添加文档后，会在当前知识库生成可检索的 ChunkRevision。
               </p>
-            </div>
-          ) : (
+            </>
+          }
+          pagination={{
+            total: documentTotal,
+            pageNo,
+            totalPages,
+            loading,
+            onPageChange: (page) => void handlePageChange(page),
+          }}
+        >
+          {filteredRows.length > 0 && (
             <div className="overflow-auto border border-border-cream rounded-xl">
               <Table tableClassName="min-w-0 table-fixed">
                 <TableHeader>
@@ -506,32 +513,7 @@ export function DocumentCenter() {
               </Table>
             </div>
           )}
-
-          {!loading && documentTotal > 0 && (
-            <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-stone-gray">
-              <span>共 {documentTotal} 个文档</span>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={loading || pageNo <= 1}
-                  onClick={() => void handlePageChange(pageNo - 1)}
-                >
-                  <ChevronLeft className="w-4 h-4 mr-1" /> 上一页
-                </Button>
-                <span className="min-w-20 text-center text-near-black">{pageNo} / {totalPages}</span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={loading || pageNo >= totalPages}
-                  onClick={() => void handlePageChange(pageNo + 1)}
-                >
-                  下一页 <ChevronRight className="w-4 h-4 ml-1" />
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
+        </DocumentListLayout>
 
       {/* 文档库选择弹窗 */}
       {showLibraryPicker && (
