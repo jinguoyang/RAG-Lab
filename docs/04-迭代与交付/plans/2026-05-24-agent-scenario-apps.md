@@ -209,11 +209,11 @@
 - 修改：`frontend/src/app/pages/P13_RagAppManagement.tsx`
 - 文档：系统设计、接口设计、数据模型、产品待办和 Sprint 记录
 
-- [ ] 增加应用级培训报告接口。
-- [ ] P13 详情增加训练结果摘要。
-- [ ] 建立 Playwright 主链路验收：创建两个场景应用、试运行、反馈、训练报告。
-- [ ] 运行后端编译、相关 pytest、前端 lint/test/build 和 `git diff --check`。
-- [ ] 回填 Sprint 47-50 执行结果和产品待办状态。
+- [x] 增加应用级培训报告接口。
+- [x] P13 详情增加训练结果摘要。
+- [x] 建立 Playwright 主链路验收：创建两个场景应用、试运行、反馈、训练报告。
+- [x] 运行后端编译、相关 pytest、前端 lint/test/build 和 `git diff --check`。
+- [x] 回填 Sprint 47-50 执行结果和产品待办状态。
 
 ## 5. 验证命令
 

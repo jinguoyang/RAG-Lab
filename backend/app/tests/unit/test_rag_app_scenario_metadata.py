@@ -4,8 +4,8 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from app.schemas.rag_app import RagAppCreateRequest
-from app.services.rag_app_service import create_rag_app, get_rag_app
-from app.tables import config_revisions, knowledge_bases, rag_apps
+from app.services.rag_app_service import create_rag_app, get_rag_app, get_rag_app_training_report
+from app.tables import app_conversations, app_messages, config_revisions, knowledge_bases, rag_apps
 
 
 def _insert_active_kb(db, owner_id):
@@ -130,3 +130,114 @@ def test_get_rag_app_defaults_legacy_app_to_knowledge_qa(db, admin_user):
     assert app.scenarioTemplateId == "builtin_knowledge_qa_v1"
     assert app.scenarioConfig["noEvidencePolicy"] == "refuse"
     assert app.publishChannels["api"] is True
+
+
+def test_get_rag_app_training_report_aggregates_training_results(db, admin_user):
+    """培训报告只聚合同一应用下写入 metadata.trainingResult 的助手消息。"""
+    owner_id = uuid4()
+    kb_id = _insert_active_kb(db, owner_id)
+    revision_id = _insert_saved_revision(db, kb_id, owner_id)
+    app = create_rag_app(
+        db,
+        admin_user,
+        RagAppCreateRequest(
+            name="员工培训助手",
+            kbId=kb_id,
+            defaultConfigRevisionId=revision_id,
+            scenarioType="employee_training",
+            scenarioTemplateId="builtin_employee_training_v1",
+        ),
+    )
+    app_id = UUID(app.appId)
+    other_app_id = uuid4()
+    now = datetime.now(UTC)
+    first_conversation_id = uuid4()
+    second_conversation_id = uuid4()
+    other_conversation_id = uuid4()
+    db.execute(
+        app_conversations.insert(),
+        [
+            {
+                "conversation_id": first_conversation_id,
+                "app_id": app_id,
+                "end_user_id": "u-1",
+                "status": "active",
+                "metadata": {},
+                "created_at": now,
+                "updated_at": now,
+            },
+            {
+                "conversation_id": second_conversation_id,
+                "app_id": app_id,
+                "end_user_id": "u-2",
+                "status": "active",
+                "metadata": {},
+                "created_at": now,
+                "updated_at": now,
+            },
+            {
+                "conversation_id": other_conversation_id,
+                "app_id": other_app_id,
+                "end_user_id": "u-3",
+                "status": "active",
+                "metadata": {},
+                "created_at": now,
+                "updated_at": now,
+            },
+        ],
+    )
+    db.execute(
+        app_messages.insert(),
+        [
+            {
+                "message_id": uuid4(),
+                "conversation_id": first_conversation_id,
+                "role": "assistant",
+                "content": "训练报告 1",
+                "qa_run_id": uuid4(),
+                "status": "success",
+                "metadata": {"trainingResult": {"score": 100, "passed": True, "passingScore": 80}},
+                "created_at": now,
+            },
+            {
+                "message_id": uuid4(),
+                "conversation_id": second_conversation_id,
+                "role": "assistant",
+                "content": "训练报告 2",
+                "qa_run_id": uuid4(),
+                "status": "success",
+                "metadata": {"trainingResult": {"score": 50, "passed": False, "passingScore": 80}},
+                "created_at": now,
+            },
+            {
+                "message_id": uuid4(),
+                "conversation_id": second_conversation_id,
+                "role": "assistant",
+                "content": "普通消息",
+                "qa_run_id": None,
+                "status": "success",
+                "metadata": {},
+                "created_at": now,
+            },
+            {
+                "message_id": uuid4(),
+                "conversation_id": other_conversation_id,
+                "role": "assistant",
+                "content": "其他应用训练报告",
+                "qa_run_id": uuid4(),
+                "status": "success",
+                "metadata": {"trainingResult": {"score": 0, "passed": False, "passingScore": 80}},
+                "created_at": now,
+            },
+        ],
+    )
+
+    report = get_rag_app_training_report(db, admin_user, app_id)
+
+    assert report.appId == str(app_id)
+    assert report.totalSubmissions == 2
+    assert report.passedSubmissions == 1
+    assert report.failedSubmissions == 1
+    assert report.averageScore == 75
+    assert report.passRate == 0.5
+    assert len(report.recentResults) == 2

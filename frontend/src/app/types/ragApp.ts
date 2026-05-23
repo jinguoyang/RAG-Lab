@@ -113,6 +113,27 @@ export interface AppInvocationStatsDTO {
   noEvidenceRate: number;
 }
 
+export interface AppTrainingResultDTO {
+  messageId: string;
+  conversationId: string;
+  qaRunId: string | null;
+  score: number;
+  passed: boolean;
+  passingScore: number | null;
+  createdAt: string;
+}
+
+export interface AppTrainingReportDTO {
+  appId: string;
+  totalSubmissions: number;
+  passedSubmissions: number;
+  failedSubmissions: number;
+  averageScore: number | null;
+  passRate: number;
+  latestSubmittedAt: string | null;
+  recentResults: AppTrainingResultDTO[];
+}
+
 export interface AppMessageDTO {
   messageId: string;
   conversationId: string;
@@ -208,4 +229,14 @@ export interface AppMessageViewModel {
   status: string;
   createdAtLabel: string;
   trainingResultLabel?: string;
+}
+
+export interface AppTrainingReportViewModel {
+  summaryLabel: string;
+  latestSubmittedAtLabel: string;
+  totalSubmissions: number;
+  passedSubmissions: number;
+  failedSubmissions: number;
+  passRateLabel: string;
+  averageScoreLabel: string;
 }

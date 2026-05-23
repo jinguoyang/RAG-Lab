@@ -13,6 +13,7 @@ from app.schemas.rag_app import (
     AppConversationDetailDTO,
     AppInvocationDTO,
     AppInvocationStatsDTO,
+    AppTrainingReportDTO,
     RagAppApiKeyCreateRequest,
     RagAppApiKeyCreateResponse,
     RagAppApiKeyDTO,
@@ -32,6 +33,7 @@ from app.services.rag_app_service import (
     get_rag_app,
     get_rag_app_conversation_detail,
     get_rag_app_invocation_stats,
+    get_rag_app_training_report,
     list_rag_app_api_keys,
     list_rag_app_invocations,
     list_rag_apps,
@@ -118,6 +120,19 @@ def read_rag_app_stats(
     """读取应用级调用统计摘要。"""
     try:
         return get_rag_app_invocation_stats(session, current_user, app_id)
+    except Exception as exc:
+        _raise_rag_app_error(exc)
+
+
+@router.get("/{app_id}/training-report", response_model=AppTrainingReportDTO)
+def read_rag_app_training_report(
+    app_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> AppTrainingReportDTO:
+    """读取员工培训助手的答题结果聚合摘要。"""
+    try:
+        return get_rag_app_training_report(session, current_user, app_id)
     except Exception as exc:
         _raise_rag_app_error(exc)
 

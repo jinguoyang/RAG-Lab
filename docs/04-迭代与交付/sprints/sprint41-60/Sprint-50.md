@@ -19,10 +19,10 @@
 
 | Backlog | 标题 | 优先级 | 预估 | 状态 |
 | --- | --- | --- | --- | --- |
-| B-255 | 新增应用级培训报告接口和 P13 摘要展示 | P1 | 1.5d | Ready |
-| B-256 | 建立两个场景的端到端验收脚本 | P0 | 2d | Ready |
-| B-257 | 补齐权限、Embed Token 和 Runtime 安全回归 | P0 | 1.5d | Ready |
-| B-258 | 同步系统设计、接口设计、数据模型、OpenAPI 和发布说明 | P1 | 2d | Ready |
+| B-255 | 新增应用级培训报告接口和 P13 摘要展示 | P1 | 1.5d | Done |
+| B-256 | 建立两个场景的端到端验收脚本 | P0 | 2d | Done |
+| B-257 | 补齐权限、Embed Token 和 Runtime 安全回归 | P0 | 1.5d | Done |
+| B-258 | 同步系统设计、接口设计、数据模型、OpenAPI 和发布说明 | P1 | 2d | Done |
 
 ## 4. 验收标准
 
@@ -63,3 +63,10 @@ git diff --check
 ## 7. 关联文档
 
 - [场景化智能应用开发计划](../../plans/2026-05-24-agent-scenario-apps.md)
+
+## 8. 执行记录
+
+- 已新增 `GET /api/v1/rag-apps/{appId}/training-report`，按 `AppMessage.metadata.trainingResult` 聚合训练次数、通过率、平均分和最近结果。
+- P13 应用概览已为员工培训助手展示培训报告摘要。
+- 已补充培训报告单元测试、Embed Token 过期/跨 App/知识库停用安全回归，以及 P13 场景助手前端 E2E 验收脚本。
+- 已同步接口设计、数据模型设计、总体/详细设计、产品待办清单、Sprint 总览和 OpenAPI。

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { toAppMessageViewModel, toRagAppViewModel } from "./ragAppAdapter";
+import { toAppMessageViewModel, toRagAppTrainingReportViewModel, toRagAppViewModel } from "./ragAppAdapter";
 import type { AppMessageDTO, RagAppDTO } from "../types/ragApp";
 
 function buildApp(overrides: Partial<RagAppDTO> = {}): RagAppDTO {
@@ -70,5 +70,21 @@ describe("toAppMessageViewModel", () => {
     const viewModel = toAppMessageViewModel(message);
 
     expect(viewModel.trainingResultLabel).toBe("训练得分 50 / 100 · 未通过 · 及格分 80");
+  });
+
+  it("formats training report summary", () => {
+    const viewModel = toRagAppTrainingReportViewModel({
+      appId: "app-1",
+      totalSubmissions: 4,
+      passedSubmissions: 3,
+      failedSubmissions: 1,
+      averageScore: 82.5,
+      passRate: 0.75,
+      latestSubmittedAt: "2026-05-24T02:00:00Z",
+      recentResults: [],
+    });
+
+    expect(viewModel.summaryLabel).toBe("4 次训练 · 通过率 75% · 平均分 82.5");
+    expect(viewModel.latestSubmittedAtLabel).not.toBe("-");
   });
 });

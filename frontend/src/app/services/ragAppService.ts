@@ -4,6 +4,7 @@ import type {
   AppInvocationPage,
   AppInvocationStatsDTO,
   AppConversationDetailDTO,
+  AppTrainingReportDTO,
   RagAppApiKeyCreateRequest,
   RagAppApiKeyCreateResponse,
   RagAppApiKeyDTO,
@@ -78,6 +79,10 @@ export async function listRagAppInvocations(
 
 export async function getRagAppInvocationStats(appId: string): Promise<AppInvocationStatsDTO> {
   return apiGet<AppInvocationStatsDTO>(`/rag-apps/${appId}/stats`);
+}
+
+export async function getRagAppTrainingReport(appId: string): Promise<AppTrainingReportDTO> {
+  return apiGet<AppTrainingReportDTO>(`/rag-apps/${appId}/training-report`);
 }
 
 export async function getRagAppConversationDetail(

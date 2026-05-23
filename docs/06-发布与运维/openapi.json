@@ -8345,6 +8345,66 @@
         }
       }
     },
+    "/api/v1/rag-apps/{app_id}/training-report": {
+      "get": {
+        "tags": [
+          "rag-apps"
+        ],
+        "summary": "Read Rag App Training Report",
+        "description": "读取员工培训助手的答题结果聚合摘要。",
+        "operationId": "read_rag_app_training_report_api_v1_rag_apps__app_id__training_report_get",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppTrainingReportDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/rag-apps/{app_id}/api-keys": {
       "get": {
         "tags": [
@@ -12670,6 +12730,126 @@
         ],
         "title": "AppRuntimeTrainingQuizSubmissionResponse",
         "description": "培训测验评分结果，并返回记录训练结果的 AppMessage。"
+      },
+      "AppTrainingReportDTO": {
+        "properties": {
+          "appId": {
+            "type": "string",
+            "title": "Appid"
+          },
+          "totalSubmissions": {
+            "type": "integer",
+            "title": "Totalsubmissions"
+          },
+          "passedSubmissions": {
+            "type": "integer",
+            "title": "Passedsubmissions"
+          },
+          "failedSubmissions": {
+            "type": "integer",
+            "title": "Failedsubmissions"
+          },
+          "averageScore": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Averagescore"
+          },
+          "passRate": {
+            "type": "number",
+            "title": "Passrate"
+          },
+          "latestSubmittedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latestsubmittedat"
+          },
+          "recentResults": {
+            "items": {
+              "$ref": "#/components/schemas/AppTrainingResultDTO"
+            },
+            "type": "array",
+            "title": "Recentresults"
+          }
+        },
+        "type": "object",
+        "required": [
+          "appId",
+          "totalSubmissions",
+          "passedSubmissions",
+          "failedSubmissions",
+          "passRate",
+          "recentResults"
+        ],
+        "title": "AppTrainingReportDTO",
+        "description": "应用级培训结果聚合摘要，供 P13 展示和后续验收追溯。"
+      },
+      "AppTrainingResultDTO": {
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "title": "Messageid"
+          },
+          "conversationId": {
+            "type": "string",
+            "title": "Conversationid"
+          },
+          "qaRunId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qarunid"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "passed": {
+            "type": "boolean",
+            "title": "Passed"
+          },
+          "passingScore": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passingscore"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "messageId",
+          "conversationId",
+          "score",
+          "passed",
+          "createdAt"
+        ],
+        "title": "AppTrainingResultDTO",
+        "description": "单次培训答题结果摘要，来自 AppMessage metadata.trainingResult。"
       },
       "AuditExportResponse": {
         "properties": {

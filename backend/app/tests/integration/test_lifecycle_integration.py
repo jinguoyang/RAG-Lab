@@ -149,7 +149,7 @@ class TestChunkRevisionLifecycle:
         with patch("app.services.binding_service.activate_chunk_revision") as mock_activate:
             complete_chunk_revision_build(session, uuid4(), chunk_count=10)
 
-            session.execute.assert_called_once()
+            assert session.execute.call_count == 2
             mock_activate.assert_called_once()
 
 

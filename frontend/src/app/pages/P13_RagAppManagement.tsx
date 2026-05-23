@@ -31,6 +31,7 @@ import {
   shortId,
   toAppInvocationViewModel,
   toAppMessageViewModel,
+  toRagAppTrainingReportViewModel,
   toRagAppApiKeyViewModel,
   toRagAppViewModel,
 } from "../adapters/ragAppAdapter";
@@ -55,6 +56,7 @@ import {
   deleteRagAppApiKey,
   getRagAppConversationDetail,
   getRagAppInvocationStats,
+  getRagAppTrainingReport,
   listRagAppApiKeys,
   listRagAppInvocations,
   listRagApps,
@@ -76,6 +78,7 @@ import type {
   AppInvocationStatsDTO,
   AppInvocationStatus,
   AppConversationDetailDTO,
+  AppTrainingReportDTO,
   RagAppApiKeyDTO,
   RagAppDTO,
   RagAppStatus,
@@ -169,6 +172,7 @@ export function RagAppManagement() {
   const [apiKeys, setApiKeys] = useState<RagAppApiKeyDTO[]>([]);
   const [invocations, setInvocations] = useState<AppInvocationDTO[]>([]);
   const [invocationStats, setInvocationStats] = useState<AppInvocationStatsDTO | null>(null);
+  const [trainingReport, setTrainingReport] = useState<AppTrainingReportDTO | null>(null);
   const [selectedConversationDetail, setSelectedConversationDetail] = useState<AppConversationDetailDTO | null>(null);
   const [keyword, setKeyword] = useState("");
   const [queryKeyword, setQueryKeyword] = useState("");
@@ -212,6 +216,10 @@ export function RagAppManagement() {
     [apiKeys],
   );
   const invocationRows = useMemo(() => invocations.map(toAppInvocationViewModel), [invocations]);
+  const trainingReportView = useMemo(
+    () => trainingReport ? toRagAppTrainingReportViewModel(trainingReport) : null,
+    [trainingReport],
+  );
   const conversationRows = useMemo(() => groupInvocationsByConversation(invocations), [invocations]);
   const conversationMessageRows = useMemo(
     () => selectedConversationDetail?.messages.map(toAppMessageViewModel) ?? [],
@@ -253,7 +261,8 @@ export function RagAppManagement() {
   const loadAppDetail = useCallback(async (app: RagAppDTO) => {
     setIsLoadingDetail(true);
     try {
-      const [keys, invocationPage, revisions, stats] = await Promise.all([
+      const shouldLoadTrainingReport = app.scenarioType === "employee_training";
+      const [keys, invocationPage, revisions, stats, report] = await Promise.all([
         listRagAppApiKeys(app.appId),
         listRagAppInvocations(app.appId, {
           pageNo: 1,
@@ -262,11 +271,13 @@ export function RagAppManagement() {
         }),
         fetchConfigRevisions(app.kbId).catch(() => ({ items: [] as ConfigRevisionDTO[], pageNo: 1, pageSize: 50, total: 0 })),
         getRagAppInvocationStats(app.appId),
+        shouldLoadTrainingReport ? getRagAppTrainingReport(app.appId) : Promise.resolve(null),
       ]);
       setApiKeys(keys);
       setInvocations(invocationPage.items);
       setConfigRevisions(revisions.items);
       setInvocationStats(stats);
+      setTrainingReport(report);
       setSelectedConversationDetail(null);
     } catch (error) {
       setFeedback({
@@ -304,6 +315,7 @@ export function RagAppManagement() {
       setInvocations([]);
       setConfigRevisions([]);
       setInvocationStats(null);
+      setTrainingReport(null);
       setSelectedConversationDetail(null);
     }
   }, [loadAppDetail, selectedApp]);
@@ -1073,6 +1085,20 @@ export function RagAppManagement() {
                             <span>并发拒绝：{invocationStats?.concurrencyExceededInvocations ?? 0}</span>
                           </div>
                         </div>
+                        {selectedApp.scenarioType === "employee_training" && (
+                          <div className="rounded-lg border border-border-cream bg-parchment p-3">
+                            <p className="text-xs text-stone-gray">培训报告</p>
+                            <p className="mt-1 text-sm font-medium text-near-black">
+                              {trainingReportView?.summaryLabel ?? "0 次训练 · 通过率 0% · 平均分 -"}
+                            </p>
+                            <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-stone-gray">
+                              <span>通过：{trainingReportView?.passedSubmissions ?? 0}</span>
+                              <span>未通过：{trainingReportView?.failedSubmissions ?? 0}</span>
+                              <span>最近提交：{trainingReportView?.latestSubmittedAtLabel ?? "-"}</span>
+                              <span>样本数：{trainingReportView?.totalSubmissions ?? 0}</span>
+                            </div>
+                          </div>
+                        )}
                         <div className="space-y-3 rounded-lg border border-border-cream bg-parchment p-3">
                           <div>
                             <p className="text-xs text-stone-gray">真实 Runtime 试运行</p>

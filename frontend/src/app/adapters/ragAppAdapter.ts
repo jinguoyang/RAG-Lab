@@ -4,6 +4,8 @@ import type {
   AppInvocationViewModel,
   AppMessageDTO,
   AppMessageViewModel,
+  AppTrainingReportDTO,
+  AppTrainingReportViewModel,
   RagAppApiKeyDTO,
   RagAppApiKeyViewModel,
   RagAppDTO,
@@ -169,5 +171,19 @@ export function toAppMessageViewModel(message: AppMessageDTO): AppMessageViewMod
     trainingResultLabel: score == null || Number.isNaN(score)
       ? undefined
       : `训练得分 ${score} / 100 · ${passed ? "已通过" : "未通过"}${passingScore == null || Number.isNaN(passingScore) ? "" : ` · 及格分 ${passingScore}`}`,
+  };
+}
+
+export function toRagAppTrainingReportViewModel(report: AppTrainingReportDTO): AppTrainingReportViewModel {
+  const passRateLabel = `${Math.round(report.passRate * 100)}%`;
+  const averageScoreLabel = report.averageScore == null ? "-" : String(report.averageScore);
+  return {
+    summaryLabel: `${report.totalSubmissions} 次训练 · 通过率 ${passRateLabel} · 平均分 ${averageScoreLabel}`,
+    latestSubmittedAtLabel: formatDateTime(report.latestSubmittedAt),
+    totalSubmissions: report.totalSubmissions,
+    passedSubmissions: report.passedSubmissions,
+    failedSubmissions: report.failedSubmissions,
+    passRateLabel,
+    averageScoreLabel,
   };
 }

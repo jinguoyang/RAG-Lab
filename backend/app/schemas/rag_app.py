@@ -148,6 +148,31 @@ class AppInvocationStatsDTO(BaseModel):
     noEvidenceRate: float
 
 
+class AppTrainingResultDTO(BaseModel):
+    """单次培训答题结果摘要，来自 AppMessage metadata.trainingResult。"""
+
+    messageId: str
+    conversationId: str
+    qaRunId: str | None = None
+    score: float
+    passed: bool
+    passingScore: float | None = None
+    createdAt: str
+
+
+class AppTrainingReportDTO(BaseModel):
+    """应用级培训结果聚合摘要，供 P13 展示和后续验收追溯。"""
+
+    appId: str
+    totalSubmissions: int
+    passedSubmissions: int
+    failedSubmissions: int
+    averageScore: float | None = None
+    passRate: float
+    latestSubmittedAt: str | None = None
+    recentResults: list[AppTrainingResultDTO]
+
+
 class AppMessageDTO(BaseModel):
     """App Conversation 下的单条消息，只读用于管理端追溯。"""
 

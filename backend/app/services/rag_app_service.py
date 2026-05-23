@@ -13,6 +13,8 @@ from app.schemas.rag_app import (
     AppInvocationDTO,
     AppInvocationStatsDTO,
     AppMessageDTO,
+    AppTrainingReportDTO,
+    AppTrainingResultDTO,
     RagAppApiKeyCreateRequest,
     RagAppApiKeyCreateResponse,
     RagAppApiKeyDTO,
@@ -733,6 +735,70 @@ def get_rag_app_invocation_stats(
         averageLatencyMs=int(sum(latencies) / len(latencies)) if latencies else None,
         failureRate=round(failed_count / total, 4) if total else 0,
         noEvidenceRate=round(no_evidence_count / success_count, 4) if success_count else 0,
+    )
+
+
+def get_rag_app_training_report(
+    session: Session,
+    current_user: CurrentUserResponse,
+    app_id: UUID,
+) -> AppTrainingReportDTO:
+    """聚合应用会话中的培训答题结果，不引入独立学习档案表。"""
+    app_row = _read_visible_app_row(session, current_user, app_id)
+    _ensure_app_manage_permission(session, current_user, app_row["kb_id"])
+    rows = list(
+        session.execute(
+            select(
+                app_messages.c.message_id,
+                app_messages.c.conversation_id,
+                app_messages.c.qa_run_id,
+                app_messages.c.metadata,
+                app_messages.c.created_at,
+            )
+            .select_from(app_messages.join(app_conversations, app_messages.c.conversation_id == app_conversations.c.conversation_id))
+            .where(app_conversations.c.app_id == app_id)
+            .order_by(app_messages.c.created_at.desc(), app_messages.c.message_id.desc())
+        ).mappings()
+    )
+    results: list[AppTrainingResultDTO] = []
+    for row in rows:
+        metadata = row["metadata"] or {}
+        training_result = metadata.get("trainingResult") if isinstance(metadata, dict) else None
+        if not isinstance(training_result, dict):
+            continue
+        try:
+            score = float(training_result["score"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        passing_score_value = training_result.get("passingScore")
+        try:
+            passing_score = float(passing_score_value) if passing_score_value is not None else None
+        except (TypeError, ValueError):
+            passing_score = None
+        results.append(
+            AppTrainingResultDTO(
+                messageId=str(row["message_id"]),
+                conversationId=str(row["conversation_id"]),
+                qaRunId=str(row["qa_run_id"]) if row["qa_run_id"] else None,
+                score=score,
+                passed=bool(training_result.get("passed")),
+                passingScore=passing_score,
+                createdAt=row["created_at"].isoformat(),
+            )
+        )
+
+    total = len(results)
+    passed_count = sum(1 for item in results if item.passed)
+    average_score = round(sum(item.score for item in results) / total, 2) if total else None
+    return AppTrainingReportDTO(
+        appId=str(app_id),
+        totalSubmissions=total,
+        passedSubmissions=passed_count,
+        failedSubmissions=total - passed_count,
+        averageScore=average_score,
+        passRate=round(passed_count / total, 4) if total else 0,
+        latestSubmittedAt=results[0].createdAt if results else None,
+        recentResults=results[:10],
     )
 
 
