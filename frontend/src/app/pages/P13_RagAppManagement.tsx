@@ -625,10 +625,11 @@ export function RagAppManagement() {
               </Button>
             </div>
 
-            <Table tableClassName="min-w-[760px]">
+            <Table tableClassName="min-w-[860px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>应用</TableHead>
+                  <TableHead>场景</TableHead>
                   <TableHead>知识库</TableHead>
                   <TableHead>检索配置</TableHead>
                   <TableHead>状态</TableHead>
@@ -638,12 +639,12 @@ export function RagAppManagement() {
               <TableBody>
                 {isLoadingApps && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-stone-gray">加载中...</TableCell>
+                    <TableCell colSpan={6} className="text-stone-gray">加载中...</TableCell>
                   </TableRow>
                 )}
                 {!isLoadingApps && appRows.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-stone-gray">暂无 RAG 应用</TableCell>
+                    <TableCell colSpan={6} className="text-stone-gray">暂无 RAG 应用</TableCell>
                   </TableRow>
                 )}
                 {!isLoadingApps && appRows.map((app) => (
@@ -653,6 +654,12 @@ export function RagAppManagement() {
                       {app.description && (
                         <div className="max-w-[260px] truncate text-xs text-stone-gray" title={app.description}>{app.description}</div>
                       )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <Badge variant="warning">{app.scenarioLabel}</Badge>
+                        <div className="text-xs text-stone-gray">{app.publishChannelLabel}</div>
+                      </div>
                     </TableCell>
                     <TableCell>{selectedKnowledgeBaseName(knowledgeBases, app.kbId)}</TableCell>
                     <TableCell className="max-w-[180px] truncate" title={app.defaultRevisionLabel}>{app.defaultRevisionLabel}</TableCell>
@@ -695,7 +702,10 @@ export function RagAppManagement() {
                       </p>
                       <p className="mt-1 font-mono text-xs text-stone-gray">appId: {selectedApp.appId}</p>
                     </div>
-                    <Badge variant={statusBadgeVariant(selectedApp.status)}>{selectedAppView.statusLabel}</Badge>
+                    <div className="flex shrink-0 flex-col items-end gap-2">
+                      <Badge variant={statusBadgeVariant(selectedApp.status)}>{selectedAppView.statusLabel}</Badge>
+                      <Badge variant="warning">{selectedAppView.scenarioLabel}</Badge>
+                    </div>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <Button variant="outline" size="sm" onClick={() => openEditForm(selectedApp)}>
@@ -809,12 +819,30 @@ export function RagAppManagement() {
                         )}
                         <div className="grid grid-cols-2 gap-3">
                           <div className="rounded-lg border border-border-cream bg-parchment p-3">
+                            <p className="text-xs text-stone-gray">应用场景</p>
+                            <p className="mt-1 text-sm font-medium text-near-black">{selectedAppView.scenarioLabel}</p>
+                          </div>
+                          <div className="rounded-lg border border-border-cream bg-parchment p-3">
+                            <p className="text-xs text-stone-gray">发布方式</p>
+                            <p className="mt-1 text-sm font-medium text-near-black">{selectedAppView.publishChannelLabel}</p>
+                          </div>
+                          <div className="rounded-lg border border-border-cream bg-parchment p-3">
                             <p className="text-xs text-stone-gray">API Key</p>
                             <p className="mt-1 text-lg font-medium text-near-black">{apiKeys.length}</p>
                           </div>
                           <div className="rounded-lg border border-border-cream bg-parchment p-3">
                             <p className="text-xs text-stone-gray">最近调用</p>
                             <p className="mt-1 text-lg font-medium text-near-black">{invocationRows[0]?.createdAtLabel ?? "-"}</p>
+                          </div>
+                          <div className="rounded-lg border border-border-cream bg-parchment p-3">
+                            <p className="text-xs text-stone-gray">嵌入页</p>
+                            <p className="mt-1 text-sm font-medium text-near-black">{selectedAppView.embedStatusLabel}</p>
+                          </div>
+                          <div className="rounded-lg border border-border-cream bg-parchment p-3">
+                            <p className="text-xs text-stone-gray">场景模板</p>
+                            <p className="mt-1 max-w-[160px] truncate font-mono text-xs text-near-black" title={selectedApp.scenarioTemplateId}>
+                              {selectedApp.scenarioTemplateId}
+                            </p>
                           </div>
                         </div>
                         {selectedApp.knowledgeBaseStatus === "disabled" && (

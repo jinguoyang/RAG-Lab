@@ -21,6 +21,11 @@ class RagAppDTO(BaseModel):
     # Sprint 42: KB status fields
     knowledgeBaseName: str | None = None
     knowledgeBaseStatus: str | None = None  # "active" | "disabled" | "deleted"
+    scenarioType: str
+    scenarioTemplateId: str
+    scenarioConfig: dict[str, Any]
+    publishChannels: dict[str, bool]
+    embedSettings: dict[str, Any]
 
 
 class RagAppCreateRequest(BaseModel):
@@ -32,6 +37,12 @@ class RagAppCreateRequest(BaseModel):
     outputPolicy: dict[str, Any] | None = None
     description: str | None = None
     metadata: dict[str, Any] | None = None
+    scenarioType: str | None = None
+    scenarioTemplateId: str | None = None
+    scenarioConfig: dict[str, Any] | None = None
+    publishChannels: dict[str, bool] | None = None
+    embedSettings: dict[str, Any] | None = None
+    createRecommendedConfigRevision: bool = False
 
     @field_validator("name")
     @classmethod
@@ -52,6 +63,11 @@ class RagAppUpdateRequest(BaseModel):
     outputPolicy: dict[str, Any] | None = None
     metadata: dict[str, Any] | None = None
     status: str | None = Field(default=None, pattern="^(active|disabled|archived)$")
+    scenarioType: str | None = None
+    scenarioTemplateId: str | None = None
+    scenarioConfig: dict[str, Any] | None = None
+    publishChannels: dict[str, bool] | None = None
+    embedSettings: dict[str, Any] | None = None
 
     @field_validator("name")
     @classmethod

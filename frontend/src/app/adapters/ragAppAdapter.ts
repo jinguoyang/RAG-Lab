@@ -27,6 +27,11 @@ export const APP_INVOCATION_STATUS_LABELS = {
   failed: "失败",
 } as const;
 
+export const RAG_APP_SCENARIO_LABELS: Record<string, string> = {
+  knowledge_qa: "知识库问答助手",
+  employee_training: "员工培训助手",
+};
+
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-";
   const date = new Date(value);
@@ -53,6 +58,11 @@ function summarizeObject(value: Record<string, unknown>): string {
 }
 
 export function toRagAppViewModel(app: RagAppDTO): RagAppViewModel {
+  const publishChannelLabels = [
+    app.publishChannels?.api ? "API" : null,
+    app.publishChannels?.embed ? "嵌入页" : null,
+  ].filter(Boolean);
+  const embedEnabled = app.embedSettings?.enabled === true || app.publishChannels?.embed === true;
   return {
     id: app.appId,
     name: app.name,
@@ -63,6 +73,10 @@ export function toRagAppViewModel(app: RagAppDTO): RagAppViewModel {
       : "跟随知识库",
     status: app.status,
     statusLabel: RAG_APP_STATUS_LABELS[app.status] ?? app.status,
+    scenarioType: app.scenarioType,
+    scenarioLabel: RAG_APP_SCENARIO_LABELS[app.scenarioType] ?? app.scenarioType,
+    publishChannelLabel: publishChannelLabels.length > 0 ? publishChannelLabels.join(" / ") : "-",
+    embedStatusLabel: embedEnabled ? "已启用" : "未启用",
     updatedAtLabel: formatDateTime(app.updatedAt),
   };
 }

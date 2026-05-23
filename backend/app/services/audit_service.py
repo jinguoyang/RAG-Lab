@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import RowMapping, func, insert, or_, select
@@ -33,6 +33,7 @@ def write_audit_log(
             kb_id=kb_id,
             document_id=document_id,
             detail=detail or {},
+            created_at=datetime.now(UTC),
         )
     )
     return audit_log_id

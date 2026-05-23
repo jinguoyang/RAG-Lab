@@ -160,3 +160,30 @@ def build_default_pipeline_definition(
             },
         ],
     }
+
+
+def build_scenario_pipeline_definition(
+    scenario_type: str,
+    scenario_template_id: str,
+    sparse_index_enabled: bool,
+    graph_index_enabled: bool,
+) -> dict[str, Any]:
+    """基于默认受控 Pipeline 构造场景推荐配置，不改变执行阶段约束。"""
+    pipeline = build_default_pipeline_definition(
+        sparse_index_enabled=sparse_index_enabled,
+        graph_index_enabled=graph_index_enabled,
+    )
+    pipeline["templateId"] = scenario_template_id
+    pipeline["scenarioType"] = scenario_type
+    for node in pipeline["nodes"]:
+        if node["id"] == "generation":
+            node["params"] = {
+                **node["params"],
+                "scenarioType": scenario_type,
+                "promptProfile": (
+                    "employee-training-v1" if scenario_type == "employee_training" else "knowledge-qa-v1"
+                ),
+            }
+        if node["id"] == "citation" and scenario_type == "knowledge_qa":
+            node["params"] = {**node["params"], "minEvidence": 1, "citationPolicy": "strict"}
+    return pipeline

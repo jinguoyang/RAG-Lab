@@ -21,7 +21,9 @@ from app.schemas.rag_app import (
     RagAppUpdateRequest,
 )
 from app.services.audit_service import write_audit_log
+from app.services.agent_scenario_template_service import list_agent_scenario_templates
 from app.services.permission_service import has_kb_permission, kb_visibility_condition
+from app.services.default_pipeline import build_scenario_pipeline_definition
 from app.tables import (
     app_conversations,
     app_invocations,
@@ -49,12 +51,119 @@ class RagAppConflictError(ValueError):
     """RAG App 管理操作遇到业务状态冲突。"""
 
 
+SCENARIO_FIELD_NAMES = {
+    "scenarioType",
+    "scenarioTemplateId",
+    "scenarioConfig",
+    "publishChannels",
+    "embedSettings",
+}
+
+
+def _default_scenario_payload() -> dict[str, object]:
+    """返回旧应用兼容使用的默认知识库问答助手场景配置。"""
+    template = next(
+        item for item in list_agent_scenario_templates() if item.scenarioType == "knowledge_qa"
+    )
+    return {
+        "scenarioType": template.scenarioType,
+        "scenarioTemplateId": template.templateId,
+        "scenarioConfig": template.defaultScenarioConfig,
+        "publishChannels": template.defaultPublishChannels,
+        "embedSettings": template.defaultEmbedSettings,
+    }
+
+
+def _scenario_payload_from_metadata(metadata: dict | None) -> dict[str, object]:
+    """从应用 metadata 中提取场景配置；旧数据缺失时返回默认配置。"""
+    scenario = (metadata or {}).get("scenario")
+    if not isinstance(scenario, dict):
+        return _default_scenario_payload()
+    default_payload = _default_scenario_payload()
+    return {
+        "scenarioType": scenario.get("scenarioType") or default_payload["scenarioType"],
+        "scenarioTemplateId": scenario.get("scenarioTemplateId") or default_payload["scenarioTemplateId"],
+        "scenarioConfig": scenario.get("scenarioConfig") or default_payload["scenarioConfig"],
+        "publishChannels": scenario.get("publishChannels") or default_payload["publishChannels"],
+        "embedSettings": scenario.get("embedSettings") or default_payload["embedSettings"],
+    }
+
+
+def _metadata_with_scenario(
+    metadata: dict | None,
+    request: RagAppCreateRequest | RagAppUpdateRequest,
+) -> dict:
+    """将请求中的场景字段归并到 metadata.scenario，保持表结构不变。"""
+    next_metadata = dict(metadata or {})
+    base_payload = _scenario_payload_from_metadata(next_metadata)
+    scenario = {
+        "scenarioType": request.scenarioType or base_payload["scenarioType"],
+        "scenarioTemplateId": request.scenarioTemplateId or base_payload["scenarioTemplateId"],
+        "scenarioConfig": request.scenarioConfig or base_payload["scenarioConfig"],
+        "publishChannels": request.publishChannels or base_payload["publishChannels"],
+        "embedSettings": request.embedSettings or base_payload["embedSettings"],
+    }
+    next_metadata["scenario"] = scenario
+    return next_metadata
+
+
+def _create_recommended_config_revision(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_row: RowMapping,
+    request: RagAppCreateRequest,
+) -> UUID:
+    """创建场景应用专属 saved Revision，不切换知识库 active revision。"""
+    scenario_payload = _metadata_with_scenario(request.metadata, request)["scenario"]
+    revision_id = uuid4()
+    actor_id = UUID(current_user.user.userId)
+    now = datetime.now(UTC)
+    revision_no = (
+        session.execute(
+            select(func.coalesce(func.max(config_revisions.c.revision_no), 0))
+            .where(config_revisions.c.kb_id == kb_row["kb_id"])
+        ).scalar_one()
+        + 1
+    )
+    pipeline_definition = build_scenario_pipeline_definition(
+        scenario_type=str(scenario_payload["scenarioType"]),
+        scenario_template_id=str(scenario_payload["scenarioTemplateId"]),
+        sparse_index_enabled=bool(kb_row["sparse_index_enabled"]),
+        graph_index_enabled=bool(kb_row["graph_index_enabled"]),
+    )
+    session.execute(
+        insert(config_revisions).values(
+            config_revision_id=revision_id,
+            kb_id=kb_row["kb_id"],
+            revision_no=revision_no,
+            source_template_id=None,
+            status="saved",
+            pipeline_definition=pipeline_definition,
+            validation_snapshot={"valid": True, "errors": [], "warnings": []},
+            remark=f"场景推荐配置：{scenario_payload['scenarioType']}",
+            activated_at=None,
+            activated_by=None,
+            deactivated_at=None,
+            deactivated_by=None,
+            created_at=now,
+            created_by=actor_id,
+            updated_at=now,
+            updated_by=actor_id,
+            deleted_at=None,
+            deleted_by=None,
+        )
+    )
+    return revision_id
+
+
 def _to_app_dto(
     row: RowMapping,
     kb_name: str | None = None,
     kb_status: str | None = None,
 ) -> RagAppDTO:
     """将 RAG App 数据库行转换为管理端 DTO。"""
+    metadata = row["metadata"] or {}
+    scenario = _scenario_payload_from_metadata(metadata)
     return RagAppDTO(
         appId=str(row["app_id"]),
         kbId=str(row["kb_id"]),
@@ -65,11 +174,16 @@ def _to_app_dto(
         description=row["description"],
         status=row["status"],
         outputPolicy=row["output_policy"] or {},
-        metadata=row["metadata"] or {},
+        metadata=metadata,
         createdAt=row["created_at"].isoformat(),
         updatedAt=row["updated_at"].isoformat(),
         knowledgeBaseName=kb_name,
         knowledgeBaseStatus=kb_status,
+        scenarioType=str(scenario["scenarioType"]),
+        scenarioTemplateId=str(scenario["scenarioTemplateId"]),
+        scenarioConfig=dict(scenario["scenarioConfig"]),
+        publishChannels=dict(scenario["publishChannels"]),
+        embedSettings=dict(scenario["embedSettings"]),
     )
 
 
@@ -324,8 +438,11 @@ def create_rag_app(
     request: RagAppCreateRequest,
 ) -> RagAppDTO:
     """创建 RAG App，只保存应用与 KB/Revision 的绑定关系。"""
-    _read_writable_kb_row(session, current_user, request.kbId)
-    _ensure_runnable_revision(session, request.kbId, request.defaultConfigRevisionId)
+    kb_row = _read_writable_kb_row(session, current_user, request.kbId)
+    default_config_revision_id = request.defaultConfigRevisionId
+    if request.createRecommendedConfigRevision and default_config_revision_id is None:
+        default_config_revision_id = _create_recommended_config_revision(session, current_user, kb_row, request)
+    _ensure_runnable_revision(session, request.kbId, default_config_revision_id)
 
     app_id = uuid4()
     actor_id = UUID(current_user.user.userId)
@@ -335,12 +452,12 @@ def create_rag_app(
         .values(
             app_id=app_id,
             kb_id=request.kbId,
-            default_config_revision_id=request.defaultConfigRevisionId,
+            default_config_revision_id=default_config_revision_id,
             name=request.name,
             description=request.description,
             status="active",
             output_policy=request.outputPolicy or {},
-            metadata=request.metadata or {},
+            metadata=_metadata_with_scenario(request.metadata, request),
             created_at=now,
             created_by=actor_id,
             updated_at=now,
@@ -389,7 +506,9 @@ def update_rag_app(
     if "outputPolicy" in requested_fields and request.outputPolicy is not None:
         update_values["output_policy"] = request.outputPolicy
     if "metadata" in requested_fields and request.metadata is not None:
-        update_values["metadata"] = request.metadata
+        update_values["metadata"] = _metadata_with_scenario(request.metadata, request)
+    elif requested_fields & SCENARIO_FIELD_NAMES:
+        update_values["metadata"] = _metadata_with_scenario(app_row["metadata"] or {}, request)
     if "status" in requested_fields and request.status is not None:
         update_values["status"] = request.status
 

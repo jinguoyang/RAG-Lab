@@ -3,6 +3,7 @@ import type { PageResponse } from "./knowledgeBase";
 export type RagAppStatus = "active" | "disabled" | "archived";
 export type RagAppApiKeyStatus = "active" | "revoked";
 export type AppInvocationStatus = "running" | "success" | "failed";
+export type RagAppScenarioType = "knowledge_qa" | "employee_training" | string;
 
 export interface RagAppDTO {
   appId: string;
@@ -18,6 +19,11 @@ export interface RagAppDTO {
   // Sprint 42: KB status
   knowledgeBaseName?: string | null;
   knowledgeBaseStatus?: string | null;
+  scenarioType: RagAppScenarioType;
+  scenarioTemplateId: string;
+  scenarioConfig: Record<string, unknown>;
+  publishChannels: Record<string, boolean>;
+  embedSettings: Record<string, unknown>;
 }
 
 export interface RagAppCreateRequest {
@@ -27,6 +33,12 @@ export interface RagAppCreateRequest {
   outputPolicy?: Record<string, unknown> | null;
   description?: string | null;
   metadata?: Record<string, unknown> | null;
+  scenarioType?: RagAppScenarioType | null;
+  scenarioTemplateId?: string | null;
+  scenarioConfig?: Record<string, unknown> | null;
+  publishChannels?: Record<string, boolean> | null;
+  embedSettings?: Record<string, unknown> | null;
+  createRecommendedConfigRevision?: boolean;
 }
 
 export interface RagAppUpdateRequest {
@@ -36,6 +48,11 @@ export interface RagAppUpdateRequest {
   outputPolicy?: Record<string, unknown> | null;
   metadata?: Record<string, unknown> | null;
   status?: RagAppStatus;
+  scenarioType?: RagAppScenarioType | null;
+  scenarioTemplateId?: string | null;
+  scenarioConfig?: Record<string, unknown> | null;
+  publishChannels?: Record<string, boolean> | null;
+  embedSettings?: Record<string, unknown> | null;
 }
 
 export interface RagAppApiKeyDTO {
@@ -140,6 +157,10 @@ export interface RagAppViewModel {
   defaultRevisionLabel: string;
   status: RagAppStatus;
   statusLabel: string;
+  scenarioType: RagAppScenarioType;
+  scenarioLabel: string;
+  publishChannelLabel: string;
+  embedStatusLabel: string;
   updatedAtLabel: string;
 }
 

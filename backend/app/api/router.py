@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.api.routes.agent_scenarios import router as agent_scenarios_router
 from app.api.routes.audit_logs import router as audit_logs_router
 from app.api.routes.app_runtime import router as app_runtime_router
 from app.api.routes.auth import router as auth_router
@@ -23,6 +24,7 @@ api_router = APIRouter()
 
 api_router.include_router(auth_router)
 api_router.include_router(health_router)
+api_router.include_router(agent_scenarios_router)
 api_router.include_router(audit_logs_router)
 api_router.include_router(dictionaries_router)
 api_router.include_router(users_router)
