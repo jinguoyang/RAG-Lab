@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "react-router";
-import { ChevronLeft, ChevronRight, Database, Eye, FileSymlink, Image as ImageIcon, RefreshCw, RotateCcw, Save, XCircle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, FileSymlink, Image as ImageIcon, RefreshCw, RotateCcw, Save, XCircle } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { UnderlineTabs, UnderlineTabsList, UnderlineTabsTrigger, UnderlineTabsContent } from "../components/rag/UnderlineTabs";
 import { Button } from "../components/rag/Button";
@@ -17,14 +17,12 @@ import {
   fetchChunks,
   fetchDocumentDetail,
   fetchDocumentVersions,
-  fetchIndexSyncJobs,
   fetchIngestJobs,
-  rebuildIndexSync,
   rechunkDocument,
   retryIngestJob,
   updateChunkGovernance,
 } from "../services/documentService";
-import type { ChunkDTO, DocumentDetailDTO, DocumentVersionDTO, IndexStageViewModel, IndexSyncJobDTO, IngestJobDTO } from "../types/document";
+import type { ChunkDTO, DocumentDetailDTO, DocumentVersionDTO, IndexStageViewModel, IngestJobDTO } from "../types/document";
 
 function indexStageVariant(status: IndexStageViewModel["status"]) {
   if (status === "success") return "success";
@@ -62,7 +60,6 @@ export function DocumentDetail() {
   const [detail, setDetail] = useState<DocumentDetailDTO | null>(null);
   const [versions, setVersions] = useState<DocumentVersionDTO[]>([]);
   const [jobs, setJobs] = useState<IngestJobDTO[]>([]);
-  const [indexSyncJobs, setIndexSyncJobs] = useState<IndexSyncJobDTO[]>([]);
   const [chunks, setChunks] = useState<ChunkDTO[]>([]);
   const [chunkPageNo, setChunkPageNo] = useState(1);
   const [chunkTotal, setChunkTotal] = useState(0);
@@ -72,7 +69,6 @@ export function DocumentDetail() {
   const [chunkOverlapInput, setChunkOverlapInput] = useState(120);
   const [governanceExcluded, setGovernanceExcluded] = useState(false);
   const [governanceNoteInput, setGovernanceNoteInput] = useState("");
-  const [rebuildTargetStore, setRebuildTargetStore] = useState("milvus");
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{
@@ -93,16 +89,14 @@ export function DocumentDetail() {
     if (!kbId || !docId) return;
     setLoading(true);
     try {
-      const [nextDetail, nextVersions, nextJobs, nextIndexSyncJobPage] = await Promise.all([
+      const [nextDetail, nextVersions, nextJobs] = await Promise.all([
         fetchDocumentDetail(kbId, docId),
         fetchDocumentVersions(kbId, docId),
         fetchIngestJobs(kbId, docId),
-        fetchIndexSyncJobs(kbId, docId),
       ]);
       setDetail(nextDetail);
       setVersions(nextVersions);
       setJobs(nextJobs.items);
-      setIndexSyncJobs(nextIndexSyncJobPage.items);
       const activeVersionId = nextDetail.document.activeVersionId;
       if (activeVersionId) {
         const nextChunks = await fetchChunks(kbId, docId, activeVersionId, nextChunkPageNo, 10);
@@ -275,33 +269,6 @@ export function DocumentDetail() {
     }
   }
 
-  async function handleDocumentIndexRebuild() {
-    if (!kbId || !docId) return;
-    const ok = await confirm({
-      title: `重建 ${rebuildTargetStore} 索引？`,
-      description: "重建范围将收窄到当前文档的 active version，结果会写入索引同步作业。",
-      confirmText: "重建索引",
-    });
-    if (!ok) return;
-
-    setActionLoading("rebuild-index");
-    try {
-      await rebuildIndexSync(kbId, {
-        targetStore: rebuildTargetStore,
-        documentId: docId,
-        versionId: activeVersion?.versionId ?? null,
-      });
-      const nextJobs = await fetchIndexSyncJobs(kbId, docId);
-      setIndexSyncJobs(nextJobs.items);
-      setFeedback({ variant: "success", title: "索引重建已创建", message: `${rebuildTargetStore} 作业已写入。` });
-      setActiveTab("indexSync");
-    } catch (error) {
-      setFeedback({ variant: "error", title: "索引重建失败", message: error instanceof Error ? error.message : "请稍后重试。" });
-    } finally {
-      setActionLoading(null);
-    }
-  }
-
   const versionRows = useMemo(
     () => versions.map((version) => toVersionRow(version, detail?.document.activeVersionId ?? null)),
     [versions, detail?.document.activeVersionId],
@@ -324,14 +291,14 @@ export function DocumentDetail() {
 
       <PageHeader
         title={document?.name || "文档详情"}
-        description="查看文档版本、当前 ChunkRevision Chunk、入库作业，并执行重分块与 active version 切换。"
+        description="查看文档版本、Chunks、入库作业，并执行重分块与 active version 切换。"
         actions={
           <>
             <Button variant="outline" disabled={loading} onClick={() => void loadData()}>
               <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} /> {loading ? "刷新中..." : "刷新"}
             </Button>
             <Button variant="primary" disabled={actionLoading === "rechunk"} onClick={() => setIsRechunkOpen(true)}>
-              <RotateCcw className="w-4 h-4 mr-2" /> 重分块
+              <RotateCcw className="w-4 h-4 mr-2" /> 重治理
             </Button>
           </>
         }
@@ -390,9 +357,6 @@ export function DocumentDetail() {
           </UnderlineTabsTrigger>
           <UnderlineTabsTrigger value="jobs">
             入库作业（{jobRows.length}）
-          </UnderlineTabsTrigger>
-          <UnderlineTabsTrigger value="indexSync">
-            索引同步作业（{indexSyncJobs.length}）
           </UnderlineTabsTrigger>
         </UnderlineTabsList>
 
@@ -574,53 +538,6 @@ export function DocumentDetail() {
                   </TableRow>
                 );
               })}
-            </TableBody>
-          </Table>
-        </UnderlineTabsContent>
-
-        <UnderlineTabsContent value="indexSync" className="flex-1 overflow-auto outline-none space-y-4">
-          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border-cream bg-ivory p-4">
-            <span className="text-sm text-stone-gray">目标副本</span>
-            <select
-              className="px-3 py-2 bg-parchment border border-border-cream rounded-md text-sm text-near-black focus:outline-none focus:ring-1 focus:ring-focus-blue"
-              value={rebuildTargetStore}
-              onChange={(event) => setRebuildTargetStore(event.target.value)}
-            >
-              <option value="milvus">milvus</option>
-              <option value="opensearch">opensearch</option>
-              <option value="neo4j">neo4j</option>
-            </select>
-            <Button variant="outline" disabled={actionLoading === "rebuild-index"} onClick={() => void handleDocumentIndexRebuild()}>
-              <Database className="w-4 h-4 mr-2" /> 重建索引
-            </Button>
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>作业 ID</TableHead>
-                <TableHead>目标副本</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>类型</TableHead>
-                <TableHead>失败原因</TableHead>
-                <TableHead>创建时间</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {indexSyncJobs.map((job) => (
-                <TableRow key={job.syncJobId}>
-                  <TableCell mono>{job.syncJobId}</TableCell>
-                  <TableCell>{job.targetStore}</TableCell>
-                  <TableCell><StatusBadge status={job.status} /></TableCell>
-                  <TableCell>{job.syncType}</TableCell>
-                  <TableCell className="max-w-xs text-stone-gray">{job.errorMessage || "-"}</TableCell>
-                  <TableCell>{job.createdAt}</TableCell>
-                </TableRow>
-              ))}
-              {indexSyncJobs.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6}>暂无索引同步作业。</TableCell>
-                </TableRow>
-              )}
             </TableBody>
           </Table>
         </UnderlineTabsContent>
