@@ -122,6 +122,60 @@
         }
       }
     },
+    "/api/v1/agent-scenario-templates": {
+      "get": {
+        "tags": [
+          "agent-scenario-templates"
+        ],
+        "summary": "Read Agent Scenario Templates",
+        "description": "返回内置业务助手场景模板；第一版只要求登录态。",
+        "operationId": "read_agent_scenario_templates_api_v1_agent_scenario_templates_get",
+        "parameters": [
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentScenarioTemplateDTO"
+                  },
+                  "title": "Response Read Agent Scenario Templates Api V1 Agent Scenario Templates Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/audit-logs/report": {
       "get": {
         "tags": [
@@ -1948,6 +2002,67 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "knowledge-bases"
+        ],
+        "summary": "Delete Knowledge Base Endpoint",
+        "description": "删除知识库及级联数据，需输入名称确认。",
+        "operationId": "delete_knowledge_base_endpoint_api_v1_knowledge_bases__kb_id__delete",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KbDeleteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/knowledge-bases/{kb_id}/disable": {
@@ -2053,6 +2168,66 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/KnowledgeBaseDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/delete-impact": {
+      "get": {
+        "tags": [
+          "knowledge-bases"
+        ],
+        "summary": "Get Kb Delete Impact Endpoint",
+        "description": "查询删除知识库会影响的数据范围。",
+        "operationId": "get_kb_delete_impact_endpoint_api_v1_knowledge_bases__kb_id__delete_impact_get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KbDeleteImpactDTO"
                 }
               }
             }
@@ -3305,74 +3480,6 @@
             }
           }
         }
-      },
-      "post": {
-        "tags": [
-          "documents"
-        ],
-        "summary": "Upload Document",
-        "description": "上传文档元数据，并创建首个版本和 queued 入库作业。",
-        "operationId": "upload_document_api_v1_knowledge_bases__kb_id__documents_post",
-        "parameters": [
-          {
-            "name": "kb_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Kb Id"
-            }
-          },
-          {
-            "name": "X-Dev-User",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Dev-User"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_upload_document_api_v1_knowledge_bases__kb_id__documents_post"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DocumentUploadResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
       }
     },
     "/api/v1/knowledge-bases/{kb_id}/documents/quality-summary": {
@@ -3568,6 +3675,88 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DocumentUploadResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/documents/{document_id}/rechunk": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Rechunk Document Endpoint",
+        "description": "对已绑定的文档用新策略重新分块。",
+        "operationId": "rechunk_document_endpoint_api_v1_knowledge_bases__kb_id__documents__document_id__rechunk_post",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RechunkRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Rechunk Document Endpoint Api V1 Knowledge Bases  Kb Id  Documents  Document Id  Rechunk Post"
                 }
               }
             }
@@ -8585,6 +8774,246 @@
         }
       }
     },
+    "/api/v1/app-runtime/embed-tokens": {
+      "post": {
+        "tags": [
+          "app-runtime"
+        ],
+        "summary": "Create Embed Token",
+        "description": "通过 App API Key 生成短期 Embed Token，嵌入页不接触长期 Key。",
+        "operationId": "create_embed_token_api_v1_app_runtime_embed_tokens_post",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppRuntimeEmbedTokenRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppRuntimeEmbedTokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app-runtime/retrieve": {
+      "post": {
+        "tags": [
+          "app-runtime"
+        ],
+        "summary": "Retrieve Evidence",
+        "description": "只返回当前 App 所属知识库的授权证据摘要，不暴露内部 Trace。",
+        "operationId": "retrieve_evidence_api_v1_app_runtime_retrieve_post",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppRuntimeRetrieveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppRuntimeRetrieveResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app-runtime/structured-runs": {
+      "post": {
+        "tags": [
+          "app-runtime"
+        ],
+        "summary": "Create Structured Run",
+        "description": "执行员工培训助手结构化输出，并写入 AppMessage 审计。",
+        "operationId": "create_structured_run_api_v1_app_runtime_structured_runs_post",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppRuntimeStructuredRunRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppRuntimeStructuredRunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app-runtime/training/quiz-submissions": {
+      "post": {
+        "tags": [
+          "app-runtime"
+        ],
+        "summary": "Create Training Quiz Submission",
+        "description": "提交员工培训助手测验答案并返回评分结果。",
+        "operationId": "create_training_quiz_submission_api_v1_app_runtime_training_quiz_submissions_post",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppRuntimeTrainingQuizSubmissionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppRuntimeTrainingQuizSubmissionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/app-runtime/messages/{message_id}/feedback": {
       "post": {
         "tags": [
@@ -8845,6 +9274,16 @@
         "operationId": "batch_actions_api_v1_library_documents_batch_actions_post",
         "parameters": [
           {
+            "name": "strongConfirmation",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Strongconfirmation"
+            }
+          },
+          {
             "name": "X-Dev-User",
             "in": "header",
             "required": false,
@@ -9091,6 +9530,16 @@
             }
           },
           {
+            "name": "strongConfirmation",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Strongconfirmation"
+            }
+          },
+          {
             "name": "X-Dev-User",
             "in": "header",
             "required": false,
@@ -9116,6 +9565,66 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response Delete Document Api V1 Library Documents  Document Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/library/documents/{document_id}/deletion-impact": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Get Document Deletion Impact",
+        "description": "分析删除文档的影响。",
+        "operationId": "get_document_deletion_impact_api_v1_library_documents__document_id__deletion_impact_get",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletionImpactAnalysis"
                 }
               }
             }
@@ -10997,6 +11506,174 @@
         "title": "AddLibraryMemberRequest",
         "description": "添加文档库成员请求。"
       },
+      "AgentScenarioConfigFieldDTO": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "fieldType": {
+            "type": "string",
+            "title": "Fieldtype"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required",
+            "default": false
+          },
+          "defaultValue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Defaultvalue"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/AgentScenarioFieldOptionDTO"
+            },
+            "type": "array",
+            "title": "Options",
+            "default": []
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "fieldType"
+        ],
+        "title": "AgentScenarioConfigFieldDTO",
+        "description": "场景模板暴露给前端的可配置字段。"
+      },
+      "AgentScenarioFieldOptionDTO": {
+        "properties": {
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "boolean"
+              }
+            ],
+            "title": "Value"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "label"
+        ],
+        "title": "AgentScenarioFieldOptionDTO",
+        "description": "场景配置字段的可选项。"
+      },
+      "AgentScenarioTemplateDTO": {
+        "properties": {
+          "templateId": {
+            "type": "string",
+            "title": "Templateid"
+          },
+          "scenarioType": {
+            "type": "string",
+            "title": "Scenariotype"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "defaultScenarioConfig": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Defaultscenarioconfig"
+          },
+          "defaultPublishChannels": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object",
+            "title": "Defaultpublishchannels"
+          },
+          "defaultEmbedSettings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Defaultembedsettings"
+          },
+          "configFields": {
+            "items": {
+              "$ref": "#/components/schemas/AgentScenarioConfigFieldDTO"
+            },
+            "type": "array",
+            "title": "Configfields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "templateId",
+          "scenarioType",
+          "name",
+          "description",
+          "defaultScenarioConfig",
+          "defaultPublishChannels",
+          "defaultEmbedSettings",
+          "configFields"
+        ],
+        "title": "AgentScenarioTemplateDTO",
+        "description": "内置场景模板摘要，用于创建场景化智能应用。"
+      },
       "AppConversationDetailDTO": {
         "properties": {
           "conversationId": {
@@ -11433,6 +12110,68 @@
         "title": "AppRuntimeCitationDTO",
         "description": "外部响应中的安全 Citation 摘要。"
       },
+      "AppRuntimeEmbedTokenRequest": {
+        "properties": {
+          "ttlSeconds": {
+            "type": "integer",
+            "maximum": 3600.0,
+            "minimum": 60.0,
+            "title": "Ttlseconds",
+            "default": 900
+          },
+          "allowedOrigin": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowedorigin"
+          },
+          "endUserId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enduserid"
+          }
+        },
+        "type": "object",
+        "title": "AppRuntimeEmbedTokenRequest",
+        "description": "通过 App API Key 生成短期嵌入 Token。"
+      },
+      "AppRuntimeEmbedTokenResponse": {
+        "properties": {
+          "embedToken": {
+            "type": "string",
+            "title": "Embedtoken"
+          },
+          "appId": {
+            "type": "string",
+            "title": "Appid"
+          },
+          "expiresAt": {
+            "type": "string",
+            "title": "Expiresat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "embedToken",
+          "appId",
+          "expiresAt"
+        ],
+        "title": "AppRuntimeEmbedTokenResponse",
+        "description": "短期嵌入 Token 响应，不包含 App API Key。"
+      },
       "AppRuntimeFeedbackRequest": {
         "properties": {
           "feedbackStatus": {
@@ -11564,6 +12303,373 @@
         ],
         "title": "AppRuntimeFeedbackResponse",
         "description": "外部反馈回流结果，不返回 Trace 或 Evidence 正文。"
+      },
+      "AppRuntimeRetrieveRequest": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Query"
+          },
+          "topK": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Topk",
+            "default": 5
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "AppRuntimeRetrieveRequest",
+        "description": "只返回授权证据摘要的 Runtime 检索请求。"
+      },
+      "AppRuntimeRetrieveResponse": {
+        "properties": {
+          "appId": {
+            "type": "string",
+            "title": "Appid"
+          },
+          "kbId": {
+            "type": "string",
+            "title": "Kbid"
+          },
+          "evidences": {
+            "items": {
+              "$ref": "#/components/schemas/AppRuntimeRetrievedEvidenceDTO"
+            },
+            "type": "array",
+            "title": "Evidences"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "appId",
+          "kbId",
+          "evidences",
+          "metadata"
+        ],
+        "title": "AppRuntimeRetrieveResponse",
+        "description": "Runtime retrieve 响应，不暴露内部 Trace 或完整 Chunk 正文。"
+      },
+      "AppRuntimeRetrievedEvidenceDTO": {
+        "properties": {
+          "evidenceId": {
+            "type": "string",
+            "title": "Evidenceid"
+          },
+          "chunkId": {
+            "type": "string",
+            "title": "Chunkid"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "locationSnapshot": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Locationsnapshot"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evidenceId",
+          "chunkId",
+          "summary",
+          "locationSnapshot"
+        ],
+        "title": "AppRuntimeRetrievedEvidenceDTO",
+        "description": "Runtime retrieve 返回的安全证据摘要。"
+      },
+      "AppRuntimeStructuredRunRequest": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "pattern": "^(training_explain|training_quiz_generate)$",
+            "title": "Action"
+          },
+          "topic": {
+            "type": "string",
+            "maxLength": 400,
+            "minLength": 1,
+            "title": "Topic"
+          },
+          "conversationId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversationid"
+          },
+          "endUserId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enduserid"
+          },
+          "difficulty": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difficulty"
+          },
+          "questionCount": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Questioncount"
+          },
+          "inputs": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inputs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action",
+          "topic"
+        ],
+        "title": "AppRuntimeStructuredRunRequest",
+        "description": "员工培训助手结构化运行请求，用于讲解和测验生成。"
+      },
+      "AppRuntimeStructuredRunResponse": {
+        "properties": {
+          "appId": {
+            "type": "string",
+            "title": "Appid"
+          },
+          "conversationId": {
+            "type": "string",
+            "title": "Conversationid"
+          },
+          "messageId": {
+            "type": "string",
+            "title": "Messageid"
+          },
+          "runId": {
+            "type": "string",
+            "title": "Runid"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "output": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Output"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "appId",
+          "conversationId",
+          "messageId",
+          "runId",
+          "action",
+          "output",
+          "metadata"
+        ],
+        "title": "AppRuntimeStructuredRunResponse",
+        "description": "员工培训助手结构化运行响应，始终保留 QARun 回溯信息。"
+      },
+      "AppRuntimeTrainingAnswerDTO": {
+        "properties": {
+          "questionId": {
+            "type": "string",
+            "title": "Questionid"
+          },
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "questionId",
+          "answer"
+        ],
+        "title": "AppRuntimeTrainingAnswerDTO",
+        "description": "培训测验答题项。"
+      },
+      "AppRuntimeTrainingQuestionResultDTO": {
+        "properties": {
+          "questionId": {
+            "type": "string",
+            "title": "Questionid"
+          },
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "correctAnswer": {
+            "type": "string",
+            "title": "Correctanswer"
+          },
+          "isCorrect": {
+            "type": "boolean",
+            "title": "Iscorrect"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "questionId",
+          "answer",
+          "correctAnswer",
+          "isCorrect",
+          "explanation"
+        ],
+        "title": "AppRuntimeTrainingQuestionResultDTO",
+        "description": "单题评分结果。"
+      },
+      "AppRuntimeTrainingQuizSubmissionRequest": {
+        "properties": {
+          "conversationId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Conversationid"
+          },
+          "quizMessageId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Quizmessageid"
+          },
+          "answers": {
+            "items": {
+              "$ref": "#/components/schemas/AppRuntimeTrainingAnswerDTO"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Answers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversationId",
+          "quizMessageId",
+          "answers"
+        ],
+        "title": "AppRuntimeTrainingQuizSubmissionRequest",
+        "description": "培训测验提交请求。"
+      },
+      "AppRuntimeTrainingQuizSubmissionResponse": {
+        "properties": {
+          "conversationId": {
+            "type": "string",
+            "title": "Conversationid"
+          },
+          "messageId": {
+            "type": "string",
+            "title": "Messageid"
+          },
+          "quizMessageId": {
+            "type": "string",
+            "title": "Quizmessageid"
+          },
+          "runId": {
+            "type": "string",
+            "title": "Runid"
+          },
+          "score": {
+            "type": "integer",
+            "title": "Score"
+          },
+          "passed": {
+            "type": "boolean",
+            "title": "Passed"
+          },
+          "passingScore": {
+            "type": "integer",
+            "title": "Passingscore"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/AppRuntimeTrainingQuestionResultDTO"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversationId",
+          "messageId",
+          "quizMessageId",
+          "runId",
+          "score",
+          "passed",
+          "passingScore",
+          "results",
+          "metadata"
+        ],
+        "title": "AppRuntimeTrainingQuizSubmissionResponse",
+        "description": "培训测验评分结果，并返回记录训练结果的 AppMessage。"
       },
       "AuditExportResponse": {
         "properties": {
@@ -11963,47 +13069,6 @@
         "title": "BatchActionSummary",
         "description": "批量操作汇总。"
       },
-      "Body_upload_document_api_v1_knowledge_bases__kb_id__documents_post": {
-        "properties": {
-          "file": {
-            "type": "string",
-            "contentMediaType": "application/octet-stream",
-            "title": "File"
-          },
-          "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
-          },
-          "securityLevel": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Securitylevel"
-          },
-          "forceUpload": {
-            "type": "boolean",
-            "title": "Forceupload",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": [
-          "file"
-        ],
-        "title": "Body_upload_document_api_v1_knowledge_bases__kb_id__documents_post"
-      },
       "Body_upload_document_api_v1_library_documents_post": {
         "properties": {
           "file": {
@@ -12304,10 +13369,6 @@
             ],
             "title": "Tokencount"
           },
-          "securityLevel": {
-            "type": "string",
-            "title": "Securitylevel"
-          },
           "status": {
             "type": "string",
             "title": "Status"
@@ -12334,7 +13395,6 @@
           "content",
           "contentHash",
           "tokenCount",
-          "securityLevel",
           "status",
           "createdAt"
         ],
@@ -13449,10 +14509,6 @@
             "type": "string",
             "title": "Sourcetype"
           },
-          "securityLevel": {
-            "type": "string",
-            "title": "Securitylevel"
-          },
           "status": {
             "type": "string",
             "title": "Status"
@@ -13483,7 +14539,6 @@
           "kbId",
           "name",
           "sourceType",
-          "securityLevel",
           "status",
           "activeVersionId",
           "createdAt",
@@ -15273,10 +16328,6 @@
             "type": "string",
             "title": "Contentpreview"
           },
-          "securityLevel": {
-            "type": "string",
-            "title": "Securitylevel"
-          },
           "refType": {
             "type": "string",
             "title": "Reftype"
@@ -15294,7 +16345,6 @@
           "documentName",
           "chunkIndex",
           "contentPreview",
-          "securityLevel",
           "refType",
           "metadata"
         ],
@@ -15725,6 +16775,137 @@
         "title": "IngestJobDTO",
         "description": "入库作业 DTO，用于前端轮询和最近作业展示。"
       },
+      "KbDeleteImpactBlockerDTO": {
+        "properties": {
+          "activeRagApps": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Activeragapps"
+          },
+          "runningJobs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Runningjobs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "activeRagApps",
+          "runningJobs"
+        ],
+        "title": "KbDeleteImpactBlockerDTO",
+        "description": "删除阻断条件。"
+      },
+      "KbDeleteImpactCascadeDTO": {
+        "properties": {
+          "bindings": {
+            "type": "integer",
+            "title": "Bindings"
+          },
+          "kbDocuments": {
+            "type": "integer",
+            "title": "Kbdocuments"
+          },
+          "chunks": {
+            "type": "integer",
+            "title": "Chunks"
+          },
+          "configRevisions": {
+            "type": "integer",
+            "title": "Configrevisions"
+          },
+          "inactiveRagApps": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Inactiveragapps"
+          },
+          "kbMembers": {
+            "type": "integer",
+            "title": "Kbmembers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "bindings",
+          "kbDocuments",
+          "chunks",
+          "configRevisions",
+          "inactiveRagApps",
+          "kbMembers"
+        ],
+        "title": "KbDeleteImpactCascadeDTO",
+        "description": "将被级联清理的数据统计。"
+      },
+      "KbDeleteImpactDTO": {
+        "properties": {
+          "kbName": {
+            "type": "string",
+            "title": "Kbname"
+          },
+          "blockers": {
+            "$ref": "#/components/schemas/KbDeleteImpactBlockerDTO"
+          },
+          "cascadeData": {
+            "$ref": "#/components/schemas/KbDeleteImpactCascadeDTO"
+          },
+          "unaffected": {
+            "$ref": "#/components/schemas/KbDeleteImpactUnaffectedDTO"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kbName",
+          "blockers",
+          "cascadeData",
+          "unaffected"
+        ],
+        "title": "KbDeleteImpactDTO",
+        "description": "删除影响查询响应。"
+      },
+      "KbDeleteImpactUnaffectedDTO": {
+        "properties": {
+          "libraryDocuments": {
+            "type": "integer",
+            "title": "Librarydocuments"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "libraryDocuments",
+          "description"
+        ],
+        "title": "KbDeleteImpactUnaffectedDTO",
+        "description": "不受影响的数据说明。"
+      },
+      "KbDeleteRequest": {
+        "properties": {
+          "confirmName": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Confirmname"
+          }
+        },
+        "type": "object",
+        "required": [
+          "confirmName"
+        ],
+        "title": "KbDeleteRequest",
+        "description": "删除知识库请求，需输入知识库名称确认。"
+      },
       "KbMemberBindingDTO": {
         "properties": {
           "bindingId": {
@@ -15929,13 +17110,6 @@
             ],
             "title": "Ownerid"
           },
-          "defaultSecurityLevel": {
-            "type": "string",
-            "maxLength": 32,
-            "minLength": 1,
-            "title": "Defaultsecuritylevel",
-            "default": "public"
-          },
           "sparseIndexEnabled": {
             "type": "boolean",
             "title": "Sparseindexenabled",
@@ -15989,10 +17163,6 @@
             "type": "string",
             "title": "Ownerid"
           },
-          "defaultSecurityLevel": {
-            "type": "string",
-            "title": "Defaultsecuritylevel"
-          },
           "sparseIndexEnabled": {
             "type": "boolean",
             "title": "Sparseindexenabled"
@@ -16033,7 +17203,6 @@
           "kbId",
           "name",
           "ownerId",
-          "defaultSecurityLevel",
           "sparseIndexEnabled",
           "graphIndexEnabled",
           "requiredForActivation",
@@ -16081,19 +17250,6 @@
               }
             ],
             "title": "Ownerid"
-          },
-          "defaultSecurityLevel": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 32,
-                "minLength": 1
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Defaultsecuritylevel"
           },
           "sparseIndexEnabled": {
             "anyOf": [
@@ -16323,6 +17479,11 @@
             "type": "string",
             "title": "Ownerid"
           },
+          "ownerName": {
+            "type": "string",
+            "title": "Ownername",
+            "default": ""
+          },
           "name": {
             "type": "string",
             "title": "Name"
@@ -16378,6 +17539,11 @@
           "ownerId": {
             "type": "string",
             "title": "Ownerid"
+          },
+          "ownerName": {
+            "type": "string",
+            "title": "Ownername",
+            "default": ""
           },
           "name": {
             "type": "string",
@@ -19645,6 +20811,71 @@
               }
             ],
             "title": "Metadata"
+          },
+          "scenarioType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenariotype"
+          },
+          "scenarioTemplateId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenariotemplateid"
+          },
+          "scenarioConfig": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenarioconfig"
+          },
+          "publishChannels": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "boolean"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publishchannels"
+          },
+          "embedSettings": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedsettings"
+          },
+          "createRecommendedConfigRevision": {
+            "type": "boolean",
+            "title": "Createrecommendedconfigrevision",
+            "default": false
           }
         },
         "type": "object",
@@ -19734,6 +20965,31 @@
               }
             ],
             "title": "Knowledgebasestatus"
+          },
+          "scenarioType": {
+            "type": "string",
+            "title": "Scenariotype"
+          },
+          "scenarioTemplateId": {
+            "type": "string",
+            "title": "Scenariotemplateid"
+          },
+          "scenarioConfig": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Scenarioconfig"
+          },
+          "publishChannels": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object",
+            "title": "Publishchannels"
+          },
+          "embedSettings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Embedsettings"
           }
         },
         "type": "object",
@@ -19745,7 +21001,12 @@
           "outputPolicy",
           "metadata",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "scenarioType",
+          "scenarioTemplateId",
+          "scenarioConfig",
+          "publishChannels",
+          "embedSettings"
         ],
         "title": "RagAppDTO",
         "description": "RAG App 管理端摘要，接口层统一使用 camelCase 字段。"
@@ -19823,11 +21084,95 @@
               }
             ],
             "title": "Status"
+          },
+          "scenarioType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenariotype"
+          },
+          "scenarioTemplateId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenariotemplateid"
+          },
+          "scenarioConfig": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenarioconfig"
+          },
+          "publishChannels": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "boolean"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publishchannels"
+          },
+          "embedSettings": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedsettings"
           }
         },
         "type": "object",
         "title": "RagAppUpdateRequest",
         "description": "更新 RAG App 基础信息；未传字段保持原值不变。"
+      },
+      "RechunkRequest": {
+        "properties": {
+          "strategy": {
+            "type": "string",
+            "title": "Strategy",
+            "default": "fixed_size"
+          },
+          "params": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Params"
+          }
+        },
+        "type": "object",
+        "title": "RechunkRequest",
+        "description": "重新分块请求。"
       },
       "RequiredForActivationDTO": {
         "properties": {

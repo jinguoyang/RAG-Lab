@@ -57,7 +57,7 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 | Sprint 46 | 架构演进 V2.0 | ChunkRevision 前端改造与文档同步 | Ready | `sprint41-60/Sprint-46.md` |
 | Sprint 47 | 场景化智能应用 | 场景模板与智能应用模型基线 | Done | `sprint41-60/Sprint-47.md` |
 | Sprint 48 | 场景化智能应用 | 场景向导与知识库问答助手 | Done | `sprint41-60/Sprint-48.md` |
-| Sprint 49 | 场景化智能应用 | 员工培训助手运行时 | Ready | `sprint41-60/Sprint-49.md` |
+| Sprint 49 | 场景化智能应用 | 员工培训助手运行时 | Done | `sprint41-60/Sprint-49.md` |
 | Sprint 50 | 场景化智能应用 | 验收硬化与文档同步 | Ready | `sprint41-60/Sprint-50.md` |
 
 ## 3. 单个 Sprint 文档约定

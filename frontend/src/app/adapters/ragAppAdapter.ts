@@ -148,6 +148,16 @@ export function groupInvocationsByConversation(
 }
 
 export function toAppMessageViewModel(message: AppMessageDTO): AppMessageViewModel {
+  const trainingResult = message.metadata?.trainingResult;
+  const score = typeof trainingResult === "object" && trainingResult !== null && "score" in trainingResult
+    ? Number(trainingResult.score)
+    : null;
+  const passed = typeof trainingResult === "object" && trainingResult !== null && "passed" in trainingResult
+    ? Boolean(trainingResult.passed)
+    : null;
+  const passingScore = typeof trainingResult === "object" && trainingResult !== null && "passingScore" in trainingResult
+    ? Number(trainingResult.passingScore)
+    : null;
   return {
     id: message.messageId,
     role: message.role,
@@ -156,5 +166,8 @@ export function toAppMessageViewModel(message: AppMessageDTO): AppMessageViewMod
     qaRunId: message.qaRunId,
     status: message.status,
     createdAtLabel: formatDateTime(message.createdAt),
+    trainingResultLabel: score == null || Number.isNaN(score)
+      ? undefined
+      : `训练得分 ${score} / 100 · ${passed ? "已通过" : "未通过"}${passingScore == null || Number.isNaN(passingScore) ? "" : ` · 及格分 ${passingScore}`}`,
   };
 }

@@ -95,6 +95,78 @@ class AppRuntimeRetrieveResponse(BaseModel):
     metadata: dict[str, Any]
 
 
+class AppRuntimeStructuredRunRequest(BaseModel):
+    """员工培训助手结构化运行请求，用于讲解和测验生成。"""
+
+    action: str = Field(pattern="^(training_explain|training_quiz_generate)$")
+    topic: str = Field(min_length=1, max_length=400)
+    conversationId: UUID | None = None
+    endUserId: str | None = Field(default=None, max_length=128)
+    difficulty: str | None = Field(default=None, max_length=32)
+    questionCount: int | None = Field(default=None, ge=1, le=10)
+    inputs: dict[str, Any] | None = None
+
+    @field_validator("topic")
+    @classmethod
+    def validate_topic(cls, value: str) -> str:
+        """裁剪培训主题，避免空主题进入 QARun。"""
+        stripped_value = value.strip()
+        if not stripped_value:
+            raise ValueError("Topic is required.")
+        return stripped_value
+
+
+class AppRuntimeStructuredRunResponse(BaseModel):
+    """员工培训助手结构化运行响应，始终保留 QARun 回溯信息。"""
+
+    appId: str
+    conversationId: str
+    messageId: str
+    runId: str
+    action: str
+    output: dict[str, Any]
+    metadata: dict[str, Any]
+
+
+class AppRuntimeTrainingAnswerDTO(BaseModel):
+    """培训测验答题项。"""
+
+    questionId: str
+    answer: str
+
+
+class AppRuntimeTrainingQuizSubmissionRequest(BaseModel):
+    """培训测验提交请求。"""
+
+    conversationId: UUID
+    quizMessageId: UUID
+    answers: list[AppRuntimeTrainingAnswerDTO] = Field(min_length=1)
+
+
+class AppRuntimeTrainingQuestionResultDTO(BaseModel):
+    """单题评分结果。"""
+
+    questionId: str
+    answer: str
+    correctAnswer: str
+    isCorrect: bool
+    explanation: str
+
+
+class AppRuntimeTrainingQuizSubmissionResponse(BaseModel):
+    """培训测验评分结果，并返回记录训练结果的 AppMessage。"""
+
+    conversationId: str
+    messageId: str
+    quizMessageId: str
+    runId: str
+    score: int
+    passed: bool
+    passingScore: int
+    results: list[AppRuntimeTrainingQuestionResultDTO]
+    metadata: dict[str, Any]
+
+
 class AppRuntimeFeedbackRequest(BaseModel):
     """外部回答质量反馈；只允许回流到当前 App 的助手消息。"""
 

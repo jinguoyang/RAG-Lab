@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { toRagAppViewModel } from "./ragAppAdapter";
-import type { RagAppDTO } from "../types/ragApp";
+import { toAppMessageViewModel, toRagAppViewModel } from "./ragAppAdapter";
+import type { AppMessageDTO, RagAppDTO } from "../types/ragApp";
 
 function buildApp(overrides: Partial<RagAppDTO> = {}): RagAppDTO {
   return {
@@ -45,5 +45,30 @@ describe("toRagAppViewModel", () => {
     expect(viewModel.scenarioLabel).toBe("知识库问答助手");
     expect(viewModel.publishChannelLabel).toBe("API / 嵌入页");
     expect(viewModel.embedStatusLabel).toBe("已启用");
+  });
+});
+
+describe("toAppMessageViewModel", () => {
+  it("formats training result metadata for conversation detail", () => {
+    const message: AppMessageDTO = {
+      messageId: "msg-001",
+      conversationId: "conv-001",
+      role: "assistant",
+      content: "训练得分 50，未通过。",
+      qaRunId: "run-001",
+      status: "success",
+      metadata: {
+        trainingResult: {
+          score: 50,
+          passed: false,
+          passingScore: 80,
+        },
+      },
+      createdAt: "2026-05-24T10:30:00+08:00",
+    };
+
+    const viewModel = toAppMessageViewModel(message);
+
+    expect(viewModel.trainingResultLabel).toBe("训练得分 50 / 100 · 未通过 · 及格分 80");
   });
 });

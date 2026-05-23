@@ -12,6 +12,10 @@ import type {
   AppRuntimeRetrieveRequest,
   AppRuntimeRetrieveResponse,
   AppRuntimeSseEvent,
+  AppRuntimeStructuredRunRequest,
+  AppRuntimeStructuredRunResponse,
+  AppRuntimeTrainingQuizSubmissionRequest,
+  AppRuntimeTrainingQuizSubmissionResponse,
 } from "../types/appRuntime";
 
 function buildRuntimeHeaders(apiKey: string): Record<string, string> {
@@ -72,6 +76,28 @@ export async function retrieveWithAppRuntime(
 ): Promise<AppRuntimeRetrieveResponse> {
   return apiPostJsonWithHeaders<AppRuntimeRetrieveResponse>(
     "/app-runtime/retrieve",
+    request,
+    buildRuntimeHeaders(credential),
+  );
+}
+
+export async function createStructuredRunWithAppRuntime(
+  credential: string,
+  request: AppRuntimeStructuredRunRequest,
+): Promise<AppRuntimeStructuredRunResponse> {
+  return apiPostJsonWithHeaders<AppRuntimeStructuredRunResponse>(
+    "/app-runtime/structured-runs",
+    request,
+    buildRuntimeHeaders(credential),
+  );
+}
+
+export async function submitTrainingQuizWithAppRuntime(
+  credential: string,
+  request: AppRuntimeTrainingQuizSubmissionRequest,
+): Promise<AppRuntimeTrainingQuizSubmissionResponse> {
+  return apiPostJsonWithHeaders<AppRuntimeTrainingQuizSubmissionResponse>(
+    "/app-runtime/training/quiz-submissions",
     request,
     buildRuntimeHeaders(credential),
   );

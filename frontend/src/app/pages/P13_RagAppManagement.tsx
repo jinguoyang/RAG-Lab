@@ -39,10 +39,12 @@ import { fetchKnowledgeBases } from "../services/knowledgeBaseService";
 import {
   chatWithAppRuntime,
   createAppRuntimeEmbedToken,
+  createStructuredRunWithAppRuntime,
   parseAppRuntimeSse,
   retrieveWithAppRuntime,
   streamChatWithAppRuntime,
   submitAppRuntimeFeedback,
+  submitTrainingQuizWithAppRuntime,
 } from "../services/appRuntimeService";
 import { listAgentScenarioTemplates } from "../services/agentScenarioService";
 import { chooseActiveDictionaryValue, fetchDictionaryItemsWithFallback } from "../services/dictionaryService";
@@ -61,7 +63,13 @@ import {
 import type { ConfigRevisionDTO } from "../types/config";
 import type { AgentScenarioTemplateDTO } from "../types/agentScenario";
 import type { KnowledgeBase } from "../types/knowledgeBase";
-import type { AppRuntimeChatResponse, AppRuntimeRetrieveResponse, AppRuntimeSseEvent } from "../types/appRuntime";
+import type {
+  AppRuntimeChatResponse,
+  AppRuntimeRetrieveResponse,
+  AppRuntimeSseEvent,
+  AppRuntimeStructuredRunResponse,
+  AppRuntimeTrainingQuizSubmissionResponse,
+} from "../types/appRuntime";
 import type { DictionaryItemDTO } from "../types/dictionary";
 import type {
   AppInvocationDTO,
@@ -110,6 +118,12 @@ const EMPTY_APP_FORM = {
   embedEnabled: true,
   embedAllowedOrigins: "",
   embedGreeting: "你好，我是知识库问答助手。",
+  audience: "new_employee",
+  defaultTopic: "",
+  difficulty: "normal",
+  questionCount: 5,
+  passingScore: 80,
+  recordTrainingResult: true,
   createRecommendedConfigRevision: true,
 };
 
@@ -180,6 +194,9 @@ export function RagAppManagement() {
   const [runtimeMode, setRuntimeMode] = useState<"blocking" | "streaming">("blocking");
   const [runtimeResult, setRuntimeResult] = useState<AppRuntimeChatResponse | null>(null);
   const [runtimeRetrieveResult, setRuntimeRetrieveResult] = useState<AppRuntimeRetrieveResponse | null>(null);
+  const [trainingStructuredRun, setTrainingStructuredRun] = useState<AppRuntimeStructuredRunResponse | null>(null);
+  const [trainingAnswers, setTrainingAnswers] = useState<Record<string, string>>({});
+  const [trainingSubmission, setTrainingSubmission] = useState<AppRuntimeTrainingQuizSubmissionResponse | null>(null);
   const [runtimeEvents, setRuntimeEvents] = useState<AppRuntimeSseEvent[]>([]);
   const [runtimeFeedbackStatus, setRuntimeFeedbackStatus] = useState("wrong");
   const [runtimeFeedbackNote, setRuntimeFeedbackNote] = useState("");
@@ -330,6 +347,12 @@ export function RagAppManagement() {
       publishEmbed: template?.defaultPublishChannels?.embed ?? true,
       embedEnabled: Boolean(template?.defaultEmbedSettings?.enabled ?? true),
       embedGreeting: String(template?.defaultEmbedSettings?.greeting ?? EMPTY_APP_FORM.embedGreeting),
+      audience: String(templateConfigValue(template, "audience", EMPTY_APP_FORM.audience)),
+      defaultTopic: String(templateConfigValue(template, "defaultTopic", EMPTY_APP_FORM.defaultTopic)),
+      difficulty: String(templateConfigValue(template, "difficulty", EMPTY_APP_FORM.difficulty)),
+      questionCount: Number(templateConfigValue(template, "questionCount", EMPTY_APP_FORM.questionCount)),
+      passingScore: Number(templateConfigValue(template, "passingScore", EMPTY_APP_FORM.passingScore)),
+      recordTrainingResult: Boolean(templateConfigValue(template, "recordTrainingResult", EMPTY_APP_FORM.recordTrainingResult)),
     });
     setFeedback(null);
     setIsAppFormOpen(true);
@@ -354,6 +377,12 @@ export function RagAppManagement() {
       embedEnabled: Boolean(app.embedSettings.enabled ?? false),
       embedAllowedOrigins: Array.isArray(app.embedSettings.allowedOrigins) ? app.embedSettings.allowedOrigins.join("\n") : "",
       embedGreeting: String(app.embedSettings.greeting ?? EMPTY_APP_FORM.embedGreeting),
+      audience: String(app.scenarioConfig.audience ?? EMPTY_APP_FORM.audience),
+      defaultTopic: String(app.scenarioConfig.defaultTopic ?? EMPTY_APP_FORM.defaultTopic),
+      difficulty: String(app.scenarioConfig.difficulty ?? EMPTY_APP_FORM.difficulty),
+      questionCount: Number(app.scenarioConfig.questionCount ?? EMPTY_APP_FORM.questionCount),
+      passingScore: Number(app.scenarioConfig.passingScore ?? EMPTY_APP_FORM.passingScore),
+      recordTrainingResult: Boolean(app.scenarioConfig.recordTrainingResult ?? EMPTY_APP_FORM.recordTrainingResult),
       createRecommendedConfigRevision: false,
     });
     setFeedback(null);
@@ -384,6 +413,12 @@ export function RagAppManagement() {
           citationCount: Number(appForm.citationCount),
           noEvidencePolicy: appForm.noEvidencePolicy,
           showSuggestedQuestions: appForm.showSuggestedQuestions,
+          audience: appForm.audience,
+          defaultTopic: appForm.defaultTopic,
+          difficulty: appForm.difficulty,
+          questionCount: Number(appForm.questionCount),
+          passingScore: Number(appForm.passingScore),
+          recordTrainingResult: appForm.recordTrainingResult,
           greeting: appForm.embedGreeting,
         },
         publishChannels: {
@@ -551,6 +586,9 @@ export function RagAppManagement() {
     setIsRuntimeRunning(true);
     setRuntimeResult(null);
     setRuntimeRetrieveResult(null);
+    setTrainingStructuredRun(null);
+    setTrainingSubmission(null);
+    setTrainingAnswers({});
     setRuntimeEvents([]);
     try {
       if (runtimeMode === "streaming") {
@@ -589,6 +627,71 @@ export function RagAppManagement() {
         rawMessage.includes("KEY_EXPIRED") ? "API Key 已过期，请创建新的 Key。" :
         rawMessage;
       setFeedback({ variant: "error", title: friendlyTitle, message: friendlyMessage });
+    } finally {
+      setIsRuntimeRunning(false);
+    }
+  };
+
+  const handleRunTrainingStructured = async (action: "training_explain" | "training_quiz_generate") => {
+    if (!selectedApp || !runtimeApiKey.trim() || !runtimeQuery.trim()) {
+      setFeedback({ variant: "error", title: "培训试运行信息不完整", message: "请输入 App API Key 和培训主题。" });
+      return;
+    }
+    setIsRuntimeRunning(true);
+    setTrainingStructuredRun(null);
+    setTrainingSubmission(null);
+    setTrainingAnswers({});
+    try {
+      const response = await createStructuredRunWithAppRuntime(runtimeApiKey, {
+        action,
+        topic: runtimeQuery.trim(),
+        difficulty: String(selectedApp.scenarioConfig.difficulty ?? "normal"),
+        questionCount: Number(selectedApp.scenarioConfig.questionCount ?? 5),
+      });
+      setTrainingStructuredRun(response);
+      setFeedback({
+        variant: "success",
+        title: action === "training_explain" ? "培训讲解已生成" : "培训测验已生成",
+        message: `已关联 QARun ${shortId(response.runId)}。`,
+      });
+      await loadAppDetail(selectedApp);
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "培训试运行失败",
+        message: error instanceof Error ? error.message : "请检查 API Key、应用状态和后端服务。",
+      });
+    } finally {
+      setIsRuntimeRunning(false);
+    }
+  };
+
+  const handleSubmitTrainingQuiz = async () => {
+    const quiz = trainingStructuredRun?.output.quiz;
+    if (!selectedApp || !trainingStructuredRun || !quiz || !runtimeApiKey.trim()) return;
+    setIsRuntimeRunning(true);
+    try {
+      const response = await submitTrainingQuizWithAppRuntime(runtimeApiKey, {
+        conversationId: trainingStructuredRun.conversationId,
+        quizMessageId: trainingStructuredRun.messageId,
+        answers: quiz.questions.map((question) => ({
+          questionId: question.questionId,
+          answer: trainingAnswers[question.questionId] ?? "",
+        })),
+      });
+      setTrainingSubmission(response);
+      setFeedback({
+        variant: "success",
+        title: response.passed ? "训练已通过" : "训练未通过",
+        message: `得分 ${response.score}，结果已写入会话消息。`,
+      });
+      await loadAppDetail(selectedApp);
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "答题提交失败",
+        message: error instanceof Error ? error.message : "请检查测验消息是否仍属于当前会话。",
+      });
     } finally {
       setIsRuntimeRunning(false);
     }
@@ -985,22 +1088,33 @@ export function RagAppManagement() {
                             value={runtimeQuery}
                             onChange={(event) => setRuntimeQuery(event.target.value)}
                             rows={3}
-                            placeholder="输入真实问题..."
+                            placeholder={selectedApp.scenarioType === "employee_training" ? "输入培训主题..." : "输入真实问题..."}
                             className="w-full rounded-md border border-border-cream bg-white px-3 py-2 text-sm text-near-black focus:outline-none"
                           />
-                          <div className="flex items-center justify-between gap-3">
-                            <select
-                              value={runtimeMode}
-                              onChange={(event) => setRuntimeMode(event.target.value as "blocking" | "streaming")}
-                              className="h-9 rounded-md border border-border-cream bg-white px-3 text-sm text-near-black focus:outline-none"
-                            >
-                              <option value="blocking">blocking</option>
-                              <option value="streaming">streaming</option>
-                            </select>
-                            <Button variant="primary" size="sm" disabled={isRuntimeRunning} onClick={() => void handleRunRuntimeTrial()}>
-                              <PlayCircle className="mr-1 h-3 w-3" /> 试运行
-                            </Button>
-                          </div>
+                          {selectedApp.scenarioType === "employee_training" ? (
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                              <Button variant="outline" size="sm" disabled={isRuntimeRunning} onClick={() => void handleRunTrainingStructured("training_explain")}>
+                                <FileText className="mr-1 h-3 w-3" /> 生成讲解
+                              </Button>
+                              <Button variant="primary" size="sm" disabled={isRuntimeRunning} onClick={() => void handleRunTrainingStructured("training_quiz_generate")}>
+                                <PlayCircle className="mr-1 h-3 w-3" /> 生成测验
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between gap-3">
+                              <select
+                                value={runtimeMode}
+                                onChange={(event) => setRuntimeMode(event.target.value as "blocking" | "streaming")}
+                                className="h-9 rounded-md border border-border-cream bg-white px-3 text-sm text-near-black focus:outline-none"
+                              >
+                                <option value="blocking">blocking</option>
+                                <option value="streaming">streaming</option>
+                              </select>
+                              <Button variant="primary" size="sm" disabled={isRuntimeRunning} onClick={() => void handleRunRuntimeTrial()}>
+                                <PlayCircle className="mr-1 h-3 w-3" /> 试运行
+                              </Button>
+                            </div>
+                          )}
                           {runtimeResult && (
                             <div className="space-y-2 rounded-lg border border-border-cream bg-white p-3 text-xs">
                               <div className="text-near-black">{runtimeResult.answer || "无回答内容"}</div>
@@ -1037,6 +1151,54 @@ export function RagAppManagement() {
                               <Button variant="outline" size="sm" disabled={isRuntimeRunning} onClick={() => void handleSubmitRuntimeFeedback()}>
                                 提交反馈并加入评估集
                               </Button>
+                            </div>
+                          )}
+                          {trainingStructuredRun && (
+                            <div className="space-y-3 rounded-lg border border-border-cream bg-white p-3 text-xs">
+                              <div className="font-mono text-stone-gray">runId: {trainingStructuredRun.runId}</div>
+                              {trainingStructuredRun.output.explanation && (
+                                <div className="space-y-2">
+                                  <div className="font-medium text-near-black">{trainingStructuredRun.output.explanation.topic}</div>
+                                  <p className="whitespace-pre-wrap leading-5 text-near-black">{trainingStructuredRun.output.explanation.summary}</p>
+                                </div>
+                              )}
+                              {trainingStructuredRun.output.quiz && (
+                                <div className="space-y-3">
+                                  <div className="text-stone-gray">
+                                    测验：{trainingStructuredRun.output.quiz.questionCount} 题 · 难度 {trainingStructuredRun.output.quiz.difficulty}
+                                  </div>
+                                  {trainingStructuredRun.output.quiz.questions.map((question, index) => (
+                                    <div key={question.questionId} className="space-y-2 rounded-md border border-border-cream bg-parchment p-2">
+                                      <div className="font-medium text-near-black">{index + 1}. {question.stem}</div>
+                                      <select
+                                        value={trainingAnswers[question.questionId] ?? ""}
+                                        onChange={(event) => setTrainingAnswers((current) => ({ ...current, [question.questionId]: event.target.value }))}
+                                        className="h-8 w-full rounded-md border border-border-cream bg-white px-2 text-xs text-near-black focus:outline-none"
+                                      >
+                                        <option value="">选择答案</option>
+                                        {question.options.map((option) => (
+                                          <option key={option} value={option}>{option}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  ))}
+                                  <Button variant="primary" size="sm" disabled={isRuntimeRunning} onClick={() => void handleSubmitTrainingQuiz()}>
+                                    提交答题并评分
+                                  </Button>
+                                </div>
+                              )}
+                              {trainingSubmission && (
+                                <div className="space-y-2 rounded-md border border-border-cream bg-parchment p-2">
+                                  <div className="font-medium text-near-black">
+                                    得分 {trainingSubmission.score} / 100 · {trainingSubmission.passed ? "已通过" : "未通过"}
+                                  </div>
+                                  {trainingSubmission.results.map((item) => (
+                                    <div key={item.questionId} className="text-stone-gray">
+                                      {item.questionId}：{item.isCorrect ? "正确" : "错误"}，正确答案：{item.correctAnswer}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           )}
                           {runtimeEvents.length > 0 && (
@@ -1265,6 +1427,11 @@ export function RagAppManagement() {
                                     )}
                                   </div>
                                   <p className="whitespace-pre-wrap text-near-black">{message.content}</p>
+                                  {message.trainingResultLabel && (
+                                    <div className="mt-2 rounded-md border border-border-cream bg-parchment px-2 py-1 text-stone-gray">
+                                      {message.trainingResultLabel}
+                                    </div>
+                                  )}
                                 </div>
                               ))}
                             </div>
@@ -1498,9 +1665,70 @@ Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/app-runtime/ch
             </label>
           </div>
           {selectedScenarioTemplate?.scenarioType === "employee_training" && (
-            <p className="mt-3 rounded-md border border-border-cream bg-parchment p-3 text-xs text-stone-gray">
-              员工培训助手完整讲解、测验和评分流程将在 Sprint 49 接入；本轮先支持模型和创建入口。
-            </p>
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+              <label className="space-y-2 text-sm">
+                <span className="text-stone-gray">培训对象</span>
+                <select
+                  value={appForm.audience}
+                  onChange={(event) => setAppForm((current) => ({ ...current, audience: event.target.value }))}
+                  className="h-10 w-full rounded-md border border-border-cream bg-white px-3 text-sm text-near-black focus:outline-none"
+                >
+                  <option value="new_employee">新员工</option>
+                  <option value="frontline_staff">一线员工</option>
+                  <option value="manager">管理人员</option>
+                </select>
+              </label>
+              <label className="space-y-2 text-sm">
+                <span className="text-stone-gray">默认主题</span>
+                <Input
+                  value={appForm.defaultTopic}
+                  onChange={(event) => setAppForm((current) => ({ ...current, defaultTopic: event.target.value }))}
+                  className="bg-white"
+                />
+              </label>
+              <label className="space-y-2 text-sm">
+                <span className="text-stone-gray">默认难度</span>
+                <select
+                  value={appForm.difficulty}
+                  onChange={(event) => setAppForm((current) => ({ ...current, difficulty: event.target.value }))}
+                  className="h-10 w-full rounded-md border border-border-cream bg-white px-3 text-sm text-near-black focus:outline-none"
+                >
+                  <option value="easy">基础</option>
+                  <option value="normal">标准</option>
+                  <option value="hard">进阶</option>
+                </select>
+              </label>
+              <label className="space-y-2 text-sm">
+                <span className="text-stone-gray">题目数量</span>
+                <Input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={String(appForm.questionCount)}
+                  onChange={(event) => setAppForm((current) => ({ ...current, questionCount: Number(event.target.value) }))}
+                  className="bg-white"
+                />
+              </label>
+              <label className="space-y-2 text-sm">
+                <span className="text-stone-gray">及格分</span>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={String(appForm.passingScore)}
+                  onChange={(event) => setAppForm((current) => ({ ...current, passingScore: Number(event.target.value) }))}
+                  className="bg-white"
+                />
+              </label>
+              <label className="flex items-center gap-2 pt-7 text-sm text-near-black">
+                <input
+                  type="checkbox"
+                  checked={appForm.recordTrainingResult}
+                  onChange={(event) => setAppForm((current) => ({ ...current, recordTrainingResult: event.target.checked }))}
+                />
+                记录训练结果
+              </label>
+            </div>
           )}
         </DrawerSection>
         <DrawerSection title="5. 发布方式">

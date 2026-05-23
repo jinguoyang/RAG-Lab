@@ -15,6 +15,10 @@ from app.schemas.app_runtime import (
     AppRuntimeFeedbackResponse,
     AppRuntimeRetrieveRequest,
     AppRuntimeRetrieveResponse,
+    AppRuntimeStructuredRunRequest,
+    AppRuntimeStructuredRunResponse,
+    AppRuntimeTrainingQuizSubmissionRequest,
+    AppRuntimeTrainingQuizSubmissionResponse,
 )
 from app.services.app_runtime_service import (
     AppRuntimeAuthError,
@@ -24,9 +28,11 @@ from app.services.app_runtime_service import (
     AppRuntimeQuotaExceededError,
     chat_with_app_runtime,
     create_app_runtime_embed_token,
+    create_app_runtime_structured_run,
     iter_chat_sse_events,
     retrieve_app_runtime_evidence,
     submit_app_runtime_feedback,
+    submit_app_runtime_training_quiz,
 )
 from app.services.qa_run_service import QARunCreateConflict
 
@@ -99,6 +105,34 @@ def retrieve_evidence(
     credential = _extract_bearer_token(authorization)
     try:
         return retrieve_app_runtime_evidence(session, credential, request)
+    except Exception as exc:
+        _raise_runtime_error(exc)
+
+
+@router.post("/structured-runs", response_model=AppRuntimeStructuredRunResponse, status_code=status.HTTP_201_CREATED)
+def create_structured_run(
+    request: AppRuntimeStructuredRunRequest,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+    session: Session = Depends(get_db_session),
+) -> AppRuntimeStructuredRunResponse:
+    """执行员工培训助手结构化输出，并写入 AppMessage 审计。"""
+    credential = _extract_bearer_token(authorization)
+    try:
+        return create_app_runtime_structured_run(session, credential, request)
+    except Exception as exc:
+        _raise_runtime_error(exc)
+
+
+@router.post("/training/quiz-submissions", response_model=AppRuntimeTrainingQuizSubmissionResponse, status_code=status.HTTP_201_CREATED)
+def create_training_quiz_submission(
+    request: AppRuntimeTrainingQuizSubmissionRequest,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+    session: Session = Depends(get_db_session),
+) -> AppRuntimeTrainingQuizSubmissionResponse:
+    """提交员工培训助手测验答案并返回评分结果。"""
+    credential = _extract_bearer_token(authorization)
+    try:
+        return submit_app_runtime_training_quiz(session, credential, request)
     except Exception as exc:
         _raise_runtime_error(exc)
 

@@ -58,6 +58,80 @@ export interface AppRuntimeRetrieveResponse {
   metadata: Record<string, unknown>;
 }
 
+export type AppRuntimeStructuredAction = "training_explain" | "training_quiz_generate";
+
+export interface AppRuntimeStructuredRunRequest {
+  action: AppRuntimeStructuredAction;
+  topic: string;
+  conversationId?: string | null;
+  endUserId?: string | null;
+  difficulty?: string | null;
+  questionCount?: number | null;
+  inputs?: Record<string, unknown> | null;
+}
+
+export interface AppRuntimeTrainingQuestionDTO {
+  questionId: string;
+  type: string;
+  stem: string;
+  options: string[];
+  correctAnswer?: string;
+  explanation?: string;
+}
+
+export interface AppRuntimeStructuredRunResponse {
+  appId: string;
+  conversationId: string;
+  messageId: string;
+  runId: string;
+  action: AppRuntimeStructuredAction;
+  output: {
+    explanation?: {
+      topic: string;
+      summary: string;
+      keyPoints: string[];
+    };
+    quiz?: {
+      topic: string;
+      difficulty: string;
+      questionCount: number;
+      questions: AppRuntimeTrainingQuestionDTO[];
+    };
+  };
+  metadata: Record<string, unknown>;
+}
+
+export interface AppRuntimeTrainingAnswerDTO {
+  questionId: string;
+  answer: string;
+}
+
+export interface AppRuntimeTrainingQuizSubmissionRequest {
+  conversationId: string;
+  quizMessageId: string;
+  answers: AppRuntimeTrainingAnswerDTO[];
+}
+
+export interface AppRuntimeTrainingQuestionResultDTO {
+  questionId: string;
+  answer: string;
+  correctAnswer: string;
+  isCorrect: boolean;
+  explanation: string;
+}
+
+export interface AppRuntimeTrainingQuizSubmissionResponse {
+  conversationId: string;
+  messageId: string;
+  quizMessageId: string;
+  runId: string;
+  score: number;
+  passed: boolean;
+  passingScore: number;
+  results: AppRuntimeTrainingQuestionResultDTO[];
+  metadata: Record<string, unknown>;
+}
+
 export interface AppRuntimeFeedbackRequest {
   feedbackStatus: AppRuntimeFeedbackStatus;
   failureType?: string | null;

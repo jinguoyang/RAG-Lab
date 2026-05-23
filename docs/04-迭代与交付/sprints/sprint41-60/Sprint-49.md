@@ -19,11 +19,11 @@
 
 | Backlog | 标题 | 优先级 | 预估 | 状态 |
 | --- | --- | --- | --- | --- |
-| B-250 | 新增 structured-runs 接口支撑培训讲解和测验生成 | P0 | 2d | Ready |
-| B-251 | 新增培训答题提交和评分接口 | P0 | 2d | Ready |
-| B-252 | P13 试运行区支持培训讲解、测验和评分结果 | P0 | 2d | Ready |
-| B-253 | 嵌入页支持员工培训助手完整交互 | P0 | 2d | Ready |
-| B-254 | 训练结果写入 AppMessage metadata 并支持会话追溯 | P1 | 1.5d | Ready |
+| B-250 | 新增 structured-runs 接口支撑培训讲解和测验生成 | P0 | 2d | Done |
+| B-251 | 新增培训答题提交和评分接口 | P0 | 2d | Done |
+| B-252 | P13 试运行区支持培训讲解、测验和评分结果 | P0 | 2d | Done |
+| B-253 | 嵌入页支持员工培训助手完整交互 | P0 | 2d | Done |
+| B-254 | 训练结果写入 AppMessage metadata 并支持会话追溯 | P1 | 1.5d | Done |
 
 ## 4. 验收标准
 
@@ -45,7 +45,7 @@
 ```powershell
 cd backend
 conda run -n rag-lab python -m compileall app
-conda run -n rag-lab pytest app/tests/integration/test_employee_training_scenario_runtime.py -q
+conda run -n rag-lab python -m pytest app/tests/integration/test_employee_training_scenario_runtime.py -q
 ```
 
 ```powershell
@@ -53,13 +53,19 @@ cd frontend
 npm run lint
 npm run test
 npm run build
-npx playwright test
 ```
 
 ```powershell
 git diff --check
 ```
 
-## 7. 关联文档
+## 7. 执行记录
+
+- 已新增 `POST /api/v1/app-runtime/structured-runs`，支持 `training_explain` 和 `training_quiz_generate`。
+- 已新增 `POST /api/v1/app-runtime/training/quiz-submissions`，支持答题评分、逐题结果和错题解释。
+- P13 试运行区和嵌入页已支持培训讲解、测验生成、提交答案和评分展示。
+- 训练结果写入 `app_messages.metadata.trainingResult`，结构化运行写入 `app_messages.metadata.trainingStructuredRun`，助手消息保留 `qa_run_id`。
+
+## 8. 关联文档
 
 - [场景化智能应用开发计划](../../plans/2026-05-24-agent-scenario-apps.md)

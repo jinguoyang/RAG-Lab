@@ -207,4 +207,5 @@ export interface AppMessageViewModel {
   qaRunId: string | null;
   status: string;
   createdAtLabel: string;
+  trainingResultLabel?: string;
 }

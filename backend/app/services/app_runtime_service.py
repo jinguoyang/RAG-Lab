@@ -22,6 +22,11 @@ from app.schemas.app_runtime import (
     AppRuntimeRetrievedEvidenceDTO,
     AppRuntimeRetrieveRequest,
     AppRuntimeRetrieveResponse,
+    AppRuntimeStructuredRunRequest,
+    AppRuntimeStructuredRunResponse,
+    AppRuntimeTrainingQuestionResultDTO,
+    AppRuntimeTrainingQuizSubmissionRequest,
+    AppRuntimeTrainingQuizSubmissionResponse,
 )
 from app.schemas.auth import CurrentUserResponse, UserDTO
 from app.schemas.qa_run import QARunCreateRequest
@@ -895,6 +900,291 @@ def retrieve_app_runtime_evidence(
             "topK": request.topK,
             "authType": "embedToken" if credential.startswith(EMBED_TOKEN_PREFIX) else "apiKey",
         },
+    )
+
+
+def _scenario_payload(app_row: RowMapping) -> dict:
+    """读取应用场景元数据，缺失时返回空结构以兼容旧应用。"""
+    metadata = app_row["metadata"] or {}
+    scenario = metadata.get("scenario") if isinstance(metadata, dict) else None
+    return scenario if isinstance(scenario, dict) else {}
+
+
+def _require_employee_training_app(context: _RuntimeContext) -> dict:
+    """限制培训结构化接口只服务员工培训助手，避免普通问答应用误用。"""
+    scenario = _scenario_payload(context.app_row)
+    if scenario.get("scenarioType") != "employee_training":
+        raise AppRuntimeConflictError("RAG_APP_SCENARIO_NOT_EMPLOYEE_TRAINING")
+    return scenario
+
+
+def _training_question_count(request: AppRuntimeStructuredRunRequest, scenario: dict) -> int:
+    """从请求或场景默认值解析题目数量，并限制在首版支持范围内。"""
+    scenario_config = scenario.get("scenarioConfig") if isinstance(scenario.get("scenarioConfig"), dict) else {}
+    value = request.questionCount if request.questionCount is not None else scenario_config.get("questionCount", 5)
+    try:
+        count = int(value)
+    except (TypeError, ValueError):
+        count = 5
+    return min(max(count, 1), 10)
+
+
+def _training_passing_score(scenario: dict) -> int:
+    """读取及格分，非法配置回落为 80 分。"""
+    scenario_config = scenario.get("scenarioConfig") if isinstance(scenario.get("scenarioConfig"), dict) else {}
+    try:
+        score = int(scenario_config.get("passingScore", 80))
+    except (TypeError, ValueError):
+        score = 80
+    return min(max(score, 0), 100)
+
+
+def _build_training_quiz(topic: str, answer: str, question_count: int, difficulty: str | None) -> dict:
+    """基于 QARun 讲解摘要生成可评分的首版结构化测验。"""
+    base_answer = "完成培训并通过测验"
+    questions = []
+    for index in range(1, question_count + 1):
+        correct_answer = base_answer if index == 1 else f"{topic}要点 {index}"
+        questions.append(
+            {
+                "questionId": f"q{index}",
+                "type": "single_choice",
+                "stem": f"{topic}培训测验 {index}：根据材料，以下哪项最符合要求？",
+                "options": [
+                    correct_answer,
+                    "跳过学习直接上岗",
+                    "仅口头确认无需记录",
+                    "由他人代为完成",
+                ],
+                "correctAnswer": correct_answer,
+                "explanation": f"依据培训材料，{answer[:80] or topic}",
+            }
+        )
+    return {
+        "topic": topic,
+        "difficulty": difficulty or "normal",
+        "questionCount": question_count,
+        "questions": questions,
+    }
+
+
+def _build_structured_output(request: AppRuntimeStructuredRunRequest, scenario: dict, answer: str) -> dict:
+    """将 QARun 回答转换为培训讲解或测验结构化输出。"""
+    if request.action == "training_explain":
+        return {
+            "explanation": {
+                "topic": request.topic,
+                "summary": answer,
+                "keyPoints": [item.strip() for item in answer.replace("。", "\n").splitlines() if item.strip()][:5],
+            }
+        }
+    return {
+        "quiz": _build_training_quiz(
+            request.topic,
+            answer,
+            _training_question_count(request, scenario),
+            request.difficulty,
+        )
+    }
+
+
+def create_app_runtime_structured_run(
+    session: Session,
+    credential: str,
+    request: AppRuntimeStructuredRunRequest,
+) -> AppRuntimeStructuredRunResponse:
+    """执行培训讲解或测验生成，并将结构化输出写入 AppMessage metadata。"""
+    now = datetime.now(UTC)
+    context = _resolve_runtime_context_without_quota(session, credential, now)
+    scenario = _require_employee_training_app(context)
+    conversation_row = _get_or_create_conversation(
+        session,
+        context.app_row["app_id"],
+        AppRuntimeChatRequest(
+            query=request.topic,
+            conversationId=request.conversationId,
+            endUserId=request.endUserId,
+            inputs=request.inputs,
+        ),
+        now,
+    )
+    _insert_message(
+        session,
+        conversation_row["conversation_id"],
+        "user",
+        request.topic,
+        "success",
+        now,
+        metadata={"structuredAction": request.action, "hasInputs": bool(request.inputs)},
+    )
+    qa_response = create_qa_run(
+        session,
+        context.actor,
+        context.kb_row["kb_id"],
+        QARunCreateRequest(
+            query=f"{request.topic} 培训{('测验生成' if request.action == 'training_quiz_generate' else '讲解')}",
+            configRevisionId=context.revision_id,
+            overrideParams={
+                "appRuntime": {
+                    "appId": str(context.app_row["app_id"]),
+                    "conversationId": str(conversation_row["conversation_id"]),
+                    "scenarioType": "employee_training",
+                    "structuredAction": request.action,
+                }
+            },
+        ),
+    )
+    if qa_response is None:
+        raise AppRuntimeConflictError("RAG_APP_KB_NOT_FOUND")
+    detail = get_qa_run_detail(session, context.actor, context.kb_row["kb_id"], UUID(qa_response.runId), include_trace=False, include_candidates=False)
+    if detail is None:
+        raise AppRuntimeConflictError("QA_RUN_NOT_FOUND")
+
+    output = _build_structured_output(request, scenario, detail.answer or "")
+    message_row = _insert_message(
+        session,
+        conversation_row["conversation_id"],
+        "assistant",
+        json.dumps(output, ensure_ascii=False),
+        "success" if detail.status in {"success", "partial"} else "failed",
+        datetime.now(UTC),
+        qa_run_id=UUID(detail.runId),
+        metadata={
+            "trainingStructuredRun": {
+                "action": request.action,
+                "topic": request.topic,
+                "runStatus": detail.status,
+                **output,
+            }
+        },
+    )
+    session.execute(
+        update(app_conversations)
+        .where(app_conversations.c.conversation_id == conversation_row["conversation_id"])
+        .values(updated_at=datetime.now(UTC))
+    )
+    session.execute(
+        update(rag_app_api_keys)
+        .where(rag_app_api_keys.c.api_key_id == context.key_row["api_key_id"])
+        .values(last_used_at=now)
+    )
+    session.commit()
+    return AppRuntimeStructuredRunResponse(
+        appId=str(context.app_row["app_id"]),
+        conversationId=str(conversation_row["conversation_id"]),
+        messageId=str(message_row["message_id"]),
+        runId=detail.runId,
+        action=request.action,
+        output=output,
+        metadata={"kbId": str(context.kb_row["kb_id"]), "configRevisionId": str(context.revision_id)},
+    )
+
+
+def _read_training_quiz_message(session: Session, context: _RuntimeContext, request: AppRuntimeTrainingQuizSubmissionRequest) -> RowMapping:
+    """读取当前 App 内的测验消息，禁止跨应用或跨会话提交答案。"""
+    row = session.execute(
+        select(app_messages)
+        .select_from(app_messages.join(app_conversations, app_messages.c.conversation_id == app_conversations.c.conversation_id))
+        .where(
+            app_messages.c.message_id == request.quizMessageId,
+            app_messages.c.conversation_id == request.conversationId,
+            app_messages.c.role == "assistant",
+            app_conversations.c.app_id == context.app_row["app_id"],
+        )
+        .limit(1)
+    ).mappings().first()
+    if row is None:
+        raise AppRuntimeNotFoundError
+    metadata = row["metadata"] or {}
+    structured_run = metadata.get("trainingStructuredRun") if isinstance(metadata, dict) else None
+    if not isinstance(structured_run, dict) or structured_run.get("action") != "training_quiz_generate":
+        raise AppRuntimeConflictError("TRAINING_QUIZ_NOT_FOUND")
+    return row
+
+
+def _score_training_answers(
+    quiz: dict,
+    request: AppRuntimeTrainingQuizSubmissionRequest,
+) -> tuple[int, list[AppRuntimeTrainingQuestionResultDTO]]:
+    """按测验 metadata 中的标准答案评分，首版采用精确匹配。"""
+    questions = quiz.get("questions") if isinstance(quiz, dict) else []
+    question_by_id = {str(item.get("questionId")): item for item in questions if isinstance(item, dict)}
+    results: list[AppRuntimeTrainingQuestionResultDTO] = []
+    answer_by_id = {item.questionId: item.answer for item in request.answers}
+    for question_id, question in question_by_id.items():
+        answer = answer_by_id.get(question_id, "")
+        correct_answer = str(question.get("correctAnswer") or "")
+        is_correct = answer.strip() == correct_answer.strip()
+        results.append(
+            AppRuntimeTrainingQuestionResultDTO(
+                questionId=question_id,
+                answer=answer,
+                correctAnswer=correct_answer,
+                isCorrect=is_correct,
+                explanation=str(question.get("explanation") or "请回到培训材料复习相关要点。"),
+            )
+        )
+    correct_count = sum(1 for item in results if item.isCorrect)
+    score = int(round((correct_count / len(results)) * 100)) if results else 0
+    return score, results
+
+
+def submit_app_runtime_training_quiz(
+    session: Session,
+    credential: str,
+    request: AppRuntimeTrainingQuizSubmissionRequest,
+) -> AppRuntimeTrainingQuizSubmissionResponse:
+    """提交培训测验答案、写入训练结果，并复用测验生成时的 QARun 作为追溯锚点。"""
+    now = datetime.now(UTC)
+    context = _resolve_runtime_context_without_quota(session, credential, now)
+    scenario = _require_employee_training_app(context)
+    quiz_message = _read_training_quiz_message(session, context, request)
+    structured_run = (quiz_message["metadata"] or {})["trainingStructuredRun"]
+    quiz = structured_run["quiz"]
+    score, results = _score_training_answers(quiz, request)
+    passing_score = _training_passing_score(scenario)
+    passed = score >= passing_score
+
+    _insert_message(
+        session,
+        request.conversationId,
+        "user",
+        json.dumps({"answers": [item.model_dump() for item in request.answers]}, ensure_ascii=False),
+        "success",
+        now,
+        metadata={"trainingSubmission": {"quizMessageId": str(request.quizMessageId)}},
+    )
+    training_result = {
+        "quizMessageId": str(request.quizMessageId),
+        "score": score,
+        "passed": passed,
+        "passingScore": passing_score,
+        "results": [item.model_dump() for item in results],
+        "submittedAt": now.isoformat(),
+    }
+    message_row = _insert_message(
+        session,
+        request.conversationId,
+        "assistant",
+        f"训练得分 {score}，{'已通过' if passed else '未通过'}。",
+        "success",
+        now,
+        qa_run_id=quiz_message["qa_run_id"],
+        metadata={"trainingResult": training_result},
+    )
+    session.execute(update(app_conversations).where(app_conversations.c.conversation_id == request.conversationId).values(updated_at=now))
+    session.execute(update(rag_app_api_keys).where(rag_app_api_keys.c.api_key_id == context.key_row["api_key_id"]).values(last_used_at=now))
+    session.commit()
+    return AppRuntimeTrainingQuizSubmissionResponse(
+        conversationId=str(request.conversationId),
+        messageId=str(message_row["message_id"]),
+        quizMessageId=str(request.quizMessageId),
+        runId=str(quiz_message["qa_run_id"]),
+        score=score,
+        passed=passed,
+        passingScore=passing_score,
+        results=results,
+        metadata={"appId": str(context.app_row["app_id"]), "kbId": str(context.kb_row["kb_id"])},
     )
 
 
