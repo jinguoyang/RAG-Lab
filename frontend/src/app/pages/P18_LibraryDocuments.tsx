@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { ArrowLeft, Upload, Download, FileText, ChevronLeft, ChevronRight, Trash2, RefreshCw, Power, Users, Settings2 } from "lucide-react";
+import { Upload, Download, FileText, Trash2, RefreshCw, Power, Users, Settings2 } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
 import { Input } from "../components/rag/Input";
 import { Alert } from "../components/rag/Alert";
 import { Badge, StatusBadge } from "../components/rag/Badge";
+import { DocumentListLayout } from "../components/rag/DocumentListLayout";
 import { useConfirmDialog } from "../components/rag/ConfirmDialog";
 import {
   fetchLibraryDocuments,
@@ -370,56 +371,62 @@ export function LibraryDocuments() {
           </div>
         )}
 
-        {/* 搜索和筛选 */}
-        <div className="flex items-center gap-4">
-          <div className="flex-1 max-w-md">
-            <Input
-              placeholder="搜索文档名称..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && void handleSearchSubmit()}
-            />
-          </div>
-          <select
-            className="border border-border-cream rounded-md px-3 py-2 text-sm bg-ivory"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="">全部状态</option>
-            <option value="active">正常</option>
-            <option value="disabled">已停用</option>
-            <option value="archived">已归档</option>
-          </select>
-          <Button variant="secondary" onClick={() => void handleSearchSubmit()}>
-            搜索
-          </Button>
-        </div>
-
-        {/* 批量操作栏 */}
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border-cream bg-ivory p-4">
-          <span className="text-sm text-stone-gray">已选 {selectedIds.size} 个文档</span>
-          <Button variant="outline" disabled={batchLoading || selectedIds.size === 0} onClick={() => openReparseDrawer(documents.filter((doc) => selectedIds.has(doc.documentId)))}>
-            <RefreshCw className="w-4 h-4 mr-2" /> 重新解析
-          </Button>
-          <Button variant="outline" disabled={batchLoading || selectedIds.size === 0} onClick={() => void handleBatchAction("disable")}>
-            <Power className="w-4 h-4 mr-2" /> 停用
-          </Button>
-          <Button variant="destructive" disabled={batchLoading || selectedIds.size === 0} onClick={() => void handleBatchAction("delete")}>
-            <Trash2 className="w-4 h-4 mr-2" /> 删除
-          </Button>
-        </div>
-
-        {/* 文档列表 */}
-        {loading ? (
-          <div className="text-center py-12 text-stone-gray">加载中...</div>
-        ) : documents.length === 0 ? (
-          <div className="text-center py-12">
-            <FileText className="w-12 h-12 mx-auto text-stone-gray mb-4" />
-            <p className="text-stone-gray">暂无文档</p>
-            <p className="text-sm text-stone-gray mt-1">点击"上传文档"开始使用</p>
-          </div>
-        ) : (
-          <>
+        <DocumentListLayout
+          search={{
+            placeholder: "搜索文档名称...",
+            value: searchTerm,
+            onChange: setSearchTerm,
+            onSearch: () => void handleSearchSubmit(),
+          }}
+          statusFilter={{
+            value: statusFilter,
+            onChange: setStatusFilter,
+            options: [
+              { value: "", label: "全部状态" },
+              { value: "active", label: "正常" },
+              { value: "disabled", label: "已停用" },
+              { value: "archived", label: "已归档" },
+            ],
+          }}
+          batch={{
+            selectedCount: selectedIds.size,
+            loading: batchLoading,
+            actions: [
+              {
+                label: "重新解析",
+                icon: <RefreshCw className="w-4 h-4" />,
+                onClick: () => openReparseDrawer(documents.filter((doc) => selectedIds.has(doc.documentId))),
+              },
+              {
+                label: "停用",
+                icon: <Power className="w-4 h-4" />,
+                onClick: () => void handleBatchAction("disable"),
+              },
+              {
+                label: "删除",
+                icon: <Trash2 className="w-4 h-4" />,
+                variant: "destructive",
+                onClick: () => void handleBatchAction("delete"),
+              },
+            ],
+          }}
+          itemCount={documents.length}
+          loading={loading}
+          emptyState={
+            <>
+              <FileText className="w-12 h-12 mx-auto text-stone-gray mb-4" />
+              <p className="text-stone-gray">暂无文档</p>
+              <p className="text-sm text-stone-gray mt-1">点击"上传文档"开始使用</p>
+            </>
+          }
+          pagination={{
+            total,
+            pageNo,
+            totalPages,
+            loading,
+            onPageChange: (page) => void loadData(searchTerm, page),
+          }}
+        >
             <Table>
               <TableHeader>
                 <TableRow>
@@ -529,34 +536,7 @@ export function LibraryDocuments() {
                 ))}
               </TableBody>
             </Table>
-
-            {/* 分页 */}
-            {total > 0 && (
-              <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-stone-gray">
-                <span>共 {total} 个文档</span>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={loading || pageNo <= 1}
-                    onClick={() => void loadData(searchTerm, pageNo - 1)}
-                  >
-                    <ChevronLeft className="w-4 h-4 mr-1" /> 上一页
-                  </Button>
-                  <span className="min-w-20 text-center text-near-black">{pageNo} / {totalPages}</span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={loading || pageNo >= totalPages}
-                    onClick={() => void loadData(searchTerm, pageNo + 1)}
-                  >
-                    下一页 <ChevronRight className="w-4 h-4 ml-1" />
-                  </Button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
+        </DocumentListLayout>
       </div>
 
       {/* 上传抽屉 */}

@@ -388,11 +388,6 @@ export function DocumentCenter() {
               { value: "cancelled", label: "非活动" },
             ],
           }}
-          headerExtra={
-            <span className="text-sm text-stone-gray">
-              {loading ? "加载中..." : `共 ${documentTotal} 条，当前页 ${filteredRows.length} 条`}
-            </span>
-          }
           batch={{
             selectedCount: selectedDocumentIds.length,
             actions: [
@@ -410,8 +405,8 @@ export function DocumentCenter() {
             ],
           }}
           loading={loading}
-          emptyMessage="暂无文档"
-          emptyIcon={
+          itemCount={filteredRows.length}
+          emptyState={
             <>
               <div className="mx-auto mb-3 w-12 h-12 rounded-full bg-parchment flex items-center justify-center">
                 <FileWarning className="w-5 h-5 text-stone-gray" />

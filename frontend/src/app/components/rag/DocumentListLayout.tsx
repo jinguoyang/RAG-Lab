@@ -1,25 +1,22 @@
-import { ReactNode } from "react";
-import { Search, ChevronLeft, ChevronRight } from "lucide-react";
+import type { ReactNode } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "./Button";
 import { Input } from "./Input";
 
-/** 搜索栏配置 */
-export interface SearchConfig {
-  placeholder?: string;
+interface SearchConfig {
+  placeholder: string;
   value: string;
   onChange: (value: string) => void;
   onSearch: () => void;
 }
 
-/** 状态筛选配置 */
-export interface StatusFilterConfig {
+interface StatusFilterConfig {
   value: string;
   onChange: (value: string) => void;
   options: Array<{ value: string; label: string }>;
 }
 
-/** 批量操作按钮配置 */
-export interface BatchAction {
+interface BatchAction {
   label: string;
   icon?: ReactNode;
   variant?: "outline" | "destructive" | "ghost" | "secondary" | "primary";
@@ -27,133 +24,105 @@ export interface BatchAction {
   onClick: () => void;
 }
 
-/** 批量操作栏配置 */
-export interface BatchConfig {
+interface BatchConfig {
   selectedCount: number;
-  actions: BatchAction[];
   loading?: boolean;
+  actions: BatchAction[];
 }
 
-/** 分页配置 */
-export interface PaginationConfig {
+interface PaginationConfig {
   total: number;
   pageNo: number;
   totalPages: number;
   loading?: boolean;
-  onPageChange: (page: number) => void;
+  itemLabel?: string;
+  onPageChange: (pageNo: number) => void;
 }
 
-/** DocumentListLayout 组件属性 */
-export interface DocumentListLayoutProps {
-  /** 搜索配置 */
-  search?: SearchConfig;
-  /** 状态筛选配置 */
-  statusFilter?: StatusFilterConfig;
-  /** 右侧额外内容（如统计信息） */
-  headerExtra?: ReactNode;
-  /** 批量操作配置 */
-  batch?: BatchConfig;
-  /** 是否正在加载 */
+interface DocumentListLayoutProps {
+  search: SearchConfig;
+  statusFilter: StatusFilterConfig;
+  batch: BatchConfig;
+  itemCount: number;
   loading?: boolean;
-  /** 空状态提示 */
-  emptyMessage?: string;
-  /** 空状态图标 */
-  emptyIcon?: ReactNode;
-  /** 表格内容（调用方完全控制） */
+  emptyState: ReactNode;
+  pagination: PaginationConfig;
   children: ReactNode;
-  /** 分页配置 */
-  pagination?: PaginationConfig;
 }
 
 /**
- * 通用文档列表布局组件
- *
- * 提供搜索、筛选、批量操作、表格容器、分页的统一样式。
- * 表格内容由调用方通过 children 传入，完全控制展示。
- *
- * 适用于文档中心、文档库文档列表等场景。
+ * 统一文档类列表的工具栏、批量操作、空态和分页外壳。
+ * 表格列和行由调用页面提供，避免公共组件理解具体业务字段。
  */
 export function DocumentListLayout({
   search,
   statusFilter,
-  headerExtra,
   batch,
+  itemCount,
   loading = false,
-  emptyMessage = "暂无数据",
-  emptyIcon,
-  children,
+  emptyState,
   pagination,
+  children,
 }: DocumentListLayoutProps) {
+  const itemLabel = pagination.itemLabel ?? "文档";
+
   return (
     <div className="space-y-6">
-      {/* 搜索和筛选栏 */}
-      {(search || statusFilter || headerExtra) && (
-        <div className="flex flex-wrap items-center gap-4">
-          {search && (
-            <div className="relative w-full max-w-80">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-gray" />
-              <Input
-                placeholder={search.placeholder || "搜索..."}
-                className="pl-9"
-                value={search.value}
-                onChange={(event) => search.onChange(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") search.onSearch();
-                }}
-              />
-            </div>
-          )}
-          {search && (
-            <Button variant="outline" onClick={search.onSearch}>
-              搜索
-            </Button>
-          )}
-          {statusFilter && (
-            <select
-              className="px-3 py-2 bg-ivory border border-border-cream rounded-md text-sm text-near-black focus:outline-none focus:ring-1 focus:ring-focus-blue"
-              value={statusFilter.value}
-              onChange={(event) => statusFilter.onChange(event.target.value)}
-            >
-              {statusFilter.options.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          )}
-          {headerExtra && <div className="ml-auto">{headerExtra}</div>}
+      <div className="flex items-center gap-4">
+        <div className="flex-1 max-w-md">
+          <Input
+            placeholder={search.placeholder}
+            value={search.value}
+            onChange={(event) => search.onChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                search.onSearch();
+              }
+            }}
+          />
         </div>
-      )}
-
-      {/* 批量操作栏 */}
-      {batch && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border-cream bg-ivory p-4">
-          <span className="text-sm text-stone-gray">已选 {batch.selectedCount} 个</span>
-          {batch.actions.map((action, index) => (
-            <Button
-              key={index}
-              variant={action.variant || "outline"}
-              disabled={loading || batch.loading || batch.selectedCount === 0 || action.disabled}
-              onClick={action.onClick}
-            >
-              {action.icon && <span className="w-4 h-4 mr-2">{action.icon}</span>}
-              {action.label}
-            </Button>
+        <select
+          className="border border-border-cream rounded-md px-3 py-2 text-sm bg-ivory"
+          value={statusFilter.value}
+          onChange={(event) => statusFilter.onChange(event.target.value)}
+        >
+          {statusFilter.options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
           ))}
-        </div>
-      )}
+        </select>
+        <Button variant="secondary" onClick={search.onSearch}>
+          搜索
+        </Button>
+      </div>
 
-      {/* 表格内容（由调用方控制） */}
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border-cream bg-ivory p-4">
+        <span className="text-sm text-stone-gray">已选 {batch.selectedCount} 个{itemLabel}</span>
+        {batch.actions.map((action) => (
+          <Button
+            key={action.label}
+            variant={action.variant ?? "outline"}
+            disabled={loading || batch.loading || batch.selectedCount === 0 || action.disabled}
+            onClick={action.onClick}
+          >
+            {action.icon && <span className="mr-2 flex h-4 w-4 items-center justify-center">{action.icon}</span>}
+            {action.label}
+          </Button>
+        ))}
+      </div>
+
       {loading ? (
         <div className="text-center py-12 text-stone-gray">加载中...</div>
+      ) : itemCount === 0 ? (
+        <div className="text-center py-12">{emptyState}</div>
       ) : (
         children
       )}
 
-      {/* 分页 */}
-      {pagination && pagination.total > 0 && (
+      {pagination.total > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-stone-gray">
-          <span>共 {pagination.total} 个</span>
+          <span>共 {pagination.total} 个{itemLabel}</span>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
