@@ -356,7 +356,7 @@ export function DocumentDetail() {
             Chunks（{chunkTotal}）
           </UnderlineTabsTrigger>
           <UnderlineTabsTrigger value="jobs">
-            入库作业（{jobRows.length}）
+            处理作业（{jobRows.length}）
           </UnderlineTabsTrigger>
         </UnderlineTabsList>
 
@@ -481,8 +481,7 @@ export function DocumentDetail() {
             <TableHeader>
               <TableRow>
                 <TableHead>作业 ID</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>阶段</TableHead>
+                <TableHead>状态/阶段</TableHead>
                 <TableHead>处理链路</TableHead>
                 <TableHead>进度</TableHead>
                 <TableHead>创建时间</TableHead>
@@ -496,14 +495,20 @@ export function DocumentDetail() {
                 return (
                   <TableRow key={job.jobId}>
                     <TableCell mono>{row.id}</TableCell>
-                    <TableCell><StatusBadge status={row.status} /></TableCell>
-                    <TableCell>{row.stage}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={row.status} />
+                        <span className="text-xs text-stone-gray">{row.stage}</span>
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1.5">
                         {row.indexStages.map((stage) => (
-                          <Badge key={stage.key} variant={indexStageVariant(stage.status)}>
-                            {stage.label}: {formatIndexStageStatus(stage.status)}
-                          </Badge>
+                          <span key={stage.key} title={`${stage.label}: ${formatIndexStageStatus(stage.status)}`}>
+                            <Badge variant={indexStageVariant(stage.status)}>
+                              {stage.label}
+                            </Badge>
+                          </span>
                         ))}
                         {row.graphExtractionErrorCount > 0 && (
                           <Badge variant="warning">Graph 抽取部分失败: {row.graphExtractionErrorCount}</Badge>
