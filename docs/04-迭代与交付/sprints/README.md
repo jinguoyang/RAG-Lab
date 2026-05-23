@@ -17,7 +17,8 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 - Sprint 45 已完成，主题为 BindingRevision → ChunkRevision 后端重命名：DB 迁移、标识符全量替换、strategy/params 字段化、rechunk API 和单元测试。
 - Sprint 46 待开发，主题为 ChunkRevision 前端改造与文档同步。
 - Sprint 47 已完成，主题为 E32 场景化智能应用模型基线：内置场景模板、应用场景元数据、推荐 ConfigRevision 和 P13 场景展示。
-- Sprint 48 至 Sprint 50 待排期，主题为 E32 场景化智能应用后续能力：场景向导、嵌入页、短期 Token、培训测验和验收硬化。
+- Sprint 48 已完成，主题为 E32 场景向导与知识库问答助手：P13 场景助手创建、短期 Embed Token、嵌入页、问答反馈和 retrieve 证据摘要。
+- Sprint 49 至 Sprint 50 待排期，主题为 E32 场景化智能应用后续能力：员工培训助手、培训测验和验收硬化。
 - 下一版本为 V1.9，计划承接 E23 图快照保留与配置治理、E24 文档解析能力增强；E27 RAG App 运行治理与接入可见性已完成。E28 文档库功能已全部完成。
 - Sprint 01 至 Sprint 26 已完成，对应 V1.0 至 V1.7。
 - Sprint 27 至 Sprint 29 已完成 E22 知识库治理工作流强化范围：P05 支持治理问题定位和治理后验证摘要，P06 支持批量治理和索引同步作业，P07 支持 Chunk 治理标记、索引重建和作业查看。
@@ -55,7 +56,7 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 | Sprint 45 | 架构演进 V2.0 | BindingRevision → ChunkRevision 后端重命名与 Rechunk | Done | `sprint41-60/Sprint-45.md` |
 | Sprint 46 | 架构演进 V2.0 | ChunkRevision 前端改造与文档同步 | Ready | `sprint41-60/Sprint-46.md` |
 | Sprint 47 | 场景化智能应用 | 场景模板与智能应用模型基线 | Done | `sprint41-60/Sprint-47.md` |
-| Sprint 48 | 场景化智能应用 | 场景向导与知识库问答助手 | Ready | `sprint41-60/Sprint-48.md` |
+| Sprint 48 | 场景化智能应用 | 场景向导与知识库问答助手 | Done | `sprint41-60/Sprint-48.md` |
 | Sprint 49 | 场景化智能应用 | 员工培训助手运行时 | Ready | `sprint41-60/Sprint-49.md` |
 | Sprint 50 | 场景化智能应用 | 验收硬化与文档同步 | Ready | `sprint41-60/Sprint-50.md` |
 

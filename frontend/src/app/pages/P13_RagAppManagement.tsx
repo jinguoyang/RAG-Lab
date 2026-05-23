@@ -38,10 +38,13 @@ import { fetchConfigRevisions } from "../services/configService";
 import { fetchKnowledgeBases } from "../services/knowledgeBaseService";
 import {
   chatWithAppRuntime,
+  createAppRuntimeEmbedToken,
   parseAppRuntimeSse,
+  retrieveWithAppRuntime,
   streamChatWithAppRuntime,
   submitAppRuntimeFeedback,
 } from "../services/appRuntimeService";
+import { listAgentScenarioTemplates } from "../services/agentScenarioService";
 import { chooseActiveDictionaryValue, fetchDictionaryItemsWithFallback } from "../services/dictionaryService";
 import {
   createRagApp,
@@ -56,8 +59,9 @@ import {
   updateRagApp,
 } from "../services/ragAppService";
 import type { ConfigRevisionDTO } from "../types/config";
+import type { AgentScenarioTemplateDTO } from "../types/agentScenario";
 import type { KnowledgeBase } from "../types/knowledgeBase";
-import type { AppRuntimeChatResponse, AppRuntimeSseEvent } from "../types/appRuntime";
+import type { AppRuntimeChatResponse, AppRuntimeRetrieveResponse, AppRuntimeSseEvent } from "../types/appRuntime";
 import type { DictionaryItemDTO } from "../types/dictionary";
 import type {
   AppInvocationDTO,
@@ -95,6 +99,18 @@ const EMPTY_APP_FORM = {
   kbId: "",
   defaultConfigRevisionId: "",
   status: "active" as RagAppStatus,
+  scenarioTemplateId: "builtin_knowledge_qa_v1",
+  scenarioType: "knowledge_qa",
+  answerLength: "standard",
+  citationCount: 3,
+  noEvidencePolicy: "refuse",
+  showSuggestedQuestions: true,
+  publishApi: true,
+  publishEmbed: true,
+  embedEnabled: true,
+  embedAllowedOrigins: "",
+  embedGreeting: "你好，我是知识库问答助手。",
+  createRecommendedConfigRevision: true,
 };
 
 function statusBadgeVariant(status: string): "success" | "inactive" | "warning" | "error" {
@@ -122,10 +138,17 @@ function buildQARunHistoryLink(kbId: string, runId: string): string {
   return `/kb/${kbId}/history?runId=${encodeURIComponent(runId)}`;
 }
 
+function templateConfigValue(template: AgentScenarioTemplateDTO | undefined, key: string, fallback: string | number | boolean): string | number | boolean {
+  const value = template?.defaultConfig?.[key];
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+  return fallback;
+}
+
 export function RagAppManagement() {
   const navigate = useNavigate();
   const confirmDialog = useConfirmDialog();
   const [apps, setApps] = useState<RagAppDTO[]>([]);
+  const [scenarioTemplates, setScenarioTemplates] = useState<AgentScenarioTemplateDTO[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [configRevisions, setConfigRevisions] = useState<ConfigRevisionDTO[]>([]);
   const [selectedApp, setSelectedApp] = useState<RagAppDTO | null>(null);
@@ -156,11 +179,13 @@ export function RagAppManagement() {
   const [runtimeQuery, setRuntimeQuery] = useState("");
   const [runtimeMode, setRuntimeMode] = useState<"blocking" | "streaming">("blocking");
   const [runtimeResult, setRuntimeResult] = useState<AppRuntimeChatResponse | null>(null);
+  const [runtimeRetrieveResult, setRuntimeRetrieveResult] = useState<AppRuntimeRetrieveResponse | null>(null);
   const [runtimeEvents, setRuntimeEvents] = useState<AppRuntimeSseEvent[]>([]);
   const [runtimeFeedbackStatus, setRuntimeFeedbackStatus] = useState("wrong");
   const [runtimeFeedbackNote, setRuntimeFeedbackNote] = useState("");
   const [isRuntimeRunning, setIsRuntimeRunning] = useState(false);
   const [feedbackStatusItems, setFeedbackStatusItems] = useState<DictionaryItemDTO[]>([]);
+  const [embedTokenPreview, setEmbedTokenPreview] = useState<{ token: string; expiresAt: string } | null>(null);
 
   const appRows = useMemo(() => apps.map(toRagAppViewModel), [apps]);
   const selectedAppView = selectedApp ? toRagAppViewModel(selectedApp) : null;
@@ -176,6 +201,10 @@ export function RagAppManagement() {
     [selectedConversationDetail],
   );
   const totalPages = Math.max(1, Math.ceil(totalApps / PAGE_SIZE));
+  const selectedScenarioTemplate = useMemo(
+    () => scenarioTemplates.find((template) => template.templateId === appForm.scenarioTemplateId),
+    [appForm.scenarioTemplateId, scenarioTemplates],
+  );
 
   const loadApps = useCallback(async () => {
     setIsLoadingApps(true);
@@ -238,6 +267,12 @@ export function RagAppManagement() {
   }, [loadApps]);
 
   useEffect(() => {
+    void listAgentScenarioTemplates()
+      .then(setScenarioTemplates)
+      .catch(() => setScenarioTemplates([]));
+  }, []);
+
+  useEffect(() => {
     void fetchDictionaryItemsWithFallback("feedback_status").then((items) => {
       setFeedbackStatusItems(items);
       setRuntimeFeedbackStatus((current) => chooseActiveDictionaryValue(items, current, "wrong"));
@@ -280,10 +315,21 @@ export function RagAppManagement() {
   };
 
   const openCreateForm = () => {
+    const template = scenarioTemplates.find((item) => item.scenarioType === "knowledge_qa") ?? scenarioTemplates[0];
     setEditingAppId(null);
     setAppForm({
       ...EMPTY_APP_FORM,
       kbId: kbFilter || knowledgeBases[0]?.kbId || "",
+      scenarioTemplateId: template?.templateId ?? EMPTY_APP_FORM.scenarioTemplateId,
+      scenarioType: template?.scenarioType ?? EMPTY_APP_FORM.scenarioType,
+      answerLength: String(templateConfigValue(template, "answerLength", EMPTY_APP_FORM.answerLength)),
+      citationCount: Number(templateConfigValue(template, "citationCount", EMPTY_APP_FORM.citationCount)),
+      noEvidencePolicy: String(templateConfigValue(template, "noEvidencePolicy", EMPTY_APP_FORM.noEvidencePolicy)),
+      showSuggestedQuestions: Boolean(templateConfigValue(template, "showSuggestedQuestions", EMPTY_APP_FORM.showSuggestedQuestions)),
+      publishApi: template?.defaultPublishChannels?.api ?? true,
+      publishEmbed: template?.defaultPublishChannels?.embed ?? true,
+      embedEnabled: Boolean(template?.defaultEmbedSettings?.enabled ?? true),
+      embedGreeting: String(template?.defaultEmbedSettings?.greeting ?? EMPTY_APP_FORM.embedGreeting),
     });
     setFeedback(null);
     setIsAppFormOpen(true);
@@ -297,6 +343,18 @@ export function RagAppManagement() {
       kbId: app.kbId,
       defaultConfigRevisionId: app.defaultConfigRevisionId ?? "",
       status: app.status,
+      scenarioTemplateId: app.scenarioTemplateId,
+      scenarioType: app.scenarioType,
+      answerLength: String(app.scenarioConfig.answerLength ?? EMPTY_APP_FORM.answerLength),
+      citationCount: Number(app.scenarioConfig.citationCount ?? EMPTY_APP_FORM.citationCount),
+      noEvidencePolicy: String(app.scenarioConfig.noEvidencePolicy ?? EMPTY_APP_FORM.noEvidencePolicy),
+      showSuggestedQuestions: Boolean(app.scenarioConfig.showSuggestedQuestions ?? EMPTY_APP_FORM.showSuggestedQuestions),
+      publishApi: app.publishChannels.api ?? true,
+      publishEmbed: app.publishChannels.embed ?? false,
+      embedEnabled: Boolean(app.embedSettings.enabled ?? false),
+      embedAllowedOrigins: Array.isArray(app.embedSettings.allowedOrigins) ? app.embedSettings.allowedOrigins.join("\n") : "",
+      embedGreeting: String(app.embedSettings.greeting ?? EMPTY_APP_FORM.embedGreeting),
+      createRecommendedConfigRevision: false,
     });
     setFeedback(null);
     setIsAppFormOpen(true);
@@ -319,10 +377,33 @@ export function RagAppManagement() {
         name: appForm.name.trim(),
         description: toNullableText(appForm.description),
         defaultConfigRevisionId: appForm.defaultConfigRevisionId || null,
+        scenarioType: appForm.scenarioType,
+        scenarioTemplateId: appForm.scenarioTemplateId,
+        scenarioConfig: {
+          answerLength: appForm.answerLength,
+          citationCount: Number(appForm.citationCount),
+          noEvidencePolicy: appForm.noEvidencePolicy,
+          showSuggestedQuestions: appForm.showSuggestedQuestions,
+          greeting: appForm.embedGreeting,
+        },
+        publishChannels: {
+          api: appForm.publishApi,
+          embed: appForm.publishEmbed,
+        },
+        embedSettings: {
+          enabled: appForm.embedEnabled,
+          allowedOrigins: appForm.embedAllowedOrigins.split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
+          theme: "light",
+          greeting: appForm.embedGreeting,
+        },
       };
       const savedApp = editingAppId
         ? await updateRagApp(editingAppId, { ...payload, status: appForm.status })
-        : await createRagApp({ ...payload, kbId: appForm.kbId });
+        : await createRagApp({
+            ...payload,
+            kbId: appForm.kbId,
+            createRecommendedConfigRevision: appForm.createRecommendedConfigRevision && !appForm.defaultConfigRevisionId,
+          });
       setFeedback({
         variant: "success",
         title: editingAppId ? "应用已更新" : "应用已创建",
@@ -469,6 +550,7 @@ export function RagAppManagement() {
     }
     setIsRuntimeRunning(true);
     setRuntimeResult(null);
+    setRuntimeRetrieveResult(null);
     setRuntimeEvents([]);
     try {
       if (runtimeMode === "streaming") {
@@ -483,8 +565,12 @@ export function RagAppManagement() {
           message: doneEvent ? "已收到 done 事件，可在调用记录中查看关联 QARun。" : "已收到 SSE 响应，请查看事件列表。",
         });
       } else {
-        const response = await chatWithAppRuntime(runtimeApiKey, { query: runtimeQuery.trim() });
+        const [response, retrieveResponse] = await Promise.all([
+          chatWithAppRuntime(runtimeApiKey, { query: runtimeQuery.trim() }),
+          retrieveWithAppRuntime(runtimeApiKey, { query: runtimeQuery.trim(), topK: 3 }),
+        ]);
         setRuntimeResult(response);
+        setRuntimeRetrieveResult(retrieveResponse);
         setFeedback({ variant: "success", title: "Blocking 试运行完成", message: `已生成 QARun ${shortId(response.runId)}。` });
       }
       await loadAppDetail(selectedApp);
@@ -536,6 +622,27 @@ export function RagAppManagement() {
     }
   };
 
+  const handleCreateEmbedTokenPreview = async () => {
+    if (!selectedApp || !runtimeApiKey.trim()) {
+      setFeedback({ variant: "error", title: "无法生成嵌入 Token", message: "请先输入当前应用可用的 App API Key。" });
+      return;
+    }
+    setIsRuntimeRunning(true);
+    try {
+      const response = await createAppRuntimeEmbedToken(runtimeApiKey, { ttlSeconds: 900 });
+      setEmbedTokenPreview({ token: response.embedToken, expiresAt: response.expiresAt });
+      setFeedback({ variant: "success", title: "短期 Token 已生成", message: "嵌入页预览链接已刷新，Token 15 分钟后过期。" });
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "短期 Token 生成失败",
+        message: error instanceof Error ? error.message : "请检查 API Key 和应用状态。",
+      });
+    } finally {
+      setIsRuntimeRunning(false);
+    }
+  };
+
   const handleOpenConversationDetail = async (conversationId: string) => {
     if (!selectedApp) return;
     setIsLoadingConversation(true);
@@ -568,7 +675,7 @@ export function RagAppManagement() {
                 <FileText className="mr-2 h-4 w-4" /> 调用文档
               </Button>
               <Button variant="primary" onClick={openCreateForm}>
-                <Plus className="mr-2 h-4 w-4" /> 创建应用
+                <Plus className="mr-2 h-4 w-4" /> 创建场景助手
               </Button>
             </>
           }
@@ -899,6 +1006,16 @@ export function RagAppManagement() {
                               <div className="text-near-black">{runtimeResult.answer || "无回答内容"}</div>
                               <div className="font-mono text-stone-gray">runId: {runtimeResult.runId}</div>
                               <div className="text-stone-gray">Citation：{runtimeResult.citations.length} · messageId：{shortId(runtimeResult.messageId)}</div>
+                              {runtimeRetrieveResult && (
+                                <div className="space-y-1 rounded-md border border-border-cream bg-parchment p-2">
+                                  <div className="text-stone-gray">retrieve 证据摘要：{runtimeRetrieveResult.evidences.length} 条</div>
+                                  {runtimeRetrieveResult.evidences.map((item) => (
+                                    <div key={item.evidenceId} className="text-near-black">
+                                      {item.label}：{item.summary}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                               <select
                                 value={runtimeFeedbackStatus}
                                 onChange={(event) => setRuntimeFeedbackStatus(event.target.value)}
@@ -931,6 +1048,29 @@ export function RagAppManagement() {
                               ))}
                             </div>
                           )}
+                          <div className="rounded-lg border border-border-cream bg-white p-3 text-xs">
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                              <span className="text-stone-gray">嵌入页预览</span>
+                              <Button variant="outline" size="sm" disabled={isRuntimeRunning} onClick={() => void handleCreateEmbedTokenPreview()}>
+                                生成短期 Token
+                              </Button>
+                            </div>
+                            {embedTokenPreview ? (
+                              <div className="space-y-1">
+                                <a
+                                  className="break-all font-mono text-terracotta hover:underline"
+                                  href={`/embed/runtime?token=${encodeURIComponent(embedTokenPreview.token)}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  /embed/runtime?token={shortId(embedTokenPreview.token, 24)}
+                                </a>
+                                <div className="text-stone-gray">过期时间：{new Date(embedTokenPreview.expiresAt).toLocaleString("zh-CN")}</div>
+                              </div>
+                            ) : (
+                              <p className="text-stone-gray">使用当前 API Key 生成短期 Token 后，可打开嵌入页验证问答、Citation 和反馈。</p>
+                            )}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -1209,12 +1349,43 @@ Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/app-runtime/ch
       <Drawer
         isOpen={isAppFormOpen}
         onClose={closeAppForm}
-        title={editingAppId ? "编辑 RAG 应用" : "创建 RAG 应用"}
+        title={editingAppId ? "编辑场景助手" : "创建场景助手"}
         width="640px"
       >
+        {!editingAppId && (
+          <DrawerSection title="1. 选择场景">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {scenarioTemplates.map((template) => (
+                <button
+                  key={template.templateId}
+                  type="button"
+                  onClick={() => setAppForm((current) => ({
+                    ...current,
+                    scenarioTemplateId: template.templateId,
+                    scenarioType: template.scenarioType,
+                    answerLength: String(templateConfigValue(template, "answerLength", current.answerLength)),
+                    citationCount: Number(templateConfigValue(template, "citationCount", current.citationCount)),
+                    noEvidencePolicy: String(templateConfigValue(template, "noEvidencePolicy", current.noEvidencePolicy)),
+                    showSuggestedQuestions: Boolean(templateConfigValue(template, "showSuggestedQuestions", current.showSuggestedQuestions)),
+                    publishApi: template.defaultPublishChannels.api ?? current.publishApi,
+                    publishEmbed: template.defaultPublishChannels.embed ?? current.publishEmbed,
+                    embedEnabled: Boolean(template.defaultEmbedSettings.enabled ?? current.embedEnabled),
+                    embedGreeting: String(template.defaultEmbedSettings.greeting ?? current.embedGreeting),
+                  }))}
+                  className={`rounded-lg border p-3 text-left transition ${appForm.scenarioTemplateId === template.templateId ? "border-terracotta bg-parchment" : "border-border-cream bg-white hover:bg-parchment"}`}
+                >
+                  <div className="text-sm font-medium text-near-black">{template.name}</div>
+                  <div className="mt-1 text-xs text-stone-gray">{template.description}</div>
+                </button>
+              ))}
+            </div>
+          </DrawerSection>
+        )}
         <DrawerSection title="基本信息">
           <div className="space-y-4">
-            <p className="text-sm text-stone-gray">应用只保存知识库和配置绑定，不复制 Pipeline。</p>
+            <p className="text-sm text-stone-gray">
+              {editingAppId ? "调整应用基础信息和场景参数。" : "按场景、知识库、运行配置、参数和发布方式创建业务助手。"}
+            </p>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <label className="space-y-2 text-sm">
                 <span className="text-stone-gray">应用名称</span>
@@ -1246,13 +1417,17 @@ Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/app-runtime/ch
             </label>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <label className="space-y-2 text-sm">
-                <span className="text-stone-gray">检索配置</span>
+                <span className="text-stone-gray">3. 运行配置</span>
                 <select
                   value={appForm.defaultConfigRevisionId}
-                  onChange={(event) => setAppForm((current) => ({ ...current, defaultConfigRevisionId: event.target.value }))}
+                  onChange={(event) => setAppForm((current) => ({
+                    ...current,
+                    defaultConfigRevisionId: event.target.value,
+                    createRecommendedConfigRevision: !event.target.value,
+                  }))}
                   className="h-10 w-full rounded-md border border-border-cream bg-white px-3 text-sm text-near-black focus:outline-none"
                 >
-                  <option value="">跟随知识库</option>
+                  <option value="">使用场景推荐配置</option>
                   {configRevisions.map((revision) => (
                     <option key={revision.configRevisionId} value={revision.configRevisionId}>
                       {revisionLabel(revision)}
@@ -1277,10 +1452,99 @@ Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/app-runtime/ch
             </div>
           </div>
         </DrawerSection>
+        <DrawerSection title="4. 配置参数">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <label className="space-y-2 text-sm">
+              <span className="text-stone-gray">回答长度</span>
+              <select
+                value={appForm.answerLength}
+                onChange={(event) => setAppForm((current) => ({ ...current, answerLength: event.target.value }))}
+                className="h-10 w-full rounded-md border border-border-cream bg-white px-3 text-sm text-near-black focus:outline-none"
+              >
+                <option value="short">简短</option>
+                <option value="standard">标准</option>
+                <option value="detailed">详细</option>
+              </select>
+            </label>
+            <label className="space-y-2 text-sm">
+              <span className="text-stone-gray">引用数量</span>
+              <Input
+                type="number"
+                min={1}
+                max={8}
+                value={String(appForm.citationCount)}
+                onChange={(event) => setAppForm((current) => ({ ...current, citationCount: Number(event.target.value) }))}
+                className="bg-white"
+              />
+            </label>
+            <label className="space-y-2 text-sm">
+              <span className="text-stone-gray">无证据策略</span>
+              <select
+                value={appForm.noEvidencePolicy}
+                onChange={(event) => setAppForm((current) => ({ ...current, noEvidencePolicy: event.target.value }))}
+                className="h-10 w-full rounded-md border border-border-cream bg-white px-3 text-sm text-near-black focus:outline-none"
+              >
+                <option value="refuse">拒答</option>
+                <option value="brief">简要说明不足</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-2 pt-7 text-sm text-near-black">
+              <input
+                type="checkbox"
+                checked={appForm.showSuggestedQuestions}
+                onChange={(event) => setAppForm((current) => ({ ...current, showSuggestedQuestions: event.target.checked }))}
+              />
+              显示推荐追问
+            </label>
+          </div>
+          {selectedScenarioTemplate?.scenarioType === "employee_training" && (
+            <p className="mt-3 rounded-md border border-border-cream bg-parchment p-3 text-xs text-stone-gray">
+              员工培训助手完整讲解、测验和评分流程将在 Sprint 49 接入；本轮先支持模型和创建入口。
+            </p>
+          )}
+        </DrawerSection>
+        <DrawerSection title="5. 发布方式">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <label className="flex items-center gap-2 rounded-md border border-border-cream bg-white p-3 text-sm">
+              <input type="checkbox" checked={appForm.publishApi} onChange={(event) => setAppForm((current) => ({ ...current, publishApi: event.target.checked }))} />
+              API 调用
+            </label>
+            <label className="flex items-center gap-2 rounded-md border border-border-cream bg-white p-3 text-sm">
+              <input type="checkbox" checked={appForm.publishEmbed} onChange={(event) => setAppForm((current) => ({ ...current, publishEmbed: event.target.checked, embedEnabled: event.target.checked }))} />
+              嵌入页
+            </label>
+          </div>
+          <div className="mt-3 space-y-3">
+            <label className="block space-y-2 text-sm">
+              <span className="text-stone-gray">嵌入页欢迎语</span>
+              <Input value={appForm.embedGreeting} onChange={(event) => setAppForm((current) => ({ ...current, embedGreeting: event.target.value }))} className="bg-white" />
+            </label>
+            <label className="block space-y-2 text-sm">
+              <span className="text-stone-gray">允许来源，每行一个 Origin</span>
+              <textarea
+                value={appForm.embedAllowedOrigins}
+                onChange={(event) => setAppForm((current) => ({ ...current, embedAllowedOrigins: event.target.value }))}
+                rows={2}
+                placeholder="https://example.com"
+                className="w-full rounded-md border border-border-cream bg-white px-3 py-2 text-sm text-near-black focus:outline-none"
+              />
+            </label>
+          </div>
+        </DrawerSection>
+        {!editingAppId && (
+          <DrawerSection title="6. 创建预览">
+            <div className="grid grid-cols-1 gap-2 rounded-md border border-border-cream bg-parchment p-3 text-sm md:grid-cols-2">
+              <span>场景：{selectedScenarioTemplate?.name ?? appForm.scenarioType}</span>
+              <span>知识库：{selectedKnowledgeBaseName(knowledgeBases, appForm.kbId)}</span>
+              <span>运行配置：{appForm.defaultConfigRevisionId ? shortId(appForm.defaultConfigRevisionId) : "场景推荐配置"}</span>
+              <span>发布：{[appForm.publishApi ? "API" : null, appForm.publishEmbed ? "嵌入页" : null].filter(Boolean).join(" / ") || "-"}</span>
+            </div>
+          </DrawerSection>
+        )}
         <div className="flex justify-end gap-3 border-t border-border-cream p-5">
           <Button variant="ghost" onClick={closeAppForm} disabled={isSaving}>取消</Button>
           <Button variant="primary" onClick={() => void handleSaveApp()} disabled={isSaving}>
-            {editingAppId ? "保存修改" : "创建应用"}
+            {editingAppId ? "保存修改" : "创建场景助手"}
           </Button>
         </div>
       </Drawer>

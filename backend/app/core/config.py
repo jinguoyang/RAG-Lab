@@ -186,6 +186,10 @@ class Settings(BaseSettings):
         default=False,
         validation_alias=AliasChoices("RAG_LAB_TEST_SEED_ENABLED", "TEST_SEED_ENABLED"),
     )
+    app_runtime_embed_token_secret: str = Field(
+        default="rag-lab-local-embed-token-secret",
+        validation_alias=AliasChoices("RAG_LAB_APP_RUNTIME_EMBED_TOKEN_SECRET", "APP_RUNTIME_EMBED_TOKEN_SECRET"),
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -5,8 +5,12 @@ import {
 import type {
   AppRuntimeChatRequest,
   AppRuntimeChatResponse,
+  AppRuntimeEmbedTokenRequest,
+  AppRuntimeEmbedTokenResponse,
   AppRuntimeFeedbackRequest,
   AppRuntimeFeedbackResponse,
+  AppRuntimeRetrieveRequest,
+  AppRuntimeRetrieveResponse,
   AppRuntimeSseEvent,
 } from "../types/appRuntime";
 
@@ -48,6 +52,28 @@ export async function streamChatWithAppRuntime(
     "/app-runtime/chat-messages",
     normalizeChatRequest(request, "streaming"),
     buildRuntimeHeaders(apiKey),
+  );
+}
+
+export async function createAppRuntimeEmbedToken(
+  apiKey: string,
+  request: AppRuntimeEmbedTokenRequest = {},
+): Promise<AppRuntimeEmbedTokenResponse> {
+  return apiPostJsonWithHeaders<AppRuntimeEmbedTokenResponse>(
+    "/app-runtime/embed-tokens",
+    request,
+    buildRuntimeHeaders(apiKey),
+  );
+}
+
+export async function retrieveWithAppRuntime(
+  credential: string,
+  request: AppRuntimeRetrieveRequest,
+): Promise<AppRuntimeRetrieveResponse> {
+  return apiPostJsonWithHeaders<AppRuntimeRetrieveResponse>(
+    "/app-runtime/retrieve",
+    request,
+    buildRuntimeHeaders(credential),
   );
 }
 

@@ -20,6 +20,7 @@ function lazyPage<T extends Record<string, unknown>>(loader: () => Promise<T>, e
 
 export const router = createBrowserRouter([
   { path: "/login", lazy: lazyPage(() => import("./pages/P01_Login"), "Login") },
+  { path: "/embed/runtime", lazy: lazyPage(() => import("./pages/P20_EmbeddedRuntime"), "EmbeddedRuntime") },
   {
     path: "/",
     Component: PlatformLayout,

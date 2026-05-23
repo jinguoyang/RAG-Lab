@@ -26,6 +26,38 @@ export interface AppRuntimeChatResponse {
   metadata: Record<string, unknown>;
 }
 
+export interface AppRuntimeEmbedTokenRequest {
+  ttlSeconds?: number;
+  allowedOrigin?: string | null;
+  endUserId?: string | null;
+}
+
+export interface AppRuntimeEmbedTokenResponse {
+  embedToken: string;
+  appId: string;
+  expiresAt: string;
+}
+
+export interface AppRuntimeRetrieveRequest {
+  query: string;
+  topK?: number;
+}
+
+export interface AppRuntimeRetrievedEvidenceDTO {
+  evidenceId: string;
+  chunkId: string;
+  label: string | null;
+  summary: string;
+  locationSnapshot: Record<string, unknown>;
+}
+
+export interface AppRuntimeRetrieveResponse {
+  appId: string;
+  kbId: string;
+  evidences: AppRuntimeRetrievedEvidenceDTO[];
+  metadata: Record<string, unknown>;
+}
+
 export interface AppRuntimeFeedbackRequest {
   feedbackStatus: AppRuntimeFeedbackStatus;
   failureType?: string | null;

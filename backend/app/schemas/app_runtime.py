@@ -44,6 +44,57 @@ class AppRuntimeChatResponse(BaseModel):
     metadata: dict[str, Any]
 
 
+class AppRuntimeEmbedTokenRequest(BaseModel):
+    """通过 App API Key 生成短期嵌入 Token。"""
+
+    ttlSeconds: int = Field(default=900, ge=60, le=3600)
+    allowedOrigin: str | None = Field(default=None, max_length=256)
+    endUserId: str | None = Field(default=None, max_length=128)
+
+
+class AppRuntimeEmbedTokenResponse(BaseModel):
+    """短期嵌入 Token 响应，不包含 App API Key。"""
+
+    embedToken: str
+    appId: str
+    expiresAt: str
+
+
+class AppRuntimeRetrieveRequest(BaseModel):
+    """只返回授权证据摘要的 Runtime 检索请求。"""
+
+    query: str = Field(min_length=1, max_length=4000)
+    topK: int = Field(default=5, ge=1, le=10)
+
+    @field_validator("query")
+    @classmethod
+    def validate_query(cls, value: str) -> str:
+        """裁剪空白问题，避免空检索进入服务层。"""
+        stripped_value = value.strip()
+        if not stripped_value:
+            raise ValueError("Query is required.")
+        return stripped_value
+
+
+class AppRuntimeRetrievedEvidenceDTO(BaseModel):
+    """Runtime retrieve 返回的安全证据摘要。"""
+
+    evidenceId: str
+    chunkId: str
+    label: str | None = None
+    summary: str
+    locationSnapshot: dict[str, Any]
+
+
+class AppRuntimeRetrieveResponse(BaseModel):
+    """Runtime retrieve 响应，不暴露内部 Trace 或完整 Chunk 正文。"""
+
+    appId: str
+    kbId: str
+    evidences: list[AppRuntimeRetrievedEvidenceDTO]
+    metadata: dict[str, Any]
+
+
 class AppRuntimeFeedbackRequest(BaseModel):
     """外部回答质量反馈；只允许回流到当前 App 的助手消息。"""
 

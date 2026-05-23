@@ -6,7 +6,16 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db_session
-from app.schemas.app_runtime import AppRuntimeChatRequest, AppRuntimeChatResponse, AppRuntimeFeedbackRequest, AppRuntimeFeedbackResponse
+from app.schemas.app_runtime import (
+    AppRuntimeChatRequest,
+    AppRuntimeChatResponse,
+    AppRuntimeEmbedTokenRequest,
+    AppRuntimeEmbedTokenResponse,
+    AppRuntimeFeedbackRequest,
+    AppRuntimeFeedbackResponse,
+    AppRuntimeRetrieveRequest,
+    AppRuntimeRetrieveResponse,
+)
 from app.services.app_runtime_service import (
     AppRuntimeAuthError,
     AppRuntimeConcurrencyExceededError,
@@ -14,7 +23,9 @@ from app.services.app_runtime_service import (
     AppRuntimeNotFoundError,
     AppRuntimeQuotaExceededError,
     chat_with_app_runtime,
+    create_app_runtime_embed_token,
     iter_chat_sse_events,
+    retrieve_app_runtime_evidence,
     submit_app_runtime_feedback,
 )
 from app.services.qa_run_service import QARunCreateConflict
@@ -62,6 +73,34 @@ def create_app_runtime_chat_message(
     if request.responseMode == "streaming":
         return StreamingResponse(iter_chat_sse_events(response), media_type="text/event-stream")
     return response
+
+
+@router.post("/embed-tokens", response_model=AppRuntimeEmbedTokenResponse, status_code=status.HTTP_201_CREATED)
+def create_embed_token(
+    request: AppRuntimeEmbedTokenRequest,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+    session: Session = Depends(get_db_session),
+) -> AppRuntimeEmbedTokenResponse:
+    """通过 App API Key 生成短期 Embed Token，嵌入页不接触长期 Key。"""
+    api_key = _extract_bearer_token(authorization)
+    try:
+        return create_app_runtime_embed_token(session, api_key, request)
+    except Exception as exc:
+        _raise_runtime_error(exc)
+
+
+@router.post("/retrieve", response_model=AppRuntimeRetrieveResponse)
+def retrieve_evidence(
+    request: AppRuntimeRetrieveRequest,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+    session: Session = Depends(get_db_session),
+) -> AppRuntimeRetrieveResponse:
+    """只返回当前 App 所属知识库的授权证据摘要，不暴露内部 Trace。"""
+    credential = _extract_bearer_token(authorization)
+    try:
+        return retrieve_app_runtime_evidence(session, credential, request)
+    except Exception as exc:
+        _raise_runtime_error(exc)
 
 
 @router.post("/messages/{message_id}/feedback", response_model=AppRuntimeFeedbackResponse, status_code=status.HTTP_201_CREATED)

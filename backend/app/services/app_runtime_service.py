@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+import base64
 from hashlib import sha256
+import hmac
 import json
 from time import perf_counter
 from uuid import UUID, uuid4
@@ -8,12 +10,18 @@ from uuid import UUID, uuid4
 from sqlalchemy import RowMapping, func, insert, select, update
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.schemas.app_runtime import (
     AppRuntimeChatRequest,
     AppRuntimeChatResponse,
     AppRuntimeCitationDTO,
+    AppRuntimeEmbedTokenRequest,
+    AppRuntimeEmbedTokenResponse,
     AppRuntimeFeedbackRequest,
     AppRuntimeFeedbackResponse,
+    AppRuntimeRetrievedEvidenceDTO,
+    AppRuntimeRetrieveRequest,
+    AppRuntimeRetrieveResponse,
 )
 from app.schemas.auth import CurrentUserResponse, UserDTO
 from app.schemas.qa_run import QARunCreateRequest
@@ -23,6 +31,7 @@ from app.tables import (
     app_conversations,
     app_invocations,
     app_messages,
+    chunks,
     config_revisions,
     evaluation_samples,
     knowledge_bases,
@@ -117,9 +126,62 @@ class _RuntimeContext:
     actor: CurrentUserResponse
 
 
+EMBED_TOKEN_PREFIX = "rlet_"
+
+
 def _hash_api_key(api_key: str) -> str:
     """按管理端相同规则计算 API Key 哈希。"""
     return sha256(api_key.encode("utf-8")).hexdigest()
+
+
+def _b64url_encode(payload: bytes) -> str:
+    """生成不带 padding 的 URL 安全 Base64，便于作为 Bearer Token 传递。"""
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _b64url_decode(value: str) -> bytes:
+    """解码不带 padding 的 URL 安全 Base64。"""
+    padding = "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode((value + padding).encode("ascii"))
+
+
+def _embed_token_secret() -> bytes:
+    """读取嵌入 Token 签名密钥，避免浏览器端暴露 App API Key。"""
+    return get_settings().app_runtime_embed_token_secret.encode("utf-8")
+
+
+def _sign_embed_payload(payload_part: str) -> str:
+    """对 Token payload 签名，校验时使用常量时间比较防篡改。"""
+    signature = hmac.new(_embed_token_secret(), payload_part.encode("ascii"), "sha256").digest()
+    return _b64url_encode(signature)
+
+
+def _encode_embed_token(payload: dict) -> str:
+    """将短期 Token payload 编码为 rlet_ 前缀令牌。"""
+    payload_part = _b64url_encode(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+    signature_part = _sign_embed_payload(payload_part)
+    return f"{EMBED_TOKEN_PREFIX}{payload_part}.{signature_part}"
+
+
+def _decode_embed_token(token: str, now: datetime) -> dict:
+    """校验并解析嵌入 Token；过期、篡改和格式错误统一视为鉴权失败。"""
+    if not token.startswith(EMBED_TOKEN_PREFIX):
+        raise AppRuntimeAuthError
+    body = token[len(EMBED_TOKEN_PREFIX):]
+    payload_part, separator, signature_part = body.partition(".")
+    if not separator or not payload_part or not signature_part:
+        raise AppRuntimeAuthError
+    expected_signature = _sign_embed_payload(payload_part)
+    if not hmac.compare_digest(expected_signature, signature_part):
+        raise AppRuntimeAuthError
+    try:
+        payload = json.loads(_b64url_decode(payload_part).decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        raise AppRuntimeAuthError
+    expires_at = payload.get("exp")
+    if not isinstance(expires_at, int) or expires_at <= int(now.timestamp()):
+        raise AppRuntimeAuthError
+    return payload
 
 
 def _is_expired(expires_at: datetime | None, now: datetime) -> bool:
@@ -161,6 +223,57 @@ def _read_key_context(session: Session, api_key: str, now: datetime) -> tuple[Ro
     if kb_row is None:
         raise AppRuntimeAuthError
     return key_row, app_row, kb_row
+
+
+def _read_embed_token_context(session: Session, embed_token: str, now: datetime) -> tuple[RowMapping, RowMapping, RowMapping]:
+    """读取短期 Embed Token 中绑定的 Key/App/KB，避免跨 App 或已撤销 Key 继续调用。"""
+    payload = _decode_embed_token(embed_token, now)
+    try:
+        app_id = UUID(str(payload["appId"]))
+        api_key_id = UUID(str(payload["apiKeyId"]))
+    except (KeyError, TypeError, ValueError):
+        raise AppRuntimeAuthError
+
+    key_row = session.execute(
+        select(rag_app_api_keys)
+        .where(
+            rag_app_api_keys.c.api_key_id == api_key_id,
+            rag_app_api_keys.c.app_id == app_id,
+        )
+        .limit(1)
+    ).mappings().first()
+    if key_row is None or key_row["status"] != "active" or _is_expired(key_row["expires_at"], now):
+        raise AppRuntimeAuthError
+
+    app_row = session.execute(
+        select(rag_apps)
+        .where(
+            rag_apps.c.app_id == app_id,
+            rag_apps.c.deleted_at.is_(None),
+        )
+        .limit(1)
+    ).mappings().first()
+    if app_row is None:
+        raise AppRuntimeAuthError
+
+    kb_row = session.execute(
+        select(knowledge_bases)
+        .where(
+            knowledge_bases.c.kb_id == app_row["kb_id"],
+            knowledge_bases.c.deleted_at.is_(None),
+        )
+        .limit(1)
+    ).mappings().first()
+    if kb_row is None:
+        raise AppRuntimeAuthError
+    return key_row, app_row, kb_row
+
+
+def _read_credential_context(session: Session, credential: str, now: datetime) -> tuple[RowMapping, RowMapping, RowMapping]:
+    """兼容 App API Key 和短期 Embed Token 两种 Runtime 凭据。"""
+    if credential.startswith(EMBED_TOKEN_PREFIX):
+        return _read_embed_token_context(session, credential, now)
+    return _read_key_context(session, credential, now)
 
 
 def _read_revision_id(session: Session, app_row: RowMapping, kb_row: RowMapping) -> UUID:
@@ -348,13 +461,13 @@ def _assert_runtime_concurrency(
 
 def _resolve_runtime_context(
     session: Session,
-    api_key: str,
+    credential: str,
     request: AppRuntimeChatRequest,
     now: datetime,
     started_counter: float,
 ) -> _RuntimeContext:
     """完成鉴权、状态校验和 Revision/Actor 解析。"""
-    key_row, app_row, kb_row = _read_key_context(session, api_key, now)
+    key_row, app_row, kb_row = _read_credential_context(session, credential, now)
     if app_row["status"] != "active":
         _insert_failed_invocation_for_known_app(
             session,
@@ -378,6 +491,22 @@ def _resolve_runtime_context(
         error_code = str(exc) or "RAG_APP_RUNTIME_CONFLICT"
         _insert_failed_invocation_for_known_app(session, app_row, key_row, request, now, started_counter, error_code)
         raise
+    return _RuntimeContext(app_row=app_row, key_row=key_row, kb_row=kb_row, revision_id=revision_id, actor=actor)
+
+
+def _resolve_runtime_context_without_quota(
+    session: Session,
+    credential: str,
+    now: datetime,
+) -> _RuntimeContext:
+    """为 Token 签发、反馈和 retrieve 解析上下文；这些操作不占用对话并发配额。"""
+    key_row, app_row, kb_row = _read_credential_context(session, credential, now)
+    if app_row["status"] != "active":
+        raise AppRuntimeConflictError("RAG_APP_DISABLED")
+    if kb_row["status"] == "disabled":
+        raise AppRuntimeConflictError("KB_DISABLED")
+    revision_id = _read_revision_id(session, app_row, kb_row)
+    actor = _read_runtime_actor(session, app_row, kb_row)
     return _RuntimeContext(app_row=app_row, key_row=key_row, kb_row=kb_row, revision_id=revision_id, actor=actor)
 
 
@@ -515,13 +644,13 @@ def _to_response_usage(metrics: dict) -> dict:
 
 def chat_with_app_runtime(
     session: Session,
-    api_key: str,
+    credential: str,
     request: AppRuntimeChatRequest,
 ) -> AppRuntimeChatResponse:
     """执行 App Runtime blocking 对话，并复用现有 QARun 检索与权限过滤链路。"""
     started_at = datetime.now(UTC)
     started_counter = perf_counter()
-    context = _resolve_runtime_context(session, api_key, request, started_at, started_counter)
+    context = _resolve_runtime_context(session, credential, request, started_at, started_counter)
     invocation_id = _insert_running_invocation(session, context, request, started_at)
     try:
         conversation_row = _get_or_create_conversation(session, context.app_row["app_id"], request, started_at)
@@ -547,12 +676,13 @@ def chat_with_app_runtime(
                 query=request.query,
                 configRevisionId=context.revision_id,
                 overrideParams={
-                    "appRuntime": {
-                        "appId": str(context.app_row["app_id"]),
-                        "conversationId": str(conversation_row["conversation_id"]),
-                        "endUserId": request.endUserId,
-                    }
-                },
+                "appRuntime": {
+                    "appId": str(context.app_row["app_id"]),
+                    "conversationId": str(conversation_row["conversation_id"]),
+                    "endUserId": request.endUserId,
+                    "scenarioType": (context.app_row["metadata"] or {}).get("scenario", {}).get("scenarioType"),
+                }
+            },
             ),
         )
         if qa_response is None:
@@ -623,6 +753,7 @@ def chat_with_app_runtime(
                 "configRevisionId": str(context.revision_id),
                 "runStatus": detail.status,
                 "responseMode": request.responseMode,
+                "authType": "embedToken" if credential.startswith(EMBED_TOKEN_PREFIX) else "apiKey",
             },
         )
     except QARunCreateConflict:
@@ -672,6 +803,99 @@ def iter_chat_sse_events(response: AppRuntimeChatResponse):
         "metadata": response.metadata,
     }
     yield f"event: done\ndata: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
+
+
+def create_app_runtime_embed_token(
+    session: Session,
+    api_key: str,
+    request: AppRuntimeEmbedTokenRequest,
+) -> AppRuntimeEmbedTokenResponse:
+    """通过长期 App API Key 签发短期 Embed Token，浏览器嵌入页只持有短期凭据。"""
+    now = datetime.now(UTC)
+    key_row, app_row, kb_row = _read_key_context(session, api_key, now)
+    if app_row["status"] != "active":
+        raise AppRuntimeConflictError("RAG_APP_DISABLED")
+    if kb_row["status"] == "disabled":
+        raise AppRuntimeConflictError("KB_DISABLED")
+    expires_at = now + timedelta(seconds=request.ttlSeconds)
+    payload = {
+        "typ": "embed",
+        "appId": str(app_row["app_id"]),
+        "apiKeyId": str(key_row["api_key_id"]),
+        "exp": int(expires_at.timestamp()),
+    }
+    if request.allowedOrigin:
+        payload["origin"] = request.allowedOrigin
+    if request.endUserId:
+        payload["endUserId"] = request.endUserId
+    session.execute(
+        update(rag_app_api_keys)
+        .where(rag_app_api_keys.c.api_key_id == key_row["api_key_id"])
+        .values(last_used_at=now)
+    )
+    session.commit()
+    return AppRuntimeEmbedTokenResponse(
+        embedToken=_encode_embed_token(payload),
+        appId=str(app_row["app_id"]),
+        expiresAt=expires_at.isoformat(),
+    )
+
+
+def _summarize_evidence_content(content: str | None, max_length: int = 240) -> str:
+    """返回安全证据摘要，避免 retrieve 暴露完整 Chunk 正文。"""
+    normalized = " ".join((content or "").split())
+    if len(normalized) <= max_length:
+        return normalized
+    return f"{normalized[:max_length].rstrip()}..."
+
+
+def retrieve_app_runtime_evidence(
+    session: Session,
+    credential: str,
+    request: AppRuntimeRetrieveRequest,
+) -> AppRuntimeRetrieveResponse:
+    """只从当前 App 所属知识库读取授权证据摘要，不返回内部 Trace 或完整正文。"""
+    now = datetime.now(UTC)
+    context = _resolve_runtime_context_without_quota(session, credential, now)
+    rows = session.execute(
+        select(
+            chunks.c.chunk_id,
+            chunks.c.chunk_index,
+            chunks.c.content,
+            chunks.c.metadata,
+        )
+        .where(
+            chunks.c.kb_id == context.kb_row["kb_id"],
+            chunks.c.status == "active",
+        )
+        .order_by(chunks.c.chunk_index.asc())
+        .limit(request.topK)
+    ).mappings().all()
+
+    evidences = [
+        AppRuntimeRetrievedEvidenceDTO(
+            evidenceId=str(uuid4()),
+            chunkId=str(row["chunk_id"]),
+            label=f"片段 {index}",
+            summary=_summarize_evidence_content(row["content"]),
+            locationSnapshot={
+                "chunkId": str(row["chunk_id"]),
+                "chunkIndex": row["chunk_index"],
+                "source": "postgres_chunks",
+            },
+        )
+        for index, row in enumerate(rows, start=1)
+    ]
+    return AppRuntimeRetrieveResponse(
+        appId=str(context.app_row["app_id"]),
+        kbId=str(context.kb_row["kb_id"]),
+        evidences=evidences,
+        metadata={
+            "queryLength": len(request.query),
+            "topK": request.topK,
+            "authType": "embedToken" if credential.startswith(EMBED_TOKEN_PREFIX) else "apiKey",
+        },
+    )
 
 
 def _normalize_feedback_status(value: str) -> str:
@@ -755,24 +979,14 @@ def _create_feedback_sample(
 
 def submit_app_runtime_feedback(
     session: Session,
-    api_key: str,
+    credential: str,
     message_id: UUID,
     request: AppRuntimeFeedbackRequest,
 ) -> AppRuntimeFeedbackResponse:
     """回流外部反馈到 QARun，并按需生成 EvaluationSample。"""
     now = datetime.now(UTC)
-    key_row, app_row, kb_row = _read_key_context(session, api_key, now)
-    if app_row["status"] != "active":
-        raise AppRuntimeConflictError("RAG_APP_DISABLED")
-    actor = _read_runtime_actor(session, app_row, kb_row)
-    context = _RuntimeContext(
-        app_row=app_row,
-        key_row=key_row,
-        kb_row=kb_row,
-        revision_id=app_row["default_config_revision_id"] or kb_row["active_config_revision_id"],
-        actor=actor,
-    )
-    message_row, run_row = _read_feedback_message(session, app_row["app_id"], message_id)
+    context = _resolve_runtime_context_without_quota(session, credential, now)
+    message_row, run_row = _read_feedback_message(session, context.app_row["app_id"], message_id)
     feedback_status = _normalize_feedback_status(request.feedbackStatus)
     try:
         require_active_dict_item(session, "feedback_status", feedback_status, "feedbackStatus")
@@ -784,7 +998,7 @@ def submit_app_runtime_feedback(
     else:
         metrics.pop("failureType", None)
 
-    actor_id = UUID(actor.user.userId)
+    actor_id = UUID(context.actor.user.userId)
     session.execute(
         update(qa_runs)
         .where(qa_runs.c.run_id == run_row["run_id"])
