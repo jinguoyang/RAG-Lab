@@ -14,7 +14,6 @@ def _make_mock_context(kb_id=None):
     return ctx
 
 
-@pytest.mark.skip(reason="pending Task 2 vector path implementation")
 class TestSemanticRetrieve:
     """retrieve_app_runtime_evidence 应使用 EmbeddingProvider + DenseRetrievalProvider。"""
 
@@ -26,6 +25,8 @@ class TestSemanticRetrieve:
 
         mock_ctx.return_value = _make_mock_context()
 
+        shared_chunk_id = uuid4()
+
         # mock embedding provider
         mock_embedding = MagicMock()
         mock_embedding.embed_query.return_value = [0.1] * 1536
@@ -33,7 +34,7 @@ class TestSemanticRetrieve:
         # mock dense provider
         mock_dense = MagicMock()
         candidate = MagicMock()
-        candidate.chunk_id = str(uuid4())
+        candidate.chunk_id = str(shared_chunk_id)
         candidate.content = "test content"
         candidate.metadata = {"chunk_index": 0}
         mock_dense.retrieve.return_value = [candidate]
@@ -46,7 +47,7 @@ class TestSemanticRetrieve:
         # mock session
         mock_session = MagicMock()
         mock_row = {
-            "chunk_id": uuid4(), "chunk_index": 0,
+            "chunk_id": shared_chunk_id, "chunk_index": 0,
             "content": "test content", "metadata": {},
         }
         mock_session.execute.return_value.mappings.return_value.all.return_value = [mock_row]
@@ -55,5 +56,26 @@ class TestSemanticRetrieve:
         with patch("app.services.app_runtime_service.get_settings") as mock_settings:
             mock_settings.return_value.dense_retrieval_provider = "milvus"
             mock_settings.return_value.provider_top_k = 5
-            # Will fail until Step 3 implements the vector path
             result = retrieve_app_runtime_evidence(mock_session, "cred", request)
+
+            mock_embedding.embed_query.assert_called_once_with("test query")
+            mock_dense.retrieve.assert_called_once()
+            assert len(result.evidences) == 1
+            assert result.metadata["retrievalMode"] == "vector"
+
+    @patch("app.services.app_runtime_service._resolve_runtime_context_without_quota")
+    def test_retrieve_falls_back_to_ilike_when_local(self, mock_ctx):
+        """当 dense_retrieval_provider == local 时，应回退到 ILIKE。"""
+        from app.schemas.app_runtime import AppRuntimeRetrieveRequest
+
+        mock_ctx.return_value = _make_mock_context()
+        mock_session = MagicMock()
+        mock_row = {"chunk_id": uuid4(), "chunk_index": 0, "content": "test", "metadata": {}}
+        mock_session.execute.return_value.mappings.return_value.all.return_value = [mock_row]
+
+        request = AppRuntimeRetrieveRequest(query="test", topK=5)
+        with patch("app.services.app_runtime_service.get_settings") as mock_settings:
+            mock_settings.return_value.dense_retrieval_provider = "local"
+            result = retrieve_app_runtime_evidence(mock_session, "cred", request)
+            assert len(result.evidences) == 1
+            assert result.metadata["retrievalMode"] == "ilike"

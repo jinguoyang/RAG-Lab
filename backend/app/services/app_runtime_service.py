@@ -865,25 +865,43 @@ def retrieve_app_runtime_evidence(
     credential: str,
     request: AppRuntimeRetrieveRequest,
 ) -> AppRuntimeRetrieveResponse:
-    """只从当前 App 所属知识库读取授权证据摘要，不返回内部 Trace 或完整正文。"""
+    """从当前 App 所属知识库读取授权证据摘要。优先使用向量语义检索，回退到 ILIKE。"""
     now = datetime.now(UTC)
     context = _resolve_runtime_context_without_quota(session, credential, now)
-    stmt = (
-        select(
-            chunks.c.chunk_id,
-            chunks.c.chunk_index,
-            chunks.c.content,
-            chunks.c.metadata,
+
+    settings = get_settings()
+
+    if settings.dense_retrieval_provider != "local" and request.query.strip():
+        # 向量语义检索路径
+        provider_set = _build_provider_set()
+        embedding = provider_set.embedding.embed_query(request.query.strip())
+        candidates = provider_set.dense.retrieve(
+            context.kb_row["kb_id"], request.query.strip(), embedding, request.topK,
         )
-        .where(
-            chunks.c.kb_id == context.kb_row["kb_id"],
-            chunks.c.status == "active",
+        # 回表读取 chunk 详情
+        chunk_ids = [c.chunk_id for c in candidates]
+        if chunk_ids:
+            rows = session.execute(
+                select(chunks.c.chunk_id, chunks.c.chunk_index, chunks.c.content, chunks.c.metadata)
+                .where(chunks.c.chunk_id.in_(chunk_ids), chunks.c.status == "active")
+            ).mappings().all()
+            row_map = {str(r["chunk_id"]): r for r in rows}
+            ordered_rows = [row_map[cid] for cid in chunk_ids if cid in row_map]
+        else:
+            ordered_rows = []
+    else:
+        # ILIKE 回退路径
+        stmt = (
+            select(chunks.c.chunk_id, chunks.c.chunk_index, chunks.c.content, chunks.c.metadata)
+            .where(
+                chunks.c.kb_id == context.kb_row["kb_id"],
+                chunks.c.status == "active",
+            )
         )
-    )
-    if request.query.strip():
-        stmt = stmt.where(chunks.c.content.ilike(f"%{request.query.strip()}%"))
-    stmt = stmt.order_by(chunks.c.chunk_index.asc()).limit(request.topK)
-    rows = session.execute(stmt).mappings().all()
+        if request.query.strip():
+            stmt = stmt.where(chunks.c.content.ilike(f"%{request.query.strip()}%"))
+        stmt = stmt.order_by(chunks.c.chunk_index.asc()).limit(request.topK)
+        ordered_rows = session.execute(stmt).mappings().all()
 
     evidences = [
         AppRuntimeRetrievedEvidenceDTO(
@@ -894,10 +912,10 @@ def retrieve_app_runtime_evidence(
             locationSnapshot={
                 "chunkId": str(row["chunk_id"]),
                 "chunkIndex": row["chunk_index"],
-                "source": "postgres_chunks",
+                "source": "milvus" if settings.dense_retrieval_provider != "local" else "postgres_chunks",
             },
         )
-        for index, row in enumerate(rows, start=1)
+        for index, row in enumerate(ordered_rows, start=1)
     ]
     return AppRuntimeRetrieveResponse(
         appId=str(context.app_row["app_id"]),
@@ -906,6 +924,7 @@ def retrieve_app_runtime_evidence(
         metadata={
             "queryLength": len(request.query),
             "topK": request.topK,
+            "retrievalMode": "vector" if settings.dense_retrieval_provider != "local" else "ilike",
             "authType": "embedToken" if credential.startswith(EMBED_TOKEN_PREFIX) else "apiKey",
         },
     )
