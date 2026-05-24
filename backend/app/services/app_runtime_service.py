@@ -973,6 +973,60 @@ def _training_passing_score(scenario: dict) -> int:
     return min(max(score, 0), 100)
 
 
+def _generate_quiz_with_llm(topic: str, answer: str, question_count: int, difficulty: str | None) -> dict | None:
+    """调用 LLM 生成基于培训内容的测验题目。失败时返回 None 由调用方回退到模板。"""
+    try:
+        provider_set = _build_provider_set()
+        difficulty_hint = {
+            "easy": "简单（事实回忆）",
+            "hard": "困难（分析综合）",
+        }.get(difficulty or "normal", "中等（理解应用）")
+
+        prompt = (
+            f"你是一个培训测验出题专家。根据以下培训内容，生成 {question_count} 道单选题。\n\n"
+            f"培训主题：{topic}\n"
+            f"培训内容：{answer[:2000]}\n"
+            f"难度：{difficulty_hint}\n\n"
+            f"要求：\n"
+            f"1. 每题 4 个选项，只有 1 个正确答案\n"
+            f"2. 干扰选项应基于培训内容，不能明显错误\n"
+            f"3. 题目应测试对内容的理解，而非简单记忆\n"
+            f"4. explanation 应引用培训材料中的具体内容\n\n"
+            f"返回 JSON 格式：\n"
+            f'{{"questions": [{{"questionId": "q1", "type": "single_choice", "stem": "题目", "options": ["A", "B", "C", "D"], "correctAnswer": "正确选项的完整文本", "explanation": "解释"}}]}}'
+        )
+
+        raw = provider_set.llm._chat(
+            [{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=2000,
+        )
+
+        # 提取 JSON（LLM 可能包裹在 markdown code block 中）
+        text = raw.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+
+        parsed = json.loads(text)
+        questions = parsed.get("questions", [])
+        if not questions:
+            return None
+
+        # 标准化字段
+        for i, q in enumerate(questions):
+            q.setdefault("questionId", f"q{i + 1}")
+            q.setdefault("type", "single_choice")
+
+        return {
+            "topic": topic,
+            "difficulty": difficulty or "normal",
+            "questionCount": len(questions),
+            "questions": questions,
+        }
+    except Exception:
+        return None
+
+
 def _build_training_quiz(topic: str, answer: str, question_count: int, difficulty: str | None) -> dict:
     """基于 QARun 讲解摘要生成可评分的结构化测验（当前为模板占位实现，题目为固定选项）。"""
     base_answer = "完成培训并通过测验"
