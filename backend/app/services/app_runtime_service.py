@@ -515,6 +515,12 @@ def _resolve_runtime_context_without_quota(
     return _RuntimeContext(app_row=app_row, key_row=key_row, kb_row=kb_row, revision_id=revision_id, actor=actor)
 
 
+def _build_provider_set():
+    """构建 QA Run Provider 集合（延迟导入避免循环依赖）。"""
+    from app.services.qa_providers import get_qa_run_providers
+    return get_qa_run_providers()
+
+
 def _get_or_create_conversation(
     session: Session,
     app_id: UUID,
@@ -862,7 +868,7 @@ def retrieve_app_runtime_evidence(
     """只从当前 App 所属知识库读取授权证据摘要，不返回内部 Trace 或完整正文。"""
     now = datetime.now(UTC)
     context = _resolve_runtime_context_without_quota(session, credential, now)
-    rows = session.execute(
+    stmt = (
         select(
             chunks.c.chunk_id,
             chunks.c.chunk_index,
@@ -873,9 +879,11 @@ def retrieve_app_runtime_evidence(
             chunks.c.kb_id == context.kb_row["kb_id"],
             chunks.c.status == "active",
         )
-        .order_by(chunks.c.chunk_index.asc())
-        .limit(request.topK)
-    ).mappings().all()
+    )
+    if request.query.strip():
+        stmt = stmt.where(chunks.c.content.ilike(f"%{request.query.strip()}%"))
+    stmt = stmt.order_by(chunks.c.chunk_index.asc()).limit(request.topK)
+    rows = session.execute(stmt).mappings().all()
 
     evidences = [
         AppRuntimeRetrievedEvidenceDTO(
@@ -940,7 +948,7 @@ def _training_passing_score(scenario: dict) -> int:
 
 
 def _build_training_quiz(topic: str, answer: str, question_count: int, difficulty: str | None) -> dict:
-    """基于 QARun 讲解摘要生成可评分的首版结构化测验。"""
+    """基于 QARun 讲解摘要生成可评分的结构化测验（当前为模板占位实现，题目为固定选项）。"""
     base_answer = "完成培训并通过测验"
     questions = []
     for index in range(1, question_count + 1):
