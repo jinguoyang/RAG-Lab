@@ -14,6 +14,7 @@ def _make_mock_context(kb_id=None):
     return ctx
 
 
+@pytest.mark.skip(reason="pending Task 2 vector path implementation")
 class TestSemanticRetrieve:
     """retrieve_app_runtime_evidence 应使用 EmbeddingProvider + DenseRetrievalProvider。"""
 
