@@ -1028,7 +1028,12 @@ def _generate_quiz_with_llm(topic: str, answer: str, question_count: int, diffic
 
 
 def _build_training_quiz(topic: str, answer: str, question_count: int, difficulty: str | None) -> dict:
-    """基于 QARun 讲解摘要生成可评分的结构化测验（当前为模板占位实现，题目为固定选项）。"""
+    """基于培训内容生成测验。优先 LLM 生成，回退到模板。"""
+    llm_result = _generate_quiz_with_llm(topic, answer, question_count, difficulty)
+    if llm_result is not None:
+        return llm_result
+
+    # 模板回退
     base_answer = "完成培训并通过测验"
     questions = []
     for index in range(1, question_count + 1):
