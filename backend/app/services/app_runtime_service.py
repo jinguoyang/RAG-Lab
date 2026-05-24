@@ -1061,13 +1061,45 @@ def _build_training_quiz(topic: str, answer: str, question_count: int, difficult
     }
 
 
+def _generate_explain_with_llm(topic: str, answer: str) -> dict | None:
+    """调用 LLM 提炼培训讲解的结构化要点。失败时返回 None。"""
+    try:
+        provider_set = _build_provider_set()
+        prompt = (
+            f"你是一个培训讲师。请将以下培训内容提炼为结构化讲解。\n\n"
+            f"培训主题：{topic}\n"
+            f"培训内容：{answer[:3000]}\n\n"
+            f"返回 JSON 格式：\n"
+            f'{{"summary": "一句话总结", "keyPoints": ["要点1", "要点2", "要点3"]}}\n'
+            f"要求：keyPoints 3-5 个，每个不超过 50 字。"
+        )
+        raw = provider_set.llm._chat(
+            [{"role": "user", "content": prompt}],
+            temperature=0.5,
+            max_tokens=1000,
+        )
+        text = raw.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+        parsed = json.loads(text)
+        if not parsed.get("summary") or not parsed.get("keyPoints"):
+            return None
+        return parsed
+    except Exception:
+        return None
+
+
 def _build_structured_output(request: AppRuntimeStructuredRunRequest, scenario: dict, answer: str) -> dict:
     """将 QARun 回答转换为培训讲解或测验结构化输出。"""
     if request.action == "training_explain":
+        llm_explain = _generate_explain_with_llm(request.topic, answer)
+        if llm_explain is not None:
+            return {"explanation": {"topic": request.topic, **llm_explain}}
+        # 回退到简单分割
         return {
             "explanation": {
                 "topic": request.topic,
-                "summary": answer,
+                "summary": answer[:200],
                 "keyPoints": [item.strip() for item in answer.replace("。", "\n").splitlines() if item.strip()][:5],
             }
         }
