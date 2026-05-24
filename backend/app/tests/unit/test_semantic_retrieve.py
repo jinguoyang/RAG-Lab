@@ -79,3 +79,45 @@ class TestSemanticRetrieve:
             result = retrieve_app_runtime_evidence(mock_session, "cred", request)
             assert len(result.evidences) == 1
             assert result.metadata["retrievalMode"] == "ilike"
+
+    @patch("app.services.app_runtime_service._resolve_runtime_context_without_quota")
+    @patch("app.services.app_runtime_service._build_provider_set")
+    def test_retrieve_empty_query_skips_vector(self, mock_providers, mock_ctx):
+        """空 query 不应调用 embedding，直接返回 topK 结果。"""
+        from app.schemas.app_runtime import AppRuntimeRetrieveRequest
+
+        mock_ctx.return_value = _make_mock_context()
+        mock_session = MagicMock()
+        mock_session.execute.return_value.mappings.return_value.all.return_value = []
+
+        # 用 model_construct 绕过 Pydantic 验证，模拟服务层收到空白 query 的场景
+        request = AppRuntimeRetrieveRequest.model_construct(query="   ", topK=5)
+        with patch("app.services.app_runtime_service.get_settings") as mock_settings:
+            mock_settings.return_value.dense_retrieval_provider = "milvus"
+            result = retrieve_app_runtime_evidence(mock_session, "cred", request)
+            mock_providers.assert_not_called()
+            assert result.metadata["retrievalMode"] == "ilike"
+
+    @patch("app.services.app_runtime_service._resolve_runtime_context_without_quota")
+    @patch("app.services.app_runtime_service._build_provider_set")
+    def test_retrieve_milvus_empty_results(self, mock_providers, mock_ctx):
+        """Milvus 返回空结果时，evidences 应为空列表。"""
+        from app.schemas.app_runtime import AppRuntimeRetrieveRequest
+
+        mock_ctx.return_value = _make_mock_context()
+        mock_embedding = MagicMock()
+        mock_embedding.embed_query.return_value = [0.1] * 1536
+        mock_dense = MagicMock()
+        mock_dense.retrieve.return_value = []
+        mock_provider_set = MagicMock()
+        mock_provider_set.embedding = mock_embedding
+        mock_provider_set.dense = mock_dense
+        mock_providers.return_value = mock_provider_set
+
+        mock_session = MagicMock()
+        request = AppRuntimeRetrieveRequest(query="nonexistent", topK=5)
+        with patch("app.services.app_runtime_service.get_settings") as mock_settings:
+            mock_settings.return_value.dense_retrieval_provider = "milvus"
+            result = retrieve_app_runtime_evidence(mock_session, "cred", request)
+            assert result.evidences == []
+            assert result.metadata["retrievalMode"] == "vector"
