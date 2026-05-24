@@ -1,5 +1,8 @@
+import logging
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
+
+_logger = logging.getLogger(__name__)
 
 from sqlalchemy import RowMapping, and_, case, func, insert, or_, select, update
 from sqlalchemy.orm import Session
@@ -466,7 +469,7 @@ def get_kb_delete_impact(
         select(ingest_jobs.c.job_id, ingest_jobs.c.status)
         .where(
             ingest_jobs.c.kb_id == kb_id,
-            ingest_jobs.c.status.in_(["pending", "processing"]),
+            ingest_jobs.c.status.in_(["queued", "running"]),
         )
     ).mappings().all()
 
@@ -583,7 +586,7 @@ def delete_knowledge_base(
         .select_from(ingest_jobs)
         .where(
             ingest_jobs.c.kb_id == kb_id,
-            ingest_jobs.c.status.in_(["pending", "processing"]),
+            ingest_jobs.c.status.in_(["queued", "running"]),
         )
     ).scalar_one()
     if running_job_count > 0:
@@ -649,7 +652,7 @@ def delete_knowledge_base(
         update(ingest_jobs)
         .where(
             ingest_jobs.c.kb_id == kb_id,
-            ingest_jobs.c.status.in_(["pending", "processing"]),
+            ingest_jobs.c.status.in_(["queued", "running"]),
         )
         .values(status="cancelled")
     )
@@ -729,6 +732,7 @@ def delete_knowledge_base(
                 )
                 session.commit()
             except Exception:
+                _logger.warning("Failed to create index sync job for %s", target_store, exc_info=True)
                 session.rollback()
 
 

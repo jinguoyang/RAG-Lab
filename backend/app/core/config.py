@@ -1,6 +1,7 @@
+import warnings
 from functools import lru_cache
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -197,6 +198,19 @@ class Settings(BaseSettings):
         env_prefix="RAG_LAB_",
         extra="ignore",
     )
+
+    @model_validator(mode="after")
+    def _warn_default_embed_token_secret(self) -> "Settings":
+        if (
+            self.environment != "local"
+            and self.app_runtime_embed_token_secret == "rag-lab-local-embed-token-secret"
+        ):
+            warnings.warn(
+                "app_runtime_embed_token_secret is using the default value. "
+                "Set RAG_LAB_APP_RUNTIME_EMBED_TOKEN_SECRET in production.",
+                stacklevel=1,
+            )
+        return self
 
 
 @lru_cache

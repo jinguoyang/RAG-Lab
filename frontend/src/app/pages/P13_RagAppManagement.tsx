@@ -156,7 +156,7 @@ function buildQARunHistoryLink(kbId: string, runId: string): string {
 }
 
 function templateConfigValue(template: AgentScenarioTemplateDTO | undefined, key: string, fallback: string | number | boolean): string | number | boolean {
-  const value = template?.defaultConfig?.[key];
+  const value = template?.defaultScenarioConfig?.[key];
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
   return fallback;
 }

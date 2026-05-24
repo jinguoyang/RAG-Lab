@@ -1,7 +1,10 @@
 """知识库绑定服务：将文档库文档绑定到知识库进行解析入库。"""
 
+import logging
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
+
+_logger = logging.getLogger(__name__)
 
 from sqlalchemy import func, insert, or_, select, update
 from sqlalchemy.orm import Session
@@ -919,7 +922,7 @@ def switch_binding_version(
         from app.worker import run_document_ingest_task
         run_document_ingest_task.delay(str(job_id))
     except Exception:
-        pass
+        _logger.warning("Failed to dispatch Celery task for job %s", job_id, exc_info=True)
 
     # 返回更新后的绑定 DTO
     updated_binding = session.execute(
@@ -1032,7 +1035,7 @@ def rechunk_document(
         from app.worker import run_document_ingest_task
         run_document_ingest_task.delay(str(job_id))
     except Exception:
-        pass
+        _logger.warning("Failed to dispatch Celery task for rechunk job %s", job_id, exc_info=True)
 
     return {
         "chunk_revision_id": str(new_rev_id),

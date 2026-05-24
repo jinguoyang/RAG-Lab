@@ -4,7 +4,7 @@ export interface AgentScenarioFieldOptionDTO {
 }
 
 export interface AgentScenarioConfigFieldDTO {
-  name: string;
+  key: string;
   label: string;
   fieldType: string;
   defaultValue: string | number | boolean | null;
@@ -18,7 +18,7 @@ export interface AgentScenarioTemplateDTO {
   scenarioType: "knowledge_qa" | "employee_training" | string;
   name: string;
   description: string;
-  defaultConfig: Record<string, unknown>;
+  defaultScenarioConfig: Record<string, unknown>;
   defaultPublishChannels: Record<string, boolean>;
   defaultEmbedSettings: Record<string, unknown>;
   configFields: AgentScenarioConfigFieldDTO[];
