@@ -1,7 +1,7 @@
 """文档库服务：文档上传、列表、详情和文本提取作业管理。"""
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, date, datetime, timezone
 from typing import Literal
 from hashlib import sha256
 from pathlib import PurePath
@@ -1256,7 +1256,7 @@ def get_library_stats(
 ) -> dict:
     """获取当前用户的文档库统计数据。"""
     owner_id = current_user.user.userId
-    today_start = sa.text("date_trunc('day', now())")
+    today_start = datetime.combine(date.today(), datetime.min.time(), tzinfo=UTC)
     library_source_types = ["upload", "library"]
 
     total_documents = session.execute(
@@ -1727,10 +1727,12 @@ def delete_library_version(
 
     # 检查是否有 KB 绑定引用此版本
     kb_versions = document_versions.alias("kb_versions")
-    binding_rows = session.execute(
+    candidate_rows = session.execute(
         select(
             document_kb_bindings.c.binding_id,
             knowledge_bases.c.name.label("kb_name"),
+            kb_versions.c.metadata.label("kb_metadata"),
+            kb_versions.c.source_file_id.label("kb_source_file_id"),
         )
         .select_from(
             document_kb_bindings
@@ -1740,15 +1742,19 @@ def delete_library_version(
         .where(
             document_kb_bindings.c.document_id == document_id,
             document_kb_bindings.c.status.in_(["active", "processing", "pending"]),
-            sa.or_(
-                kb_versions.c.metadata["library_version_id"].astext == str(version_id),
-                sa.and_(
-                    kb_versions.c.metadata["library_version_id"].astext.is_(None),
-                    kb_versions.c.source_file_id == ver_row["source_file_id"],
-                ),
-            ),
         )
     ).mappings().all()
+
+    # Python-side filtering: version is referenced if metadata has matching
+    # library_version_id, or if library_version_id is absent and source_file_id matches.
+    binding_rows = [
+        row for row in candidate_rows
+        if row["kb_metadata"].get("library_version_id") == str(version_id)
+        or (
+            row["kb_metadata"].get("library_version_id") is None
+            and row["kb_source_file_id"] == ver_row["source_file_id"]
+        )
+    ]
 
     if binding_rows:
         kb_names = [row["kb_name"] for row in binding_rows]
