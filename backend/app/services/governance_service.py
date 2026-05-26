@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
+
+from app.core.db_types import new_id
 
 from sqlalchemy import RowMapping, insert, select, update
 from sqlalchemy.orm import Session
@@ -211,7 +213,7 @@ def _read_visible_qa_run(
     ).mappings().first()
     if row is None:
         return None
-    user_id = UUID(current_user.user.userId)
+    user_id = current_user.user.userId
     if row["created_by"] == user_id or has_kb_permission(session, current_user, kb_id, "kb.qa.history.read"):
         return row
     return None
@@ -289,7 +291,7 @@ def _save_collaboration(
         .values(
             metrics=metrics,
             updated_at=now,
-            updated_by=UUID(current_user.user.userId),
+            updated_by=current_user.user.userId,
         )
         .returning(qa_runs)
     ).mappings().one()
@@ -356,7 +358,7 @@ def add_qa_run_comment(
     comments = list(collaboration.get("comments") or [])
     comments.append(
         {
-            "commentId": str(uuid4()),
+            "commentId": new_id(),
             "authorId": current_user.user.userId,
             "content": request.content,
             "createdAt": _now().isoformat(),

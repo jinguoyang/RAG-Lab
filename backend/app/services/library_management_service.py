@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
-from uuid import UUID, uuid4
+from uuid import UUID
+
+from app.core.db_types import new_id
 
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
@@ -69,7 +71,7 @@ def create_library(
     request: CreateLibraryRequest,
 ) -> LibraryDTO:
     actor_id = _user_id(current_user)
-    library_id = uuid4()
+    library_id = new_id()
     now = datetime.now(timezone.utc)
 
     session.execute(
@@ -375,7 +377,7 @@ def add_library_member(
     if existing is not None:
         raise LibraryMemberConflictError
 
-    binding_id = uuid4()
+    binding_id = new_id()
     now = datetime.now(timezone.utc)
     actor_id = _user_id(current_user)
 

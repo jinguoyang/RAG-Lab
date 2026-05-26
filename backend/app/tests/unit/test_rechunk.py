@@ -123,7 +123,7 @@ def test_rechunk_success():
     ]
 
     with patch("app.services.binding_service.create_chunk_revision") as mock_create_rev, \
-         patch("app.services.binding_service.uuid4") as mock_uuid:
+         patch("app.services.binding_service.new_id") as mock_uuid:
         mock_create_rev.return_value = uuid4()
         mock_uuid.return_value = uuid4()
 
@@ -176,7 +176,7 @@ def test_rechunk_default_strategy():
     ]
 
     with patch("app.services.binding_service.create_chunk_revision") as mock_create_rev, \
-         patch("app.services.binding_service.uuid4") as mock_uuid:
+         patch("app.services.binding_service.new_id") as mock_uuid:
         mock_create_rev.return_value = uuid4()
         mock_uuid.return_value = uuid4()
 

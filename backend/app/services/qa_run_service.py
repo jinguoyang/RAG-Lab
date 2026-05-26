@@ -5,7 +5,9 @@ from copy import deepcopy
 import json
 import logging
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
+
+from app.core.db_types import new_id
 
 import sqlalchemy as sa
 from sqlalchemy import RowMapping, func, insert, or_, select, update
@@ -658,7 +660,7 @@ def _authorize_provider_candidates(
     candidate_records: list[dict[str, Any]] = []
     dropped_count = 0
     for candidate in candidates:
-        candidate_id = uuid4()
+        candidate_id = new_id()
         chunk_id = candidate.chunk_id
         chunk_row = chunks_by_id.get(chunk_id) if chunk_id is not None else None
         drop_reason: str | None = None
@@ -755,7 +757,7 @@ def _read_visible_qa_run(
     ).mappings().first()
     if row is None:
         return None
-    user_id = UUID(current_user.user.userId)
+    user_id = current_user.user.userId
     if row["created_by"] == user_id or has_kb_permission(session, current_user, kb_id, "kb.qa.history.read"):
         return row
     return None
@@ -804,7 +806,7 @@ def _insert_trace_step(
     """写入单个 Trace 步骤，保证成功、跳过和降级路径使用同一结构。"""
     session.execute(
         insert(qa_run_trace_steps).values(
-            trace_step_id=uuid4(),
+            trace_step_id=new_id(),
             run_id=run_id,
             step_order=step_order,
             step_key=step_key,
@@ -1364,7 +1366,7 @@ def _execute_provider_qa_run(
     trace_order += 1
 
     for evidence_order, (candidate, candidate_id) in enumerate(context_pairs, start=1):
-        evidence_id = uuid4()
+        evidence_id = new_id()
         content_snapshot = candidate.content or "Provider 候选未返回正文，当前仅保留来源摘要。"
         content_hash = sha256(content_snapshot.encode("utf-8")).hexdigest()
         session.execute(
@@ -1386,7 +1388,7 @@ def _execute_provider_qa_run(
         )
         session.execute(
             insert(qa_run_citations).values(
-                citation_id=uuid4(),
+                citation_id=new_id(),
                 run_id=run_id,
                 evidence_id=evidence_id,
                 citation_order=evidence_order,
@@ -1479,8 +1481,8 @@ def create_qa_run(
         raise KnowledgeBaseDisabledError
 
     revision_row = _resolve_runnable_revision(session, kb_row, request.configRevisionId)
-    run_id = uuid4()
-    actor_id = UUID(current_user.user.userId)
+    run_id = new_id()
+    actor_id = current_user.user.userId
     override_snapshot = request.overrideParams or {}
     if request.sourceRunId is not None and _read_visible_qa_run(session, current_user, kb_id, request.sourceRunId) is None:
         raise QARunCreateConflict("Source QA run not found for this knowledge base.")
@@ -1949,7 +1951,7 @@ def update_qa_run_feedback(
             feedback_note=request.feedbackNote,
             metrics=metrics,
             updated_at=updated_at,
-            updated_by=UUID(current_user.user.userId),
+            updated_by=current_user.user.userId,
         )
         .returning(qa_runs)
     ).mappings().one()
@@ -2263,7 +2265,7 @@ def create_config_revision_draft_from_qa_run(
     if source_revision is None:
         return None
 
-    actor_id = UUID(current_user.user.userId)
+    actor_id = current_user.user.userId
     revision_no = (
         session.execute(select(func.coalesce(func.max(config_revisions.c.revision_no), 0)).where(config_revisions.c.kb_id == kb_id)).scalar_one()
         + 1
@@ -2277,7 +2279,7 @@ def create_config_revision_draft_from_qa_run(
     draft = session.execute(
         insert(config_revisions)
         .values(
-            config_revision_id=uuid4(),
+            config_revision_id=new_id(),
             kb_id=kb_id,
             revision_no=revision_no,
             source_template_id=source_revision["source_template_id"],
@@ -2321,7 +2323,7 @@ def create_evaluation_sample_from_run(
     sample = session.execute(
         insert(evaluation_samples)
         .values(
-            sample_id=uuid4(),
+            sample_id=new_id(),
             kb_id=kb_id,
             source_run_id=run_id,
             query=row["query"],
@@ -2329,8 +2331,8 @@ def create_evaluation_sample_from_run(
             expected_evidence=request.expectedEvidence or default_evidence,
             status="active",
             metadata=request.metadata or {"feedbackStatus": row["feedback_status"], "failureType": _failure_type(row)},
-            created_by=UUID(current_user.user.userId),
-            updated_by=UUID(current_user.user.userId),
+            created_by=current_user.user.userId,
+            updated_by=current_user.user.userId,
         )
         .returning(evaluation_samples)
     ).mappings().one()
@@ -2400,7 +2402,7 @@ def archive_evaluation_sample(
         .values(
             status="archived",
             updated_at=now,
-            updated_by=UUID(current_user.user.userId),
+            updated_by=current_user.user.userId,
         )
         .returning(evaluation_samples)
     ).mappings().one()
@@ -2552,7 +2554,7 @@ def _run_evaluation_results(
 
         session.execute(
             insert(evaluation_results).values(
-                evaluation_result_id=uuid4(),
+                evaluation_result_id=new_id(),
                 evaluation_run_id=evaluation_run_id,
                 sample_id=sample["sample_id"],
                 source_run_id=sample["source_run_id"],
@@ -2657,8 +2659,8 @@ def create_evaluation_run(
         raise QARunCreateConflict("No evaluation samples available.")
 
     now = datetime.now(UTC)
-    actor_id = UUID(current_user.user.userId)
-    evaluation_run_id = uuid4()
+    actor_id = current_user.user.userId
+    evaluation_run_id = new_id()
     source_run_ids = [sample["source_run_id"] for sample in sample_rows if sample["source_run_id"]]
     source_config_revision_ids: list[str] = []
     if source_run_ids:
@@ -2831,7 +2833,7 @@ def cancel_evaluation_run(
             status="cancelled",
             finished_at=now,
             updated_at=now,
-            updated_by=UUID(current_user.user.userId),
+            updated_by=current_user.user.userId,
         )
         .returning(evaluation_runs)
     ).mappings().one()
@@ -2882,7 +2884,7 @@ def retry_evaluation_run(
         raise QARunCreateConflict("No samples found for retry.")
 
     now = datetime.now(UTC)
-    actor_id = UUID(current_user.user.userId)
+    actor_id = current_user.user.userId
     try:
         session.execute(
             update(evaluation_results)
@@ -2965,7 +2967,7 @@ def export_evaluation_run(
     session.execute(
         update(evaluation_runs)
         .where(evaluation_runs.c.evaluation_run_id == evaluation_run_id)
-        .values(metadata=metadata, updated_at=datetime.now(UTC), updated_by=UUID(current_user.user.userId))
+        .values(metadata=metadata, updated_at=datetime.now(UTC), updated_by=current_user.user.userId)
     )
     session.commit()
     return EvaluationRunExportResponse(
@@ -3169,7 +3171,7 @@ def create_optimization_draft_from_evaluation_run(
                 )
             )
 
-    actor_id = UUID(current_user.user.userId)
+    actor_id = current_user.user.userId
     revision_no = (
         session.execute(
             select(func.coalesce(func.max(config_revisions.c.revision_no), 0)).where(config_revisions.c.kb_id == kb_id)
@@ -3180,7 +3182,7 @@ def create_optimization_draft_from_evaluation_run(
     draft_row = session.execute(
         insert(config_revisions)
         .values(
-            config_revision_id=uuid4(),
+            config_revision_id=new_id(),
             kb_id=kb_id,
             revision_no=revision_no,
             source_template_id=base_revision["source_template_id"],

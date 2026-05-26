@@ -1,6 +1,8 @@
 import logging
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import UUID
+
+from app.core.db_types import new_id
 
 _logger = logging.getLogger(__name__)
 
@@ -336,7 +338,7 @@ def update_knowledge_base(
     kb_row = ensure_knowledge_base_writable(session, current_user, kb_id)
     _ensure_index_capabilities_mutable(session, kb_id, kb_row, request)
 
-    update_values = {"updated_by": UUID(current_user.user.userId), "updated_at": func.now()}
+    update_values = {"updated_by": current_user.user.userId, "updated_at": func.now()}
     requested_fields = request.model_fields_set
     if "name" in requested_fields and request.name is not None:
         update_values["name"] = request.name
@@ -396,7 +398,7 @@ def disable_knowledge_base(
         .where(knowledge_bases.c.kb_id == kb_id)
         .values(
             status="disabled",
-            updated_by=UUID(current_user.user.userId),
+            updated_by=current_user.user.userId,
             updated_at=func.now(),
         )
         .returning(knowledge_bases)
@@ -428,7 +430,7 @@ def enable_knowledge_base(
         .where(knowledge_bases.c.kb_id == kb_id)
         .values(
             status="active",
-            updated_by=UUID(current_user.user.userId),
+            updated_by=current_user.user.userId,
             updated_at=func.now(),
         )
         .returning(knowledge_bases)
@@ -593,7 +595,7 @@ def delete_knowledge_base(
         raise KnowledgeBaseRunningJobsError
 
     now = datetime.now(UTC)
-    deleted_by = UUID(current_user.user.userId)
+    deleted_by = current_user.user.userId
 
     # 1. 软删除知识库本身
     session.execute(
@@ -742,14 +744,14 @@ def create_knowledge_base(
     request: KnowledgeBaseCreateRequest,
 ) -> KnowledgeBaseDTO:
     """创建知识库基础记录，并生成默认 active Revision 供 QA 直接运行。"""
-    owner_id = request.ownerId or UUID(current_user.user.userId)
+    owner_id = request.ownerId or current_user.user.userId
     activation = request.requiredForActivation or RequiredForActivationDTO(
         sparse=request.sparseIndexEnabled,
         graph=False,
     )
-    kb_id = uuid4()
-    default_revision_id = uuid4()
-    actor_id = UUID(current_user.user.userId)
+    kb_id = new_id()
+    default_revision_id = new_id()
+    actor_id = current_user.user.userId
     created_at = datetime.now(UTC)
     default_pipeline = build_default_pipeline_definition(
         sparse_index_enabled=request.sparseIndexEnabled,
@@ -811,7 +813,7 @@ def create_knowledge_base(
     ).mappings().one()
     session.execute(
         insert(kb_member_bindings).values(
-            binding_id=uuid4(),
+            binding_id=new_id(),
             kb_id=kb_id,
             subject_type="user",
             subject_id=owner_id,
@@ -1017,7 +1019,7 @@ def create_kb_member(
     if duplicate is not None:
         raise KbMemberBindingConflictError
 
-    binding_id = uuid4()
+    binding_id = new_id()
     session.execute(
         insert(kb_member_bindings).values(
             binding_id=binding_id,
@@ -1026,8 +1028,8 @@ def create_kb_member(
             subject_id=request.subjectId,
             kb_role=request.kbRole,
             status="active",
-            created_by=UUID(current_user.user.userId),
-            updated_by=UUID(current_user.user.userId),
+            created_by=current_user.user.userId,
+            updated_by=current_user.user.userId,
         )
     )
     write_audit_log(
@@ -1086,7 +1088,7 @@ def update_kb_member_role(
         )
         .values(
             kb_role=request.kbRole,
-            updated_by=UUID(current_user.user.userId),
+            updated_by=current_user.user.userId,
             updated_at=func.now(),
         )
     )
@@ -1124,7 +1126,7 @@ def remove_kb_member(
         )
         .values(
             status="inactive",
-            updated_by=UUID(current_user.user.userId),
+            updated_by=current_user.user.userId,
             updated_at=func.now(),
         )
     )

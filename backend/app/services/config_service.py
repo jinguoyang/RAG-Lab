@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
+
+from app.core.db_types import new_id
 
 import sqlalchemy as sa
 from sqlalchemy import RowMapping, func, insert, select, update
@@ -82,7 +84,7 @@ def _read_visible_knowledge_base(
     """读取当前用户可见知识库；不可见资源不暴露存在性。"""
     condition = (knowledge_bases.c.deleted_at.is_(None)) & (knowledge_bases.c.kb_id == kb_id)
     if not _is_platform_admin(current_user):
-        condition = condition & (knowledge_bases.c.owner_id == UUID(current_user.user.userId))
+        condition = condition & (knowledge_bases.c.owner_id == current_user.user.userId)
     return session.execute(select(knowledge_bases).where(condition).limit(1)).mappings().first()
 
 
@@ -422,7 +424,7 @@ def create_config_revision(
     if not validation.valid:
         return None, validation
 
-    actor_id = UUID(current_user.user.userId)
+    actor_id = current_user.user.userId
     revision_no = (
         session.execute(
             select(func.coalesce(func.max(config_revisions.c.revision_no), 0)).where(
@@ -439,7 +441,7 @@ def create_config_revision(
     }
 
     try:
-        revision_id = uuid4()
+        revision_id = new_id()
         row = session.execute(
             insert(config_revisions)
             .values(
@@ -509,7 +511,7 @@ def create_revision_draft_from_revision(
     if source_row is None:
         return None
 
-    actor_id = UUID(current_user.user.userId)
+    actor_id = current_user.user.userId
     revision_no = (
         session.execute(
             select(func.coalesce(func.max(config_revisions.c.revision_no), 0)).where(
@@ -527,7 +529,7 @@ def create_revision_draft_from_revision(
     remark = request.remark or f"从 rev_{source_row['revision_no']:03d} 复制为草稿"
 
     try:
-        new_revision_id = uuid4()
+        new_revision_id = new_id()
         row = session.execute(
             insert(config_revisions)
             .values(
@@ -592,7 +594,7 @@ def activate_config_revision(
     if target_row is None or target_row["status"] not in {"saved", "active"}:
         raise ValueError("Revision is not activatable.")
 
-    actor_id = UUID(current_user.user.userId)
+    actor_id = current_user.user.userId
     activated_at = _now()
     previous_active_id = kb_row["active_config_revision_id"]
 

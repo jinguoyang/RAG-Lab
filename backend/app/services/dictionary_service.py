@@ -1,5 +1,7 @@
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import UUID
+
+from app.core.db_types import new_id
 
 from sqlalchemy import RowMapping, and_, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
@@ -39,7 +41,7 @@ def _now() -> datetime:
 
 def _actor_id(current_user: CurrentUserResponse) -> UUID:
     """读取当前用户 ID，用于审计字段。"""
-    return UUID(current_user.user.userId)
+    return current_user.user.userId
 
 
 def _ensure_dictionary_manage_permission(current_user: CurrentUserResponse) -> None:
@@ -171,7 +173,7 @@ def create_dictionary_item(
         row = session.execute(
             insert(system_dict_items)
             .values(
-                dict_item_id=uuid4(),
+                dict_item_id=new_id(),
                 dict_type_id=type_row["dict_type_id"],
                 code=request.code,
                 name=request.name,

@@ -5,7 +5,9 @@ from datetime import datetime, timezone
 from typing import Literal
 from hashlib import sha256
 from pathlib import PurePath
-from uuid import UUID, uuid4
+from uuid import UUID
+
+from app.core.db_types import new_id
 
 import sqlalchemy as sa
 from sqlalchemy import RowMapping, func, insert, select, update
@@ -235,7 +237,7 @@ def _create_pending_parse_revision(
     parse_options: dict | None = None,
 ) -> UUID:
     """为一次文档库解析创建 pending ParseRevision。"""
-    parse_revision_id = uuid4()
+    parse_revision_id = new_id()
     now = datetime.now(timezone.utc)
     session.execute(
         insert(parse_revisions).values(
@@ -316,11 +318,11 @@ def create_library_upload(
 ) -> LibraryDocumentUploadResponse:
     """上传文档到个人文档库，创建文件、文档、版本和解析作业。"""
     settings = get_settings()
-    actor_id = UUID(current_user.user.userId)
-    document_id = uuid4()
-    version_id = uuid4()
-    file_id = uuid4()
-    job_id = uuid4()
+    actor_id = current_user.user.userId
+    document_id = new_id()
+    version_id = new_id()
+    file_id = new_id()
+    job_id = new_id()
     normalized_file_name = _safe_file_name(file_name)
     document_name = (name or normalized_file_name).strip() or normalized_file_name
     checksum = sha256(file_bytes).hexdigest()
@@ -338,7 +340,7 @@ def create_library_upload(
             library_id = default_lib
         else:
             # 自动创建默认文档库
-            library_id = uuid4()
+            library_id = new_id()
             now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
             session.execute(
                 document_libraries.insert().values(
@@ -484,7 +486,7 @@ def list_library_documents(
     from app.services.permission_service import library_visibility_condition
 
     # 使用可见性条件替代简单的 owner_id 过滤
-    owner_id = UUID(current_user.user.userId)
+    owner_id = current_user.user.userId
     where_clauses = [
         documents.c.deleted_at.is_(None),
     ]
@@ -644,7 +646,7 @@ def update_library_document(
 ) -> LibraryDocumentDTO:
     """更新文档库文档的基本字段。"""
     _ensure_owner(session, current_user, document_id, "library.document.update")
-    actor_id = UUID(current_user.user.userId)
+    actor_id = current_user.user.userId
 
     values: dict = {"updated_by": actor_id}
     if name is not None:
@@ -761,7 +763,7 @@ def delete_library_document(
     - 存在历史 QA 引用则允许但需强确认
     """
     _ensure_owner(session, current_user, document_id, "library.document.delete")
-    user_id = UUID(current_user.user.userId)
+    user_id = current_user.user.userId
 
     # 1. 执行影响分析
     impact = analyze_document_deletion_impact(session, document_id)
@@ -1125,7 +1127,7 @@ def create_library_parse_revision_job(
 ) -> dict:
     """为指定源文件版本创建新的解析版本并排队解析任务。"""
     _ensure_owner(session, current_user, document_id, "library.document.update")
-    user_id = UUID(current_user.user.userId)
+    user_id = current_user.user.userId
 
     version_row = session.execute(
         select(document_versions)
@@ -1152,7 +1154,7 @@ def create_library_parse_revision_job(
         parse_options=normalized_options,
     )
 
-    job_id = uuid4()
+    job_id = new_id()
     now = datetime.now(timezone.utc)
     session.execute(
         insert(library_parse_jobs).values(
@@ -1224,7 +1226,7 @@ def batch_action(
                     .where(documents.c.document_id == doc_id)
                     .values(
                         status="disabled",
-                        updated_by=UUID(current_user.user.userId),
+                        updated_by=current_user.user.userId,
                         updated_at=func.now(),
                     )
                 )
@@ -1253,7 +1255,7 @@ def get_library_stats(
     current_user: CurrentUserResponse,
 ) -> dict:
     """获取当前用户的文档库统计数据。"""
-    owner_id = UUID(current_user.user.userId)
+    owner_id = current_user.user.userId
     today_start = sa.text("date_trunc('day', now())")
     library_source_types = ["upload", "library"]
 
@@ -1492,7 +1494,7 @@ def upload_library_version(
 ) -> LibraryVersionUploadResponse:
     """上传新版本文件到已有文档。"""
     doc_row = _ensure_owner(session, current_user, document_id, "library.version.create")
-    actor_id = UUID(current_user.user.userId)
+    actor_id = current_user.user.userId
     normalized_file_name = _safe_file_name(file_name)
     checksum = sha256(file_bytes).hexdigest()
 
@@ -1506,9 +1508,9 @@ def upload_library_version(
     ).scalar() or 0
 
     next_version_no = max_version_no + 1
-    version_id = uuid4()
-    file_id = uuid4()
-    job_id = uuid4()
+    version_id = new_id()
+    file_id = new_id()
+    job_id = new_id()
 
     # 存储文件
     settings = get_settings()
@@ -1703,7 +1705,7 @@ def delete_library_version(
 ) -> dict:
     """删除指定版本（软删除）。不能删除活跃版本或被 KB 绑定引用的版本。"""
     _ensure_owner(session, current_user, document_id, "library.version.delete")
-    actor_id = UUID(current_user.user.userId)
+    actor_id = current_user.user.userId
 
     # 校验版本存在
     ver_row = session.execute(

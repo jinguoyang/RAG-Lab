@@ -2,7 +2,9 @@
 
 import logging
 from datetime import datetime, timezone
-from uuid import UUID, uuid4
+from uuid import UUID
+
+from app.core.db_types import new_id
 
 _logger = logging.getLogger(__name__)
 
@@ -101,7 +103,7 @@ def create_chunk_revision(
 
     Returns: chunk_revision_id
     """
-    chunk_revision_id = uuid4()
+    chunk_revision_id = new_id()
     now = datetime.now(timezone.utc)
 
     session.execute(
@@ -214,7 +216,7 @@ def _ensure_library_owner(
     """验证用户可读取该文档库文档。"""
     from app.services.permission_service import has_library_access
 
-    user_id = UUID(current_user.user.userId)
+    user_id = current_user.user.userId
     row = session.execute(
         select(documents).where(
             documents.c.document_id == document_id,
@@ -262,7 +264,7 @@ def _ensure_kb_permission(
     ).mappings().first()
     if row is None:
         raise BindingKBNotFoundError
-    user_id = UUID(current_user.user.userId)
+    user_id = current_user.user.userId
     if current_user.user.platformRole == "platform_admin":
         return dict(row)
     if row["created_by"] == user_id:
@@ -349,7 +351,7 @@ def bind_documents_to_kb(
         "chunk_size": kb_metadata.get("chunk_size", 900),
         "chunk_overlap": kb_metadata.get("chunk_overlap", 120),
     })
-    actor_id = UUID(current_user.user.userId)
+    actor_id = current_user.user.userId
 
     bindings: list[LibraryBindingDTO] = []
     dispatch_targets: list[tuple[UUID, UUID]] = []
@@ -397,9 +399,9 @@ def bind_documents_to_kb(
             raise BindingDocumentNotFoundError(f"Source file not found for document {doc_id}")
 
         # 创建 KB 侧文档副本
-        kb_doc_id = uuid4()
-        kb_version_id = uuid4()
-        job_id = uuid4()
+        kb_doc_id = new_id()
+        kb_version_id = new_id()
+        job_id = new_id()
 
         session.execute(
             insert(documents).values(
@@ -443,7 +445,7 @@ def bind_documents_to_kb(
             )
         )
 
-        binding_id = uuid4()
+        binding_id = new_id()
         session.execute(
             insert(document_kb_bindings).values(
                 binding_id=binding_id,
@@ -464,7 +466,7 @@ def bind_documents_to_kb(
                 parse_revisions.c.deleted_at.is_(None),
             ).order_by(parse_revisions.c.created_at.desc()).limit(1)
         ).mappings().first()
-        parse_revision_id = parse_rev["parse_revision_id"] if parse_rev else uuid4()
+        parse_revision_id = parse_rev["parse_revision_id"] if parse_rev else new_id()
 
         # 创建 ChunkRevision：记录库文档源版本，KB 侧版本仍由 document_kb_bindings.version_id 追踪。
         chunk_revision_id = create_chunk_revision(
@@ -595,7 +597,7 @@ def unbind_document_from_kb(
     session.execute(
         update(document_kb_bindings).where(
             document_kb_bindings.c.binding_id == binding_id,
-        ).values(status="disabled", updated_by=UUID(current_user.user.userId), updated_at=func.now())
+        ).values(status="disabled", updated_by=current_user.user.userId, updated_at=func.now())
     )
 
     # 清理 KB 侧数据
@@ -639,7 +641,7 @@ def retry_binding(
     if binding_row is None:
         raise BindingNotFoundError
 
-    user_id = UUID(current_user.user.userId)
+    user_id = current_user.user.userId
     kb_ver_id = binding_row["version_id"]
 
     # Get KB-side document_id
@@ -650,7 +652,7 @@ def retry_binding(
     ).scalar()
 
     # Create new ingest job
-    ingest_job_id = uuid4()
+    ingest_job_id = new_id()
     session.execute(
         insert(ingest_jobs).values(
             job_id=ingest_job_id,
@@ -816,7 +818,7 @@ def switch_binding_version(
         raise BindingNotFoundError
 
     kb_doc_id = current_kb_version
-    actor_id = UUID(current_user.user.userId)
+    actor_id = current_user.user.userId
 
     # 查找目标库版本的 ParseRevision
     parse_rev = session.execute(
@@ -825,7 +827,7 @@ def switch_binding_version(
             parse_revisions.c.deleted_at.is_(None),
         ).order_by(parse_revisions.c.created_at.desc()).limit(1)
     ).mappings().first()
-    parse_revision_id = parse_rev["parse_revision_id"] if parse_rev else uuid4()
+    parse_revision_id = parse_rev["parse_revision_id"] if parse_rev else new_id()
 
     # 继承当前 active ChunkRevision 的分块策略
     active_rev_id = binding_row.get("active_chunk_revision_id")
@@ -862,7 +864,7 @@ def switch_binding_version(
     ).scalar() or 0
 
     # 创建 KB 侧新 document_versions 行
-    new_kb_version_id = uuid4()
+    new_kb_version_id = new_id()
     session.execute(
         insert(document_versions).values(
             version_id=new_kb_version_id,
@@ -899,7 +901,7 @@ def switch_binding_version(
     )
 
     # 创建 ingest 任务
-    job_id = uuid4()
+    job_id = new_id()
     session.execute(
         insert(ingest_jobs).values(
             job_id=job_id,
@@ -1012,7 +1014,7 @@ def rechunk_document(
     )
 
     # 6. 创建 rechunk ingest job
-    job_id = uuid4()
+    job_id = new_id()
     session.execute(
         insert(ingest_jobs).values(
             job_id=job_id,

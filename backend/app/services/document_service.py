@@ -3,7 +3,9 @@ from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import PurePath
 import time
-from uuid import UUID, uuid4
+from uuid import UUID
+
+from app.core.db_types import new_id
 
 import sqlalchemy as sa
 from sqlalchemy import RowMapping, delete, func, insert, or_, select, update
@@ -105,7 +107,7 @@ def create_parse_revision(
 
     Returns: parse_revision_id
     """
-    parse_revision_id = uuid4()
+    parse_revision_id = new_id()
     now = datetime.now(timezone.utc)
 
     session.execute(
@@ -277,7 +279,7 @@ def delete_document_version(
 
     # 4. 执行删除
     now = datetime.now(timezone.utc)
-    user_id = UUID(current_user.user.userId)
+    user_id = current_user.user.userId
 
     # 4.1 删除 ParseRevision（软删除）
     parse_rev_ids = list(session.execute(
@@ -631,11 +633,11 @@ def _insert_audit_log(
     detail: dict,
 ) -> UUID:
     """写入文档生命周期审计日志，支撑高风险操作可追溯。"""
-    audit_log_id = uuid4()
+    audit_log_id = new_id()
     session.execute(
         insert(audit_logs).values(
             audit_log_id=audit_log_id,
-            actor_id=UUID(current_user.user.userId),
+            actor_id=current_user.user.userId,
             action=action,
             resource_type=resource_type,
             resource_id=resource_id,
@@ -680,7 +682,7 @@ def _write_graph_chunk_refs(
             seen.add(key)
             session.execute(
                 insert(graph_chunk_refs).values(
-                    graph_chunk_ref_id=uuid4(),
+                    graph_chunk_ref_id=new_id(),
                     graph_snapshot_id=graph_snapshot_id,
                     chunk_id=UUID(entity.chunk_id),
                     neo4j_node_key=entity.entity_key,
@@ -703,7 +705,7 @@ def _write_graph_chunk_refs(
             seen.add(key)
             session.execute(
                 insert(graph_chunk_refs).values(
-                    graph_chunk_ref_id=uuid4(),
+                    graph_chunk_ref_id=new_id(),
                     graph_snapshot_id=graph_snapshot_id,
                     chunk_id=UUID(relation.chunk_id),
                     neo4j_node_key=relation.source_entity_key,
@@ -738,7 +740,7 @@ def _create_index_sync_job(
     graph_snapshot_id: UUID | None = None,
 ) -> tuple[UUID, str, str | None]:
     """创建并执行 IndexSyncJob，真实 Provider 成功后才标记 success。"""
-    sync_job_id = uuid4()
+    sync_job_id = new_id()
     scope = {"chunkIds": [str(chunk_id) for chunk_id in chunk_ids]}
     if version_id:
         scope["versionIds"] = [str(version_id)]
@@ -754,7 +756,7 @@ def _create_index_sync_job(
             required_for_activation=required_for_activation,
             status="running",
             error_message=None,
-            created_by=UUID(current_user.user.userId),
+            created_by=current_user.user.userId,
             started_at=func.now(),
         )
     )
@@ -797,7 +799,7 @@ def _create_index_sync_job(
     for chunk_id in chunk_ids:
         session.execute(
             insert(index_sync_records).values(
-                sync_record_id=uuid4(),
+                sync_record_id=new_id(),
                 sync_job_id=sync_job_id,
                 target_store=target_store,
                 resource_type="chunk",
@@ -883,7 +885,7 @@ def _write_chunk_access_filters(
     for row in chunk_rows:
         session.execute(
             insert(chunk_access_filters).values(
-                access_filter_id=uuid4(),
+                access_filter_id=new_id(),
                 chunk_id=row["chunk_id"],
                 kb_id=kb_id,
                 permission_code=access_filter.permission_code,
@@ -1013,7 +1015,7 @@ def run_ingest_job(
     session.execute(
         update(document_versions)
         .where(document_versions.c.version_id == version_row["version_id"])
-        .values(status="processing", parse_status="running", updated_by=UUID(current_user.user.userId), updated_at=func.now())
+        .values(status="processing", parse_status="running", updated_by=current_user.user.userId, updated_at=func.now())
     )
 
     try:
@@ -1131,7 +1133,7 @@ def run_ingest_job(
                 parser_name=parser_name,
                 parser_version=parser_version,
                 parse_options=parse_options_for_revision,
-                created_by=UUID(current_user.user.userId),
+                created_by=current_user.user.userId,
             )
         chunk_parse_revision_id = (
             chunk_revision_row["parse_revision_id"]
@@ -1192,7 +1194,7 @@ def run_ingest_job(
             row = session.execute(
                 insert(chunks)
                 .values(
-                    chunk_id=uuid4(),
+                    chunk_id=new_id(),
                     version_id=version_row["version_id"],
                     document_id=document_row["document_id"],
                     kb_id=kb_row["kb_id"],
@@ -1303,7 +1305,7 @@ def run_ingest_job(
         if kb_row["graph_index_enabled"]:
             if new_version_status == "active":
                 mark_graph_snapshots_stale(session, kb_row["kb_id"], "chunk_changed", current_user)
-            graph_snapshot_id = uuid4()
+            graph_snapshot_id = new_id()
             graph_payloads = {
                 chunk_id: {**payload, "graphSnapshotId": str(graph_snapshot_id)}
                 for chunk_id, payload in dense_payloads.items()
@@ -1352,8 +1354,8 @@ def run_ingest_job(
                     relation_count=relation_count,
                     community_count=0,
                     job_id=job_id,
-                    created_by=UUID(current_user.user.userId),
-                    updated_by=UUID(current_user.user.userId),
+                    created_by=current_user.user.userId,
+                    updated_by=current_user.user.userId,
                 )
             )
             if graph_error is None:
@@ -1405,7 +1407,7 @@ def run_ingest_job(
                 .values(
                     status="success" if graph_status == "success" else "failed",
                     stale_reason=graph_error,
-                    updated_by=UUID(current_user.user.userId),
+                    updated_by=current_user.user.userId,
                     updated_at=func.now(),
                 )
             )
@@ -1469,7 +1471,7 @@ def run_ingest_job(
                             "visionConfidence": (parsed_chunks[0].metadata.get("visionConfidence", "unknown") if parsed_chunks else "unknown"),
                         }} if is_image else {}),
                 },
-                updated_by=UUID(current_user.user.userId),
+                updated_by=current_user.user.userId,
                 updated_at=func.now(),
             )
         )
@@ -1539,7 +1541,7 @@ def run_ingest_job(
                         },
                     },
                 },
-                updated_by=UUID(current_user.user.userId),
+                updated_by=current_user.user.userId,
                 updated_at=func.now(),
             )
         )
@@ -1595,7 +1597,7 @@ def run_ingest_job(
                         },
                     },
                 },
-                updated_by=UUID(current_user.user.userId),
+                updated_by=current_user.user.userId,
                 updated_at=func.now(),
             )
         )
@@ -1767,11 +1769,11 @@ def create_document_upload(
             )
 
     settings = get_settings()
-    actor_id = UUID(current_user.user.userId)
-    document_id = uuid4()
-    version_id = uuid4()
-    file_id = uuid4()
-    job_id = uuid4()
+    actor_id = current_user.user.userId
+    document_id = new_id()
+    version_id = new_id()
+    file_id = new_id()
+    job_id = new_id()
     normalized_file_name = _safe_file_name(file_name)
     document_name = (name or normalized_file_name).strip() or normalized_file_name
     checksum = file_hash
@@ -2063,7 +2065,7 @@ def delete_document(
         ).mappings()
     )
     stored_file_ids = [row["file_id"] for row in stored_file_rows]
-    actor_id = UUID(current_user.user.userId)
+    actor_id = current_user.user.userId
     audit_log_id = _insert_audit_log(
         session,
         current_user,
@@ -2332,7 +2334,7 @@ def run_bulk_document_governance(
         result = session.execute(
             update(documents)
             .where(documents.c.kb_id == kb_id, documents.c.document_id.in_(document_ids), documents.c.deleted_at.is_(None))
-            .values(status="disabled", updated_by=UUID(current_user.user.userId), updated_at=func.now())
+            .values(status="disabled", updated_by=current_user.user.userId, updated_at=func.now())
             .returning(documents.c.document_id)
         )
         affected_ids = [str(row[0]) for row in result]
@@ -2613,9 +2615,9 @@ def reparse_document(
             document_versions.c.document_id == document_id
         )
     ).scalar_one()
-    version_id = uuid4()
-    job_id = uuid4()
-    actor_id = UUID(current_user.user.userId)
+    version_id = new_id()
+    job_id = new_id()
+    actor_id = current_user.user.userId
     sparse_status = "pending" if kb_row["sparse_index_enabled"] else "not_required"
     graph_status = "pending" if kb_row["graph_index_enabled"] else "not_required"
 
@@ -2738,17 +2740,17 @@ def activate_document_version(
     session.execute(
         update(document_versions)
         .where(document_versions.c.document_id == document_id, document_versions.c.status == "active")
-        .values(status="inactive", updated_by=UUID(current_user.user.userId), updated_at=func.now())
+        .values(status="inactive", updated_by=current_user.user.userId, updated_at=func.now())
     )
     session.execute(
         update(document_versions)
         .where(document_versions.c.version_id == version_id)
-        .values(status="active", updated_by=UUID(current_user.user.userId), updated_at=func.now())
+        .values(status="active", updated_by=current_user.user.userId, updated_at=func.now())
     )
     session.execute(
         update(documents)
         .where(documents.c.document_id == document_id)
-        .values(active_version_id=version_id, updated_by=UUID(current_user.user.userId), updated_at=func.now())
+        .values(active_version_id=version_id, updated_by=current_user.user.userId, updated_at=func.now())
     )
     mark_graph_snapshots_stale(session, kb_id, "active_version_changed", current_user)
     session.commit()
@@ -2796,7 +2798,7 @@ def retry_ingest_job(
     if existing_retry is not None:
         return _to_ingest_job_dto(existing_retry)
 
-    new_job_id = uuid4()
+    new_job_id = new_id()
     job_row = session.execute(
         insert(ingest_jobs)
         .values(
@@ -2814,7 +2816,7 @@ def retry_ingest_job(
                 "idempotency": "retry_of_job_id",
                 "compensationStatus": "created",
             },
-            created_by=UUID(current_user.user.userId),
+            created_by=current_user.user.userId,
         )
         .returning(ingest_jobs)
     ).mappings().one()
@@ -2990,7 +2992,7 @@ def rebuild_index_sync(
         )
         for row in rows
     }
-    graph_snapshot_id = uuid4() if target_store == "neo4j" and chunk_ids else None
+    graph_snapshot_id = new_id() if target_store == "neo4j" and chunk_ids else None
     if graph_snapshot_id is not None:
         provider_payloads = {
             chunk_id: {**payload, "graphSnapshotId": str(graph_snapshot_id)}
@@ -3013,8 +3015,8 @@ def rebuild_index_sync(
                 relation_count=sum(len(item.relations) for item in graph_items),
                 community_count=0,
                 job_id=None,
-                created_by=UUID(current_user.user.userId),
-                updated_by=UUID(current_user.user.userId),
+                created_by=current_user.user.userId,
+                updated_by=current_user.user.userId,
             )
         )
     sync_job_id, final_status, final_error = _create_index_sync_job(
@@ -3041,7 +3043,7 @@ def rebuild_index_sync(
             .values(
                 status="success" if final_status == "success" else "failed",
                 stale_reason=final_error,
-                updated_by=UUID(current_user.user.userId),
+                updated_by=current_user.user.userId,
                 updated_at=func.now(),
             )
         )

@@ -1,5 +1,7 @@
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import UUID
+
+from app.core.db_types import new_id
 
 from sqlalchemy import RowMapping, func, insert, or_, select
 from sqlalchemy.orm import Session
@@ -22,11 +24,11 @@ def write_audit_log(
     detail: dict | None = None,
 ) -> UUID:
     """写入高风险操作审计日志，调用方负责在同一业务事务内提交。"""
-    audit_log_id = uuid4()
+    audit_log_id = new_id()
     session.execute(
         insert(audit_logs).values(
             audit_log_id=audit_log_id,
-            actor_id=UUID(current_user.user.userId),
+            actor_id=current_user.user.userId,
             action=action,
             resource_type=resource_type,
             resource_id=resource_id,

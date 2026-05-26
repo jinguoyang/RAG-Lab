@@ -232,7 +232,7 @@ def mark_graph_snapshots_stale(
             stale_reason=reason,
             stale_at=func.now(),
             updated_at=func.now(),
-            updated_by=UUID(current_user.user.userId),
+            updated_by=current_user.user.userId,
         )
     )
 

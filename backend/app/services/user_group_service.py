@@ -1,5 +1,7 @@
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import UUID
+
+from app.core.db_types import new_id
 
 from sqlalchemy import RowMapping, and_, func, insert, or_, select, update
 from sqlalchemy.exc import IntegrityError
@@ -45,7 +47,7 @@ def _now() -> datetime:
 
 def _actor_id(current_user: CurrentUserResponse) -> UUID:
     """读取当前开发用户 ID，用于审计字段。"""
-    return UUID(current_user.user.userId)
+    return current_user.user.userId
 
 
 def _ensure_platform_user_manage(current_user: CurrentUserResponse) -> None:
@@ -161,7 +163,7 @@ def create_user(
         row = session.execute(
             insert(users)
             .values(
-                user_id=uuid4(),
+                user_id=new_id(),
                 username=request.username,
                 display_name=request.displayName,
                 email=str(request.email) if request.email else None,
@@ -309,7 +311,7 @@ def create_user_group(
         row = session.execute(
             insert(user_groups)
             .values(
-                group_id=uuid4(),
+                group_id=new_id(),
                 name=request.name,
                 description=request.description,
                 status="active",
@@ -450,7 +452,7 @@ def add_group_members(
             insert(user_group_members),
             [
                 {
-                    "group_member_id": uuid4(),
+                    "group_member_id": new_id(),
                     "group_id": group_id,
                     "user_id": user_id,
                     "status": "active",

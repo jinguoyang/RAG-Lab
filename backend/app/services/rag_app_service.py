@@ -1,7 +1,9 @@
 from datetime import UTC, datetime
 from hashlib import sha256
 import secrets
-from uuid import UUID, uuid4
+from uuid import UUID
+
+from app.core.db_types import new_id
 
 from sqlalchemy import RowMapping, delete, func, insert, or_, select, update
 from sqlalchemy.orm import Session
@@ -117,8 +119,8 @@ def _create_recommended_config_revision(
 ) -> UUID:
     """创建场景应用专属 saved Revision，不切换知识库 active revision。"""
     scenario_payload = _metadata_with_scenario(request.metadata, request)["scenario"]
-    revision_id = uuid4()
-    actor_id = UUID(current_user.user.userId)
+    revision_id = new_id()
+    actor_id = current_user.user.userId
     now = datetime.now(UTC)
     revision_no = (
         session.execute(
@@ -446,8 +448,8 @@ def create_rag_app(
         default_config_revision_id = _create_recommended_config_revision(session, current_user, kb_row, request)
     _ensure_runnable_revision(session, request.kbId, default_config_revision_id)
 
-    app_id = uuid4()
-    actor_id = UUID(current_user.user.userId)
+    app_id = new_id()
+    actor_id = current_user.user.userId
     now = datetime.now(UTC)
     row = session.execute(
         insert(rag_apps)
@@ -497,7 +499,7 @@ def update_rag_app(
 
     update_values: dict[str, object] = {
         "updated_at": func.now(),
-        "updated_by": UUID(current_user.user.userId),
+        "updated_by": current_user.user.userId,
     }
     if "name" in requested_fields and request.name is not None:
         update_values["name"] = request.name
@@ -542,7 +544,7 @@ def delete_rag_app(
     """逻辑删除 RAG App，使其从管理列表和 Runtime 鉴权中消失。"""
     app_row = _read_visible_app_row(session, current_user, app_id)
     _ensure_app_manage_permission(session, current_user, app_row["kb_id"])
-    actor_id = UUID(current_user.user.userId)
+    actor_id = current_user.user.userId
     now = datetime.now(UTC)
     session.execute(
         update(rag_apps)
@@ -601,8 +603,8 @@ def create_rag_app_api_key(
     plain_key = _generate_plain_api_key()
     key_hash = sha256(plain_key.encode("utf-8")).hexdigest()
     key_prefix = plain_key[:16]
-    api_key_id = uuid4()
-    actor_id = UUID(current_user.user.userId)
+    api_key_id = new_id()
+    actor_id = current_user.user.userId
     row = session.execute(
         insert(rag_app_api_keys)
         .values(

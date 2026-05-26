@@ -1,7 +1,9 @@
 from collections import defaultdict
 from datetime import UTC, datetime
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
+
+from app.core.db_types import new_id
 
 from sqlalchemy import RowMapping, inspect, select
 from sqlalchemy.orm import Session
@@ -434,7 +436,7 @@ def create_backup_drill(
     if not has_kb_permission(session, current_user, kb_id, "kb.manage"):
         raise ObservabilityPermissionError
 
-    drill_id = uuid4()
+    drill_id = new_id()
     detail = {
         "result": request.result,
         "restoredObjects": request.restoredObjects,
