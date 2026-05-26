@@ -16,7 +16,10 @@ def get_engine() -> Engine:
         settings = get_settings()
         if not settings.database_url:
             raise RuntimeError("Database URL is required. Set RAG_LAB_DATABASE_URL or DATABASE_URL.")
-        _engine = create_engine(settings.database_url, pool_pre_ping=True)
+        kwargs = {"pool_pre_ping": True}
+        if "mysql" in (settings.database_url or "").lower():
+            kwargs["pool_recycle"] = 3600
+        _engine = create_engine(settings.database_url, **kwargs)
     return _engine
 
 
