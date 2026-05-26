@@ -4,8 +4,7 @@ import os
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine, event
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 # 使用 SQLite in-memory 作为测试数据库
@@ -15,22 +14,6 @@ TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "sqlite:///:memory:")
 @pytest.fixture(scope="session")
 def engine():
     engine = create_engine(TEST_DATABASE_URL, echo=False)
-
-    # SQLite 不支持 JSONB，需要在编译时映射为 JSON
-    @event.listens_for(engine, "before_execute")
-    def _receive_before_execute(conn, clauseelement, multiparams, params, execution_options):
-        pass
-
-    from sqlalchemy import TypeDecorator, String
-    from sqlalchemy.dialects.sqlite import JSON
-
-    # 为 SQLite 编译器注册 JSONB -> JSON 映射
-    from sqlalchemy.ext.compiler import compiles
-    from sqlalchemy.dialects.postgresql import JSONB as PG_JSONB
-
-    @compiles(PG_JSONB, "sqlite")
-    def compile_jsonb_sqlite(type_, compiler, **kw):
-        return "JSON"
 
     # 创建所有表（SQLite in-memory 需要显式创建）
     from app.tables import metadata
