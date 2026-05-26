@@ -64,9 +64,9 @@ class ChunkAccessFilterContext:
         }
 
 
-def _user_id(current_user: CurrentUserResponse) -> UUID:
-    """将当前用户 DTO 中的字符串 ID 转换为 UUID。"""
-    return UUID(current_user.user.userId)
+def _user_id(current_user: CurrentUserResponse) -> str:
+    """返回当前用户 DTO 中的字符串 ID。"""
+    return current_user.user.userId
 
 
 def _active_group_ids(session: Session, user_id: UUID) -> set[UUID]:
@@ -295,7 +295,7 @@ def _permission_sources_for_role(
 
 def _simulation_sources(session: Session, kb_id: UUID, target_user: CurrentUserResponse) -> list[PermissionSourceDTO]:
     """收集平台角色、直接知识库角色和用户组继承角色的权限来源。"""
-    user_id = UUID(target_user.user.userId)
+    user_id = target_user.user.userId
     sources = _permission_sources_for_role(
         session,
         "platform",
@@ -504,7 +504,7 @@ def has_library_permission(
         "library.document.update",
         "library.document.delete",
     }:
-        return user_id == document_owner_id
+        return user_id == str(document_owner_id)
 
     return True
 
@@ -590,7 +590,7 @@ def has_library_access(
         return True
 
     # 是文档库所有者 → 通过
-    if library_owner_id is not None and user_id == library_owner_id:
+    if library_owner_id is not None and user_id == str(library_owner_id):
         return True
 
     # 需要 library_id 来查成员绑定
@@ -644,7 +644,7 @@ def check_library_owner_or_admin(
             document_libraries.c.deleted_at.is_(None),
         )
     ).scalar()
-    return row is not None and UUID(str(row)) == user_id
+    return row is not None and str(row) == user_id
 
 
 def library_visibility_condition(current_user: CurrentUserResponse):

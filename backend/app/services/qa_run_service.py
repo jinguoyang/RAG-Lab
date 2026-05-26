@@ -1581,7 +1581,7 @@ def _append_authorized_candidate_previews(
 ) -> list[QARunCandidateDTO]:
     """为当前用户仍有权限访问的候选补充正文预览；无权限或不可用 Chunk 不暴露正文。"""
     candidate_chunk_ids = [
-        UUID(candidate.chunkId)
+        candidate.chunkId
         for candidate in candidates
         if candidate.isAuthorized and candidate.chunkId is not None
     ]
@@ -1616,7 +1616,7 @@ def _append_authorized_candidate_previews(
     for candidate in candidates:
         if not candidate.isAuthorized or candidate.chunkId is None:
             continue
-        chunk_id = UUID(candidate.chunkId)
+        chunk_id = candidate.chunkId
         content = content_by_chunk_id.get(chunk_id)
         if content is None:
             continue
@@ -2558,7 +2558,7 @@ def _run_evaluation_results(
                 evaluation_run_id=evaluation_run_id,
                 sample_id=sample["sample_id"],
                 source_run_id=sample["source_run_id"],
-                actual_run_id=UUID(actual_run_id) if actual_run_id else None,
+                actual_run_id=actual_run_id if actual_run_id else None,
                 status=status,
                 query=sample["query"],
                 expected_answer=sample["expected_answer"],

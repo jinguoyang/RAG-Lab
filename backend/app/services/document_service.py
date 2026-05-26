@@ -684,7 +684,7 @@ def _write_graph_chunk_refs(
                 insert(graph_chunk_refs).values(
                     graph_chunk_ref_id=new_id(),
                     graph_snapshot_id=graph_snapshot_id,
-                    chunk_id=UUID(entity.chunk_id),
+                    chunk_id=entity.chunk_id,
                     neo4j_node_key=entity.entity_key,
                     neo4j_relation_key=None,
                     community_key=None,
@@ -707,7 +707,7 @@ def _write_graph_chunk_refs(
                 insert(graph_chunk_refs).values(
                     graph_chunk_ref_id=new_id(),
                     graph_snapshot_id=graph_snapshot_id,
-                    chunk_id=UUID(relation.chunk_id),
+                    chunk_id=relation.chunk_id,
                     neo4j_node_key=relation.source_entity_key,
                     neo4j_relation_key=relation.relation_key,
                     community_key=None,
