@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Protocol
 from uuid import uuid4
 
@@ -127,6 +128,7 @@ class MySqlAdapter:
 # 工厂函数
 # ---------------------------------------------------------------------------
 
+@lru_cache(maxsize=1)
 def get_dialect_adapter(database_url: str | None = None) -> DialectAdapter:
     """根据数据库 URL 返回对应的方言适配器。"""
     if database_url is None:

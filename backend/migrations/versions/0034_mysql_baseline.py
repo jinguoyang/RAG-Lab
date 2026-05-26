@@ -15,10 +15,11 @@ depends_on = None
 
 
 def upgrade() -> None:
-    """为 MySQL 创建所有表（使用通用类型）。"""
+    """MySQL: create all tables. PostgreSQL: no-op (handled by migrations 0001-0033)."""
     bind = op.get_bind()
-    if "mysql" in str(bind.dialect.name):
-        metadata.create_all(bind)
+    if "mysql" not in str(bind.dialect.name):
+        return  # PG already has all tables from prior migrations
+    metadata.create_all(bind)
 
 
 def downgrade() -> None:

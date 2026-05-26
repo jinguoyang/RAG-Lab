@@ -4,6 +4,7 @@ from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import get_settings
+from app.core.db_types import get_dialect_adapter
 
 _engine: Engine | None = None
 _session_factory: sessionmaker[Session] | None = None
@@ -16,8 +17,9 @@ def get_engine() -> Engine:
         settings = get_settings()
         if not settings.database_url:
             raise RuntimeError("Database URL is required. Set RAG_LAB_DATABASE_URL or DATABASE_URL.")
+        adapter = get_dialect_adapter(settings.database_url)
         kwargs = {"pool_pre_ping": True}
-        if "mysql" in (settings.database_url or "").lower():
+        if adapter.__class__.__name__ == "MySqlAdapter":
             kwargs["pool_recycle"] = 3600
         _engine = create_engine(settings.database_url, **kwargs)
     return _engine
