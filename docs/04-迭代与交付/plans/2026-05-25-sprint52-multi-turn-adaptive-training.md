@@ -1,5 +1,7 @@
 # Sprint 52: 多轮对话 + 自适应培训 实现计划
 
+> 归档说明：本计划已被 [员工培训 Agent 与外部培训应用实施计划](./2026-05-26-employee-training-agent-and-external-app.md) 取代。多轮对话能力保留并调整为平台课堂 Agent 基线；自适应培训、知识点掌握度和培训报告掌握度展示降级为 P2 后续，不进入当前 MVP。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 为知识库问答助手添加多轮对话上下文，使 LLM 能理解追问和指代；为员工培训助手添加自适应难度和知识掌握度追踪。

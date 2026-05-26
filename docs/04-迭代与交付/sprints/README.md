@@ -20,9 +20,13 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 - Sprint 48 已完成，主题为 E32 场景向导与知识库问答助手：P13 场景助手创建、短期 Embed Token、嵌入页、问答反馈和 retrieve 证据摘要。
 - Sprint 49 至 Sprint 50 已完成，主题为 E32 场景化智能应用后续能力：员工培训助手、培训测验、培训报告、验收硬化和文档同步。
 - Sprint 51 已完成，主题为 E32 语义检索 + LLM 测验生成：Milvus 向量语义检索、LLM 智能出题、LLM 结构化讲解和模板回退。
-- Sprint 52 待开发，主题为 E32 多轮对话 + 自适应培训：会话历史注入、知识点掌握度追踪和培训报告增强。
-- Sprint 53 待开发，主题为 E32 嵌入页体验 + 运营视图：SSE 流式输出、Markdown 渲染、调用统计和反馈分析。
-- Sprint 54 待开发，主题为 E31 mimo-v2.5 图片 Provider 对齐与样本问答验收硬化：对齐小米图片理解 API、记录安全 usage 摘要，并用两张 `docs/examples` 图片验证问答召回。
+- Sprint 52 待开发，已按 E33 新口径重排为平台课堂 Agent 基线：多轮对话、课堂状态机、受控答疑和结构化课堂事件 API；原自适应培训和掌握度计划降为低优先级后续。
+- Sprint 53 待开发，已按 E33 新口径重排为外部培训应用基线：独立项目、数据库迁移、平台接入和学习计划审核 UI；原嵌入页 SSE、Markdown 和运营分析计划降为低优先级后续。
+- Sprint 54 已完成，主题为 E31 mimo-v2.5 图片 Provider 对齐与样本问答验收硬化：对齐小米图片理解 API、记录安全 usage 摘要，并用两张 `docs/examples` 图片验证问答召回。
+- Sprint 55 待开发，主题为 E33 平台结构化学习计划：岗位描述生成学习计划、AI 草稿校验、平台业务数据落库和学习计划版本快照。
+- Sprint 56 待开发，主题为 E33 题库生成与审核：练习题/认证题草稿、认证题审核门禁、rubric 和题库发布。
+- Sprint 57 待开发，主题为 E33 外部培训应用课堂交互：题库审核页面、课堂页面、A/B/C/D 结构化答题组件和事件提交。
+- Sprint 58 待开发，主题为 E33 员工培训 Agent 端到端验收：计划生成、审核、上课、答题、追溯和文档同步。
 - 下一版本为 V1.9，计划承接 E23 图快照保留与配置治理、E24 文档解析能力增强；E27 RAG App 运行治理与接入可见性已完成。E28 文档库功能已全部完成。
 - Sprint 01 至 Sprint 26 已完成，对应 V1.0 至 V1.7。
 - Sprint 27 至 Sprint 29 已完成 E22 知识库治理工作流强化范围：P05 支持治理问题定位和治理后验证摘要，P06 支持批量治理和索引同步作业，P07 支持 Chunk 治理标记、索引重建和作业查看。
@@ -64,9 +68,13 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 | Sprint 49 | 场景化智能应用 | 员工培训助手运行时 | Done | `sprint41-60/Sprint-49.md` |
 | Sprint 50 | 场景化智能应用 | 验收硬化与文档同步 | Done | `sprint41-60/Sprint-50.md` |
 | Sprint 51 | 场景化智能应用 | 语义检索 + LLM 测验生成 | Done | `sprint41-60/Sprint-51.md` |
-| Sprint 52 | 场景化智能应用 | 多轮对话 + 自适应培训 | Todo | `sprint41-60/Sprint-52.md` |
-| Sprint 53 | 场景化智能应用 | 嵌入页体验 + 运营视图 | Todo | `sprint41-60/Sprint-53.md` |
-| Sprint 54 | 多模态 RAG Phase 1 硬化 | mimo-v2.5 图片 Provider 对齐与样本问答验收 | Ready | `sprint41-60/Sprint-54.md` |
+| Sprint 52 | 员工培训 Agent 深化 | 平台课堂 Agent 基线 | Todo | `sprint41-60/Sprint-52.md` |
+| Sprint 53 | 员工培训 Agent 深化 | 外部培训应用基线 | Todo | `sprint41-60/Sprint-53.md` |
+| Sprint 54 | 多模态 RAG Phase 1 硬化 | mimo-v2.5 图片 Provider 对齐与样本问答验收 | Done | `sprint41-60/Sprint-54.md` |
+| Sprint 55 | 员工培训 Agent 深化 | 平台结构化学习计划 | Todo | `sprint41-60/Sprint-55.md` |
+| Sprint 56 | 员工培训 Agent 深化 | 题库生成与审核 | Todo | `sprint41-60/Sprint-56.md` |
+| Sprint 57 | 员工培训 Agent 深化 | 外部培训应用课堂交互 | Todo | `sprint41-60/Sprint-57.md` |
+| Sprint 58 | 员工培训 Agent 深化 | 员工培训 Agent 端到端验收 | Todo | `sprint41-60/Sprint-58.md` |
 
 ## 3. 单个 Sprint 文档约定
 

@@ -1,5 +1,7 @@
 # Sprint 53: 嵌入页体验 + 运营视图 实现计划
 
+> 归档说明：本计划已被 [员工培训 Agent 与外部培训应用实施计划](./2026-05-26-employee-training-agent-and-external-app.md) 取代。SSE、Markdown 渲染和 P13 运营分析降级为 P2 后续；Sprint 53 当前重排为无 LLM 能力的外部培训应用基线。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking。
 
 **Goal:** 为嵌入页添加流式输出（SSE）和 Markdown 渲染，提升对话体验；为管理端添加调用分析和反馈闭环视图。
