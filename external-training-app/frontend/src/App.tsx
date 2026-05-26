@@ -1,9 +1,6 @@
-function App() {
-  return (
-    <div className="min-h-screen flex items-center justify-center">
-      <h1 className="text-2xl font-bold">External Training App</h1>
-    </div>
-  );
-}
+import { RouterProvider } from "react-router";
+import { router } from "./routes";
 
-export default App;
+export default function App() {
+  return <RouterProvider router={router} />;
+}
