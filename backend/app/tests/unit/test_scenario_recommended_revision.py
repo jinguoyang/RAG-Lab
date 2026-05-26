@@ -74,7 +74,7 @@ def test_create_rag_app_can_create_saved_scenario_revision(db, admin_user):
     kb_row = db.execute(
         knowledge_bases.select().where(knowledge_bases.c.kb_id == kb_id)
     ).mappings().one()
-    assert kb_row["active_config_revision_id"] == active_revision_id
+    assert kb_row["active_config_revision_id"] == str(active_revision_id)
 
     revision_row = db.execute(
         config_revisions.select().where(config_revisions.c.config_revision_id == UUID(app.defaultConfigRevisionId))

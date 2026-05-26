@@ -20,6 +20,22 @@ def new_id() -> str:
     return str(uuid4())
 
 
+class UUIDString(sa.types.TypeDecorator):
+    """VARCHAR(36) 列，自动将 Python uuid.UUID 对象转为字符串。"""
+    impl = sa.String(36)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            return str(value)
+        return value
+
+    def process_result_value(self, value, dialect):
+        if value is not None:
+            return str(value)  # 返回 str 而非 uuid.UUID，保持一致性
+        return value
+
+
 # ---------------------------------------------------------------------------
 # DialectAdapter 接口
 # ---------------------------------------------------------------------------
@@ -63,7 +79,7 @@ class PostgresAdapter:
 
     @property
     def uuid_type(self) -> type[sa.types.TypeEngine]:
-        return sa.String(36)
+        return UUIDString()
 
     @property
     def json_type(self) -> type[sa.types.TypeEngine]:
@@ -90,7 +106,7 @@ class MySqlAdapter:
 
     @property
     def uuid_type(self) -> type[sa.types.TypeEngine]:
-        return sa.String(36)
+        return UUIDString()
 
     @property
     def json_type(self) -> type[sa.types.TypeEngine]:

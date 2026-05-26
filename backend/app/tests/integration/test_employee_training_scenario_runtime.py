@@ -204,7 +204,7 @@ def test_structured_run_generates_training_quiz_and_message_metadata(db, monkeyp
     assert len(response.output["quiz"]["questions"]) == 2
 
     message = db.execute(app_messages.select().where(app_messages.c.message_id == UUID(response.messageId))).mappings().one()
-    assert message["qa_run_id"] == run_id
+    assert message["qa_run_id"] == str(run_id)
     assert message["metadata"]["trainingStructuredRun"]["action"] == "training_quiz_generate"
     assert message["metadata"]["trainingStructuredRun"]["quiz"]["questions"][0]["correctAnswer"]
 
@@ -242,6 +242,6 @@ def test_quiz_submission_scores_answers_and_records_training_result(db, monkeypa
     assert response.results[1].explanation
 
     message = db.execute(app_messages.select().where(app_messages.c.message_id == UUID(response.messageId))).mappings().one()
-    assert message["qa_run_id"] == run_id
+    assert message["qa_run_id"] == str(run_id)
     assert message["metadata"]["trainingResult"]["score"] == 50
     assert message["metadata"]["trainingResult"]["quizMessageId"] == quiz_response.messageId
