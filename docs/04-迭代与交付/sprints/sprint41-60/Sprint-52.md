@@ -1,63 +1,71 @@
 # 迭代计划 Sprint 52
 
+> 归档说明：原“Sprint 52 多轮对话 + 自适应培训”计划已按 E33 新口径取代。多轮对话保留并收敛为平台课堂 Agent 能力；知识点掌握度、自适应培训和培训报告掌握度展示降级为低优先级后续。
+
 ## 1. Sprint 基本信息
 
 - Sprint 名称：Sprint 52
-- Sprint 主题：多轮对话 + 自适应培训
-- 涉及 Epic：E32 场景化智能应用
+- Sprint 主题：平台课堂 Agent 基线
+- 涉及 Epic：E33 员工培训 Agent 与外部培训应用深化
 - 建议版本：V2.2
 - 时间范围：待排期
-- 目标：为知识库问答助手添加多轮对话上下文，使 LLM 能理解追问和指代；为员工培训助手添加自适应难度和知识掌握度追踪。
+- 目标：在平台侧建立课堂 Agent 的多轮上下文、状态机、受控答疑和结构化课堂事件 API，为外部培训应用提供可复用的课堂控制能力。
 
 ## 2. 关键假设
 
-- Sprint 51 已完成语义检索和 LLM 测验生成。
-- 嵌入页已支持基本问答和培训交互。
-- 本 Sprint 不涉及流式输出（属于 Sprint 53）。
+- Sprint 47 至 Sprint 51 已完成 E32 场景化智能应用基座和演示能力。
+- 平台侧是 Agent、RAG、状态机和课堂事件的权威方。
+- 外部培训应用只提交事件和渲染结构化输出，不具备 LLM 能力，也不自行推进业务状态。
+- 本 Sprint 不实现个人掌握度、自适应难度、错题复习、SSE 和运营分析。
 
 ## 3. 计划事项
 
 | Backlog | 标题 | 优先级 | 预估 | 状态 |
 | --- | --- | --- | --- | --- |
-| B-263 | 多轮对话上下文注入（`_read_conversation_history`） | P0 | 1.5d | Todo |
-| B-264 | `generate_answer` 支持 `chat_history` 参数 | P0 | 1d | Todo |
-| B-265 | `chat_with_app_runtime` 注入历史消息 + 前端消息列表 | P0 | 2d | Todo |
-| B-266 | 知识点掌握度追踪（`_extract_topic_mastery`） | P0 | 1.5d | Todo |
-| B-267 | 测验评分后写入掌握度 + 培训报告知识点聚合 | P1 | 1.5d | Todo |
-| B-268 | 前端培训报告知识点掌握度进度条展示 | P1 | 1d | Todo |
+| B-263 | 平台侧课堂多轮上下文管理 | P0 | 1.5d | Done |
+| B-264 | 平台 Agent 生成链路支持课堂历史上下文 | P0 | 1.5d | Done |
+| B-265 | 平台课堂事件注入历史并返回结构化课堂输出 | P0 | 2d | Done |
+| B-280 | 平台侧课堂状态机 | P0 | 2d | Done |
+| B-281 | 平台侧受控答疑与偏题处理 | P0 | 1.5d | Done |
+| B-282 | 课堂结构化 `uiActions` 协议 | P0 | 1.5d | Done |
 
 ## 4. 验收标准
 
-- 问答助手支持多轮对话，能理解追问和指代。
-- 前端嵌入页展示完整对话历史，而非单条回答。
-- 培训测验评分后自动提取知识点掌握度。
-- 培训报告按知识点维度展示掌握度进度条。
-- 所有新代码有对应单元测试。
+- 平台能创建课堂会话并维护最近多轮课堂上下文。
+- 外部培训应用提交课堂事件后，平台返回结构化课堂输出。
+- 状态机能拒绝非法阶段流转。
+- 受控答疑只允许回答当前学习计划范围内、有可靠证据的问题。
+- 偏题输入能进入稳定的偏题处理结果。
+- 单选题等课堂动作通过 `uiActions` 返回，不要求外部应用解析自然语言。
 
 ## 5. 范围边界
 
-- 不涉及流式输出（属于 Sprint 53）。
-- 不涉及多知识库检索。
-- 不涉及运营分析视图（属于 Sprint 53）。
+- 不实现外部培训应用 UI。
+- 不实现学习计划生成和题库审核，它们在后续 Sprint 承接。
+- 不实现个人掌握度分析和错题复习。
+- 不实现 SSE、Markdown 渲染或运营分析。
 
 ## 6. 验证命令
 
 ```powershell
 cd backend
 conda run -n rag-lab python -m compileall app
-conda run -n rag-lab python -m pytest app/tests/unit/test_multi_turn_chat.py -v
-conda run -n rag-lab python -m pytest app/tests/unit/test_adaptive_training.py -v
 ```
 
 ```powershell
-cd frontend
-npm run build
+git diff --check
 ```
 
 ## 7. 关联文档
 
-- [多轮对话 + 自适应培训实现计划](../../plans/2026-05-25-sprint52-multi-turn-adaptive-training.md)
+- [员工培训 Agent 平台侧设计规范](../../specs/2026-05-26-employee-training-agent-platform-design.md)
+- [员工培训 Agent 与外部培训应用实施计划](../../plans/2026-05-26-employee-training-agent-and-external-app.md)
 
 ## 8. 执行记录
 
-- 待执行。
+- B-263: 平台侧课堂多轮上下文管理 — Done
+- B-264: 平台 Agent 生成链路支持课堂历史上下文 — Done（首版模板，后续接入 RAG）
+- B-265: 平台课堂事件注入历史并返回结构化课堂输出 — Done
+- B-280: 平台侧课堂状态机 — Done
+- B-281: 平台侧受控答疑与偏题处理 — Done（首版规则，后续升级语义检测）
+- B-282: 课堂结构化 `uiActions` 协议 — Done（首版框架，后续接入 Agent 结构化输出）
