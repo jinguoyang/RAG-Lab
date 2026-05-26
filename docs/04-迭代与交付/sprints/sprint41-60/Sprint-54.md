@@ -20,11 +20,11 @@
 
 | Backlog | 标题 | 优先级 | 预估 | 状态 |
 | --- | --- | --- | --- | --- |
-| B-275 | 对齐 mimo-v2.5 图片 API 请求格式、MIME data URL 和鉴权头 | P0 | 1d | Ready |
-| B-276 | 图片解析记录 MIME、大小、image token usage 和 Provider 安全摘要 | P0 | 1d | Ready |
-| B-277 | 补齐 VisionTextProvider HTTP payload、限制和错误码测试 | P0 | 1d | Ready |
-| B-278 | 使用两张 `docs/examples` 图片完成真实问答召回验收 | P0 | 1d | Ready |
-| B-279 | 同步系统设计、接口设计、数据模型、`.env.example` 和复测记录 | P1 | 0.5d | Ready |
+| B-275 | 对齐 mimo-v2.5 图片 API 请求格式、MIME data URL 和鉴权头 | P0 | 1d | Done |
+| B-276 | 图片解析记录 MIME、大小、image token usage 和 Provider 安全摘要 | P0 | 1d | Done |
+| B-277 | 补齐 VisionTextProvider HTTP payload、限制和错误码测试 | P0 | 1d | Done |
+| B-278 | 使用两张 `docs/examples` 图片完成真实问答召回验收 | P0 | 1d | Done |
+| B-279 | 同步系统设计、接口设计、数据模型、`.env.example` 和复测记录 | P1 | 0.5d | Done |
 
 ## 4. 验收标准
 

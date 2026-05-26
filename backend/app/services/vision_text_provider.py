@@ -160,12 +160,22 @@ def get_vision_text_provider(settings: Settings | None = None) -> VisionTextProv
     return HttpVisionTextProvider(settings)
 
 
+_ALLOWED_IMAGE_MIMES = frozenset({
+    "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/bmp",
+})
+
+
 def _parse_vision_json(content: str) -> dict:
     """解析 Vision API JSON 输出，兼容少量 fenced code 包裹。"""
     cleaned = content.strip()
-    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, flags=re.DOTALL)
+    fenced = re.search(r"```(?:json)?\s*(\{[\s\S]*\})\s*```", cleaned)
     if fenced:
         cleaned = fenced.group(1)
+    else:
+        first = cleaned.find("{")
+        last = cleaned.rfind("}")
+        if first != -1 and last > first:
+            cleaned = cleaned[first : last + 1]
     try:
         data = json.loads(cleaned)
     except json.JSONDecodeError as exc:
@@ -198,11 +208,16 @@ def _normalize_request(request: VisionTextRequest | bytes) -> VisionTextRequest:
 
 
 def _resolve_mime_type(file_name: str, mime_type: str | None) -> str:
-    """解析图片 MIME；缺失时按扩展名推断，默认使用 JPEG。"""
-    if mime_type:
-        return mime_type
-    guessed, _ = mimetypes.guess_type(file_name)
-    return guessed or "image/jpeg"
+    """解析图片 MIME；缺失时按扩展名推断，默认使用 JPEG。不在白名单内则拒绝。"""
+    resolved = mime_type
+    if not resolved:
+        guessed, _ = mimetypes.guess_type(file_name)
+        resolved = guessed
+    if not resolved:
+        resolved = "image/jpeg"
+    if resolved.lower() not in _ALLOWED_IMAGE_MIMES:
+        raise ProviderError(f"Unsupported image MIME type: {resolved}")
+    return resolved.lower()
 
 
 def _extract_image_tokens(payload: dict) -> int | None:
