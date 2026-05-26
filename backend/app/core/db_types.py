@@ -5,12 +5,10 @@
 """
 from __future__ import annotations
 
-from functools import lru_cache
 from typing import Protocol
 from uuid import uuid4
 
 import sqlalchemy as sa
-from sqlalchemy.engine import URL
 
 
 # ---------------------------------------------------------------------------
@@ -72,7 +70,9 @@ class PostgresAdapter:
         return sa.JSON
 
     def json_default(self, value: str = "{}") -> sa.TextClause:
-        return sa.text(f"'{value}'")
+        # value is always a hardcoded literal ("{}" or "[]"), never user input
+        _defaults = {"{}": "'{}'", "[]": "'[]'"}
+        return sa.text(_defaults.get(value, "'{}'"))
 
     def timestamp_default(self) -> sa.TextClause:
         return sa.text("now()")
@@ -111,7 +111,6 @@ class MySqlAdapter:
 # 工厂函数
 # ---------------------------------------------------------------------------
 
-@lru_cache(maxsize=1)
 def get_dialect_adapter(database_url: str | None = None) -> DialectAdapter:
     """根据数据库 URL 返回对应的方言适配器。"""
     if database_url is None:
