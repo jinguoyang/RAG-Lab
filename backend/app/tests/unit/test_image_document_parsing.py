@@ -2,6 +2,7 @@
 
 import struct
 import zlib
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -12,13 +13,15 @@ from app.services.qa_providers import ProviderError
 from app.services.vision_text_provider import (
     HttpVisionTextProvider,
     LocalVisionTextProvider,
+    VisionTextRequest,
+    VisionTextResult,
     VisionTextProvider,
     get_vision_text_provider,
 )
 
 
 def test_vision_settings_inherit_llm_config():
-    """默认视觉配置应继承 LLM 配置，当 vision_text_* 为 None 时回落到 llm_*。"""
+    """默认视觉配置应继承 LLM endpoint/key，并默认使用 mimo-v2.5 模型。"""
     settings = Settings(
         _env_file=None,
         RAG_LAB_LLM_PROVIDER="http",
@@ -29,7 +32,7 @@ def test_vision_settings_inherit_llm_config():
     assert settings.vision_text_provider == "http"
     assert settings.vision_text_endpoint is None
     assert settings.vision_text_api_key is None
-    assert settings.vision_text_model is None
+    assert settings.vision_text_model == "mimo-v2.5"
     assert settings.vision_text_max_image_side == 1600
 
 
@@ -47,6 +50,21 @@ def test_vision_settings_explicit_override():
     assert settings.vision_text_api_key == "sk-vision-key"
     assert settings.vision_text_model == "gpt-4o-mini"
     assert settings.vision_text_max_image_side == 1024
+
+
+def test_vision_settings_default_model_is_mimo_v25():
+    """视觉模型未显式配置时，默认使用小米 mimo-v2.5。"""
+    settings = Settings(_env_file=None, RAG_LAB_LLM_MODEL="local-rag-lab")
+    provider = HttpVisionTextProvider(
+        Settings(
+            _env_file=None,
+            RAG_LAB_LLM_ENDPOINT="https://api.xiaomimimo.com/v1/chat/completions",
+            RAG_LAB_LLM_API_KEY="sk-test",
+        )
+    )
+
+    assert settings.vision_text_model == "mimo-v2.5"
+    assert provider._model == "mimo-v2.5"
 
 
 def test_vision_text_provider_base_raises_not_implemented():
@@ -76,7 +94,7 @@ def test_local_vision_text_provider_returns_dict():
 
 
 def test_http_vision_text_provider_inherits_llm_config():
-    """HttpVisionTextProvider 为空配置时应继承 LLM endpoint/key/model。"""
+    """HttpVisionTextProvider 为空配置时应继承 LLM endpoint/key，并使用默认视觉模型。"""
     settings = Settings(
         _env_file=None,
         RAG_LAB_LLM_PROVIDER="http",
@@ -88,7 +106,7 @@ def test_http_vision_text_provider_inherits_llm_config():
     provider = HttpVisionTextProvider(settings)
     assert provider._endpoint == "https://llm.example.com/v1/chat/completions"
     assert provider._api_key == "sk-llm-key"
-    assert provider._model == "gpt-4o"
+    assert provider._model == "mimo-v2.5"
 
 
 def test_http_vision_text_provider_explicit_config():
@@ -114,6 +132,120 @@ def test_http_vision_text_provider_requires_endpoint():
     settings = Settings(_env_file=None, RAG_LAB_VISION_TEXT_PROVIDER="http")
     with pytest.raises(ProviderError):
         HttpVisionTextProvider(settings)
+
+
+def test_http_vision_text_provider_uses_mime_data_url_and_api_key_header():
+    """HTTP Provider 应按实际 MIME 构造 data URL，并使用小米 api-key 鉴权头。"""
+    import httpx
+
+    captured: dict = {}
+
+    def fake_post(url, headers, json, timeout):
+        captured.update({"url": url, "headers": headers, "json": json, "timeout": timeout})
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                '{"caption": "猫在炉火旁", "ocr_text": "", '
+                                '"structured_summary": "一只猫坐在燃烧的炉火旁"}'
+                            )
+                        }
+                    }
+                ],
+                "usage": {"prompt_tokens_details": {"image_tokens": 123}},
+            },
+        )
+
+    settings = Settings(
+        _env_file=None,
+        RAG_LAB_VISION_TEXT_ENDPOINT="https://api.xiaomimimo.com/v1/chat/completions",
+        RAG_LAB_VISION_TEXT_API_KEY="sk-vision-key",
+        RAG_LAB_VISION_TEXT_MODEL="mimo-v2.5",
+    )
+    provider = HttpVisionTextProvider(settings)
+
+    with patch("httpx.post", side_effect=fake_post):
+        result = provider.extract_text(
+            VisionTextRequest(
+                file_name="cat.jpg",
+                mime_type="image/jpeg",
+                image_bytes=b"fake-jpeg-bytes",
+            )
+        )
+
+    image_block = captured["json"]["messages"][0]["content"][0]
+    assert captured["headers"]["api-key"] == "sk-vision-key"
+    assert "Authorization" not in captured["headers"]
+    assert captured["json"]["model"] == "mimo-v2.5"
+    assert image_block["image_url"]["url"].startswith("data:image/jpeg;base64,")
+    assert result.metadata["imageTokens"] == 123
+    assert result.metadata["mimeType"] == "image/jpeg"
+    assert "base64" not in result.metadata
+
+
+def test_http_vision_text_provider_rejects_base64_over_50mb():
+    """base64 编码字符串超过 50 MB 时，应在调用 Provider 前拒绝。"""
+    settings = Settings(
+        _env_file=None,
+        RAG_LAB_VISION_TEXT_ENDPOINT="https://api.xiaomimimo.com/v1/chat/completions",
+        RAG_LAB_VISION_TEXT_API_KEY="sk-vision-key",
+    )
+    provider = HttpVisionTextProvider(settings)
+    image_bytes = b"x" * (38 * 1024 * 1024)
+
+    with patch("httpx.post") as mock_post:
+        with pytest.raises(ProviderError) as exc_info:
+            provider.extract_text(
+                VisionTextRequest(
+                    file_name="too-large.jpg",
+                    mime_type="image/jpeg",
+                    image_bytes=image_bytes,
+                )
+            )
+
+    assert "IMAGE_TOO_LARGE" in str(exc_info.value)
+    mock_post.assert_not_called()
+
+
+def test_http_vision_text_provider_falls_back_to_plain_text_response():
+    """模型未返回 JSON 时，应降级为纯文本摘要，避免真实图片解析直接失败。"""
+    import httpx
+
+    def fake_post(url, headers, json, timeout):
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": "这是一张中国中车 CRRC 乔迁活动照片，现场有红黄气球和乔迁新禧标识。"
+                        }
+                    }
+                ],
+            },
+        )
+
+    settings = Settings(
+        _env_file=None,
+        RAG_LAB_VISION_TEXT_ENDPOINT="https://api.xiaomimimo.com/v1/chat/completions",
+        RAG_LAB_VISION_TEXT_API_KEY="sk-vision-key",
+    )
+    provider = HttpVisionTextProvider(settings)
+
+    with patch("httpx.post", side_effect=fake_post):
+        result = provider.extract_text(
+            VisionTextRequest(
+                file_name="crrc.jpg",
+                mime_type="image/jpeg",
+                image_bytes=b"fake-jpeg-bytes",
+            )
+        )
+
+    assert result.caption == "这是一张中国中车 CRRC 乔迁活动照片，现场有红黄气球和乔迁新禧标识。"
+    assert "乔迁" in result.structured_summary
 
 
 # ---------------------------------------------------------------------------
@@ -208,9 +340,9 @@ def test_parse_image_empty_content_raises():
 
 
 def test_parse_unsupported_image_extension_raises():
-    """非白名单图片格式（如 .bmp）应返回 UNSUPPORTED_FILE_TYPE。"""
+    """非白名单图片格式应返回 UNSUPPORTED_FILE_TYPE。"""
     with pytest.raises(DocumentParseError) as exc_info:
-        parse_document("test.bmp", "image/bmp", b"\x00")
+        parse_document("test.tiff", "image/tiff", b"\x00")
     assert exc_info.value.error_code == "UNSUPPORTED_FILE_TYPE"
 
 
@@ -242,6 +374,97 @@ def test_parse_webp_supported():
         result = parse_document("photo.webp", "image/webp", png_bytes)
 
     assert result.parser_name == "vision_text"
+
+
+def test_parse_gif_supported():
+    """.gif 应走图片解析分支。"""
+    image_bytes = _make_tiny_png()
+    with patch("app.services.document_parsing.get_vision_text_provider") as mock_factory:
+        mock_factory.return_value = LocalVisionTextProvider()
+        result = parse_document("photo.gif", "image/gif", image_bytes)
+
+    assert result.parser_name == "vision_text"
+
+
+def test_parse_bmp_supported():
+    """.bmp 应走图片解析分支。"""
+    image_bytes = _make_tiny_png()
+    with patch("app.services.document_parsing.get_vision_text_provider") as mock_factory:
+        mock_factory.return_value = LocalVisionTextProvider()
+        result = parse_document("photo.bmp", "image/bmp", image_bytes)
+
+    assert result.parser_name == "vision_text"
+
+
+def test_parse_image_metadata_includes_provider_usage_summary():
+    """图片 Chunk metadata 应包含 Provider 返回的安全 usage 摘要。"""
+    png_bytes = _make_tiny_png()
+    provider = LocalVisionTextProvider()
+    provider.extract_text = lambda request: VisionTextResult(
+        caption="乔迁新禧",
+        ocr_text="中国中车 CRRC",
+        structured_summary="中车数字科技园区乔迁活动现场",
+        metadata={
+            "provider": "http",
+            "model": "mimo-v2.5",
+            "mimeType": "image/jpeg",
+            "fileSize": 1024,
+            "imageTokens": 88,
+        },
+    )
+
+    with patch("app.services.document_parsing.get_vision_text_provider") as mock_factory:
+        mock_factory.return_value = provider
+        result = parse_document("crrc.jpg", "image/jpeg", png_bytes)
+
+    metadata = result.chunks[0].metadata
+    assert metadata["visionProvider"] == "http"
+    assert metadata["visionModel"] == "mimo-v2.5"
+    assert metadata["sourceMimeType"] == "image/jpeg"
+    assert metadata["sourceFileSize"] == 1024
+    assert metadata["imageTokens"] == 88
+
+
+def test_examples_crrc_photo_parse_text_contains_retrieval_terms():
+    """乔迁样本图片解析文本应包含问答召回所需的中车、CRRC 和乔迁关键词。"""
+    image_path = Path(__file__).resolve().parents[4] / "docs" / "examples" / "1I3A6520-opq3542107848.jpg"
+    provider = LocalVisionTextProvider()
+    provider.extract_text = lambda request: VisionTextResult(
+        caption="中国中车 CRRC 前台乔迁新禧活动照片",
+        ocr_text="中国中车 CRRC 中车数字科技园区 乔迁新禧 乔迁大吉",
+        structured_summary="红黄气球和乔迁指示牌构成庆祝活动现场",
+        metadata={"provider": "local", "model": "mimo-v2.5", "mimeType": "image/jpeg", "fileSize": image_path.stat().st_size},
+    )
+
+    with patch("app.services.document_parsing.get_vision_text_provider") as mock_factory:
+        mock_factory.return_value = provider
+        result = parse_document(image_path.name, "image/jpeg", image_path.read_bytes())
+
+    content = "\n".join(chunk.content for chunk in result.chunks)
+    assert "中国中车" in content
+    assert "CRRC" in content
+    assert "乔迁" in content
+
+
+def test_examples_cat_photo_parse_text_contains_retrieval_terms():
+    """猫咪样本图片解析文本应包含问答召回所需的猫、动物和炉火关键词。"""
+    image_path = Path(__file__).resolve().parents[4] / "docs" / "examples" / "oxlndt5t1zr31.jpg"
+    provider = LocalVisionTextProvider()
+    provider.extract_text = lambda request: VisionTextResult(
+        caption="一只猫坐在炉火旁",
+        ocr_text="",
+        structured_summary="动物猫咪靠近燃烧的木柴和灶火取暖",
+        metadata={"provider": "local", "model": "mimo-v2.5", "mimeType": "image/jpeg", "fileSize": image_path.stat().st_size},
+    )
+
+    with patch("app.services.document_parsing.get_vision_text_provider") as mock_factory:
+        mock_factory.return_value = provider
+        result = parse_document(image_path.name, "image/jpeg", image_path.read_bytes())
+
+    content = "\n".join(chunk.content for chunk in result.chunks)
+    assert "猫" in content
+    assert "动物" in content
+    assert "炉火" in content or "灶火" in content
 
 
 # ---------------------------------------------------------------------------

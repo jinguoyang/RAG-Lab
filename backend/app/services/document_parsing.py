@@ -5,7 +5,8 @@ import re
 from xml.etree import ElementTree
 from zipfile import BadZipFile, ZipFile
 
-from app.services.vision_text_provider import get_vision_text_provider
+from app.services.vision_text_provider import VisionTextRequest, get_vision_text_provider
+from app.services.qa_providers import ProviderError
 
 
 PARSER_VERSION = "sprint19.2"
@@ -17,7 +18,7 @@ MARKDOWN_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$")
 LEGAL_HEADING_RE = re.compile(rf"^(第{CHINESE_NUMBER_PATTERN}([章节条]))\s+(.+)$")
 CHINESE_LIST_HEADING_RE = re.compile(r"^([一二三四五六七八九十]+)[、.]\s*(.{1,30})$")
 NUMBERED_HEADING_RE = re.compile(r"^(\d+)[、.]\s+(.{1,30})$")
-_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 
 
 @dataclass(frozen=True)
@@ -277,7 +278,17 @@ def _parse_image(
 ) -> ParsedDocument:
     """调用 VisionTextProvider 解析图片，将结果渲染为 Markdown。"""
     provider = get_vision_text_provider()
-    result = provider.extract_text(file_bytes)
+    try:
+        result = provider.extract_text(
+            VisionTextRequest(
+                file_name=normalized_name,
+                mime_type=mime_type,
+                image_bytes=file_bytes,
+            )
+        )
+    except ProviderError as exc:
+        error_code = "IMAGE_TOO_LARGE" if "IMAGE_TOO_LARGE" in str(exc) else "VISION_PROVIDER_UNAVAILABLE"
+        raise DocumentParseError(error_code, str(exc)) from exc
 
     blocks = []
     if result.caption:
@@ -299,6 +310,12 @@ def _parse_image(
             "sourceModality": "image",
             "region": "full",
             "visionConfidence": "unknown",
+            "visionProvider": result.metadata.get("provider"),
+            "visionModel": result.metadata.get("model"),
+            "sourceMimeType": result.metadata.get("mimeType") or mime_type,
+            "sourceFileSize": result.metadata.get("fileSize") or len(file_bytes),
+            "imageTokens": result.metadata.get("imageTokens"),
+            "maxImageSide": result.metadata.get("maxImageSide"),
         },
     )
     return ParsedDocument(

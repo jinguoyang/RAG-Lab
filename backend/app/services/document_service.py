@@ -1120,6 +1120,7 @@ def run_ingest_job(
                     "provider": vision_settings.vision_text_provider,
                     "model": vision_settings.vision_text_model or vision_settings.llm_model,
                     "maxImageSide": vision_settings.vision_text_max_image_side,
+                    "authHeader": vision_settings.vision_text_auth_header,
                 }
             generated_parse_revision_id = create_parse_revision(
                 session=session,
@@ -1210,6 +1211,7 @@ def run_ingest_job(
                     summary=parsed_metadata.get("summary"),
                     metadata={
                         **parsed_metadata,
+                        "sourceFileId": str(file_row["file_id"]) if file_row else None,
                         "sourceFileName": file_name,
                         "embeddingProvider": get_settings().embedding_provider,
                         "embeddingModel": get_settings().embedding_model,
@@ -1458,6 +1460,10 @@ def run_ingest_job(
                     "graphExtractionErrors": graph_extraction_errors,
                     **({"sourceModality": "image",
                         "visionTextProvider": get_settings().vision_text_provider,
+                        "visionModel": get_settings().vision_text_model or get_settings().llm_model,
+                        "sourceMimeType": (parsed_chunks[0].metadata.get("sourceMimeType") if parsed_chunks else None),
+                        "sourceFileSize": (parsed_chunks[0].metadata.get("sourceFileSize") if parsed_chunks else None),
+                        "imageTokens": (parsed_chunks[0].metadata.get("imageTokens") if parsed_chunks else None),
                         "image": {
                             "region": (parsed_chunks[0].metadata.get("region", "full") if parsed_chunks else "full"),
                             "visionConfidence": (parsed_chunks[0].metadata.get("visionConfidence", "unknown") if parsed_chunks else "unknown"),

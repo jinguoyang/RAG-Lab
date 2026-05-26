@@ -147,12 +147,16 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("RAG_LAB_VISION_TEXT_API_KEY", "VISION_TEXT_API_KEY"),
     )
     vision_text_model: str | None = Field(
-        default=None,
+        default="mimo-v2.5",
         validation_alias=AliasChoices("RAG_LAB_VISION_TEXT_MODEL", "VISION_TEXT_MODEL"),
     )
     vision_text_max_image_side: int = Field(
         default=1600,
         validation_alias=AliasChoices("RAG_LAB_VISION_TEXT_MAX_IMAGE_SIDE", "VISION_TEXT_MAX_IMAGE_SIDE"),
+    )
+    vision_text_auth_header: str = Field(
+        default="api-key",
+        validation_alias=AliasChoices("RAG_LAB_VISION_TEXT_AUTH_HEADER", "VISION_TEXT_AUTH_HEADER"),
     )
     provider_top_k: int = Field(default=5, validation_alias=AliasChoices("RAG_LAB_PROVIDER_TOP_K", "PROVIDER_TOP_K"))
     celery_broker_url: str = Field(
