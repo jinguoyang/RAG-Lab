@@ -1749,9 +1749,9 @@ def delete_library_version(
     # library_version_id, or if library_version_id is absent and source_file_id matches.
     binding_rows = [
         row for row in candidate_rows
-        if row["kb_metadata"].get("library_version_id") == str(version_id)
+        if (row["kb_metadata"] or {}).get("library_version_id") == str(version_id)
         or (
-            row["kb_metadata"].get("library_version_id") is None
+            (row["kb_metadata"] or {}).get("library_version_id") is None
             and row["kb_source_file_id"] == ver_row["source_file_id"]
         )
     ]
