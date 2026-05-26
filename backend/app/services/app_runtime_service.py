@@ -5,12 +5,13 @@ from hashlib import sha256
 import hmac
 import json
 from time import perf_counter
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from sqlalchemy import RowMapping, func, insert, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.db_types import new_id
 from app.schemas.app_runtime import (
     AppRuntimeChatRequest,
     AppRuntimeChatResponse,
@@ -342,7 +343,7 @@ def _insert_failed_invocation_for_known_app(
     latency_ms = int((perf_counter() - started_counter) * 1000)
     session.execute(
         insert(app_invocations).values(
-            invocation_id=uuid4(),
+            invocation_id=new_id(),
             app_id=app_row["app_id"],
             api_key_id=key_row["api_key_id"],
             status="failed",
@@ -545,7 +546,7 @@ def _get_or_create_conversation(
     return session.execute(
         insert(app_conversations)
         .values(
-            conversation_id=uuid4(),
+            conversation_id=new_id(),
             app_id=app_id,
             end_user_id=request.endUserId,
             status="active",
@@ -571,7 +572,7 @@ def _insert_message(
     return session.execute(
         insert(app_messages)
         .values(
-            message_id=uuid4(),
+            message_id=new_id(),
             conversation_id=conversation_id,
             role=role,
             content=content,
@@ -591,7 +592,7 @@ def _insert_running_invocation(
     started_at: datetime,
 ) -> UUID:
     """调用被接受后立即写入 running 审计记录，便于管理端监控进行中请求。"""
-    invocation_id = uuid4()
+    invocation_id = new_id()
     session.execute(
         insert(app_invocations).values(
             invocation_id=invocation_id,
@@ -912,7 +913,7 @@ def retrieve_app_runtime_evidence(
 
     evidences = [
         AppRuntimeRetrievedEvidenceDTO(
-            evidenceId=str(uuid4()),
+            evidenceId=new_id(),
             chunkId=str(row["chunk_id"]),
             label=f"片段 {index}",
             summary=_summarize_evidence_content(row["content"]),
@@ -1365,8 +1366,8 @@ def _create_feedback_sample(
         "chunkIds": [str(row["chunk_id"]) for row in evidence_rows if row["chunk_id"]],
         "source": "app_runtime_feedback",
     }
-    sample_id = uuid4()
-    actor_id = UUID(context.actor.user.userId)
+    sample_id = new_id()
+    actor_id = context.actor.user.userId
     session.execute(
         insert(evaluation_samples).values(
             sample_id=sample_id,
@@ -1413,7 +1414,7 @@ def submit_app_runtime_feedback(
     else:
         metrics.pop("failureType", None)
 
-    actor_id = UUID(context.actor.user.userId)
+    actor_id = context.actor.user.userId
     session.execute(
         update(qa_runs)
         .where(qa_runs.c.run_id == run_row["run_id"])
