@@ -856,17 +856,27 @@ def get_library_parse_jobs(
 
 def run_library_parse_job_by_id(job_id: UUID) -> dict:
     """Celery 任务入口：按 job_id 执行文档库文本提取。"""
+    import time
+
     from app.core.database import get_session_factory
     from app.services.document_parsing import parse_document, DocumentParseError
 
     factory = get_session_factory()
     session = factory()
     try:
-        job_row = session.execute(
-            select(library_parse_jobs)
-            .where(library_parse_jobs.c.job_id == job_id)
-            .limit(1)
-        ).mappings().first()
+        job_row = None
+        for attempt in range(4):
+            job_row = session.execute(
+                select(library_parse_jobs)
+                .where(library_parse_jobs.c.job_id == job_id)
+                .limit(1)
+            ).mappings().first()
+            if job_row is not None:
+                break
+            if attempt < 3:
+                time.sleep(0.5 * (attempt + 1))
+                session.close()
+                session = factory()
         if job_row is None:
             return {"error": "JOB_NOT_FOUND"}
 

@@ -1696,11 +1696,21 @@ def enqueue_ingest_job(session: Session, job_id: UUID) -> None:
 
 def run_ingest_job_by_id(job_id: UUID) -> dict:
     """Worker 入口：重新打开数据库会话并按作业创建人上下文执行入库。"""
+    import time
+
     session = get_session_factory()()
     try:
-        job_row = session.execute(
-            select(ingest_jobs).where(ingest_jobs.c.job_id == job_id).limit(1)
-        ).mappings().first()
+        job_row = None
+        for attempt in range(4):
+            job_row = session.execute(
+                select(ingest_jobs).where(ingest_jobs.c.job_id == job_id).limit(1)
+            ).mappings().first()
+            if job_row is not None:
+                break
+            if attempt < 3:
+                time.sleep(0.5 * (attempt + 1))
+                session.close()
+                session = get_session_factory()()
         if job_row is None:
             raise DocumentConflictError("Ingest job not found.")
         kb_row = session.execute(
