@@ -18,11 +18,37 @@ class TrainingQuestionConflictError(ValueError):
 
 
 def create_question_drafts(session: Session, user_id: str | None, request: Any) -> list[dict]:
-    """生成题库草稿。首版使用模板数据。"""
+    """生成题库草稿。通过 PlatformClient 调用平台端点。"""
+    import httpx
+    from app.core.config import get_settings
     from app.schemas.training_question import TrainingQuestionDTO
+    from app.services.platform_client import PlatformClient
+
+    settings = get_settings()
+    client = PlatformClient(settings.platform_base_url, settings.platform_api_key)
+    try:
+        templates = client.create_question_drafts(
+            plan_id=request.planId,
+            app_id=request.appId,
+            job_title=request.jobTitle,
+            ability_groups=request.abilityGroups,
+            count=request.count,
+        )
+    except httpx.TimeoutException:
+        raise TrainingQuestionConflictError("平台服务超时，请稍后重试")
+    except httpx.HTTPStatusError as exc:
+        raise TrainingQuestionConflictError(f"平台服务错误: {exc.response.status_code}")
+    except httpx.ConnectError:
+        raise TrainingQuestionConflictError("无法连接平台服务，请检查配置")
 
     now = datetime.now(timezone.utc)
-    templates = _generate_template_questions(request.planId, request.appId, request.count)
+
+    # 验证平台返回的题目格式
+    required_keys = {"questionType", "content"}
+    for i, tmpl in enumerate(templates):
+        missing = required_keys - set(tmpl.keys())
+        if missing:
+            raise TrainingQuestionConflictError(f"平台返回的第 {i+1} 题缺少字段: {missing}")
 
     results = []
     for tmpl in templates:
@@ -120,65 +146,3 @@ def review_question(session: Session, user_id: str | None, question_id: str, dec
     session.commit()
 
     return {"questionId": question_id, "status": new_status}
-
-
-def _generate_template_questions(plan_id: str, app_id: str, count: int) -> list[dict]:
-    """首版模板题目生成。后续替换为 LLM 调用。"""
-    templates = [
-        {
-            "questionType": "single_choice",
-            "category": "practice",
-            "content": "以下哪项是 RAG 系统的核心组件？",
-            "options": [
-                {"label": "A", "text": "向量数据库"},
-                {"label": "B", "text": "关系型数据库"},
-                {"label": "C", "text": "文件系统"},
-                {"label": "D", "text": "消息队列"},
-            ],
-            "correctAnswer": "A",
-            "explanation": "RAG 系统使用向量数据库存储和检索文档嵌入。",
-            "evidenceChunkIds": ["chunk-001"],
-        },
-        {
-            "questionType": "true_false",
-            "category": "practice",
-            "content": "RAG 系统可以完全替代传统的搜索引擎。",
-            "options": [
-                {"label": "true", "text": "正确"},
-                {"label": "false", "text": "错误"},
-            ],
-            "correctAnswer": "false",
-            "explanation": "RAG 和传统搜索引擎适用于不同场景，不能完全替代。",
-            "evidenceChunkIds": ["chunk-002"],
-        },
-        {
-            "questionType": "single_choice",
-            "category": "certification",
-            "content": "在 RAG 流程中，检索阶段的主要目标是什么？",
-            "options": [
-                {"label": "A", "text": "生成回答"},
-                {"label": "B", "text": "找到与问题相关的文档片段"},
-                {"label": "C", "text": "训练模型"},
-                {"label": "D", "text": "存储数据"},
-            ],
-            "correctAnswer": "B",
-            "explanation": "检索阶段的核心是找到与用户问题最相关的文档片段。",
-            "evidenceChunkIds": ["chunk-001", "chunk-003"],
-        },
-        {
-            "questionType": "subjective",
-            "category": "certification",
-            "content": "请描述 RAG 系统中检索增强生成的工作原理。",
-            "rubric": {
-                "criteria": [
-                    {"name": "检索阶段描述", "weight": 0.3, "description": "正确描述向量检索过程"},
-                    {"name": "生成阶段描述", "weight": 0.3, "description": "正确描述 LLM 生成过程"},
-                    {"name": "整合描述", "weight": 0.2, "description": "描述检索结果如何增强生成"},
-                    {"name": "示例", "weight": 0.2, "description": "提供具体示例"},
-                ],
-                "totalScore": 10,
-            },
-            "evidenceChunkIds": ["chunk-001", "chunk-002", "chunk-003"],
-        },
-    ]
-    return templates[:count]

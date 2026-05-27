@@ -7,6 +7,8 @@ class TrainingQuestionDraftRequest(BaseModel):
     """生成题库草稿请求。"""
     planId: str = Field(min_length=1, max_length=36)
     appId: str = Field(min_length=1, max_length=36)
+    jobTitle: str = ""
+    abilityGroups: list[str] = Field(default_factory=list)
     count: int = Field(ge=1, le=50, default=5)
 
 

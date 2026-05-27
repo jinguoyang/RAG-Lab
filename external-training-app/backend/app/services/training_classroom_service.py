@@ -310,9 +310,27 @@ def _is_query_relevant(
     query: str,
     plan_context: dict[str, Any] | None,
 ) -> bool:
-    """简单偏题检测。首版始终返回 True，由 Agent 提示词约束。"""
-    # TODO: 接入 LLM 或关键词匹配实现真正的偏题检测
-    return True
+    """基于关键词匹配的偏题检测。"""
+    if not plan_context:
+        return True
+
+    job_title = plan_context.get("jobTitle", "")
+    ability_groups = plan_context.get("abilityGroups", [])
+    keywords = [str(kw).lower() for kw in [job_title] + ability_groups if kw]
+
+    if not keywords:
+        return True
+
+    # 过短的关键词（如单字）会导致大量误匹配
+    keywords = [kw for kw in keywords if len(kw) >= 2]
+    if not keywords:
+        return True
+
+    query_lower = query.lower()
+    # 太短的问题（打招呼等）直接放行
+    if len(query) < 6:
+        return True
+    return any(kw in query_lower for kw in keywords)
 
 
 _OFF_TOPIC_RESPONSE = (
@@ -417,34 +435,90 @@ def _generate_classroom_answer(
     query: str,
     context_messages: list[dict[str, str]],
 ) -> tuple[str, list[Any]]:
-    """调用平台 Agent 生成课堂回答。首版使用模板。"""
-    # TODO: 接入平台 RAG Agent 生成真实回答，当前为 stub 模板
+    """调用平台 RAG Agent 生成课堂回答。"""
+    import logging
+    import httpx as _httpx
     from app.schemas.training_classroom import ClassroomCitationDTO
+    from app.services.platform_client import PlatformClient
+    from app.core.config import get_settings
 
-    state = session_row["current_state"]
+    settings = get_settings()
+    client = PlatformClient(settings.platform_base_url, settings.platform_api_key)
 
-    if state == "INIT":
-        answer = "课堂尚未开始，请先开始学习计划。"
-    elif state == "PLAN":
-        answer = "正在为您准备学习计划，请稍候。"
-    elif state == "TEACH":
-        answer = f"关于您的问题「{query}」：这是基于当前课程内容的回答。"
-    elif state == "CHECK_UNDERSTAND":
-        answer = "请确认您是否理解了当前内容，我们可以继续或复习。"
-    elif state == "QUIZ":
-        answer = "当前处于测验阶段，请回答展示的题目。"
-    else:
-        answer = f"收到您的问题。当前课堂状态：{state}。"
+    session_id = session_row["id"]
 
-    citations: list[ClassroomCitationDTO] = []
-
-    return answer, citations
+    try:
+        result = client.chat(
+            conversation_id=f"classroom-{session_id}",
+            query=query,
+            inputs={"context_messages": context_messages},
+        )
+        answer_text = result.get("answer", "")
+        citations = [
+            ClassroomCitationDTO(
+                chunkId=c.get("chunkId", ""),
+                content=c.get("content", ""),
+                score=c.get("score", 0.0),
+                documentId=c.get("documentId"),
+            )
+            for c in result.get("citations", [])
+        ]
+        return answer_text, citations
+    except _httpx.HTTPStatusError as exc:
+        logging.warning("平台 RAG 调用失败: %s", exc.response.status_code)
+        return f"关于您的问题「{query[:50]}」：当前无法获取 RAG 回答，请稍后重试。", []
+    except Exception:
+        logging.exception("课堂回答生成异常")
+        return f"关于您的问题「{query[:50]}」：服务暂时不可用。", []
 
 
 def _extract_ui_actions(answer_text: str) -> list[Any]:
-    """从回答中提取 UI 动作。首版返回空列表。"""
-    # TODO: 从 LLM 回答中解析结构化 UI 动作（选择题、判断题等）
-    return []
+    """从回答中提取 UI 动作。基于标记解析。"""
+    import json as _json
+    import re as _re
+    from app.schemas.training_classroom import ClassroomUiActionDTO
+
+    actions: list[ClassroomUiActionDTO] = []
+
+    # 解析 [CHOICE:{...}] 标记，用括号计数处理嵌套 JSON
+    for match in _re.finditer(r'\[CHOICE:', answer_text):
+        start = match.end()
+        if start >= len(answer_text) or answer_text[start] != '{':
+            continue
+        depth = 0
+        end = start
+        for i in range(start, len(answer_text)):
+            if answer_text[i] == '{':
+                depth += 1
+            elif answer_text[i] == '}':
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+        if depth != 0:
+            continue
+        json_str = answer_text[start:end]
+        # 确保标记以 ] 结尾
+        rest = answer_text[end:].lstrip()
+        if not rest.startswith(']'):
+            continue
+        try:
+            data = _json.loads(json_str)
+            actions.append(ClassroomUiActionDTO(
+                actionType="single_choice",
+                data=data,
+            ))
+        except _json.JSONDecodeError:
+            pass
+
+    # 解析 [TRUE_FALSE] 标记
+    if "[TRUE_FALSE]" in answer_text:
+        actions.append(ClassroomUiActionDTO(
+            actionType="true_false",
+            data={"options": [{"label": "true", "text": "正确"}, {"label": "false", "text": "错误"}]},
+        ))
+
+    return actions
 
 
 # ── 事件提交 ──────────────────────────────────────────────────────────

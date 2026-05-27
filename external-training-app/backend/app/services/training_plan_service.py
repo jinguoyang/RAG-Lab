@@ -18,13 +18,29 @@ class TrainingPlanConflictError(ValueError):
 
 
 def create_plan_draft(session: Session, user_id: str | None, request: Any) -> Any:
-    """生成学习计划草稿。首版使用模板数据。"""
+    """生成学习计划草稿。通过 PlatformClient 调用平台端点。"""
+    import httpx
+    from app.core.config import get_settings
     from app.schemas.training_plan import TrainingPlanDTO
+    from app.services.platform_client import PlatformClient
+
+    settings = get_settings()
+    client = PlatformClient(settings.platform_base_url, settings.platform_api_key)
+    try:
+        plan_data = client.create_plan_draft(
+            app_id=request.appId,
+            job_title=request.jobTitle,
+            job_description=request.jobDescription,
+        )
+    except httpx.TimeoutException:
+        raise TrainingPlanConflictError("平台服务超时，请稍后重试")
+    except httpx.HTTPStatusError as exc:
+        raise TrainingPlanConflictError(f"平台服务错误: {exc.response.status_code}")
+    except httpx.ConnectError:
+        raise TrainingPlanConflictError("无法连接平台服务，请检查配置")
 
     now = datetime.now(timezone.utc)
     plan_id = new_id()
-
-    template_data = _generate_template_plan(request.jobTitle, request.jobDescription)
 
     session.execute(
         training_plans.insert().values(
@@ -33,11 +49,11 @@ def create_plan_draft(session: Session, user_id: str | None, request: Any) -> An
             job_title=request.jobTitle,
             job_description=request.jobDescription,
             status="draft",
-            ability_groups=template_data["abilityGroups"],
-            documents=template_data["documents"],
-            evidence_chunk_ids=template_data["evidenceChunkIds"],
-            recommend_reason=template_data["recommendReason"],
-            reading_order=template_data["readingOrder"],
+            ability_groups=plan_data["abilityGroups"],
+            documents=plan_data["documents"],
+            evidence_chunk_ids=plan_data["evidenceChunkIds"],
+            recommend_reason=plan_data["recommendReason"],
+            reading_order=plan_data["readingOrder"],
             version=1,
             metadata={},
             created_at=now,
@@ -54,11 +70,11 @@ def create_plan_draft(session: Session, user_id: str | None, request: Any) -> An
         jobTitle=request.jobTitle,
         jobDescription=request.jobDescription,
         status="draft",
-        abilityGroups=template_data["abilityGroups"],
-        documents=template_data["documents"],
-        evidenceChunkIds=template_data["evidenceChunkIds"],
-        recommendReason=template_data["recommendReason"],
-        readingOrder=template_data["readingOrder"],
+        abilityGroups=plan_data["abilityGroups"],
+        documents=plan_data["documents"],
+        evidenceChunkIds=plan_data["evidenceChunkIds"],
+        recommendReason=plan_data["recommendReason"],
+        readingOrder=plan_data["readingOrder"],
         version=1,
         createdAt=now.isoformat(),
         updatedAt=now.isoformat(),
@@ -149,20 +165,3 @@ def get_plan(session: Session, plan_id: str) -> dict:
         createdAt=row["created_at"].isoformat(),
         updatedAt=row["updated_at"].isoformat(),
     ).model_dump()
-
-
-def _generate_template_plan(job_title: str, job_description: str) -> dict:
-    """首版模板学习计划生成。后续替换为 RAG + Agent 调用。"""
-    return {
-        "abilityGroups": [
-            {"name": "基础能力", "description": f"{job_title}岗位基础知识"},
-            {"name": "专业技能", "description": f"{job_title}核心专业技能"},
-        ],
-        "documents": [
-            {"documentId": "doc-001", "title": f"{job_title}入门指南", "relevance": 0.95},
-            {"documentId": "doc-002", "title": f"{job_title}最佳实践", "relevance": 0.88},
-        ],
-        "evidenceChunkIds": ["chunk-001", "chunk-002", "chunk-003"],
-        "recommendReason": f"基于{job_title}岗位描述，推荐以上文档作为核心学习材料。",
-        "readingOrder": ["doc-001", "doc-002"],
-    }
