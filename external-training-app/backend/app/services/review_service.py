@@ -2,15 +2,8 @@
 from uuid import uuid4
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
-from app.tables import training_review_tasks, platform_app_bindings
-from app.services.platform_client import PlatformClient
-
-
-def _get_platform_client(db: Session) -> PlatformClient:
-    row = db.execute(platform_app_bindings.select().where(platform_app_bindings.c.status == "active")).fetchone()
-    if row is None:
-        raise ValueError("未配置平台绑定")
-    return PlatformClient(row.platform_base_url, row.platform_api_key_ref)
+from app.tables import training_review_tasks
+from app.services.training_plan_service import create_plan_draft
 
 
 def list_review_tasks(db: Session, review_type: str | None = None) -> list[dict]:
@@ -24,26 +17,36 @@ def list_review_tasks(db: Session, review_type: str | None = None) -> list[dict]
 
 
 def generate_plan_draft(db: Session, job_title: str, job_description: str) -> dict:
-    client = _get_platform_client(db)
-    binding = db.execute(platform_app_bindings.select().where(platform_app_bindings.c.status == "active")).fetchone()
-    result = client.create_plan_draft(binding.platform_app_id, job_title, job_description)
+    """调用本地 plan service 生成草稿，并记录审核任务。"""
+    from types import SimpleNamespace
+    from app.schemas.training_plan import TrainingPlanDraftRequest
+
+    request = TrainingPlanDraftRequest(appId="local", jobTitle=job_title, jobDescription=job_description)
+    result = create_plan_draft(db, None, request)
+    result_dict = result.model_dump() if hasattr(result, "model_dump") else result
+
     now = datetime.now(timezone.utc)
     task_id = str(uuid4())
     db.execute(training_review_tasks.insert().values(
-        id=task_id, platform_draft_id=result.get("draftId", result.get("planId")),
-        review_type="plan", status="pending", submitted_payload=result, created_at=now,
+        id=task_id, platform_draft_id=result_dict.get("planId"),
+        review_type="plan", status="pending", submitted_payload=result_dict, created_at=now,
     ))
     db.commit()
-    return {"taskId": task_id, "draft": result}
+    return {"taskId": task_id, "draft": result_dict}
 
 
 def submit_review(db: Session, task_id: str, decision: str, notes: str = "", adjustments: dict | None = None) -> dict:
     row = db.execute(training_review_tasks.select().where(training_review_tasks.c.id == task_id)).fetchone()
     if row is None:
         raise ValueError(f"审核任务 {task_id} 不存在")
-    client = _get_platform_client(db)
+
     if row.platform_draft_id:
-        client.review_plan_draft(row.platform_draft_id, decision, notes)
+        from app.services.training_plan_service import review_plan
+        try:
+            review_plan(db, None, row.platform_draft_id, decision, notes)
+        except Exception:
+            pass
+
     now = datetime.now(timezone.utc)
     db.execute(training_review_tasks.update().where(training_review_tasks.c.id == task_id).values(status=decision, reviewed_at=now))
     db.commit()

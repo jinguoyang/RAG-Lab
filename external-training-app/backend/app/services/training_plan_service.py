@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.core.db_types import new_id
+from app.core.database import new_id
 from app.tables import training_plans
 
 
@@ -17,14 +17,13 @@ class TrainingPlanConflictError(ValueError):
     pass
 
 
-def create_plan_draft(session: Session, current_user: Any, request: Any) -> Any:
+def create_plan_draft(session: Session, user_id: str | None, request: Any) -> Any:
     """生成学习计划草稿。首版使用模板数据。"""
     from app.schemas.training_plan import TrainingPlanDTO
 
     now = datetime.now(timezone.utc)
     plan_id = new_id()
 
-    # 首版模板数据，后续接入 RAG + Agent
     template_data = _generate_template_plan(request.jobTitle, request.jobDescription)
 
     session.execute(
@@ -42,9 +41,9 @@ def create_plan_draft(session: Session, current_user: Any, request: Any) -> Any:
             version=1,
             metadata={},
             created_at=now,
-            created_by=current_user.user_id,
+            created_by=user_id,
             updated_at=now,
-            updated_by=current_user.user_id,
+            updated_by=user_id,
         )
     )
     session.commit()
@@ -95,7 +94,7 @@ def list_plans(session: Session, app_id: str | None = None) -> list[dict]:
     ]
 
 
-def review_plan(session: Session, current_user: Any, plan_id: str, decision: str, notes: str = "") -> dict:
+def review_plan(session: Session, user_id: str | None, plan_id: str, decision: str, notes: str = "") -> dict:
     """审核学习计划。"""
     row = session.execute(
         select(training_plans)
@@ -115,7 +114,7 @@ def review_plan(session: Session, current_user: Any, plan_id: str, decision: str
     session.execute(
         update(training_plans)
         .where(training_plans.c.plan_id == plan_id)
-        .values(status=new_status, updated_at=now, updated_by=current_user.user_id)
+        .values(status=new_status, updated_at=now, updated_by=user_id)
     )
     session.commit()
 

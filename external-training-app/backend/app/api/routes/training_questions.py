@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db_session
+from app.core.database import get_db
 from app.schemas.training_question import (
     TrainingQuestionDraftRequest,
     TrainingQuestionReviewRequest,
@@ -40,11 +40,11 @@ def _raise_error(exc: Exception) -> None:
 def create_drafts(
     request: TrainingQuestionDraftRequest,
     authorization: Annotated[str | None, Header(alias="Authorization")] = None,
-    session: Session = Depends(get_db_session),
+    session: Session = Depends(get_db),
 ):
     try:
-        user = SimpleNamespace(user_id=_extract_user_id(authorization))
-        return create_question_drafts(session, user, request)
+        user_id = _extract_user_id(authorization)
+        return create_question_drafts(session, user_id, request)
     except Exception as exc:
         _raise_error(exc)
         raise
@@ -53,7 +53,7 @@ def create_drafts(
 @router.get("", response_model=list[TrainingQuestionDTO])
 def read_questions(
     planId: str | None = None,
-    session: Session = Depends(get_db_session),
+    session: Session = Depends(get_db),
 ):
     return list_questions(session, planId)
 
@@ -63,11 +63,11 @@ def review_question_endpoint(
     question_id: str,
     request: TrainingQuestionReviewRequest,
     authorization: Annotated[str | None, Header(alias="Authorization")] = None,
-    session: Session = Depends(get_db_session),
+    session: Session = Depends(get_db),
 ):
     try:
-        user = SimpleNamespace(user_id=_extract_user_id(authorization))
-        return review_question(session, user, question_id, request.decision)
+        user_id = _extract_user_id(authorization)
+        return review_question(session, user_id, question_id, request.decision)
     except Exception as exc:
         _raise_error(exc)
         raise

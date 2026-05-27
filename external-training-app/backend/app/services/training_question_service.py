@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy import select, update as sa_update
 from sqlalchemy.orm import Session
 
-from app.core.db_types import new_id
+from app.core.database import new_id
 from app.tables import training_questions
 
 
@@ -17,7 +17,7 @@ class TrainingQuestionConflictError(ValueError):
     pass
 
 
-def create_question_drafts(session: Session, current_user: Any, request: Any) -> list[dict]:
+def create_question_drafts(session: Session, user_id: str | None, request: Any) -> list[dict]:
     """生成题库草稿。首版使用模板数据。"""
     from app.schemas.training_question import TrainingQuestionDTO
 
@@ -43,9 +43,9 @@ def create_question_drafts(session: Session, current_user: Any, request: Any) ->
                 status="draft",
                 metadata={},
                 created_at=now,
-                created_by=current_user.user_id,
+                created_by=user_id,
                 updated_at=now,
-                updated_by=current_user.user_id,
+                updated_by=user_id,
             )
         )
         results.append(TrainingQuestionDTO(
@@ -97,7 +97,7 @@ def list_questions(session: Session, plan_id: str | None = None) -> list[dict]:
     ]
 
 
-def review_question(session: Session, current_user: Any, question_id: str, decision: str) -> dict:
+def review_question(session: Session, user_id: str | None, question_id: str, decision: str) -> dict:
     """审核题目。"""
     row = session.execute(
         select(training_questions).where(training_questions.c.question_id == question_id)
@@ -115,7 +115,7 @@ def review_question(session: Session, current_user: Any, question_id: str, decis
     session.execute(
         sa_update(training_questions)
         .where(training_questions.c.question_id == question_id)
-        .values(status=new_status, updated_at=now, updated_by=current_user.user_id)
+        .values(status=new_status, updated_at=now, updated_by=user_id)
     )
     session.commit()
 

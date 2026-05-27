@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db_session
+from app.core.database import get_db
 from app.schemas.training_plan import (
     TrainingPlanDraftRequest,
     TrainingPlanReviewRequest,
@@ -41,11 +41,11 @@ def _raise_error(exc: Exception) -> None:
 def create_draft(
     request: TrainingPlanDraftRequest,
     authorization: Annotated[str | None, Header(alias="Authorization")] = None,
-    session: Session = Depends(get_db_session),
+    session: Session = Depends(get_db),
 ):
     try:
-        user = SimpleNamespace(user_id=_extract_user_id(authorization))
-        return create_plan_draft(session, user, request)
+        user_id = _extract_user_id(authorization)
+        return create_plan_draft(session, user_id, request)
     except Exception as exc:
         _raise_error(exc)
         raise
@@ -54,13 +54,13 @@ def create_draft(
 @router.get("", response_model=list[TrainingPlanDTO])
 def read_plans(
     appId: str | None = None,
-    session: Session = Depends(get_db_session),
+    session: Session = Depends(get_db),
 ):
     return list_plans(session, appId)
 
 
 @router.get("/{plan_id}", response_model=TrainingPlanDTO)
-def read_plan(plan_id: str, session: Session = Depends(get_db_session)):
+def read_plan(plan_id: str, session: Session = Depends(get_db)):
     try:
         return get_plan(session, plan_id)
     except Exception as exc:
@@ -73,11 +73,11 @@ def review_plan_endpoint(
     plan_id: str,
     request: TrainingPlanReviewRequest,
     authorization: Annotated[str | None, Header(alias="Authorization")] = None,
-    session: Session = Depends(get_db_session),
+    session: Session = Depends(get_db),
 ):
     try:
-        user = SimpleNamespace(user_id=_extract_user_id(authorization))
-        return review_plan(session, user, plan_id, request.decision, request.notes)
+        user_id = _extract_user_id(authorization)
+        return review_plan(session, user_id, plan_id, request.decision, request.notes)
     except Exception as exc:
         _raise_error(exc)
         raise

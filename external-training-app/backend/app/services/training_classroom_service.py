@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.orm import Session
 
-from app.core.db_types import new_id
+from app.core.database import new_id
 from app.tables import (
     training_classroom_events,
     training_classroom_messages,
@@ -74,7 +74,7 @@ class ClassroomEventError(ValueError):
 
 def create_classroom_session(
     session: Session,
-    current_user: Any,
+    user_id: str | None,
     request: Any,
 ) -> Any:
     """创建课堂会话。"""
@@ -94,9 +94,9 @@ def create_classroom_session(
             metadata=request.inputs or {},
             status="active",
             created_at=now,
-            created_by=current_user.user_id,
+            created_by=user_id,
             updated_at=now,
-            updated_by=current_user.user_id,
+            updated_by=user_id,
         )
     )
     session.commit()
@@ -296,7 +296,7 @@ _OFF_TOPIC_RESPONSE = (
 
 def handle_classroom_query(
     session: Session,
-    current_user: Any,
+    user_id: str | None,
     session_id: str,
     query: str,
     plan_context: dict[str, Any] | None = None,
@@ -316,10 +316,10 @@ def handle_classroom_query(
 
     if not _is_query_relevant(query, plan_context):
         if validate_classroom_transition(current_state, "OFF_TOPIC"):
-            _update_session_state(session, session_id, "OFF_TOPIC", current_user.user_id)
-            _insert_classroom_message(session, session_id, "user", query, current_state, current_user.user_id)
+            _update_session_state(session, session_id, "OFF_TOPIC", user_id)
+            _insert_classroom_message(session, session_id, "user", query, current_state, user_id)
             _insert_classroom_message(session, session_id, "assistant", _OFF_TOPIC_RESPONSE, "OFF_TOPIC", None)
-            _insert_classroom_event(session, session_id, "off_topic", {"query": query}, "OFF_TOPIC", current_user.user_id)
+            _insert_classroom_event(session, session_id, "off_topic", {"query": query}, "OFF_TOPIC", user_id)
             session.commit()
 
             return ClassroomEventResponse(
@@ -336,7 +336,7 @@ def handle_classroom_query(
                 createdAt=datetime.now(timezone.utc).isoformat(),
             )
 
-    _insert_classroom_message(session, session_id, "user", query, current_state, current_user.user_id)
+    _insert_classroom_message(session, session_id, "user", query, current_state, user_id)
 
     context_messages = _build_classroom_context_messages(session, session_id)
 
@@ -356,12 +356,12 @@ def handle_classroom_query(
     result_state = current_state
     if current_state == "OFF_TOPIC" and validate_classroom_transition("OFF_TOPIC", "TEACH"):
         result_state = "TEACH"
-        _update_session_state(session, session_id, "TEACH", current_user.user_id)
+        _update_session_state(session, session_id, "TEACH", user_id)
 
     _insert_classroom_event(
         session, session_id, "query",
         {"query": query, "answer": answer_text},
-        result_state, current_user.user_id,
+        result_state, user_id,
     )
     session.commit()
 
@@ -423,7 +423,7 @@ def _extract_ui_actions(answer_text: str) -> list[Any]:
 
 def submit_classroom_event(
     session: Session,
-    current_user: Any,
+    user_id: str | None,
     session_id: str,
     request: Any,
 ) -> Any:
@@ -440,7 +440,7 @@ def submit_classroom_event(
     event_type = request.eventType
 
     if event_type == "query" and request.query:
-        return handle_classroom_query(session, current_user, session_id, request.query)
+        return handle_classroom_query(session, user_id, session_id, request.query)
 
     next_state = request.payload.get("nextState") if request.payload else None
 
@@ -449,14 +449,14 @@ def submit_classroom_event(
             raise ClassroomTransitionError(
                 f"不允许从 {current_state} 流转到 {next_state}"
             )
-        _update_session_state(session, session_id, next_state, current_user.user_id)
+        _update_session_state(session, session_id, next_state, user_id)
         result_state = next_state
     else:
         result_state = current_state
 
     event_id = _insert_classroom_event(
         session, session_id, event_type,
-        request.payload or {}, result_state, current_user.user_id,
+        request.payload or {}, result_state, user_id,
     )
 
     visible_content = _generate_event_response(event_type, current_state, result_state)
@@ -464,7 +464,7 @@ def submit_classroom_event(
     progress = None
     if result_state == "NEXT_SECTION":
         new_index = session_row["current_section_index"] + 1
-        _update_session_state(session, session_id, "TEACH", current_user.user_id, new_index)
+        _update_session_state(session, session_id, "TEACH", user_id, new_index)
         result_state = "TEACH"
         progress = ClassroomProgressUpdateDTO(
             sectionIndex=new_index,
