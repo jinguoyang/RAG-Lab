@@ -7,7 +7,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   });
   if (!resp.ok) {
     const body = await resp.text();
-    throw new Error(`API ${resp.status}: ${body}`);
+    let detail = body;
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed.detail) detail = String(parsed.detail);
+    } catch {
+      // body 不是 JSON，使用原始文本
+    }
+    throw new Error(detail);
   }
   return resp.json();
 }

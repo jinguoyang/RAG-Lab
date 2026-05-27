@@ -1,11 +1,18 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createSession, submitEvent } from "../services/classroomService";
 import { ChoiceQuestion } from "../components/ChoiceQuestion";
 import type { ClassroomMessage, ClassroomUiAction, ClassroomEventResponse } from "../types/classroom";
 
+let messageCounter = 0;
+
+function extractErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
 export function ClassroomPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ClassroomMessage[]>([]);
+  const [messages, setMessages] = useState<(ClassroomMessage & { _key: number })[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [currentState, setCurrentState] = useState("INIT");
@@ -17,6 +24,10 @@ export function ClassroomPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const pushMessage = useCallback((msg: ClassroomMessage) => {
+    setMessages((prev) => [...prev, { ...msg, _key: ++messageCounter }]);
+  }, []);
+
   async function handleStartSession() {
     setLoading(true);
     setError("");
@@ -24,9 +35,9 @@ export function ClassroomPage() {
       const result = await createSession("demo-user");
       setSessionId(result.localSessionId || result.sessionId);
       setCurrentState(result.currentState);
-      setMessages([{ role: "system", content: "课堂会话已创建。点击「开始学习」进入课程。" }]);
+      pushMessage({ role: "system", content: "课堂会话已创建。点击「开始学习」进入课程。" });
     } catch (err) {
-      setError(String(err));
+      setError(extractErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -38,7 +49,7 @@ export function ClassroomPage() {
     setError("");
     try {
       if (query) {
-        setMessages((prev) => [...prev, { role: "user", content: query }]);
+        pushMessage({ role: "user", content: query });
       }
 
       const result: ClassroomEventResponse = await submitEvent(sessionId, eventType, payload, query);
@@ -47,17 +58,14 @@ export function ClassroomPage() {
       setUiActions(result.uiActions || []);
 
       if (result.visibleContent) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: result.visibleContent,
-            uiActions: result.uiActions,
-          },
-        ]);
+        pushMessage({
+          role: "assistant",
+          content: result.visibleContent,
+          uiActions: result.uiActions,
+        });
       }
     } catch (err) {
-      setError(String(err));
+      setError(extractErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -100,9 +108,9 @@ export function ClassroomPage() {
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto space-y-4 mb-4">
-            {messages.map((msg, i) => (
+            {messages.map((msg) => (
               <div
-                key={i}
+                key={msg._key}
                 className={`p-3 rounded-lg ${
                   msg.role === "user"
                     ? "bg-blue-100 ml-12"

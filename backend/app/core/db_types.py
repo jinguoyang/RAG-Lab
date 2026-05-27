@@ -49,6 +49,11 @@ class DialectAdapter(Protocol):
     """
 
     @property
+    def dialect_name(self) -> str:
+        """方言名称，如 'postgresql' / 'mysql'。"""
+        ...
+
+    @property
     def uuid_type(self) -> type[sa.types.TypeEngine]:
         """UUID / 主键列类型。"""
         ...
@@ -79,6 +84,10 @@ class PostgresAdapter:
     """PostgreSQL 方言适配器。"""
 
     @property
+    def dialect_name(self) -> str:
+        return "postgresql"
+
+    @property
     def uuid_type(self) -> type[sa.types.TypeEngine]:
         return UUIDString()
 
@@ -104,6 +113,10 @@ class PostgresAdapter:
 
 class MySqlAdapter:
     """MySQL 方言适配器。"""
+
+    @property
+    def dialect_name(self) -> str:
+        return "mysql"
 
     @property
     def uuid_type(self) -> type[sa.types.TypeEngine]:

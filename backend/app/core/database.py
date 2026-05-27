@@ -19,7 +19,7 @@ def get_engine() -> Engine:
             raise RuntimeError("Database URL is required. Set RAG_LAB_DATABASE_URL or DATABASE_URL.")
         adapter = get_dialect_adapter(settings.database_url)
         kwargs = {"pool_pre_ping": True}
-        if adapter.__class__.__name__ == "MySqlAdapter":
+        if adapter.dialect_name == "mysql":
             kwargs["pool_recycle"] = 3600
         _engine = create_engine(settings.database_url, **kwargs)
     return _engine

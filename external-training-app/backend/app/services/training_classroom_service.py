@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import insert, select, update
 from sqlalchemy.orm import Session
 
 from app.core.database import new_id
@@ -256,6 +256,32 @@ def _update_session_state(
     )
 
 
+def _increment_section_index(
+    session: Session,
+    session_id: str,
+    new_state: str,
+    updated_by: str | None,
+) -> int:
+    """原子递增章节索引并更新状态，返回新索引值。"""
+    now = datetime.now(timezone.utc)
+    session.execute(
+        update(training_classroom_sessions)
+        .where(training_classroom_sessions.c.session_id == session_id)
+        .where(training_classroom_sessions.c.deleted_at.is_(None))
+        .values(
+            current_state=new_state,
+            current_section_index=training_classroom_sessions.c.current_section_index + 1,
+            updated_at=now,
+            updated_by=updated_by,
+        )
+    )
+    row = session.execute(
+        select(training_classroom_sessions.c.current_section_index)
+        .where(training_classroom_sessions.c.session_id == session_id)
+    ).scalar_one()
+    return row
+
+
 # ── 受控答疑 ──────────────────────────────────────────────────────────
 
 def _build_classroom_context_messages(
@@ -285,6 +311,7 @@ def _is_query_relevant(
     plan_context: dict[str, Any] | None,
 ) -> bool:
     """简单偏题检测。首版始终返回 True，由 Agent 提示词约束。"""
+    # TODO: 接入 LLM 或关键词匹配实现真正的偏题检测
     return True
 
 
@@ -391,6 +418,7 @@ def _generate_classroom_answer(
     context_messages: list[dict[str, str]],
 ) -> tuple[str, list[Any]]:
     """调用平台 Agent 生成课堂回答。首版使用模板。"""
+    # TODO: 接入平台 RAG Agent 生成真实回答，当前为 stub 模板
     from app.schemas.training_classroom import ClassroomCitationDTO
 
     state = session_row["current_state"]
@@ -415,7 +443,7 @@ def _generate_classroom_answer(
 
 def _extract_ui_actions(answer_text: str) -> list[Any]:
     """从回答中提取 UI 动作。首版返回空列表。"""
-    from app.schemas.training_classroom import ClassroomUiActionDTO
+    # TODO: 从 LLM 回答中解析结构化 UI 动作（选择题、判断题等）
     return []
 
 
@@ -431,7 +459,6 @@ def submit_classroom_event(
     from app.schemas.training_classroom import (
         ClassroomControlDTO,
         ClassroomEventResponse,
-        ClassroomMessageDTO,
         ClassroomProgressUpdateDTO,
     )
 
@@ -463,8 +490,7 @@ def submit_classroom_event(
 
     progress = None
     if result_state == "NEXT_SECTION":
-        new_index = session_row["current_section_index"] + 1
-        _update_session_state(session, session_id, "TEACH", user_id, new_index)
+        new_index = _increment_section_index(session, session_id, "TEACH", user_id)
         result_state = "TEACH"
         progress = ClassroomProgressUpdateDTO(
             sectionIndex=new_index,
