@@ -18,6 +18,7 @@ rag-lab/
 ├── README.md                  # 项目开发说明入口
 ├── frontend/                  # 当前正式前端入口，基于 React + Vite
 ├── backend/                   # FastAPI 后端工程入口
+├── external-training-app/     # 外部培训应用（Vite+React+FastAPI），无 LLM 能力，通过平台 API 调用
 ├── docs/                      # 项目文档区
 │   ├── 00-项目导航.md
 │   ├── 01-项目管理/
@@ -36,6 +37,7 @@ rag-lab/
 - 当前仓库已落地文档、设计原型、正式前端工程和 FastAPI 后端工程。
 - `frontend/` 从 `screanshot/prototype/` 演进而来，作为正式前端开发入口。
 - `backend/` 承载后端 API、服务层、数据库迁移和本地运维脚本。
+- `external-training-app/` 是接入平台员工培训 Agent 的外部演示应用，自身无 LLM、Embedding 或 RAG 能力，所有智能功能通过平台 `/api/v1/training/` 接口调用。详见 [外部培训应用 README](./external-training-app/README.md)。
 - `screanshot/prototype/` 作为设计原型归档保留，不直接承载正式开发。
 
 ## 文档入口
@@ -53,6 +55,8 @@ rag-lab/
 - [Epic 总览](./docs/04-迭代与交付/epics/README.md)
 - [Sprint 总览](./docs/04-迭代与交付/sprints/README.md)
 - [Release 总览](./docs/04-迭代与交付/releases/README.md)
+- [员工培训 Agent 平台侧设计](./docs/04-迭代与交付/specs/2026-05-26-employee-training-agent-platform-design.md)
+- [外部培训应用设计](./docs/04-迭代与交付/specs/2026-05-26-external-training-app-design.md)
 
 ## 本地运行方式
 
@@ -118,6 +122,35 @@ cd C:\Users\Public\Documents\Code\jin\rag-lab\backend
 - `http://127.0.0.1:8000/api/v1/health`
 - `http://127.0.0.1:8000/docs`
 
+### 运行外部培训应用
+
+外部培训应用位于 `external-training-app/`，包含独立的 FastAPI 后端和 Vite+React 前端。
+
+**后端：**
+
+```powershell
+cd C:\Users\Public\Documents\Code\jin\rag-lab\external-training-app\backend
+pip install -r requirements.txt
+Copy-Item .env.example .env
+# 编辑 .env 配置数据库连接和平台凭据
+alembic upgrade head
+.\scripts\start-dev.ps1
+```
+
+启动后访问：
+- 健康检查：`http://localhost:8001/health`
+- API 文档：`http://localhost:8001/docs`
+
+**前端：**
+
+```powershell
+cd C:\Users\Public\Documents\Code\jin\rag-lab\external-training-app\frontend
+npm install
+npm run dev
+```
+
+启动后访问 `http://localhost:5173`，前端通过 Vite proxy 将 `/api` 请求转发到后端 `localhost:8001`。
+
 ### 最小验证命令
 
 前端验证：
@@ -138,12 +171,23 @@ conda run -n rag-lab python -c "from fastapi.testclient import TestClient; from 
 conda run -n rag-lab python scripts/export_openapi.py
 ```
 
+外部培训应用验证：
+
+```powershell
+cd C:\Users\Public\Documents\Code\jin\rag-lab\external-training-app\backend
+python -c "from app.main import app; print('OK')"
+
+cd C:\Users\Public\Documents\Code\jin\rag-lab\external-training-app\frontend
+npm run build
+```
+
 预期结果：
 
 - 前端 lint 无错误，Vitest 单元测试通过，构建成功生成 `dist/`。
 - 后端编译无错误。
 - 健康检查状态码为 `200`，响应中包含 `status`、`app_name`、`version`、`environment`。
 - OpenAPI Schema 可导出。
+- 外部培训应用后端编译无错误，前端构建成功。
 
 ## 依赖说明
 
@@ -172,6 +216,13 @@ conda run -n rag-lab python scripts/export_openapi.py
 
 后端依赖版本以 `backend/environment.yml` 和 `backend/requirements.txt` 为准。
 
+外部培训应用依赖：
+
+- 后端：FastAPI、SQLAlchemy、httpx、psycopg2-binary、uvicorn、Alembic
+- 前端：React 19、Vite 6、TypeScript、Tailwind CSS 4
+
+依赖版本以 `external-training-app/backend/requirements.txt` 和 `external-training-app/frontend/package.json` 为准。
+
 ### 外部依赖落地状态
 
 系统设计建议采用以下外部组件；当前代码已通过 Provider 抽象形成可替换链路，真实网络级连通性仍需按环境逐项复测：
@@ -198,3 +249,4 @@ conda run -n rag-lab python scripts/export_openapi.py
 7. [数据模型设计](./docs/03-系统设计/数据模型设计.md)
 8. [数据库设计](./docs/03-系统设计/数据库设计.md)
 9. [编码规范](./docs/04-迭代与交付/编码规范.md)
+10. [外部培训应用 README](./external-training-app/README.md)

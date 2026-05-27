@@ -3,10 +3,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
-from app.core.database import engine
-from app.tables import metadata
-
-metadata.create_all(bind=engine)
 
 app = FastAPI(title="外部培训应用", version="0.1.0")
 
