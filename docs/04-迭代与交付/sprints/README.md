@@ -27,6 +27,10 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 - Sprint 56 待开发，主题为 E33 题库生成与审核：练习题/认证题草稿、认证题审核门禁、rubric 和题库发布。
 - Sprint 57 待开发，主题为 E33 外部培训应用课堂交互：题库审核页面、课堂页面、A/B/C/D 结构化答题组件和事件提交。
 - Sprint 58 待开发，主题为 E33 员工培训 Agent 端到端验收：计划生成、审核、上课、答题、追溯和文档同步。
+- Sprint 59 待开发，主题为 E33 员工培训 Skill 与 LLM 结构化基座：Skill Registry、Skill 调用审计和 LLM JSON 输出校验。
+- Sprint 60 待开发，主题为 E33 员工培训 AI 生成与主观题评分：AI 学习计划、AI 题库和主观题 LLM 批改。
+- Sprint 61 待开发，主题为 E33 员工培训进度、审核发布与断线续接：学习进度、答题记录、章节边界、发布版本和恢复上下文。
+- Sprint 62 待开发，主题为 E33 员工培训安全、报表与端到端验收：权限隔离、培训报表和完整链路 E2E。
 - 下一版本为 V1.9，计划承接 E23 图快照保留与配置治理、E24 文档解析能力增强；E27 RAG App 运行治理与接入可见性已完成。E28 文档库功能已全部完成。
 - Sprint 01 至 Sprint 26 已完成，对应 V1.0 至 V1.7。
 - Sprint 27 至 Sprint 29 已完成 E22 知识库治理工作流强化范围：P05 支持治理问题定位和治理后验证摘要，P06 支持批量治理和索引同步作业，P07 支持 Chunk 治理标记、索引重建和作业查看。
@@ -75,6 +79,10 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 | Sprint 56 | 员工培训 Agent 深化 | 题库生成与审核 | Todo | `sprint41-60/Sprint-56.md` |
 | Sprint 57 | 员工培训 Agent 深化 | 外部培训应用课堂交互 | Todo | `sprint41-60/Sprint-57.md` |
 | Sprint 58 | 员工培训 Agent 深化 | 员工培训 Agent 端到端验收 | Todo | `sprint41-60/Sprint-58.md` |
+| Sprint 59 | 员工培训 Agent 完整化 | Skill 与 LLM 结构化基座 | Ready | `sprint41-60/Sprint-59.md` |
+| Sprint 60 | 员工培训 Agent 完整化 | AI 生成与主观题评分 | Ready | `sprint41-60/Sprint-60.md` |
+| Sprint 61 | 员工培训 Agent 完整化 | 进度、审核发布与断线续接 | Ready | `sprint61-80/Sprint-61.md` |
+| Sprint 62 | 员工培训 Agent 完整化 | 安全、报表与端到端验收 | Ready | `sprint61-80/Sprint-62.md` |
 
 ## 3. 单个 Sprint 文档约定
 

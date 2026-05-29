@@ -10,8 +10,80 @@ from app.main import app
 from app.tables import metadata
 
 
+class FakePlatformClassroomClient:
+    """模拟平台课堂 Agent，验证应用端只做调用与镜像。"""
+
+    def __init__(self):
+        self.sessions = {}
+
+    def create_classroom_session(self, payload):
+        session_id = "platform-session-001"
+        data = {
+            "sessionId": session_id,
+            "appId": payload["appId"],
+            "planId": payload.get("planId"),
+            "endUserId": payload["endUserId"],
+            "currentState": "INIT",
+            "currentSectionIndex": 0,
+            "createdAt": "2026-05-29T00:00:00+00:00",
+        }
+        self.sessions[session_id] = data
+        return data
+
+    def get_classroom_session(self, session_id):
+        if session_id not in self.sessions:
+            import httpx
+
+            response = httpx.Response(status_code=404, request=httpx.Request("GET", "http://platform/test"))
+            raise httpx.HTTPStatusError("not found", request=response.request, response=response)
+        data = self.sessions[session_id]
+        return {
+            **data,
+            "messages": [],
+            "metadata": {},
+            "updatedAt": "2026-05-29T00:00:00+00:00",
+        }
+
+    def submit_classroom_event(self, session_id, payload):
+        if session_id not in self.sessions:
+            import httpx
+
+            response = httpx.Response(status_code=404, request=httpx.Request("POST", "http://platform/test"))
+            raise httpx.HTTPStatusError("not found", request=response.request, response=response)
+        current = self.sessions[session_id]["currentState"]
+        event_type = payload["eventType"]
+        if event_type == "complete" and current == "INIT":
+            import httpx
+
+            response = httpx.Response(status_code=409, request=httpx.Request("POST", "http://platform/test"))
+            raise httpx.HTTPStatusError("conflict", request=response.request, response=response)
+        if event_type == "start":
+            next_state = "PLAN"
+        elif event_type in {"start_plan", "continue"}:
+            next_state = "TEACH"
+        elif event_type == "query":
+            next_state = current
+        else:
+            next_state = current
+        self.sessions[session_id]["currentState"] = next_state
+        return {
+            "eventId": f"event-{event_type}",
+            "sessionId": session_id,
+            "eventType": event_type,
+            "resultState": next_state,
+            "visibleContent": f"{event_type} handled",
+            "classroomState": next_state,
+            "uiActions": [{"actionType": "button_group", "data": {"buttons": []}}],
+            "citations": [],
+            "control": {"canProceed": True, "requiresInput": False, "inputType": None},
+            "progressUpdate": None,
+            "messages": [],
+            "createdAt": "2026-05-29T00:00:00+00:00",
+        }
+
+
 @pytest.fixture
-def client():
+def client(monkeypatch):
     """创建测试客户端，注入测试数据库。
 
     使用 StaticPool + check_same_thread=False 保证 TestClient
@@ -24,6 +96,8 @@ def client():
     )
     metadata.create_all(engine)
     test_session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)()
+    fake_platform = FakePlatformClassroomClient()
+    monkeypatch.setattr("app.services.training_classroom_service._platform_client", lambda: fake_platform)
 
     def _override_db():
         yield test_session

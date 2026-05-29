@@ -664,6 +664,98 @@ app_invocations = sa.Table(
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
 )
 
+training_plans = sa.Table(
+    "training_plans",
+    metadata,
+    sa.Column("plan_id", UUIDString(), primary_key=True),
+    sa.Column("app_id", UUIDString(), nullable=False),
+    sa.Column("job_title", sa.String(length=256), nullable=False),
+    sa.Column("job_description", sa.Text(), nullable=True),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("ability_groups", sa.JSON(), nullable=False),
+    sa.Column("documents", sa.JSON(), nullable=False),
+    sa.Column("evidence_chunk_ids", sa.JSON(), nullable=False),
+    sa.Column("recommend_reason", sa.Text(), nullable=True),
+    sa.Column("reading_order", sa.JSON(), nullable=False),
+    sa.Column("version", sa.Integer(), nullable=False),
+    sa.Column("metadata", sa.JSON(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", UUIDString(), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", UUIDString(), nullable=True),
+    sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("deleted_by", UUIDString(), nullable=True),
+)
+
+training_questions = sa.Table(
+    "training_questions",
+    metadata,
+    sa.Column("question_id", UUIDString(), primary_key=True),
+    sa.Column("plan_id", UUIDString(), nullable=False),
+    sa.Column("app_id", UUIDString(), nullable=False),
+    sa.Column("question_type", sa.String(length=32), nullable=False),
+    sa.Column("category", sa.String(length=16), nullable=False),
+    sa.Column("content", sa.Text(), nullable=False),
+    sa.Column("options", sa.JSON(), nullable=True),
+    sa.Column("correct_answer", sa.String(length=256), nullable=True),
+    sa.Column("explanation", sa.Text(), nullable=True),
+    sa.Column("rubric", sa.JSON(), nullable=True),
+    sa.Column("evidence_chunk_ids", sa.JSON(), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("metadata", sa.JSON(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", UUIDString(), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", UUIDString(), nullable=True),
+)
+
+training_classroom_sessions = sa.Table(
+    "training_classroom_sessions",
+    metadata,
+    sa.Column("session_id", UUIDString(), primary_key=True),
+    sa.Column("app_id", UUIDString(), nullable=False),
+    sa.Column("plan_id", UUIDString(), nullable=True),
+    sa.Column("end_user_id", sa.String(length=128), nullable=False),
+    sa.Column("current_state", sa.String(length=32), nullable=False),
+    sa.Column("current_section_index", sa.Integer(), nullable=False),
+    sa.Column("context_summary", sa.Text(), nullable=True),
+    sa.Column("metadata", sa.JSON(), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", sa.String(length=128), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_by", sa.String(length=128), nullable=True),
+    sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("deleted_by", sa.String(length=128), nullable=True),
+)
+
+training_classroom_messages = sa.Table(
+    "training_classroom_messages",
+    metadata,
+    sa.Column("message_id", UUIDString(), primary_key=True),
+    sa.Column("session_id", UUIDString(), nullable=False),
+    sa.Column("role", sa.String(length=16), nullable=False),
+    sa.Column("content", sa.Text(), nullable=False),
+    sa.Column("state_at_time", sa.String(length=32), nullable=True),
+    sa.Column("metadata", sa.JSON(), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", sa.String(length=128), nullable=True),
+)
+
+training_classroom_events = sa.Table(
+    "training_classroom_events",
+    metadata,
+    sa.Column("event_id", UUIDString(), primary_key=True),
+    sa.Column("session_id", UUIDString(), nullable=False),
+    sa.Column("event_type", sa.String(length=32), nullable=False),
+    sa.Column("payload", sa.JSON(), nullable=False),
+    sa.Column("result_state", sa.String(length=32), nullable=True),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", sa.String(length=128), nullable=True),
+)
+
 evaluation_samples = sa.Table(
     "evaluation_samples",
     metadata,

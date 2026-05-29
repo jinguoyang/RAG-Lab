@@ -1,52 +1,30 @@
-"""培训题目生成端点。"""
-from fastapi import APIRouter, status
-from pydantic import BaseModel, Field
+"""员工培训题库平台侧端点。"""
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Header, HTTPException, status
+from sqlalchemy.orm import Session
+
+from app.api.routes.app_runtime import _extract_bearer_token, _raise_runtime_error
+from app.core.database import get_db_session
+from app.schemas.training_question import QuestionDraftDTO, QuestionDraftRequest
+from app.services.training_agent_service import TrainingAgentConflictError
+from app.services.training_question_service import create_question_drafts
 
 router = APIRouter(prefix="/training/questions", tags=["training"])
 
 
-class QuestionDraftRequest(BaseModel):
-    planId: str
-    appId: str
-    jobTitle: str = ""
-    abilityGroups: list[str] = Field(default_factory=list)
-    count: int = 4
-
-
-class QuestionOptionDTO(BaseModel):
-    label: str
-    text: str
-
-
-class QuestionDraftDTO(BaseModel):
-    questionType: str
-    category: str
-    content: str
-    options: list[QuestionOptionDTO] = Field(default_factory=list)
-    correctAnswer: str | None = None
-    explanation: str | None = None
-    rubric: dict | None = None
-    evidenceChunkIds: list[str] = Field(default_factory=list)
-
-
 @router.post("/drafts", response_model=list[QuestionDraftDTO], status_code=status.HTTP_201_CREATED)
-async def create_question_drafts(request: QuestionDraftRequest):
-    """生成题目草稿（stub：返回固定模板，后续替换为 RAG+LLM）。"""
-    # TODO: 添加 API Key 认证（参考 app_runtime.py 的 _extract_bearer_token）
-    templates = [
-        {
-            "questionType": "single_choice",
-            "category": "practice",
-            "content": f"关于「{request.jobTitle}」，以下哪项是正确的？",
-            "options": [
-                {"label": "A", "text": "选项 A"},
-                {"label": "B", "text": "选项 B"},
-                {"label": "C", "text": "选项 C"},
-                {"label": "D", "text": "选项 D"},
-            ],
-            "correctAnswer": "A",
-            "explanation": "待 LLM 生成",
-            "evidenceChunkIds": [],
-        }
-    ]
-    return templates[: request.count]
+def create_training_question_drafts(
+    request: QuestionDraftRequest,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+    session: Session = Depends(get_db_session),
+) -> list[QuestionDraftDTO]:
+    """基于员工培训 Agent 和知识库证据生成题目草稿。"""
+    credential = _extract_bearer_token(authorization)
+    try:
+        return create_question_drafts(session, credential, request)
+    except TrainingAgentConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except Exception as exc:
+        _raise_runtime_error(exc)
+        raise

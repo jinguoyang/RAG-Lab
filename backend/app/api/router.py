@@ -19,6 +19,7 @@ from app.api.routes.qa_runs import router as qa_runs_router
 from app.api.routes.rag_apps import router as rag_apps_router
 from app.api.routes.training_plans import router as training_plans_router
 from app.api.routes.training_questions import router as training_questions_router
+from app.api.routes.training_classroom import router as training_classroom_router
 from app.api.routes.users_groups import groups_router, users_router
 
 api_router = APIRouter()
@@ -48,6 +49,7 @@ api_router.include_router(library_management_router)
 api_router.include_router(bindings_router)
 api_router.include_router(training_plans_router)
 api_router.include_router(training_questions_router)
+api_router.include_router(training_classroom_router)
 
 from app.core.config import get_settings
 

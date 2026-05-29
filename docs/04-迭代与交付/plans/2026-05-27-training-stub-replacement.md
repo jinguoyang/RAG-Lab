@@ -1,5 +1,7 @@
 # 外部培训应用 Stub 替换 实施计划
 
+> 2026-05-29 更新：本文为历史计划。员工培训课堂链路已调整为平台侧 `/training/classroom/*` 负责 Agent 状态机、上下文和结构化动作，应用端只调用平台并保存本地镜像。后续以 [2026-05-29-employee-training-agent-implementation.md](./2026-05-29-employee-training-agent-implementation.md) 为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 替换外部培训应用中所有模板 stub，接入平台 RAG API 实现真实的计划生成、题目生成和课堂回答。

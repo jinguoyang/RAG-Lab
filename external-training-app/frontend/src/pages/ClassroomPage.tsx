@@ -78,8 +78,68 @@ export function ClassroomPage() {
   }
 
   function handleChoiceAnswer(answer: string) {
-    handleEvent("answer", { selectedAnswer: answer });
+    handleEvent("submit_answer", { answer });
     setUiActions([]);
+  }
+
+  function handleStructuredAnswer(action: ClassroomUiAction, answer: string) {
+    handleEvent("submit_answer", {
+      questionId: String(action.data.questionId || ""),
+      questionType: action.actionType,
+      answer,
+    });
+    setUiActions([]);
+  }
+
+  function renderAction(action: ClassroomUiAction, index: number) {
+    if (action.actionType === "button_group") {
+      const buttons = (action.data.buttons as { label: string; eventType: string; payload?: Record<string, unknown> }[]) || [];
+      return (
+        <div key={`action-${index}`} className="flex gap-2 flex-wrap">
+          {buttons.map((button) => (
+            <button
+              key={`${button.eventType}-${button.label}`}
+              onClick={() => handleEvent(button.eventType, button.payload || {})}
+              disabled={loading}
+              className="bg-green-600 text-white px-3 py-1 rounded text-sm disabled:opacity-50"
+            >
+              {button.label}
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    if (action.actionType === "single_choice" || action.actionType === "true_false") {
+      return (
+        <ChoiceQuestion
+          key={`action-${index}`}
+          question={String(action.data.content || action.data.question || "请选择")}
+          options={(action.data.options as { label: string; text: string }[]) || []}
+          onAnswer={(answer) => handleStructuredAnswer(action, answer)}
+          disabled={loading}
+        />
+      );
+    }
+
+    if (action.actionType === "subjective") {
+      return (
+        <div key={`action-${index}`} className="border rounded-lg p-4 bg-blue-50 space-y-3">
+          <p className="font-medium">{String(action.data.content || "请输入答案")}</p>
+          <textarea
+            className="w-full border rounded px-3 py-2 min-h-24"
+            disabled={loading}
+            placeholder="输入你的回答..."
+            onBlur={(event) => {
+              const value = event.currentTarget.value.trim();
+              if (value) handleStructuredAnswer(action, value);
+            }}
+          />
+        </div>
+      );
+    }
+
+    return null;
   }
 
   return (
@@ -124,18 +184,7 @@ export function ClassroomPage() {
             ))}
 
             {/* UI Actions */}
-            {uiActions.map((action, i) => (
-              <div key={`action-${i}`}>
-                {action.actionType === "single_choice" && action.data && (
-              <ChoiceQuestion
-                question={String(action.data.question || "请选择")}
-                options={(action.data.options as { label: string; text: string }[]) || []}
-                onAnswer={handleChoiceAnswer}
-                disabled={loading}
-              />
-            )}
-              </div>
-            ))}
+            {uiActions.map((action, i) => renderAction(action, i))}
 
             <div ref={messagesEndRef} />
           </div>
@@ -143,64 +192,58 @@ export function ClassroomPage() {
           {/* State transition buttons */}
           <div className="flex gap-2 mb-3 flex-wrap">
             {currentState === "INIT" && (
-              <button onClick={() => handleEvent("start", { nextState: "PLAN" })}
+              <button onClick={() => handleEvent("start", {})}
                 disabled={loading} className="bg-green-600 text-white px-3 py-1 rounded text-sm">
                 开始学习计划
               </button>
             )}
             {currentState === "PLAN" && (
-              <button onClick={() => handleEvent("start_plan", { nextState: "TEACH" })}
+              <button onClick={() => handleEvent("continue", {})}
                 disabled={loading} className="bg-green-600 text-white px-3 py-1 rounded text-sm">
                 进入教学
               </button>
             )}
             {currentState === "TEACH" && (
-              <>
-                <button onClick={() => handleEvent("check_understand", { nextState: "CHECK_UNDERSTAND" })}
-                  disabled={loading} className="bg-yellow-600 text-white px-3 py-1 rounded text-sm">
-                  确认理解
-                </button>
-                <button onClick={() => handleEvent("start_quiz", { nextState: "QUIZ" })}
-                  disabled={loading} className="bg-purple-600 text-white px-3 py-1 rounded text-sm">
-                  开始测验
-                </button>
-              </>
+              <button onClick={() => handleEvent("continue", {})}
+                disabled={loading} className="bg-purple-600 text-white px-3 py-1 rounded text-sm">
+                确认理解
+              </button>
             )}
             {currentState === "CHECK_UNDERSTAND" && (
-              <>
-                <button onClick={() => handleEvent("understood", { nextState: "QUIZ" })}
-                  disabled={loading} className="bg-green-600 text-white px-3 py-1 rounded text-sm">
-                  已理解，进入测验
-                </button>
-                <button onClick={() => handleEvent("need_review", { nextState: "TEACH" })}
-                  disabled={loading} className="bg-orange-600 text-white px-3 py-1 rounded text-sm">
-                  需要复习
-                </button>
-              </>
+              <button onClick={() => handleEvent("continue", {})}
+                disabled={loading} className="bg-purple-600 text-white px-3 py-1 rounded text-sm">
+                进入测验
+              </button>
             )}
             {currentState === "QUIZ" && (
-              <button onClick={() => handleEvent("submit_quiz", { nextState: "GRADE" })}
+              <button onClick={() => handleChoiceAnswer("true")}
                 disabled={loading} className="bg-blue-600 text-white px-3 py-1 rounded text-sm">
                 提交测验
               </button>
             )}
             {currentState === "GRADE" && (
-              <button onClick={() => handleEvent("show_review", { nextState: "REVIEW" })}
+              <button onClick={() => handleEvent("continue", {})}
                 disabled={loading} className="bg-blue-600 text-white px-3 py-1 rounded text-sm">
                 查看结果
               </button>
             )}
             {currentState === "REVIEW" && (
-              <button onClick={() => handleEvent("finish_review", { nextState: "SUMMARY" })}
+              <button onClick={() => handleEvent("continue", {})}
                 disabled={loading} className="bg-blue-600 text-white px-3 py-1 rounded text-sm">
                 课程总结
               </button>
             )}
             {currentState === "SUMMARY" && (
-              <button onClick={() => handleEvent("complete", { nextState: "COMPLETED" })}
-                disabled={loading} className="bg-green-600 text-white px-3 py-1 rounded text-sm">
-                完成课程
-              </button>
+              <>
+                <button onClick={() => handleEvent("next_section", {})}
+                  disabled={loading} className="bg-blue-600 text-white px-3 py-1 rounded text-sm">
+                  下一节
+                </button>
+                <button onClick={() => handleEvent("complete", {})}
+                  disabled={loading} className="bg-green-600 text-white px-3 py-1 rounded text-sm">
+                  完成课程
+                </button>
+              </>
             )}
           </div>
 

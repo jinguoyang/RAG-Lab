@@ -52,11 +52,43 @@ class PlatformClient:
         """调用平台 app-runtime/chat-messages 获取 RAG 回答。"""
         payload = {
             "query": query,
-            "conversation_id": conversation_id,
+            "conversationId": conversation_id,
             "inputs": inputs or {},
         }
         resp = httpx.post(
             f"{self.base_url}/app-runtime/chat-messages",
+            headers=self.headers,
+            json=payload,
+            timeout=120.0,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def create_classroom_session(self, payload: dict) -> dict:
+        """调用平台员工培训课堂 Agent 创建会话。"""
+        resp = httpx.post(
+            f"{self.base_url}/training/classroom/sessions",
+            headers=self.headers,
+            json=payload,
+            timeout=60.0,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def get_classroom_session(self, session_id: str) -> dict:
+        """调用平台员工培训课堂 Agent 获取会话详情。"""
+        resp = httpx.get(
+            f"{self.base_url}/training/classroom/sessions/{session_id}",
+            headers=self.headers,
+            timeout=60.0,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def submit_classroom_event(self, session_id: str, payload: dict) -> dict:
+        """调用平台员工培训课堂 Agent 提交事件。"""
+        resp = httpx.post(
+            f"{self.base_url}/training/classroom/sessions/{session_id}/events",
             headers=self.headers,
             json=payload,
             timeout=120.0,
