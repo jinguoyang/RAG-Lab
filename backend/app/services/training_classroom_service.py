@@ -36,6 +36,24 @@ from app.tables import (
     training_questions,
 )
 
+try:
+    from app.services.training_grading_service import grade_subjective_answer
+    HAS_GRADING_SERVICE = True
+except ImportError:
+    HAS_GRADING_SERVICE = False
+
+try:
+    from app.services.training_progress_service import record_answer, update_progress
+    HAS_PROGRESS_SERVICE = True
+except ImportError:
+    HAS_PROGRESS_SERVICE = False
+
+try:
+    from app.services.training_skill_registry_service import record_training_skill_call
+    HAS_SKILL_REGISTRY = True
+except ImportError:
+    HAS_SKILL_REGISTRY = False
+
 
 CLASSROOM_STATES = (
     "INIT",
@@ -109,6 +127,21 @@ def create_classroom_session(session: Session, credential: str, request: Any) ->
         )
     )
     session.commit()
+    if HAS_PROGRESS_SERVICE:
+        try:
+            update_progress(
+                session,
+                session_id=str(session_id),
+                app_id=str(context.app_row["app_id"]),
+                end_user_id=request.endUserId,
+                current_section_index=0,
+                completed_sections=0,
+                total_sections=0,
+                status="init",
+            )
+            session.commit()
+        except Exception:
+            pass
     return ClassroomSessionResponse(
         sessionId=str(session_id),
         appId=str(context.app_row["app_id"]),
@@ -414,6 +447,18 @@ def _plan_content(session: Session, kb_id: Any, state_row: Any) -> tuple[str, li
         ClassroomCitationDTO(documentId=str(row["document_id"]), chunkId=str(row["chunk_id"]), content=evidence_preview(row, 120), score=1.0)
         for row in rows[:3]
     ]
+    if HAS_SKILL_REGISTRY:
+        try:
+            record_training_skill_call(
+                session,
+                skill_name="buildLearningPlanDraft",
+                status="success",
+                app_id=str(state_row["app_id"]),
+                input_summary=f"jobTitle={((state_row['metadata'] or {}).get('inputs', {}) or {}).get('jobTitle', '')}",
+                output_summary=f"sections={len(titles)}",
+            )
+        except Exception:
+            pass
     return content, citations
 
 
@@ -497,6 +542,17 @@ def _grade_answer(session: Session, state_row: Any, payload: dict[str, Any]) -> 
     if question is None:
         return 0, "题目不存在或不属于当前课堂应用。"
     if question["question_type"] == "subjective":
+        if HAS_GRADING_SERVICE:
+            try:
+                result = grade_subjective_answer(
+                    session,
+                    question_id,
+                    answer,
+                    str(state_row["app_id"]),
+                )
+                return result.score, result.reason
+            except Exception:
+                pass
         return _grade_subjective_answer(answer, question["rubric"])
 
     correct_answer = str(question["correct_answer"] or "").strip()
@@ -575,11 +631,37 @@ def _answer_query_with_agent(
             )
             for item in response.citations
         ]
+        if HAS_SKILL_REGISTRY:
+            try:
+                record_training_skill_call(
+                    session,
+                    skill_name="classifyIntent",
+                    status="success",
+                    session_id=session_id,
+                    app_id=str(state_row["app_id"]),
+                    input_summary=query[:120],
+                    output_summary=f"answer_len={len(response.answer)}",
+                )
+            except Exception:
+                pass
         return response.answer, citations
     except Exception:
         content, citations = _current_evidence(session, str(state_row["app_id"]), kb_id, state_row, query)
         if history:
             content = f"{content}\n\n我已结合最近 {len(history)} 条课堂消息继续讲解。"
+        if HAS_SKILL_REGISTRY:
+            try:
+                record_training_skill_call(
+                    session,
+                    skill_name="classifyIntent",
+                    status="fallback",
+                    session_id=session_id,
+                    app_id=str(state_row["app_id"]),
+                    input_summary=query[:120],
+                    output_summary=f"fallback_answer_len={len(content)}",
+                )
+            except Exception:
+                pass
         return content, citations
 
 
@@ -722,6 +804,37 @@ def submit_classroom_event(session: Session, credential: str, session_id: str, r
         passing_score = _get_passing_score(state_row)
         passed = score >= passing_score
         _merge_session_metadata(session, session_id, {"lastScore": score, "lastPassed": passed, "lastPassingScore": passing_score})
+        if HAS_SKILL_REGISTRY:
+            try:
+                record_training_skill_call(
+                    session,
+                    skill_name="gradeSubjectiveAnswer",
+                    status="success",
+                    session_id=session_id,
+                    app_id=str(state_row["app_id"]),
+                    input_summary=f"questionId={payload.get('questionId', '')}",
+                    output_summary=f"score={score},passed={passed}",
+                )
+            except Exception:
+                pass
+        if HAS_PROGRESS_SERVICE:
+            try:
+                q_id = str(payload.get("questionId") or "")
+                if q_id and q_id != "inline-true-false":
+                    record_answer(
+                        session,
+                        session_id=session_id,
+                        app_id=str(state_row["app_id"]),
+                        end_user_id=str(state_row["end_user_id"]),
+                        question_id=q_id,
+                        question_type="single_choice",
+                        answer=str(payload.get("answer", "")),
+                        score=score,
+                        is_correct=passed,
+                        explanation=explanation,
+                    )
+            except Exception:
+                pass
         if passed:
             content = f"本次测验得分：{score}，达到通过线 {passing_score}。\n{explanation}"
             actions = [_button_group(("查看复习建议", "continue", {}))]
@@ -815,6 +928,20 @@ def submit_classroom_event(session: Session, credential: str, session_id: str, r
         next_state_row = dict(state_row)
         next_state_row["current_section_index"] = next_index
         content, citations = _current_evidence(session, str(state_row["app_id"]), context.kb_row["kb_id"], next_state_row)
+        if HAS_PROGRESS_SERVICE:
+            try:
+                update_progress(
+                    session,
+                    session_id=session_id,
+                    app_id=str(state_row["app_id"]),
+                    end_user_id=str(state_row["end_user_id"]),
+                    current_section_index=next_index,
+                    completed_sections=next_index,
+                    total_sections=total_sections,
+                    status="in_progress",
+                )
+            except Exception:
+                pass
         return _event_to_response(
             session,
             state_row,
@@ -837,6 +964,22 @@ def submit_classroom_event(session: Session, credential: str, session_id: str, r
             raise ClassroomTransitionError(
                 f"当前在第 {current_index + 1} 节（共 {total_sections} 节），还有未完成的章节，请继续学习"
             )
+        last_score_val = metadata.get("lastScore") if isinstance(metadata, dict) else None
+        if HAS_PROGRESS_SERVICE:
+            try:
+                update_progress(
+                    session,
+                    session_id=session_id,
+                    app_id=str(state_row["app_id"]),
+                    end_user_id=str(state_row["end_user_id"]),
+                    current_section_index=current_index,
+                    completed_sections=total_sections,
+                    total_sections=total_sections,
+                    last_score=int(last_score_val) if last_score_val is not None else None,
+                    status="completed",
+                )
+            except Exception:
+                pass
         return _event_to_response(session, state_row, event_type, "COMPLETED", "课程已完成。", [], [], payload)
 
     raise ClassroomTransitionError(f"不允许在 {current_state} 阶段执行 {event_type}")
