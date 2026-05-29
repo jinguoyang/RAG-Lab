@@ -143,8 +143,8 @@ def create_classroom_session(session: Session, credential: str, request: Any) ->
                 status="init",
             )
             session.commit()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("非关键操作失败，已忽略: %s", exc)
     return ClassroomSessionResponse(
         sessionId=str(session_id),
         appId=str(context.app_row["app_id"]),
@@ -304,7 +304,7 @@ def get_classroom_session(
     if current_state == "SUMMARY" and kb_id is not None:
         meta_inputs = base_metadata.get("inputs") if isinstance(base_metadata, dict) else {}
         query_str = str(meta_inputs.get("jobTitle", "")) if isinstance(meta_inputs, dict) else ""
-        total_sections = _count_sections(session, kb_id, query_str)
+        total_sections = _count_sections(session, kb_id, query_str, session_id=session_id)
         is_last = row["current_section_index"] >= total_sections - 1
 
     base_metadata["pendingActions"] = _get_pending_actions(current_state, row, is_last)
@@ -441,7 +441,10 @@ def _current_evidence(session: Session, app_id: str, kb_id: Any, state_row: Any,
 
 def _plan_content(session: Session, kb_id: Any, state_row: Any) -> tuple[str, list[ClassroomCitationDTO]]:
     """生成课程目标说明。"""
-    rows = read_training_evidence(session, kb_id, str((state_row["metadata"] or {}).get("inputs", {})), limit=6)
+    _meta = state_row["metadata"] or {}
+    _inputs = _meta.get("inputs") if isinstance(_meta, dict) else {}
+    _query = _inputs.get("jobTitle", "") if isinstance(_inputs, dict) else ""
+    rows = read_training_evidence(session, kb_id, _query, limit=6)
     titles = [evidence_title(row) for row in rows]
     if not titles:
         return "已初始化课程，但当前知识库没有可展示的学习材料。", []
@@ -461,8 +464,8 @@ def _plan_content(session: Session, kb_id: Any, state_row: Any) -> tuple[str, li
                 input_summary=f"jobTitle={((state_row['metadata'] or {}).get('inputs', {}) or {}).get('jobTitle', '')}",
                 output_summary=f"sections={len(titles)}",
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("非关键操作失败，已忽略: %s", exc)
     return content, citations
 
 
@@ -573,8 +576,8 @@ def _grade_answer(session: Session, state_row: Any, payload: dict[str, Any]) -> 
                     str(state_row["app_id"]),
                 )
                 return result.score, result.reason
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("主观题 AI 批改失败，回退到规则评分: %s", exc)
         return _grade_subjective_answer(answer, question["rubric"])
 
     correct_answer = str(question["correct_answer"] or "").strip()
@@ -664,10 +667,11 @@ def _answer_query_with_agent(
                     input_summary=query[:120],
                     output_summary=f"answer_len={len(response.answer)}",
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Skill 审计记录失败: %s", exc)
         return response.answer, citations
-    except Exception:
+    except Exception as exc:
+        logger.debug("App Runtime 调用失败，回退到证据摘要: %s", exc)
         content, citations = _current_evidence(session, str(state_row["app_id"]), kb_id, state_row, query)
         if history:
             content = f"{content}\n\n我已结合最近 {len(history)} 条课堂消息继续讲解。"
@@ -682,8 +686,8 @@ def _answer_query_with_agent(
                     input_summary=query[:120],
                     output_summary=f"fallback_answer_len={len(content)}",
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("非关键操作失败，已忽略: %s", exc)
         return content, citations
 
 
@@ -837,26 +841,33 @@ def submit_classroom_event(session: Session, credential: str, session_id: str, r
                     input_summary=f"questionId={payload.get('questionId', '')}",
                     output_summary=f"score={score},passed={passed}",
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("非关键操作失败，已忽略: %s", exc)
         if HAS_PROGRESS_SERVICE:
             try:
                 q_id = str(payload.get("questionId") or "")
                 if q_id and q_id != "inline-true-false":
+                    # 查询实际题型，避免硬编码
+                    q_row = session.execute(
+                        select(training_questions.c.question_type)
+                        .where(training_questions.c.question_id == q_id)
+                        .limit(1)
+                    ).scalar()
+                    actual_question_type = q_row or "single_choice"
                     record_answer(
                         session,
                         session_id=session_id,
                         app_id=str(state_row["app_id"]),
                         end_user_id=str(state_row["end_user_id"]),
                         question_id=q_id,
-                        question_type="single_choice",
+                        question_type=actual_question_type,
                         answer=str(payload.get("answer", "")),
                         score=score,
                         is_correct=passed,
                         explanation=explanation,
                     )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("非关键操作失败，已忽略: %s", exc)
         if passed:
             content = f"本次测验得分：{score}，达到通过线 {passing_score}。\n{explanation}"
             actions = [_button_group(("查看复习建议", "continue", {}))]
@@ -918,7 +929,9 @@ def submit_classroom_event(session: Session, credential: str, session_id: str, r
             content = "本节小结：请将关键流程、风险点和证据出处纳入实际作业。"
         else:
             content = "本节小结：你未通过测验，建议后续继续复习。请将关键流程、风险点和证据出处纳入实际作业。"
-        total_sections = _count_sections(session, context.kb_row["kb_id"], str((state_row["metadata"] or {}).get("inputs", {})))
+        _inputs = (state_row["metadata"] or {}).get("inputs", {})
+        _query_str = _inputs.get("jobTitle", "") if isinstance(_inputs, dict) else ""
+        total_sections = _count_sections(session, context.kb_row["kb_id"], _query_str, session_id=session_id)
         current_index = state_row["current_section_index"]
         if current_index < total_sections - 1:
             actions = [_button_group(("下一节", "next_section", {}), ("完成课程", "complete", {}))]
@@ -941,7 +954,7 @@ def submit_classroom_event(session: Session, credential: str, session_id: str, r
         metadata = state_row["metadata"] or {}
         inputs = metadata.get("inputs") if isinstance(metadata, dict) else {}
         query_str = str(inputs.get("jobTitle", "")) if isinstance(inputs, dict) else ""
-        total_sections = _count_sections(session, context.kb_row["kb_id"], query_str)
+        total_sections = _count_sections(session, context.kb_row["kb_id"], query_str, session_id=session_id)
         if next_index >= total_sections:
             raise ClassroomTransitionError(
                 f"当前已是最后一节（index={state_row['current_section_index']}，共 {total_sections} 节），不能再进入下一节"
@@ -962,8 +975,8 @@ def submit_classroom_event(session: Session, credential: str, session_id: str, r
                     total_sections=total_sections,
                     status="in_progress",
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("非关键操作失败，已忽略: %s", exc)
         return _event_to_response(
             session,
             state_row,
@@ -980,7 +993,7 @@ def submit_classroom_event(session: Session, credential: str, session_id: str, r
         metadata = state_row["metadata"] or {}
         inputs = metadata.get("inputs") if isinstance(metadata, dict) else {}
         query_str = str(inputs.get("jobTitle", "")) if isinstance(inputs, dict) else ""
-        total_sections = _count_sections(session, context.kb_row["kb_id"], query_str)
+        total_sections = _count_sections(session, context.kb_row["kb_id"], query_str, session_id=session_id)
         current_index = state_row["current_section_index"]
         if current_index < total_sections - 1:
             raise ClassroomTransitionError(
@@ -1000,8 +1013,8 @@ def submit_classroom_event(session: Session, credential: str, session_id: str, r
                     last_score=int(last_score_val) if last_score_val is not None else None,
                     status="completed",
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("非关键操作失败，已忽略: %s", exc)
         return _event_to_response(session, state_row, event_type, "COMPLETED", "课程已完成。", [], [], payload)
 
     raise ClassroomTransitionError(f"不允许在 {current_state} 阶段执行 {event_type}")
