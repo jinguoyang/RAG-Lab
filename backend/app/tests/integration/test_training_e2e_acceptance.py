@@ -92,10 +92,14 @@ def test_e2e_complete_learning_flow(db, app_with_questions):
         db,
         credential,
         ClassroomSessionCreateRequest(
-            appId=app_id, endUserId="e2e-employee-001", inputs={"jobTitle": "现场安全员"}
+            appId=app_id, planId="plan-e2e-001", endUserId="e2e-employee-001", inputs={"jobTitle": "现场安全员"}
         ),
     )
     assert created.currentState == "INIT"
+    progress_plan_id = db.execute(
+        training_progress_records.select().where(training_progress_records.c.session_id == created.sessionId)
+    ).mappings().first()["plan_id"]
+    assert progress_plan_id == "plan-e2e-001"
 
     # 2. start -> PLAN
     r = submit_classroom_event(

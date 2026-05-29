@@ -79,7 +79,7 @@ def update_progress(
             update(training_progress_records)
             .where(training_progress_records.c.progress_id == existing)
             .values(
-                plan_id=plan_id,
+                **({"plan_id": plan_id} if plan_id is not None else {}),
                 current_section_index=current_section_index,
                 completed_sections=completed_sections,
                 total_sections=total_sections,

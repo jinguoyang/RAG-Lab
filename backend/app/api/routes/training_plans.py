@@ -15,6 +15,12 @@ from app.services.training_plan_service import create_plan_draft, publish_plan, 
 router = APIRouter(prefix="/training/plans", tags=["training"])
 
 
+def _require_training_admin(current_user: CurrentUserResponse) -> None:
+    """校验培训管理操作权限，当前仅平台管理员可审核培训内容。"""
+    if current_user.user.platformRole != "platform_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PERMISSION_DENIED")
+
+
 @router.post("/drafts", response_model=PlanDraftDTO, status_code=status.HTTP_201_CREATED)
 def create_training_plan_draft(
     request: PlanDraftRequest,
@@ -39,6 +45,7 @@ def publish_training_plan(
     session: Session = Depends(get_db_session),
 ) -> PlanDraftDTO:
     """管理员发布学习计划。"""
+    _require_training_admin(current_user)
     try:
         return publish_plan(session, plan_id, current_user.user.userId)
     except TrainingAgentNotFoundError as exc:
@@ -54,6 +61,7 @@ def reject_training_plan(
     session: Session = Depends(get_db_session),
 ) -> PlanDraftDTO:
     """管理员拒绝学习计划。"""
+    _require_training_admin(current_user)
     try:
         return reject_plan(session, plan_id, current_user.user.userId)
     except TrainingAgentNotFoundError as exc:

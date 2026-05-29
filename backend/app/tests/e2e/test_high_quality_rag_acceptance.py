@@ -55,6 +55,12 @@ class TestEvaluationSample:
 class TestEvaluateSample:
     """样本评测测试。"""
 
+    def test_real_evaluation_mode_fails_fast_until_implemented(self):
+        """真实评测未接入时不能返回模拟指标。"""
+        sample = DEFAULT_SAMPLES[0]
+        with pytest.raises(NotImplementedError):
+            evaluate_sample(sample, use_real_qa=True)
+
     def test_evaluate_sample_basic(self):
         """应能评测样本。"""
         sample = DEFAULT_SAMPLES[0]
@@ -108,16 +114,21 @@ class TestRunEvaluation:
     """运行评测测试。"""
 
     def test_run_evaluation_default(self):
-        """应能运行默认评测。"""
-        report = run_evaluation()
+        """默认评测必须走真实链路，未实现时直接失败。"""
+        with pytest.raises(NotImplementedError):
+            run_evaluation()
+
+    def test_run_evaluation_mock_mode(self):
+        """显式模拟模式应能运行默认评测。"""
+        report = run_evaluation(use_real_qa=False)
         assert report is not None
         assert report["totalSamples"] > 0
         assert "categories" in report
         assert "overall" in report
 
     def test_run_evaluation_has_overall_metrics(self):
-        """评测报告应包含总体指标。"""
-        report = run_evaluation()
+        """模拟评测报告应包含总体指标。"""
+        report = run_evaluation(use_real_qa=False)
         overall = report["overall"]
         assert "recallAtK" in overall
         assert "mrr" in overall
@@ -147,12 +158,12 @@ class TestRunEvaluation:
             fixture_path = f.name
 
         try:
-            report = run_evaluation(fixture_path)
+            report = run_evaluation(fixture_path, use_real_qa=False)
             assert report["totalSamples"] == 1
         finally:
             Path(fixture_path).unlink()
 
     def test_run_evaluation_with_missing_fixture(self):
         """缺失 fixture 文件应使用默认样本。"""
-        report = run_evaluation("nonexistent.json")
+        report = run_evaluation("nonexistent.json", use_real_qa=False)
         assert report["totalSamples"] == len(DEFAULT_SAMPLES)

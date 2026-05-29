@@ -15,6 +15,12 @@ from app.services.training_question_service import create_question_drafts, publi
 router = APIRouter(prefix="/training/questions", tags=["training"])
 
 
+def _require_training_admin(current_user: CurrentUserResponse) -> None:
+    """校验培训管理操作权限，当前仅平台管理员可审核培训题目。"""
+    if current_user.user.platformRole != "platform_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PERMISSION_DENIED")
+
+
 @router.post("/drafts", response_model=list[QuestionDraftDTO], status_code=status.HTTP_201_CREATED)
 def create_training_question_drafts(
     request: QuestionDraftRequest,
@@ -39,6 +45,7 @@ def publish_training_question(
     session: Session = Depends(get_db_session),
 ) -> QuestionDraftDTO:
     """管理员发布题目。"""
+    _require_training_admin(current_user)
     try:
         return publish_question(session, question_id, current_user.user.userId)
     except TrainingAgentNotFoundError as exc:
@@ -54,6 +61,7 @@ def reject_training_question(
     session: Session = Depends(get_db_session),
 ) -> QuestionDraftDTO:
     """管理员拒绝题目。"""
+    _require_training_admin(current_user)
     try:
         return reject_question(session, question_id, current_user.user.userId)
     except TrainingAgentNotFoundError as exc:

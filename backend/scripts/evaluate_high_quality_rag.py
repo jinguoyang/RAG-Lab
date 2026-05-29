@@ -190,15 +190,8 @@ def evaluate_sample(sample: EvaluationSample, use_real_qa: bool = False) -> Eval
     start_time = time.monotonic()
 
     if use_real_qa:
-        # TODO: 接入真实 QA Run API
-        # from app.services.qa_run_service import create_qa_run, get_qa_run_detail
-        # response = create_qa_run(session, current_user, kb_id, QARunCreateRequest(query=sample.query))
-        # detail = get_qa_run_detail(session, current_user, kb_id, response.run_id)
-        import warnings
-        warnings.warn(
-            "真实 QA 评测尚未实现，当前返回模拟指标",
-            UserWarning,
-            stacklevel=2,
+        raise NotImplementedError(
+            "真实 QA 评测尚未接入。请先接入 QA Run API，或显式传入 use_real_qa=False 运行模拟结构检查。"
         )
 
     # 当前为模拟评测，返回占位指标
@@ -287,11 +280,12 @@ def generate_category_report(
     )
 
 
-def run_evaluation(fixture_path: str | None = None) -> dict[str, Any]:
+def run_evaluation(fixture_path: str | None = None, use_real_qa: bool = True) -> dict[str, Any]:
     """运行评测。
 
     Args:
         fixture_path: fixture 文件路径
+        use_real_qa: 是否调用真实 QA Pipeline；默认必须走真实链路。
 
     Returns:
         评测报告
@@ -321,7 +315,7 @@ def run_evaluation(fixture_path: str | None = None) -> dict[str, Any]:
 
         for sample in category_samples:
             print(f"  - {sample.sample_id}: {sample.query[:50]}...")
-            result = evaluate_sample(sample)
+            result = evaluate_sample(sample, use_real_qa=use_real_qa)
             category_results.append(result)
             all_results.append(result)
 
@@ -400,9 +394,10 @@ def main():
     """主函数。"""
     parser = argparse.ArgumentParser(description="高质量 RAG E2E 质量验收评测")
     parser.add_argument("--fixture", type=str, help="评测样本 fixture 文件路径")
+    parser.add_argument("--allow-mock", action="store_true", help="显式允许使用模拟指标，仅用于脚本结构检查")
     args = parser.parse_args()
 
-    report = run_evaluation(args.fixture)
+    report = run_evaluation(args.fixture, use_real_qa=not args.allow_mock)
 
     # 保存报告
     output_path = Path("evaluation_report.json")
