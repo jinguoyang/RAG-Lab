@@ -239,23 +239,18 @@ class TestValidateAndNormalizeQuestion:
 class TestGenerateQuestionsWithLlm:
     """_generate_questions_with_llm 测试集。"""
 
-    @patch("app.services.training_question_service.get_settings")
-    def test_returns_none_when_no_endpoint(self, mock_settings):
-        mock_settings.return_value = MagicMock(llm_endpoint=None, llm_api_key=None, llm_model="test")
+    @patch("app.services.training_question_service.call_llm")
+    def test_returns_none_when_llm_error(self, mock_llm):
+        from app.services.training_llm_client import LLMCallError
+        mock_llm.side_effect = LLMCallError("LLM endpoint 未配置。")
         result = _generate_questions_with_llm(
             MagicMock(), job_title="测试", count=3, evidence_summaries=[]
         )
         assert result is None
 
     @patch("app.services.training_question_service.record_training_skill_call")
-    @patch("app.services.training_question_service.httpx.post")
-    @patch("app.services.training_question_service.get_settings")
-    def test_success_returns_normalized_questions(self, mock_settings, mock_post, mock_record):
-        mock_settings.return_value = MagicMock(
-            llm_endpoint="http://test/v1/chat",
-            llm_api_key="key",
-            llm_model="test-model",
-        )
+    @patch("app.services.training_question_service.call_llm")
+    def test_success_returns_normalized_questions(self, mock_llm, mock_record):
         llm_output = json.dumps([
             {
                 "questionType": "single_choice",
@@ -273,10 +268,7 @@ class TestGenerateQuestionsWithLlm:
                 "explanation": "解释",
             },
         ], ensure_ascii=False)
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"choices": [{"message": {"content": llm_output}}]}
-        mock_response.raise_for_status = MagicMock()
-        mock_post.return_value = mock_response
+        mock_llm.return_value = llm_output
 
         session = MagicMock()
         result = _generate_questions_with_llm(
@@ -291,16 +283,10 @@ class TestGenerateQuestionsWithLlm:
         assert mock_record.call_args[1]["status"] == "success"
 
     @patch("app.services.training_question_service.record_training_skill_call")
-    @patch("app.services.training_question_service.httpx.post")
-    @patch("app.services.training_question_service.get_settings")
-    def test_http_error_returns_none(self, mock_settings, mock_post, mock_record):
-        mock_settings.return_value = MagicMock(
-            llm_endpoint="http://test/v1/chat",
-            llm_api_key="key",
-            llm_model="test-model",
-        )
-        import httpx
-        mock_post.side_effect = httpx.HTTPError("connection failed")
+    @patch("app.services.training_question_service.call_llm")
+    def test_llm_error_returns_none(self, mock_llm, mock_record):
+        from app.services.training_llm_client import LLMCallError
+        mock_llm.side_effect = LLMCallError("connection failed")
 
         session = MagicMock()
         result = _generate_questions_with_llm(
@@ -312,18 +298,9 @@ class TestGenerateQuestionsWithLlm:
         assert mock_record.call_args[1]["error_code"] == "LLM_ERROR"
 
     @patch("app.services.training_question_service.record_training_skill_call")
-    @patch("app.services.training_question_service.httpx.post")
-    @patch("app.services.training_question_service.get_settings")
-    def test_invalid_json_returns_none(self, mock_settings, mock_post, mock_record):
-        mock_settings.return_value = MagicMock(
-            llm_endpoint="http://test/v1/chat",
-            llm_api_key="key",
-            llm_model="test-model",
-        )
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"choices": [{"message": {"content": "not json"}}]}
-        mock_response.raise_for_status = MagicMock()
-        mock_post.return_value = mock_response
+    @patch("app.services.training_question_service.call_llm")
+    def test_invalid_json_returns_none(self, mock_llm, mock_record):
+        mock_llm.return_value = "not json"
 
         session = MagicMock()
         result = _generate_questions_with_llm(
@@ -334,22 +311,13 @@ class TestGenerateQuestionsWithLlm:
         assert mock_record.call_args[1]["error_code"] == "LLM_PARSE_ERROR"
 
     @patch("app.services.training_question_service.record_training_skill_call")
-    @patch("app.services.training_question_service.httpx.post")
-    @patch("app.services.training_question_service.get_settings")
-    def test_all_invalid_questions_returns_none(self, mock_settings, mock_post, mock_record):
+    @patch("app.services.training_question_service.call_llm")
+    def test_all_invalid_questions_returns_none(self, mock_llm, mock_record):
         """当所有题目校验失败时应返回 None。"""
-        mock_settings.return_value = MagicMock(
-            llm_endpoint="http://test/v1/chat",
-            llm_api_key="key",
-            llm_model="test-model",
-        )
         llm_output = json.dumps([
             {"questionType": "essay", "content": "题目", "options": [], "correctAnswer": None, "explanation": "解释"},
         ])
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"choices": [{"message": {"content": llm_output}}]}
-        mock_response.raise_for_status = MagicMock()
-        mock_post.return_value = mock_response
+        mock_llm.return_value = llm_output
 
         session = MagicMock()
         result = _generate_questions_with_llm(
@@ -359,15 +327,9 @@ class TestGenerateQuestionsWithLlm:
         assert mock_record.call_args[1]["error_code"] == "LLM_VALIDATION_ERROR"
 
     @patch("app.services.training_question_service.record_training_skill_call")
-    @patch("app.services.training_question_service.httpx.post")
-    @patch("app.services.training_question_service.get_settings")
-    def test_partial_valid_questions_returned(self, mock_settings, mock_post, mock_record):
+    @patch("app.services.training_question_service.call_llm")
+    def test_partial_valid_questions_returned(self, mock_llm, mock_record):
         """部分题目校验失败时，只返回有效的。"""
-        mock_settings.return_value = MagicMock(
-            llm_endpoint="http://test/v1/chat",
-            llm_api_key="key",
-            llm_model="test-model",
-        )
         llm_output = json.dumps([
             {
                 "questionType": "single_choice",
@@ -379,10 +341,7 @@ class TestGenerateQuestionsWithLlm:
             },
             {"questionType": "essay", "content": "无效题型", "options": [], "correctAnswer": None, "explanation": "解释"},
         ])
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"choices": [{"message": {"content": llm_output}}]}
-        mock_response.raise_for_status = MagicMock()
-        mock_post.return_value = mock_response
+        mock_llm.return_value = llm_output
 
         session = MagicMock()
         result = _generate_questions_with_llm(
@@ -393,20 +352,11 @@ class TestGenerateQuestionsWithLlm:
         assert result[0]["questionType"] == "single_choice"
 
     @patch("app.services.training_question_service.record_training_skill_call")
-    @patch("app.services.training_question_service.httpx.post")
-    @patch("app.services.training_question_service.get_settings")
-    def test_fenced_json_parsed(self, mock_settings, mock_post, mock_record):
+    @patch("app.services.training_question_service.call_llm")
+    def test_fenced_json_parsed(self, mock_llm, mock_record):
         """LLM 返回 fenced code block 时应正常解析。"""
-        mock_settings.return_value = MagicMock(
-            llm_endpoint="http://test/v1/chat",
-            llm_api_key="key",
-            llm_model="test-model",
-        )
         llm_output = '```json\n[{"questionType": "true_false", "content": "判断题", "options": [{"label": "true", "text": "对"}], "correctAnswer": "true", "explanation": "解释"}]\n```'
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"choices": [{"message": {"content": llm_output}}]}
-        mock_response.raise_for_status = MagicMock()
-        mock_post.return_value = mock_response
+        mock_llm.return_value = llm_output
 
         session = MagicMock()
         result = _generate_questions_with_llm(
@@ -417,15 +367,9 @@ class TestGenerateQuestionsWithLlm:
         assert result[0]["questionType"] == "true_false"
 
     @patch("app.services.training_question_service.record_training_skill_call")
-    @patch("app.services.training_question_service.httpx.post")
-    @patch("app.services.training_question_service.get_settings")
-    def test_subjective_without_rubric_gets_default(self, mock_settings, mock_post, mock_record):
+    @patch("app.services.training_question_service.call_llm")
+    def test_subjective_without_rubric_gets_default(self, mock_llm, mock_record):
         """LLM 返回的主观题缺少 rubric 时应自动补充。"""
-        mock_settings.return_value = MagicMock(
-            llm_endpoint="http://test/v1/chat",
-            llm_api_key="key",
-            llm_model="test-model",
-        )
         llm_output = json.dumps([
             {
                 "questionType": "subjective",
@@ -435,10 +379,7 @@ class TestGenerateQuestionsWithLlm:
                 "explanation": "解释",
             },
         ])
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"choices": [{"message": {"content": llm_output}}]}
-        mock_response.raise_for_status = MagicMock()
-        mock_post.return_value = mock_response
+        mock_llm.return_value = llm_output
 
         session = MagicMock()
         result = _generate_questions_with_llm(

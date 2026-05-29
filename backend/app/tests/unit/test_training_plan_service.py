@@ -86,7 +86,7 @@ class TestRuleBasedPlan:
 
 
 class TestGeneratePlanWithLlmSuccess:
-    @patch("app.services.training_plan_service._call_llm")
+    @patch("app.services.training_plan_service.call_llm")
     @patch("app.services.training_plan_service.record_training_skill_call")
     def test_llm_success_returns_valid_plan(self, mock_audit, mock_llm):
         mock_llm.return_value = _llm_json_response()
@@ -103,7 +103,7 @@ class TestGeneratePlanWithLlmSuccess:
         assert reading_order == ["d1", "d2", "d3"]
         assert "推荐" in reason
 
-    @patch("app.services.training_plan_service._call_llm")
+    @patch("app.services.training_plan_service.call_llm")
     @patch("app.services.training_plan_service.record_training_skill_call")
     def test_llm_success_records_audit(self, mock_audit, mock_llm):
         mock_llm.return_value = _llm_json_response()
@@ -116,7 +116,7 @@ class TestGeneratePlanWithLlmSuccess:
         assert call_kwargs[1]["skill_name"] == "buildLearningPlanDraft"
         assert call_kwargs[1]["status"] == "success"
 
-    @patch("app.services.training_plan_service._call_llm")
+    @patch("app.services.training_plan_service.call_llm")
     @patch("app.services.training_plan_service.record_training_skill_call")
     def test_llm_success_uses_evidence_chunk_ids(self, mock_audit, mock_llm):
         mock_llm.return_value = _llm_json_response()
@@ -135,7 +135,7 @@ class TestGeneratePlanWithLlmSuccess:
 
 
 class TestGeneratePlanWithLlmCallFailure:
-    @patch("app.services.training_plan_service._call_llm")
+    @patch("app.services.training_plan_service.call_llm")
     @patch("app.services.training_plan_service.record_training_skill_call")
     def test_llm_call_exception_returns_none(self, mock_audit, mock_llm):
         mock_llm.side_effect = Exception("connection timeout")
@@ -145,7 +145,7 @@ class TestGeneratePlanWithLlmCallFailure:
 
         assert result is None
 
-    @patch("app.services.training_plan_service._call_llm")
+    @patch("app.services.training_plan_service.call_llm")
     @patch("app.services.training_plan_service.record_training_skill_call")
     def test_llm_call_failure_records_error_audit(self, mock_audit, mock_llm):
         mock_llm.side_effect = Exception("timeout")
@@ -165,7 +165,7 @@ class TestGeneratePlanWithLlmCallFailure:
 
 
 class TestGeneratePlanWithLlmParseFailure:
-    @patch("app.services.training_plan_service._call_llm")
+    @patch("app.services.training_plan_service.call_llm")
     @patch("app.services.training_plan_service.record_training_skill_call")
     def test_invalid_json_returns_none(self, mock_audit, mock_llm):
         mock_llm.return_value = "this is not json"
@@ -175,7 +175,7 @@ class TestGeneratePlanWithLlmParseFailure:
 
         assert result is None
 
-    @patch("app.services.training_plan_service._call_llm")
+    @patch("app.services.training_plan_service.call_llm")
     @patch("app.services.training_plan_service.record_training_skill_call")
     def test_missing_required_keys_returns_none(self, mock_audit, mock_llm):
         mock_llm.return_value = '{"abilityGroups": []}'
@@ -185,7 +185,7 @@ class TestGeneratePlanWithLlmParseFailure:
 
         assert result is None
 
-    @patch("app.services.training_plan_service._call_llm")
+    @patch("app.services.training_plan_service.call_llm")
     @patch("app.services.training_plan_service.record_training_skill_call")
     def test_parse_failure_records_error_audit(self, mock_audit, mock_llm):
         mock_llm.return_value = "not json"
@@ -205,7 +205,7 @@ class TestGeneratePlanWithLlmParseFailure:
 
 
 class TestGeneratePlanWithLlmDocumentIdValidation:
-    @patch("app.services.training_plan_service._call_llm")
+    @patch("app.services.training_plan_service.call_llm")
     @patch("app.services.training_plan_service.record_training_skill_call")
     def test_invalid_document_id_is_skipped(self, mock_audit, mock_llm):
         """LLM 返回的 documentId 不在证据中时被跳过。"""
@@ -230,7 +230,7 @@ class TestGeneratePlanWithLlmDocumentIdValidation:
         assert "d1" in doc_ids
         assert "FAKE_ID" not in reading_order
 
-    @patch("app.services.training_plan_service._call_llm")
+    @patch("app.services.training_plan_service.call_llm")
     @patch("app.services.training_plan_service.record_training_skill_call")
     def test_all_invalid_document_ids_returns_none(self, mock_audit, mock_llm):
         """LLM 返回的 documentId 全部无效时回退。"""
@@ -250,7 +250,7 @@ class TestGeneratePlanWithLlmDocumentIdValidation:
 
         assert result is None
 
-    @patch("app.services.training_plan_service._call_llm")
+    @patch("app.services.training_plan_service.call_llm")
     @patch("app.services.training_plan_service.record_training_skill_call")
     def test_valid_doc_ids_from_evidence_pass(self, mock_audit, mock_llm):
         """documentId 全部来自证据时正常通过。"""
@@ -272,7 +272,7 @@ class TestGeneratePlanWithLlmDocumentIdValidation:
 
 
 class TestGeneratePlanWithLlmReadingOrder:
-    @patch("app.services.training_plan_service._call_llm")
+    @patch("app.services.training_plan_service.call_llm")
     @patch("app.services.training_plan_service.record_training_skill_call")
     def test_missing_docs_appended_to_reading_order(self, mock_audit, mock_llm):
         """LLM 遗漏的文档被补充到 readingOrder 末尾。"""
@@ -302,7 +302,7 @@ class TestGeneratePlanWithLlmReadingOrder:
 
 
 class TestGeneratePlanWithLlmDifficulty:
-    @patch("app.services.training_plan_service._call_llm")
+    @patch("app.services.training_plan_service.call_llm")
     @patch("app.services.training_plan_service.record_training_skill_call")
     def test_invalid_difficulty_defaults_to_normal(self, mock_audit, mock_llm):
         llm_output = """{
@@ -329,7 +329,7 @@ class TestGeneratePlanWithLlmDifficulty:
 
 
 class TestFallbackIntegration:
-    @patch("app.services.training_plan_service._call_llm")
+    @patch("app.services.training_plan_service.call_llm")
     @patch("app.services.training_plan_service.record_training_skill_call")
     def test_fallback_produces_valid_output(self, mock_audit, mock_llm):
         """LLM 失败后规则回退产生与直接调用规则相同的结果。"""
