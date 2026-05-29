@@ -8,11 +8,9 @@ from datetime import UTC, datetime
 from itertools import cycle, islice
 from typing import Any
 
-import httpx
 from sqlalchemy import insert, select, update
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
 from app.core.db_types import new_id
 from app.schemas.training_question import QuestionDraftDTO, QuestionOptionDTO
 from app.services.training_agent_service import (
@@ -22,6 +20,7 @@ from app.services.training_agent_service import (
     read_training_evidence,
     resolve_training_context,
 )
+from app.services.training_llm_client import LLMCallError, call_llm
 from app.services.training_llm_json_service import TrainingLLMOutputError, parse_training_json
 from app.services.training_skill_registry_service import record_training_skill_call
 from app.tables import training_questions
@@ -160,31 +159,12 @@ def _generate_questions_with_llm(
     app_id: str | None = None,
 ) -> list[dict[str, Any]] | None:
     """调用 LLM 生成题目列表，失败返回 None。"""
-    settings = get_settings()
-    if not settings.llm_endpoint:
-        return None
-
     messages = _build_llm_prompt(job_title, count, evidence_summaries)
-    headers = {"Content-Type": "application/json"}
-    if settings.llm_api_key:
-        headers["Authorization"] = f"Bearer {settings.llm_api_key}"
-    request_json = {
-        "model": settings.llm_model,
-        "messages": messages,
-        "temperature": 0.3,
-    }
 
     start = time.monotonic()
     try:
-        response = httpx.post(
-            settings.llm_endpoint,
-            headers=headers,
-            json=request_json,
-            timeout=90,
-        )
-        response.raise_for_status()
-        raw_content = response.json()["choices"][0]["message"]["content"]
-    except Exception as exc:
+        raw_content = call_llm(messages, temperature=0.3, timeout=90)
+    except (LLMCallError, Exception) as exc:
         latency_ms = int((time.monotonic() - start) * 1000)
         logger.warning("LLM question generation failed: %s", exc)
         record_training_skill_call(

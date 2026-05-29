@@ -1,6 +1,7 @@
 """员工培训课堂 Agent 状态机和结构化输出服务。"""
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -35,6 +36,8 @@ from app.tables import (
     training_classroom_sessions,
     training_questions,
 )
+
+logger = logging.getLogger(__name__)
 
 try:
     from app.services.training_grading_service import grade_subjective_answer
@@ -384,11 +387,12 @@ def _update_state(session: Session, session_id: str, next_state: str, updated_by
 
 
 def _merge_session_metadata(session: Session, session_id: str, extra: dict[str, Any]) -> None:
-    """将额外字段合并到会话 metadata 中，供下游状态读取。"""
+    """将额外字段合并到会话 metadata 中，供下游状态读取。使用 SELECT FOR UPDATE 防止并发丢失更新。"""
     row = session.execute(
         select(training_classroom_sessions.c.metadata)
         .where(training_classroom_sessions.c.session_id == session_id)
         .limit(1)
+        .with_for_update()
     ).scalar()
     current = dict(row) if isinstance(row, dict) else {}
     current.update(extra)
@@ -507,10 +511,28 @@ def _get_passing_score(state_row) -> int:
     return int(scenario_config.get("passingScore", 80)) if isinstance(scenario_config, dict) else 80
 
 
-def _count_sections(session: Session, kb_id: Any, query: str) -> int:
-    """读取当前知识库证据总数，作为课程章节数。"""
+def _count_sections(session: Session, kb_id: Any, query: str, session_id: str | None = None) -> int:
+    """读取当前知识库证据总数，作为课程章节数。结果缓存到会话 metadata 中。"""
+    # 尝试从缓存读取
+    if session_id:
+        row = session.execute(
+            select(training_classroom_sessions.c.metadata)
+            .where(training_classroom_sessions.c.session_id == session_id)
+            .limit(1)
+        ).scalar()
+        meta = row if isinstance(row, dict) else {}
+        cached = meta.get("_cached_section_count") if isinstance(meta, dict) else None
+        if isinstance(cached, int) and cached > 0:
+            return cached
+
     rows = read_training_evidence(session, kb_id, query, limit=50)
-    return len(rows)
+    count = len(rows)
+
+    # 写入缓存
+    if session_id and count > 0:
+        _merge_session_metadata(session, session_id, {"_cached_section_count": count})
+
+    return count
 
 
 def _grade_subjective_answer(answer: str, rubric: dict[str, Any] | None) -> tuple[int, str]:

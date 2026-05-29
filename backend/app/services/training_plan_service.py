@@ -105,7 +105,7 @@ def _generate_plan_with_llm(
 
     start = time.monotonic()
     try:
-        raw_text = _call_llm(messages)
+        raw_text = call_llm(messages)
         latency_ms = int((time.monotonic() - start) * 1000)
     except Exception as exc:
         latency_ms = int((time.monotonic() - start) * 1000)
@@ -119,7 +119,7 @@ def _generate_plan_with_llm(
             error_code="LLM_CALL_FAILED",
             latency_ms=latency_ms,
         )
-        session.commit()
+        session.flush()
         return None
 
     try:
@@ -136,7 +136,7 @@ def _generate_plan_with_llm(
             error_code="LLM_PARSE_FAILED",
             latency_ms=latency_ms,
         )
-        session.commit()
+        session.flush()
         return None
 
     # 解析 abilityGroups
@@ -189,7 +189,7 @@ def _generate_plan_with_llm(
             error_code="LLM_NO_VALID_DOCUMENTS",
             latency_ms=latency_ms,
         )
-        session.commit()
+        session.flush()
         return None
 
     # 解析 readingOrder，只保留有效的 documentId
@@ -218,7 +218,7 @@ def _generate_plan_with_llm(
         output_summary=f"groups={len(groups)}, documents={len(documents)}",
         latency_ms=latency_ms,
     )
-    session.commit()
+    session.flush()
 
     return groups, documents, reading_order, recommend_reason, evidence_chunk_ids
 

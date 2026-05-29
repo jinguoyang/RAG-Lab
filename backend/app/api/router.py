@@ -7,6 +7,7 @@ from app.api.routes.auth import router as auth_router
 from app.api.routes.config import revision_router as config_revision_router
 from app.api.routes.config import template_router as config_template_router
 from app.api.routes.config import effectiveness_router as config_effectiveness_router
+from app.api.routes.parser_routing import router as parser_routing_router
 from app.api.routes.dictionaries import router as dictionaries_router
 from app.api.routes.documents import chunk_router, index_sync_router, ingest_job_router, router as documents_router
 from app.api.routes.graph import router as graph_router
@@ -43,6 +44,7 @@ api_router.include_router(index_sync_router)
 api_router.include_router(config_template_router)
 api_router.include_router(config_revision_router)
 api_router.include_router(config_effectiveness_router)
+api_router.include_router(parser_routing_router)
 api_router.include_router(qa_runs_router)
 api_router.include_router(graph_router)
 api_router.include_router(rag_apps_router)
