@@ -140,14 +140,12 @@ class TestGradeSubjectiveAnswer:
             "matchedCriteria": ["依据准确", "流程完整"],
         })
 
-        with patch("app.services.training_grading_service.get_settings") as mock_settings:
-            mock_settings.return_value = MagicMock(llm_endpoint="http://test", llm_api_key="key", llm_model="model")
-            result = grade_subjective_answer(
-                mock_session,
-                "q-001",
-                "安全操作的关键步骤包括：1. 检查设备状态 2. 佩戴防护装备 3. 按规程操作",
-                "app-001",
-            )
+        result = grade_subjective_answer(
+            mock_session,
+            "q-001",
+            "安全操作的关键步骤包括：1. 检查设备状态 2. 佩戴防护装备 3. 按规程操作",
+            "app-001",
+        )
 
         assert result.score == 85
         assert "覆盖" in result.reason
@@ -165,14 +163,12 @@ class TestGradeSubjectiveAnswer:
 
         mock_llm.side_effect = RuntimeError("LLM 超时")
 
-        with patch("app.services.training_grading_service.get_settings") as mock_settings:
-            mock_settings.return_value = MagicMock(llm_endpoint="http://test", llm_api_key="key", llm_model="model")
-            result = grade_subjective_answer(
-                mock_session,
-                "q-001",
-                "安全操作很重要，需要认真执行。",
-                "app-001",
-            )
+        result = grade_subjective_answer(
+            mock_session,
+            "q-001",
+            "安全操作很重要，需要认真执行。",
+            "app-001",
+        )
 
         assert result.score > 0
         assert result.needsManualReview is True
@@ -193,14 +189,12 @@ class TestGradeSubjectiveAnswer:
             "matchedCriteria": [],
         })
 
-        with patch("app.services.training_grading_service.get_settings") as mock_settings:
-            mock_settings.return_value = MagicMock(llm_endpoint="http://test", llm_api_key="key", llm_model="model")
-            result = grade_subjective_answer(
-                mock_session,
-                "q-001",
-                "测试答案内容。",
-                "app-001",
-            )
+        result = grade_subjective_answer(
+            mock_session,
+            "q-001",
+            "测试答案内容。",
+            "app-001",
+        )
         assert result.score == 100
 
     @patch("app.services.training_grading_service.call_llm")
@@ -217,14 +211,12 @@ class TestGradeSubjectiveAnswer:
             "matchedCriteria": [],
         })
 
-        with patch("app.services.training_grading_service.get_settings") as mock_settings:
-            mock_settings.return_value = MagicMock(llm_endpoint="http://test", llm_api_key="key", llm_model="model")
-            result = grade_subjective_answer(
-                mock_session,
-                "q-001",
-                "测试答案内容。",
-                "app-001",
-            )
+        result = grade_subjective_answer(
+            mock_session,
+            "q-001",
+            "测试答案内容。",
+            "app-001",
+        )
         assert result.score == 0
 
     @patch("app.services.training_grading_service.select")
@@ -271,14 +263,12 @@ class TestGradeSubjectiveAnswer:
             "matchedCriteria": [],
         })
 
-        with patch("app.services.training_grading_service.get_settings") as mock_settings:
-            mock_settings.return_value = MagicMock(llm_endpoint="http://test", llm_api_key="key", llm_model="model")
-            result = grade_subjective_answer(
-                mock_session,
-                "q-001",
-                "简短回答。",
-                "app-001",
-            )
+        result = grade_subjective_answer(
+            mock_session,
+            "q-001",
+            "简短回答。",
+            "app-001",
+        )
         assert result.score == 45
         assert result.needsManualReview is True
 
@@ -298,13 +288,11 @@ class TestGradeSubjectiveAnswer:
             "matchedCriteria": ["内容相关性"],
         })
 
-        with patch("app.services.training_grading_service.get_settings") as mock_settings:
-            mock_settings.return_value = MagicMock(llm_endpoint="http://test", llm_api_key="key", llm_model="model")
-            result = grade_subjective_answer(
-                mock_session,
-                "q-001",
-                "这是一个超过二十个字符的答案。",
-                "app-001",
-            )
+        result = grade_subjective_answer(
+            mock_session,
+            "q-001",
+            "这是一个超过二十个字符的答案。",
+            "app-001",
+        )
         assert result.score == 70
         mock_llm.assert_called_once()
