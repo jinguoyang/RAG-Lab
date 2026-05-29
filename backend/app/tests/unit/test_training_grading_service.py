@@ -84,19 +84,19 @@ class TestFallbackGrade:
 
     def test_short_answer(self):
         result = _fallback_grade("短答案", None)
-        assert result.score == 40
+        assert result.score == 20
         assert result.needsManualReview is True
 
     def test_medium_answer(self):
         result = _fallback_grade("这是一个超过二十个字符的答案内容，需要再补充一些文字才能达到要求", None)
-        assert result.score == 60
+        assert result.score == 40
         assert result.needsManualReview is True
 
     def test_long_answer_with_rubric(self):
         rubric = {"criteria": [{"name": "测试", "score": 40, "description": "测试标准"}]}
         long_answer = "这是一个超过五十个字符的长答案，用于测试有 rubric 时的评分逻辑，应该得到更高的分数，需要继续补充更多内容来满足长度要求。"
         result = _fallback_grade(long_answer, rubric)
-        assert result.score == 80
+        assert result.score == 50
         assert result.needsManualReview is True
 
 
@@ -126,7 +126,7 @@ class TestGradeSubjectiveAnswer:
             "evidence_chunk_ids": ["chunk-001"],
         }
 
-    @patch("app.services.training_grading_service._call_llm")
+    @patch("app.services.training_grading_service.call_llm")
     @patch("app.services.training_grading_service.record_training_skill_call")
     @patch("app.services.training_grading_service.select")
     def test_llm_grade_success(self, mock_select, mock_audit, mock_llm):
@@ -155,7 +155,7 @@ class TestGradeSubjectiveAnswer:
         assert result.needsManualReview is False
         mock_audit.assert_called_once()
 
-    @patch("app.services.training_grading_service._call_llm")
+    @patch("app.services.training_grading_service.call_llm")
     @patch("app.services.training_grading_service.record_training_skill_call")
     @patch("app.services.training_grading_service.select")
     def test_llm_failure_falls_back(self, mock_select, mock_audit, mock_llm):
@@ -179,7 +179,7 @@ class TestGradeSubjectiveAnswer:
         assert "保守规则" in result.reason or "LLM" in result.reason
         mock_audit.assert_called_once()
 
-    @patch("app.services.training_grading_service._call_llm")
+    @patch("app.services.training_grading_service.call_llm")
     @patch("app.services.training_grading_service.record_training_skill_call")
     @patch("app.services.training_grading_service.select")
     def test_score_clamped_to_range(self, mock_select, mock_audit, mock_llm):
@@ -203,7 +203,7 @@ class TestGradeSubjectiveAnswer:
             )
         assert result.score == 100
 
-    @patch("app.services.training_grading_service._call_llm")
+    @patch("app.services.training_grading_service.call_llm")
     @patch("app.services.training_grading_service.record_training_skill_call")
     @patch("app.services.training_grading_service.select")
     def test_score_clamped_negative(self, mock_select, mock_audit, mock_llm):
@@ -257,7 +257,7 @@ class TestGradeSubjectiveAnswer:
                 "app-001",
             )
 
-    @patch("app.services.training_grading_service._call_llm")
+    @patch("app.services.training_grading_service.call_llm")
     @patch("app.services.training_grading_service.record_training_skill_call")
     @patch("app.services.training_grading_service.select")
     def test_low_score_needs_manual_review(self, mock_select, mock_audit, mock_llm):
@@ -282,7 +282,7 @@ class TestGradeSubjectiveAnswer:
         assert result.score == 45
         assert result.needsManualReview is True
 
-    @patch("app.services.training_grading_service._call_llm")
+    @patch("app.services.training_grading_service.call_llm")
     @patch("app.services.training_grading_service.record_training_skill_call")
     @patch("app.services.training_grading_service.select")
     def test_empty_rubric_uses_default(self, mock_select, mock_audit, mock_llm):
