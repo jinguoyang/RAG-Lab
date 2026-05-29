@@ -756,6 +756,21 @@ training_classroom_events = sa.Table(
     sa.Column("created_by", sa.String(length=128), nullable=True),
 )
 
+training_skill_calls = sa.Table(
+    "training_skill_calls",
+    metadata,
+    sa.Column("skill_call_id", UUIDString(), primary_key=True),
+    sa.Column("session_id", UUIDString(), nullable=True),
+    sa.Column("app_id", UUIDString(), nullable=True),
+    sa.Column("skill_name", sa.String(length=64), nullable=False),
+    sa.Column("input_summary", sa.Text(), nullable=True),
+    sa.Column("output_summary", sa.Text(), nullable=True),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("error_code", sa.String(length=64), nullable=True),
+    sa.Column("latency_ms", sa.Integer(), nullable=True),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+)
+
 evaluation_samples = sa.Table(
     "evaluation_samples",
     metadata,
