@@ -31,6 +31,12 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 - Sprint 60 待开发，主题为 E33 员工培训 AI 生成与主观题评分：AI 学习计划、AI 题库和主观题 LLM 批改。
 - Sprint 61 待开发，主题为 E33 员工培训进度、审核发布与断线续接：学习进度、答题记录、章节边界、发布版本和恢复上下文。
 - Sprint 62 待开发，主题为 E33 员工培训安全、报表与端到端验收：权限隔离、培训报表和完整链路 E2E。
+- Sprint 63 待开发，主题为 E34 RAG 配置真实生效与关键 no-op 修复：配置生效审计、Multi Query、RRF、生成参数和 App Runtime 检索修复。
+- Sprint 64 待开发，主题为 E34 文档高保真解析与 ParsedDocumentV2：解析 Provider 路由、页/块/表格 provenance 和解析质量记录。
+- Sprint 65 待开发，主题为 E34 多视图分块与 Contextual Chunking：ChunkRevision、多策略分块、contextual metadata 和 late chunking 预留。
+- Sprint 66 待开发，主题为 E34 多查询融合与大小 Chunk 上下文：真 Multi Query、RRF/MMR、parent-child 检索和上下文打包。
+- Sprint 67 待开发，主题为 E34 结构化证据检索与 Corrective RAG：表格/流程图检索、证据不足重检索和拒答控制。
+- Sprint 68 待开发，主题为 E34 多跳推理、引用校验与高质量 RAG 验收：Graph/RAPTOR、Answer/Citation Verifier 和 E2E 评测集。
 - 下一版本为 V1.9，计划承接 E23 图快照保留与配置治理、E24 文档解析能力增强；E27 RAG App 运行治理与接入可见性已完成。E28 文档库功能已全部完成。
 - Sprint 01 至 Sprint 26 已完成，对应 V1.0 至 V1.7。
 - Sprint 27 至 Sprint 29 已完成 E22 知识库治理工作流强化范围：P05 支持治理问题定位和治理后验证摘要，P06 支持批量治理和索引同步作业，P07 支持 Chunk 治理标记、索引重建和作业查看。
@@ -83,6 +89,12 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 | Sprint 60 | 员工培训 Agent 完整化 | AI 生成与主观题评分 | Ready | `sprint41-60/Sprint-60.md` |
 | Sprint 61 | 员工培训 Agent 完整化 | 进度、审核发布与断线续接 | Ready | `sprint61-80/Sprint-61.md` |
 | Sprint 62 | 员工培训 Agent 完整化 | 安全、报表与端到端验收 | Ready | `sprint61-80/Sprint-62.md` |
+| Sprint 63 | 高质量 RAG 核心优化 | 配置真实生效与关键 no-op 修复 | Ready | `sprint61-80/Sprint-63.md` |
+| Sprint 64 | 高质量 RAG 核心优化 | 文档高保真解析与 ParsedDocumentV2 | Ready | `sprint61-80/Sprint-64.md` |
+| Sprint 65 | 高质量 RAG 核心优化 | 多视图分块与 Contextual Chunking | Ready | `sprint61-80/Sprint-65.md` |
+| Sprint 66 | 高质量 RAG 核心优化 | 多查询融合与大小 Chunk 上下文 | Ready | `sprint61-80/Sprint-66.md` |
+| Sprint 67 | 高质量 RAG 核心优化 | 结构化证据检索与 Corrective RAG | Ready | `sprint61-80/Sprint-67.md` |
+| Sprint 68 | 高质量 RAG 核心优化 | 多跳推理、引用校验与 E2E 验收 | Ready | `sprint61-80/Sprint-68.md` |
 
 ## 3. 单个 Sprint 文档约定
 
