@@ -72,6 +72,7 @@ from app.tables import (
 from app.services.qa_providers import ProviderCandidate, ProviderError, QARunProviders, get_qa_run_providers
 from app.services.permission_service import build_chunk_access_filter_context, has_kb_permission
 from app.services.knowledge_base_service import KnowledgeBaseDisabledError
+from app.services.config_effectiveness import build_trace_effective_configs
 
 
 logger = logging.getLogger(__name__)
@@ -914,6 +915,24 @@ def _execute_provider_qa_run(
     )
     trace_order += 1
 
+    # ── B-316: 配置生效审计 ──
+    config_audit = build_trace_effective_configs(pipeline_params, enabled_channels)
+    _insert_trace_step(
+        session,
+        run_id,
+        trace_order,
+        "configAudit",
+        "success",
+        {"enabledChannels": sorted(enabled_channels)},
+        config_audit,
+        {
+            "effectiveCount": config_audit["summary"]["effectiveCount"],
+            "ignoredCount": config_audit["summary"]["ignoredCount"],
+        },
+        started_at=started_at,
+    )
+    trace_order += 1
+
     if pipeline_params["queryRewrite"]["enabled"] is False:
         rewritten_query = query
         _insert_trace_step(
@@ -1448,6 +1467,7 @@ def _execute_provider_qa_run(
                     "providerErrors": provider_errors,
                     "pipelineParams": pipeline_params,
                 },
+                "configAudit": config_audit["summary"],
             },
             started_at=started_at,
             finished_at=datetime.now(UTC),

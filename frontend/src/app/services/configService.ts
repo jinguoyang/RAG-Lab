@@ -83,3 +83,33 @@ export async function confirmConfigRollback(
     { confirmImpact: true, reason, targetRevisionId },
   );
 }
+
+// ── B-316: 配置生效审计 API ──
+
+export interface ConfigItemEffectiveness {
+  key: string;
+  status: "effective" | "partiallyEffective" | "planned" | "deprecated";
+  executionLocation: string;
+  note: string;
+  sinceVersion: string;
+}
+
+export interface NodeCapability {
+  nodeId: string;
+  nodeType: string;
+  stage: string;
+  items: ConfigItemEffectiveness[];
+}
+
+export interface ConfigEffectivenessSummary {
+  total: number;
+  effective: number;
+  partiallyEffective: number;
+  planned: number;
+  deprecated: number;
+  nodes: NodeCapability[];
+}
+
+export async function fetchConfigEffectiveness(): Promise<ConfigEffectivenessSummary> {
+  return apiGet<ConfigEffectivenessSummary>("/config-effectiveness");
+}

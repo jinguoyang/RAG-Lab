@@ -45,11 +45,13 @@ import {
   confirmConfigRollback,
   copyConfigRevisionToDraft,
   createConfigReleaseRecord,
+  fetchConfigEffectiveness,
   fetchConfigReleaseRecords,
   fetchConfigRevisions,
   saveConfigRevision,
   validatePipeline,
 } from "../services/configService";
+import type { ConfigEffectivenessSummary, ConfigItemEffectiveness } from "../services/configService";
 import type {
   ConfigRevisionDTO,
   ConfigReleaseRecordDTO,
@@ -361,6 +363,50 @@ function formatNodeParams(nodeId: string, params: NodeParams | undefined): strin
   return NODE_PARAMETER_FIELDS[nodeId]?.map((field) => `${field.label}=${String(params[field.key])}`) ?? [];
 }
 
+// ── B-316: 配置生效状态辅助函数 ──
+
+function getNodeEffectivenessStatus(
+  nodeType: string,
+  effectiveness: ConfigEffectivenessSummary | null,
+): { effective: number; partially: number; planned: number; deprecated: number } | null {
+  if (!effectiveness) return null;
+  const node = effectiveness.nodes.find((n) => n.nodeType === nodeType);
+  if (!node) return null;
+  return {
+    effective: node.items.filter((i) => i.status === "effective").length,
+    partially: node.items.filter((i) => i.status === "partiallyEffective").length,
+    planned: node.items.filter((i) => i.status === "planned").length,
+    deprecated: node.items.filter((i) => i.status === "deprecated").length,
+  };
+}
+
+function getItemEffectiveness(
+  nodeType: string,
+  key: string,
+  effectiveness: ConfigEffectivenessSummary | null,
+): ConfigItemEffectiveness | null {
+  if (!effectiveness) return null;
+  const node = effectiveness.nodes.find((n) => n.nodeType === nodeType);
+  if (!node) return null;
+  return node.items.find((i) => i.key === key) ?? null;
+}
+
+function EffectivenessBadge({ status }: { status: string }) {
+  if (status === "effective") {
+    return <Badge variant="success">已生效</Badge>;
+  }
+  if (status === "partiallyEffective") {
+    return <Badge variant="warning">部分生效</Badge>;
+  }
+  if (status === "planned") {
+    return <Badge variant="inactive">规划中</Badge>;
+  }
+  if (status === "deprecated") {
+    return <Badge variant="error">已废弃</Badge>;
+  }
+  return null;
+}
+
 /**
  * 从保存过的 pipelineDefinition 还原页面编辑态，作为回退未保存修改的基线。
  */
@@ -393,10 +439,12 @@ function NodeCard({
   node,
   isSelected,
   onSelect,
+  effectivenessStatus,
 }: {
   node: PipelineNode;
   isSelected: boolean;
   onSelect: () => void;
+  effectivenessStatus?: { effective: number; partially: number; planned: number; deprecated: number } | null;
 }) {
   return (
     <button
@@ -418,6 +466,19 @@ function NodeCard({
               {!node.enabled && <Badge variant="inactive">已禁用</Badge>}
             </div>
             <p className="mt-1 text-xs leading-relaxed text-stone-gray">{node.description}</p>
+            {effectivenessStatus && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {effectivenessStatus.effective > 0 && (
+                  <Badge variant="success">{effectivenessStatus.effective} 项已生效</Badge>
+                )}
+                {effectivenessStatus.partially > 0 && (
+                  <Badge variant="warning">{effectivenessStatus.partially} 项部分生效</Badge>
+                )}
+                {effectivenessStatus.planned > 0 && (
+                  <Badge variant="inactive">{effectivenessStatus.planned} 项规划中</Badge>
+                )}
+              </div>
+            )}
           </div>
         </div>
         <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-border-warm" />
@@ -462,6 +523,7 @@ export function ConfigCenter() {
     graph: true,
   });
   const [nodeParams, setNodeParams] = useState<Record<string, NodeParams>>(DEFAULT_NODE_PARAMS);
+  const [configEffectiveness, setConfigEffectiveness] = useState<ConfigEffectivenessSummary | null>(null);
 
   const activeRevision = useMemo(
     () => revisions.find((revision) => revision.active)?.revisionNo ?? "暂无生效版本",
@@ -512,6 +574,7 @@ export function ConfigCenter() {
 
   useEffect(() => {
     void loadRevisions({ syncEditorToActive: true });
+    void fetchConfigEffectiveness().then(setConfigEffectiveness).catch(() => {});
   }, [kbId]);
 
   const pipelineNodes = useMemo<PipelineNode[]>(
@@ -1016,6 +1079,11 @@ export function ConfigCenter() {
               {isPipelineValid ? "Pipeline 合法" : "Pipeline 非法"}
             </Badge>
             {hasUnsavedChanges && <Badge variant="warning">有未保存修改</Badge>}
+            {configEffectiveness && (
+              <Badge variant="info">
+                配置生效：{configEffectiveness.effective}/{configEffectiveness.total} 项
+              </Badge>
+            )}
           </>
         }
       />
@@ -1084,6 +1152,40 @@ export function ConfigCenter() {
               </div>
             </CardContent>
           </Card>
+
+          {configEffectiveness && (
+            <Card>
+              <CardHeader className="py-3">
+                <CardTitle className="flex items-center gap-2 text-sm" serif={false}>
+                  <CheckCircle2 className="h-4 w-4 text-terracotta" /> 配置生效审计
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 p-4 text-xs">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-lg border border-border-cream bg-parchment p-2 text-center">
+                    <p className="text-lg font-bold text-green-600">{configEffectiveness.effective}</p>
+                    <p className="text-stone-gray">已生效</p>
+                  </div>
+                  <div className="rounded-lg border border-border-cream bg-parchment p-2 text-center">
+                    <p className="text-lg font-bold text-yellow-600">{configEffectiveness.partiallyEffective}</p>
+                    <p className="text-stone-gray">部分生效</p>
+                  </div>
+                  <div className="rounded-lg border border-border-cream bg-parchment p-2 text-center">
+                    <p className="text-lg font-bold text-gray-400">{configEffectiveness.planned}</p>
+                    <p className="text-stone-gray">规划中</p>
+                  </div>
+                  <div className="rounded-lg border border-border-cream bg-parchment p-2 text-center">
+                    <p className="text-lg font-bold text-red-400">{configEffectiveness.deprecated}</p>
+                    <p className="text-stone-gray">已废弃</p>
+                  </div>
+                </div>
+                <p className="text-stone-gray">
+                  共 {configEffectiveness.total} 个配置项，
+                  {configEffectiveness.effective} 个已真实生效。
+                </p>
+              </CardContent>
+            </Card>
+          )}
         </aside>
 
         <Card className="flex min-h-0 flex-col overflow-hidden">
@@ -1142,6 +1244,7 @@ export function ConfigCenter() {
                                 node={node}
                                 isSelected={selectedNode.id === node.id}
                                 onSelect={() => setSelectedNodeId(node.id)}
+                                effectivenessStatus={getNodeEffectivenessStatus(node.type, configEffectiveness)}
                               />
                             ))}
                           </div>
@@ -1251,10 +1354,17 @@ export function ConfigCenter() {
                     )}
                     {selectedParamFields.map((field) => {
                       const value = nodeParams[selectedNode.id]?.[field.key];
+                      const itemEff = getItemEffectiveness(selectedNode.type, field.key, configEffectiveness);
 
                       return (
                         <label key={field.key} className="block rounded-lg border border-border-cream bg-parchment p-3">
-                          <span className="mb-2 block text-xs font-medium text-near-black">{field.label}</span>
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <span className="text-xs font-medium text-near-black">{field.label}</span>
+                            {itemEff && <EffectivenessBadge status={itemEff.status} />}
+                          </div>
+                          {itemEff && itemEff.status !== "effective" && itemEff.note && (
+                            <p className="mb-2 text-[11px] leading-relaxed text-stone-gray">{itemEff.note}</p>
+                          )}
                           {field.type === "boolean" ? (
                             <div className="flex items-center justify-between gap-3">
                               <span className="text-xs text-stone-gray">{value ? "已开启" : "已关闭"}</span>

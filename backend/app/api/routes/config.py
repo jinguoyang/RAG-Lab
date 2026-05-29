@@ -41,12 +41,14 @@ from app.services.governance_service import (
     list_config_release_records,
 )
 from app.services.knowledge_base_service import KnowledgeBaseDisabledError
+from app.services.config_effectiveness import get_effectiveness_summary, get_node_effectiveness
 
 template_router = APIRouter(prefix="/config-templates", tags=["config-templates"])
 revision_router = APIRouter(
     prefix="/knowledge-bases/{kb_id}/config-revisions",
     tags=["config-revisions"],
 )
+effectiveness_router = APIRouter(prefix="/config-effectiveness", tags=["config-effectiveness"])
 
 
 @template_router.get("", response_model=list[ConfigTemplateDTO])
@@ -232,3 +234,31 @@ def activate_revision(
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Config revision not found.")
     return response
+
+
+# ── B-316: 配置生效审计 API ──
+
+
+@effectiveness_router.get("")
+def read_config_effectiveness(
+    current_user: CurrentUserResponse = Depends(get_current_user),
+) -> dict:
+    """返回所有默认节点配置项的生效状态清单。
+
+    供前端配置中心渲染 effective / partiallyEffective / planned / deprecated 状态。
+    """
+    _ = current_user
+    return get_effectiveness_summary()
+
+
+@effectiveness_router.get("/{node_type}")
+def read_node_effectiveness(
+    node_type: str,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+) -> dict:
+    """返回单个节点类型的配置项生效状态。"""
+    _ = current_user
+    result = get_node_effectiveness(node_type)
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Node type '{node_type}' not found.")
+    return result
