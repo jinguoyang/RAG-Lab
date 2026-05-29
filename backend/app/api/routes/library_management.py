@@ -44,7 +44,7 @@ def _raise_library_mgmt_error(exc: Exception) -> None:
         raise HTTPException(status_code=404, detail="成员不存在")
     if isinstance(exc, LibraryMemberConflictError):
         raise HTTPException(status_code=409, detail="该成员已存在")
-    raise HTTPException(status_code=500, detail=str(exc))
+    raise HTTPException(status_code=500, detail="服务器内部错误")
 
 
 @router.get("", response_model=LibraryPageResponse)

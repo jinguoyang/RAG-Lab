@@ -1,5 +1,6 @@
 """文档库 API 路由。"""
 
+import logging
 from typing import Annotated, Literal
 from urllib.parse import quote
 from uuid import UUID
@@ -7,6 +8,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
+
+# 文件上传大小限制：100MB
+MAX_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024
 
 from app.api.deps import get_current_user
 from app.core.database import get_db_session
@@ -127,6 +133,11 @@ def upload_document(
     file_bytes = file.file.read()
     if not file_bytes:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="EMPTY_FILE")
+    if len(file_bytes) > MAX_UPLOAD_SIZE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"文件大小超过限制（最大 {MAX_UPLOAD_SIZE_BYTES // (1024*1024)}MB）",
+        )
     try:
         return create_library_upload(
             session=db,
@@ -398,6 +409,11 @@ def upload_version(
     file_bytes = file.file.read()
     if not file_bytes:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="EMPTY_FILE")
+    if len(file_bytes) > MAX_UPLOAD_SIZE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"文件大小超过限制（最大 {MAX_UPLOAD_SIZE_BYTES // (1024*1024)}MB）",
+        )
     try:
         return upload_library_version(
             session=db,

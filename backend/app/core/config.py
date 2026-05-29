@@ -20,7 +20,7 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("RAG_LAB_DATABASE_URL", "DATABASE_URL"),
     )
-    dev_auth_enabled: bool = True
+    dev_auth_enabled: bool = False
     dev_default_username: str = "admin"
     dev_default_security_level: str = "public"
     storage_backend: str = Field(
@@ -204,15 +204,14 @@ class Settings(BaseSettings):
     )
 
     @model_validator(mode="after")
-    def _warn_default_embed_token_secret(self) -> "Settings":
+    def _validate_embed_token_secret(self) -> "Settings":
         if (
             self.environment != "local"
             and self.app_runtime_embed_token_secret == "rag-lab-local-embed-token-secret"
         ):
-            warnings.warn(
+            raise ValueError(
                 "app_runtime_embed_token_secret is using the default value. "
-                "Set RAG_LAB_APP_RUNTIME_EMBED_TOKEN_SECRET in production.",
-                stacklevel=1,
+                "Set RAG_LAB_APP_RUNTIME_EMBED_TOKEN_SECRET in production."
             )
         return self
 

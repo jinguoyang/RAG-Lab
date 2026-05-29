@@ -18,6 +18,8 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    # 幂等：先删除可能已存在的约束（0028 已创建过同名约束）
+    op.drop_constraint("ck_qa_run_evidence_source_status", "qa_run_evidence", type_="check")
     op.create_check_constraint(
         "ck_qa_run_evidence_source_status",
         "qa_run_evidence",

@@ -1,5 +1,8 @@
-from fastapi import APIRouter
+from typing import Annotated
 
+from fastapi import APIRouter, Depends
+
+from app.api.deps import CurrentUserResponse, get_current_user
 from app.core.config import get_settings
 from app.schemas.health import (
     DependencyConfigItemDTO,
@@ -111,7 +114,9 @@ def _provider_diagnostic(
 
 
 @router.get("/health/dependencies", response_model=DependencyHealthResponse)
-def read_dependency_health() -> DependencyHealthResponse:
+def read_dependency_health(
+    current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
+) -> DependencyHealthResponse:
     """返回外部依赖配置健康摘要，不主动发起网络探测以避免发布检查阻塞。"""
     settings = get_settings()
     dependencies = [
@@ -206,7 +211,9 @@ def read_dependency_health() -> DependencyHealthResponse:
 
 
 @router.get("/health/provider-diagnostics", response_model=ProviderDiagnosticsResponse)
-def read_provider_diagnostics() -> ProviderDiagnosticsResponse:
+def read_provider_diagnostics(
+    current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
+) -> ProviderDiagnosticsResponse:
     """返回 LLM、Embedding、Rerank 的连通性和限流诊断摘要。"""
     settings = get_settings()
     diagnostics = [

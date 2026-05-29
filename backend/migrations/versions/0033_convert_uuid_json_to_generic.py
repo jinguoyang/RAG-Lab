@@ -565,6 +565,8 @@ def upgrade() -> None:
         )
 
     # 3. Drop GIN index before JSONB->JSON (JSON doesn't support GIN)
+    # 注意：此索引在 upgrade 中不会重建，因为 JSON 类型不支持 GIN 索引。
+    # 如果需要对 scope 字段进行高效查询，应保持 JSONB 类型或使用 JSONB 运算符创建表达式索引。
     op.drop_index("idx_index_sync_jobs_scope", table_name="index_sync_jobs", if_exists=True)
 
     # 4. JSONB -> JSON

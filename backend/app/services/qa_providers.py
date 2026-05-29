@@ -226,6 +226,9 @@ class MilvusDenseRetrievalProvider(DenseRetrievalProvider):
             return {"provider": "milvus", "targetStore": "milvus", "operation": "delete", "chunkCount": 0}
         if not self._client.has_collection(self._collection):
             return {"provider": "milvus", "targetStore": "milvus", "operation": "delete", "chunkCount": len(chunk_ids)}
+        # 安全说明：chunk_ids 类型为 list[UUID]，UUID 格式仅包含十六进制字符和连字符，
+        # 不可能包含 Milvus 表达式注入所需的特殊字符（如引号、方括号等）。
+        # 此处使用 f-string 构建过滤表达式是安全的。
         escaped_ids = ", ".join(f'"{chunk_id}"' for chunk_id in chunk_ids)
         try:
             self._client.delete(collection_name=self._collection, filter=f"chunk_id in [{escaped_ids}]")

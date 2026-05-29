@@ -31,8 +31,16 @@ def upgrade() -> None:
     op.add_column("chunk_revisions", sa.Column("strategy", sa.String(32), nullable=False, server_default="fixed_size"))
     op.add_column("chunk_revisions", sa.Column("params", JSONB, nullable=False, server_default="{}"))
 
-    # 5. Backfill params for existing records
-    op.execute("UPDATE chunk_revisions SET params = '{\"chunk_size\": 900, \"chunk_overlap\": 120}'")
+    # 5. Backfill params for existing records（从 document_kb_bindings 复制实际值）
+    op.execute("""
+        UPDATE chunk_revisions cr
+        SET params = jsonb_build_object(
+            'chunk_size', COALESCE(dkb.chunk_size, 900),
+            'chunk_overlap', COALESCE(dkb.chunk_overlap, 120)
+        )
+        FROM document_kb_bindings dkb
+        WHERE cr.binding_id = dkb.binding_id
+    """)
 
     # 6. Drop chunk_size/chunk_overlap from document_kb_bindings
     op.drop_column("document_kb_bindings", "chunk_size")

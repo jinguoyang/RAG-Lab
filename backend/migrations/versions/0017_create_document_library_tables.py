@@ -144,3 +144,5 @@ def downgrade() -> None:
     op.drop_index("idx_documents_owner_status_updated_at", table_name="documents")
     op.drop_constraint("fk_documents_owner_id", "documents", type_="foreignkey")
     op.drop_column("documents", "owner_id")
+    # 恢复 kb_id 为 NOT NULL（upgrade 中改为可空）
+    op.alter_column("documents", "kb_id", nullable=False)

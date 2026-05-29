@@ -1,10 +1,13 @@
 """测试数据 Seed API，仅在 TEST_SEED_ENABLED=true 时启用。"""
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.api.deps import CurrentUserResponse, get_current_user
 from app.core.config import get_settings
 from app.core.database import get_db_session
 
@@ -41,7 +44,11 @@ class SeedPayload(BaseModel):
 
 
 @router.post("/seed")
-def seed_test_data(payload: SeedPayload, db: Session = Depends(get_db_session)):
+def seed_test_data(
+    payload: SeedPayload,
+    current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
+    db: Session = Depends(get_db_session),
+):
     """批量创建测试前置数据。仅在 test_seed_enabled 时可用。"""
     settings = get_settings()
     if not settings.test_seed_enabled:
