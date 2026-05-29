@@ -830,6 +830,10 @@ class LlmProvider:
     def rewrite_query(self, query: str) -> str:
         raise NotImplementedError
 
+    def generate_multi_queries(self, query: str, count: int) -> list[str]:
+        """生成多个查询变体，用于 Multi-Query 检索。默认返回空列表表示不支持。"""
+        return []
+
     def extract_graph(self, chunk_payloads: list[dict]) -> list[ChunkGraphExtraction]:
         """从 Chunk 正文抽取实体关系，供 Neo4j 写入使用。"""
         raise NotImplementedError
@@ -840,6 +844,7 @@ class LlmProvider:
         evidence: list[ProviderCandidate],
         temperature: float | None = None,
         max_context_tokens: int | None = None,
+        max_output_tokens: int | None = None,
     ) -> str:
         raise NotImplementedError
 
@@ -849,6 +854,21 @@ class LocalLlmProvider(LlmProvider):
 
     def rewrite_query(self, query: str) -> str:
         return query if query.endswith("?") or query.endswith("？") else f"{query}?"
+
+    def generate_multi_queries(self, query: str, count: int) -> list[str]:
+        """本地环境生成简单的查询变体，不依赖真实 LLM。"""
+        variants = []
+        # 同义词变体
+        if "什么是" in query:
+            variants.append(query.replace("什么是", "解释"))
+        elif "如何" in query:
+            variants.append(query.replace("如何", "怎样"))
+        # 关键词提取变体
+        words = query.split()
+        if len(words) > 3:
+            variants.append(" ".join(words[:3]))
+        # 限制返回数量
+        return variants[:max(0, count - 1)]
 
     def extract_graph(self, chunk_payloads: list[dict]) -> list[ChunkGraphExtraction]:
         """本地环境生成可回表的轻量图结果，不冒充真实模型质量。"""
@@ -874,6 +894,7 @@ class LocalLlmProvider(LlmProvider):
         evidence: list[ProviderCandidate],
         temperature: float | None = None,
         max_context_tokens: int | None = None,
+        max_output_tokens: int | None = None,
     ) -> str:
         if not evidence:
             return f"未召回到可用证据，无法基于知识库回答：{query}"
@@ -933,6 +954,31 @@ class HttpLlmProvider(LlmProvider):
             max_tokens=64,
         )
         return _normalize_rewritten_query(query, content)
+
+    def generate_multi_queries(self, query: str, count: int) -> list[str]:
+        """使用 LLM 生成多个查询变体，用于 Multi-Query 检索。"""
+        if count <= 1:
+            return []
+        try:
+            content = self._chat(
+                [
+                    {
+                        "role": "system",
+                        "content": (
+                            f"Generate {count - 1} alternative search queries for the user's question. "
+                            "Each query should be a different phrasing or aspect of the same question. "
+                            "Return one query per line, no numbering, no explanations. "
+                            "Keep each query within 160 characters."
+                        ),
+                    },
+                    {"role": "user", "content": query},
+                ],
+                max_tokens=128,
+            )
+            variants = [line.strip() for line in content.splitlines() if line.strip() and line.strip() != query]
+            return variants[:count - 1]
+        except ProviderError:
+            return []
 
     def extract_graph(self, chunk_payloads: list[dict]) -> list[ChunkGraphExtraction]:
         """调用真实 LLM 从 Chunk 中抽取可写入 Neo4j 的实体关系 JSON。"""
@@ -1027,6 +1073,7 @@ class HttpLlmProvider(LlmProvider):
         evidence: list[ProviderCandidate],
         temperature: float | None = None,
         max_context_tokens: int | None = None,
+        max_output_tokens: int | None = None,
     ) -> str:
         evidence_text = "\n".join(f"[{index}] {candidate.content or candidate.metadata}" for index, candidate in enumerate(evidence, start=1))
         return self._chat(
@@ -1035,6 +1082,7 @@ class HttpLlmProvider(LlmProvider):
                 {"role": "user", "content": f"Question: {query}\nEvidence:\n{evidence_text}"},
             ],
             temperature=temperature,
+            max_tokens=max_output_tokens,
         )
 
     def _chat(

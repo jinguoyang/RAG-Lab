@@ -6,11 +6,9 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
-import httpx
 from sqlalchemy import insert, select, update
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
 from app.core.db_types import new_id
 from app.schemas.training_plan import AbilityGroupDTO, DocumentDTO, PlanDraftDTO
 from app.services.training_agent_service import (
@@ -21,6 +19,7 @@ from app.services.training_agent_service import (
     read_training_evidence,
     resolve_training_context,
 )
+from app.services.training_llm_client import LLMCallError, call_llm
 from app.services.training_llm_json_service import TrainingLLMOutputError, parse_training_json
 from app.services.training_skill_registry_service import record_training_skill_call
 from app.tables import training_plans
@@ -88,28 +87,6 @@ def _build_llm_prompt(job_title: str, job_description: str, evidence_summary: st
         {"role": "system", "content": system},
         {"role": "user", "content": user},
     ]
-
-
-def _call_llm(messages: list[dict[str, str]]) -> str:
-    """调用 LLM chat 接口，返回原始文本。"""
-    settings = get_settings()
-    headers = {"Content-Type": "application/json"}
-    if settings.llm_api_key:
-        headers["Authorization"] = f"Bearer {settings.llm_api_key}"
-    request_json = {
-        "model": settings.llm_model,
-        "messages": messages,
-        "temperature": 0.2,
-    }
-    response = httpx.post(
-        settings.llm_endpoint,
-        headers=headers,
-        json=request_json,
-        timeout=60,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    return str(payload["choices"][0]["message"]["content"])
 
 
 def _generate_plan_with_llm(

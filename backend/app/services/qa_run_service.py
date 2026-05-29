@@ -303,9 +303,10 @@ def _build_effective_pipeline_params(
         "retrievalScoreThreshold": retrieval_score_threshold,
         "fusionWeights": fusion_weights,
         "fusion": {
-            "method": _as_string(node_params.get("fusion", {}).get("method"), "chunkIdDedupe", {"chunkIdDedupe", "rrf", "weighted"}),
+            "method": _as_string(node_params.get("fusion", {}).get("method"), "weighted", {"chunkIdDedupe", "rrf", "weighted"}),
             "candidateLimit": candidate_limit,
             "dedupBy": _as_string(node_params.get("fusion", {}).get("dedupBy"), "chunkId", {"chunkId", "source"}),
+            "rrfK": _as_positive_int(node_params.get("fusion", {}).get("rrfK"), 60, minimum=10, maximum=120),
         },
         "rerankTopN": rerank_top_n,
         "rerank": {
@@ -338,6 +339,13 @@ def _build_effective_pipeline_params(
             "citationPolicy": _as_string(citation_params.get("citationPolicy"), "strict", {"strict", "relaxed"}),
         },
         "temperature": temperature,
+        # B-317: 传递 maxOutputTokens 给 LLM Provider
+        "maxOutputTokens": _as_positive_int(
+            node_params.get("generation", {}).get("maxOutputTokens"),
+            1200,
+            minimum=256,
+            maximum=8000,
+        ),
     }
 
 
@@ -502,18 +510,55 @@ def _weighted_score(candidate: ProviderCandidate, fusion_weights: dict[str, floa
     return (candidate.raw_score or 0) * fusion_weights.get(candidate.source_type, 1)
 
 
+def _rrf_score(rank: int, k: int = 60) -> float:
+    """计算 RRF (Reciprocal Rank Fusion) 分数。"""
+    return 1.0 / (k + rank)
+
+
 def _fuse_provider_candidates(
     candidates: list[ProviderCandidate],
     fusion_weights: dict[str, float] | None = None,
     candidate_limit: int | None = None,
+    fusion_method: str = "weighted",
+    rrf_k: int = 60,
 ) -> list[ProviderCandidate]:
-    """融合 Dense/Sparse/Graph 候选，按 chunk_id 去重并保留多路命中诊断。"""
+    """融合 Dense/Sparse/Graph 候选，按 chunk_id 去重并保留多路命中诊断。
+
+    B-317: 支持 weighted 和 rrf 两种融合方法。
+    """
     weights = fusion_weights or {"dense": 1, "sparse": 1, "graph": 1}
+
+    # 按来源分组，用于 RRF 排名计算
+    if fusion_method == "rrf":
+        candidates_by_source: dict[str, list[ProviderCandidate]] = {}
+        for candidate in candidates:
+            source = candidate.source_type
+            if source not in candidates_by_source:
+                candidates_by_source[source] = []
+            candidates_by_source[source].append(candidate)
+        # 按原始分数排序
+        for source in candidates_by_source:
+            candidates_by_source[source].sort(
+                key=lambda c: c.raw_score or 0, reverse=True
+            )
+
     fused_by_key: dict[str, ProviderCandidate] = {}
     for candidate in candidates:
         key = _candidate_fusion_key(candidate)
         existing = fused_by_key.get(key)
-        weighted_score = _weighted_score(candidate, weights)
+
+        if fusion_method == "rrf":
+            # B-317: RRF 融合算法
+            source = candidate.source_type
+            source_candidates = candidates_by_source.get(source, [])
+            rank = next(
+                (i for i, c in enumerate(source_candidates) if c is candidate),
+                len(source_candidates),
+            )
+            weighted_score = _rrf_score(rank, rrf_k) * weights.get(source, 1)
+        else:
+            weighted_score = _weighted_score(candidate, weights)
+
         if existing is None:
             fused_by_key[key] = ProviderCandidate(
                 source_type=candidate.source_type,
@@ -526,6 +571,7 @@ def _fuse_provider_candidates(
                     "retrievalScores": {candidate.source_type: candidate.raw_score},
                     "fusionWeights": {candidate.source_type: weights.get(candidate.source_type, 1)},
                     "fusedScore": weighted_score,
+                    "fusionMethod": fusion_method,
                 },
             )
             continue
@@ -558,6 +604,7 @@ def _fuse_provider_candidates(
                 "retrievalScores": retrieval_scores,
                 "fusionWeights": fusion_weights_by_channel,
                 "fusedScore": max(fused_scores) if fused_scores else None,
+                "fusionMethod": fusion_method,
             },
         )
     fused = sorted(fused_by_key.values(), key=lambda item: item.metadata.get("fusedScore") or 0, reverse=True)
@@ -994,6 +1041,15 @@ def _execute_provider_qa_run(
     multi_query_params = pipeline_params["multiQuery"]
     retrieval_queries = [rewritten_query]
     if multi_query_params["enabled"] and multi_query_params["queryCount"] > 1:
+        # B-317: 使用 LLM 生成多个查询变体
+        try:
+            multi_variants = provider_set.llm.generate_multi_queries(
+                rewritten_query,
+                multi_query_params["queryCount"],
+            )
+            retrieval_queries.extend(multi_variants)
+        except ProviderError:
+            pass  # 多查询生成失败时保留单查询
         if query != rewritten_query and pipeline_params["queryRewrite"]["preserveOriginalQuery"]:
             retrieval_queries.append(query)
         _insert_trace_step(
@@ -1178,10 +1234,14 @@ def _execute_provider_qa_run(
         trace_order += 1
 
     raw_channel_counts = _retrieval_channel_counts(candidates)
+    # B-317: 传递融合方法和 RRF K 参数
+    fusion_params = pipeline_params.get("fusion", {})
     fused_candidates = _fuse_provider_candidates(
         candidates,
         pipeline_params["fusionWeights"],
-        pipeline_params["fusion"]["candidateLimit"],
+        fusion_params.get("candidateLimit"),
+        fusion_method=fusion_params.get("method", "weighted"),
+        rrf_k=fusion_params.get("rrfK", 60),
     )
     _insert_trace_step(
         session,
@@ -1192,9 +1252,10 @@ def _execute_provider_qa_run(
         {"inputCandidates": len(candidates), "channelCounts": raw_channel_counts},
         {"candidateCount": len(fused_candidates), "dedupedCandidates": len(candidates) - len(fused_candidates)},
         {
-            "strategy": pipeline_params["fusion"]["method"],
-            "candidateLimit": pipeline_params["fusion"]["candidateLimit"],
+            "strategy": fusion_params.get("method", "weighted"),
+            "candidateLimit": fusion_params.get("candidateLimit"),
             "fusionWeights": pipeline_params["fusionWeights"],
+            "rrfK": fusion_params.get("rrfK", 60),
             "preserve": "matchedChannels",
         },
         started_at=started_at,
@@ -1337,11 +1398,13 @@ def _execute_provider_qa_run(
     )
     trace_order += 1
     try:
+        # B-317: 传递 maxOutputTokens 给 LLM Provider
         answer = provider_set.llm.generate_answer(
             query,
             context_candidates,
             temperature=pipeline_params["temperature"],
             max_context_tokens=pipeline_params["maxContextTokens"],
+            max_output_tokens=pipeline_params.get("maxOutputTokens"),
         )
         generation_usage = getattr(provider_set.llm, "last_usage", {})
         for key in ("inputTokens", "outputTokens", "totalTokens"):

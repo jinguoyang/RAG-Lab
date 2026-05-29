@@ -7,14 +7,13 @@ from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any
 
-import httpx
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
 from app.tables import training_questions
-from app.services.training_agent_service import evidence_preview, read_training_evidence
+from app.services.training_agent_service import evidence_preview
+from app.services.training_llm_client import LLMCallError, call_llm
 from app.services.training_llm_json_service import TrainingLLMOutputError, parse_training_json
 from app.services.training_skill_registry_service import record_training_skill_call
 
@@ -106,15 +105,11 @@ def _llm_grade(
     evidence_chunk_ids: list[str],
 ) -> SubjectiveGradeResult:
     """调用 LLM 进行主观题评分。"""
-    settings = get_settings()
-    if not settings.llm_endpoint:
-        raise RuntimeError("LLM endpoint 未配置。")
-
     evidence_text = _build_evidence_text(session, app_id, question_content, evidence_chunk_ids)
     criteria_text = _format_criteria(rubric)
     prompt = _build_prompt(question_content, criteria_text, answer, evidence_text)
 
-    raw_response = _call_llm(settings, prompt)
+    raw_response = call_llm(prompt, temperature=0.1, max_tokens=1024)
     data = parse_training_json(
         raw_response,
         required_keys={"score", "reason"},
@@ -141,14 +136,6 @@ def _build_evidence_text(
 ) -> str:
     """构建证据摘要文本。"""
     if not evidence_chunk_ids:
-        return ""
-
-    question_row = session.execute(
-        select(training_questions.c.app_id)
-        .where(training_questions.c.app_id == app_id)
-        .limit(1)
-    ).mappings().first()
-    if question_row is None:
         return ""
 
     from app.tables import chunks
@@ -216,34 +203,6 @@ def _build_prompt(
     ]
 
 
-def _call_llm(settings: Any, messages: list[dict[str, str]]) -> str:
-    """调用 OpenAI-compatible LLM 接口。"""
-    headers = {"Content-Type": "application/json"}
-    if settings.llm_api_key:
-        headers["Authorization"] = f"Bearer {settings.llm_api_key}"
-
-    payload = {
-        "model": settings.llm_model,
-        "messages": messages,
-        "temperature": 0.1,
-        "max_tokens": 1024,
-    }
-
-    response = httpx.post(
-        settings.llm_endpoint,
-        headers=headers,
-        json=payload,
-        timeout=60,
-    )
-    response.raise_for_status()
-
-    data = response.json()
-    try:
-        return str(data["choices"][0]["message"]["content"])
-    except (KeyError, IndexError, TypeError) as exc:
-        raise RuntimeError("LLM 响应格式无效。") from exc
-
-
 def _clamp_score(score: Any) -> int:
     """将分数限制在 0-100 范围内。"""
     try:
@@ -263,9 +222,9 @@ def _fallback_grade(answer: str, rubric: dict[str, Any] | None) -> SubjectiveGra
         )
 
     criteria = rubric.get("criteria", []) if isinstance(rubric, dict) else []
-    base_score = 60 if len(answer) >= 20 else 40
+    base_score = 40 if len(answer) >= 20 else 20
     if criteria and len(answer) >= 50:
-        base_score = 80
+        base_score = 50
 
     return SubjectiveGradeResult(
         score=base_score,

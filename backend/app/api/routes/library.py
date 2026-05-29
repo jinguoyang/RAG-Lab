@@ -9,14 +9,14 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Respon
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_current_user
+from app.core.database import get_db_session
+from app.schemas.auth import CurrentUserResponse
+
 logger = logging.getLogger(__name__)
 
 # 文件上传大小限制：100MB
 MAX_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024
-
-from app.api.deps import get_current_user
-from app.core.database import get_db_session
-from app.schemas.auth import CurrentUserResponse
 from app.schemas.common import PageResponse
 from app.schemas.library import (
     BatchActionRequest,

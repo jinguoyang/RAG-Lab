@@ -1,4 +1,4 @@
-"""RAG Pipeline 节点配置项生效状态审计。
+"""RAG Pipeline 节点配置项生效状态审计服务。
 
 每个节点的每个配置项维护一个 effectiveness 状态：
 - effective: 后端代码读取并改变执行路径，可在 trace 中证明。
@@ -103,10 +103,10 @@ def build_default_capability_registry() -> list[NodeCapability]:
             items=[
                 _i("enabled", "effective", "qa_run_service._build_effective_pipeline_params",
                    "控制是否进入多查询分支", "sprint19"),
-                _i("queryCount", "planned", "",
-                   "多查询生成尚未实现，配置值不影响实际查询数量"),
-                _i("mergeStrategy", "planned", "",
-                   "多查询合并策略尚未实现"),
+                _i("queryCount", "effective", "LlmProvider.generate_multi_queries -> qa_run_service",
+                   "B-317: 使用 LLM 生成多个查询变体，数量受此配置约束", "sprint63"),
+                _i("mergeStrategy", "effective", "qa_run_service._fuse_provider_candidates",
+                   "B-317: 支持 rrf 和 weighted 两种合并策略", "sprint63"),
             ],
         ),
         # ── retrieval ──
@@ -175,10 +175,10 @@ def build_default_capability_registry() -> list[NodeCapability]:
             node_type="fusion",
             stage="fusion",
             items=[
-                _i("method", "partiallyEffective", "qa_run_service._weighted_score_fusion",
-                   "当前固定使用加权融合，rrf 方法配置存在但未改变算法", "sprint19"),
-                _i("rrfK", "planned", "",
-                   "RRF K 参数仅在 method=rrf 时生效，当前 method 固定为 weighted"),
+                _i("method", "effective", "qa_run_service._fuse_provider_candidates",
+                   "B-317: 支持 weighted 和 rrf 两种融合算法", "sprint63"),
+                _i("rrfK", "effective", "qa_run_service._fuse_provider_candidates",
+                   "B-317: RRF K 参数在 method=rrf 时生效", "sprint63"),
                 _i("candidateLimit", "effective", "qa_run_service._build_effective_pipeline_params",
                    "限制融合后的候选数量", "sprint19"),
                 _i("dedupBy", "effective", "qa_run_service._candidate_fusion_key",
@@ -237,8 +237,8 @@ def build_default_capability_registry() -> list[NodeCapability]:
                    "传递给 LLM 的温度参数", "sprint19"),
                 _i("model", "planned", "",
                    "LLM 模型由全局 Settings 控制，节点级 model 配置未驱动模型切换"),
-                _i("maxOutputTokens", "planned", "",
-                   "最大输出 token 数未传递给 LLM Provider"),
+                _i("maxOutputTokens", "effective", "qa_run_service -> LlmProvider.generate_answer",
+                   "B-317: 最大输出 token 数已传递给 LLM Provider", "sprint63"),
                 _i("citationPolicy", "partiallyEffective", "qa_run_service",
                    "传递给生成 prompt 的引用策略，但效果依赖 LLM 遵循程度", "sprint19"),
             ],

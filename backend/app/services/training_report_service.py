@@ -37,7 +37,7 @@ def get_training_report(session: Session, app_id: str) -> TrainingReportDTO:
             func.count().label("total_attempts"),
             func.sum(
                 case(
-                    (training_answer_records.c.is_correct == 0, 1),
+                    (training_answer_records.c.is_correct.is_(False), 1),
                     else_=0,
                 )
             ).label("fail_count"),
@@ -54,7 +54,7 @@ def get_training_report(session: Session, app_id: str) -> TrainingReportDTO:
         .having(
             func.sum(
                 case(
-                    (training_answer_records.c.is_correct == 0, 1),
+                    (training_answer_records.c.is_correct.is_(False), 1),
                     else_=0,
                 )
             )
@@ -63,7 +63,7 @@ def get_training_report(session: Session, app_id: str) -> TrainingReportDTO:
         .order_by(
             func.sum(
                 case(
-                    (training_answer_records.c.is_correct == 0, 1),
+                    (training_answer_records.c.is_correct.is_(False), 1),
                     else_=0,
                 )
             ).desc()
