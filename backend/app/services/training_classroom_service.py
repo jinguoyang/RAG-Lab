@@ -29,6 +29,7 @@ from app.services.training_agent_service import (
     resolve_training_context,
 )
 from app.tables import (
+    rag_apps,
     training_classroom_events,
     training_classroom_messages,
     training_classroom_sessions,
@@ -144,16 +145,137 @@ def _to_message(row: Any) -> ClassroomMessageDTO:
     )
 
 
-def get_classroom_session(session: Session, session_id: str, credential: str | None = None) -> ClassroomSessionDetailResponse:
-    """获取课堂会话详情和历史消息。"""
+def _resolve_kb_id(session: Session, app_id: str) -> Any | None:
+    """从 rag_apps 表解析 app_id 对应的 kb_id。"""
+    row = session.execute(
+        select(rag_apps.c.kb_id)
+        .where(rag_apps.c.app_id == app_id)
+        .where(rag_apps.c.deleted_at.is_(None))
+        .limit(1)
+    ).scalar()
+    return row
+
+
+def _get_pending_actions(current_state: str, state_row: Any, is_last_section: bool = False) -> list[dict[str, Any]]:
+    """根据当前状态返回可执行的动作列表。"""
+    if current_state == "INIT":
+        return [{"label": "开始学习", "eventType": "start"}]
+    if current_state == "PLAN":
+        return [{"label": "开始学习", "eventType": "continue"}]
+    if current_state == "TEACH":
+        return [
+            {"label": "听懂了，继续", "eventType": "continue"},
+            {"label": "我还不清楚", "eventType": "query"},
+        ]
+    if current_state == "CHECK_UNDERSTAND":
+        return [
+            {"label": "听懂了，继续", "eventType": "continue"},
+            {"label": "我还不清楚", "eventType": "query"},
+        ]
+    if current_state == "QUIZ":
+        return [{"label": "提交答案", "eventType": "submit_answer"}]
+    if current_state == "GRADE":
+        return [{"label": "查看复习建议", "eventType": "continue"}]
+    if current_state == "REVIEW":
+        metadata = state_row["metadata"] or {}
+        last_passed = metadata.get("lastPassed", True) if isinstance(metadata, dict) else True
+        if last_passed:
+            return [{"label": "完成复习", "eventType": "continue"}]
+        return [
+            {"label": "重新学习", "eventType": "retry_teach"},
+            {"label": "重新测验", "eventType": "retry_quiz"},
+            {"label": "完成复习", "eventType": "continue"},
+        ]
+    if current_state == "SUMMARY":
+        if is_last_section:
+            return [{"label": "完成课程", "eventType": "complete"}]
+        return [
+            {"label": "下一节", "eventType": "next_section"},
+            {"label": "完成课程", "eventType": "complete"},
+        ]
+    if current_state == "COMPLETED":
+        return []
+    if current_state == "OFF_TOPIC":
+        return [{"label": "回到课程", "eventType": "continue"}]
+    return []
+
+
+def _get_context_summary(session: Session, session_id: str) -> str | None:
+    """读取最近消息，生成简短摘要记忆。"""
+    rows = session.execute(
+        select(training_classroom_messages)
+        .where(training_classroom_messages.c.session_id == session_id)
+        .where(training_classroom_messages.c.status == "active")
+        .order_by(training_classroom_messages.c.created_at.desc())
+        .limit(10)
+    ).mappings().all()
+    if not rows:
+        return None
+    assistant_msgs = [r for r in rows if r["role"] == "assistant"][:3]
+    if not assistant_msgs:
+        return None
+    parts = []
+    for msg in reversed(assistant_msgs):
+        text = str(msg["content"] or "")
+        parts.append(text[:100])
+    return " | ".join(parts)
+
+
+def _get_current_document(session: Session, state_row: Any, kb_id: Any) -> str | None:
+    """读取当前 section 对应的文档标题。"""
+    if kb_id is None:
+        return None
+    metadata = state_row["metadata"] or {}
+    inputs = metadata.get("inputs") if isinstance(metadata, dict) else {}
+    query = str(inputs.get("jobTitle", "")) if isinstance(inputs, dict) else ""
+    rows = read_training_evidence(session, kb_id, query, limit=6)
+    if not rows:
+        return None
+    index = min(state_row["current_section_index"], len(rows) - 1)
+    return evidence_title(rows[index])
+
+
+def get_classroom_session(
+    session: Session,
+    session_id: str,
+    credential: str | None = None,
+    expected_end_user_id: str | None = None,
+) -> ClassroomSessionDetailResponse:
+    """获取课堂会话详情和历史消息。
+
+    安全规则：
+    - credential 的 app_id 必须与 session 的 app_id 匹配
+    - expected_end_user_id 与 session 的 end_user_id 不匹配时返回 404（不泄漏存在性）
+    """
     row = _read_session(session, session_id)
     if credential is not None:
-        resolve_training_context(session, credential, str(row["app_id"]))
+        context = resolve_training_context(session, credential, str(row["app_id"]))
+        # 检查 endUserId 隔离：普通员工只能访问自己的会话
+        if expected_end_user_id is not None and str(row["end_user_id"]) != str(expected_end_user_id):
+            raise ClassroomSessionNotFoundError("课堂会话不存在")
     messages = session.execute(
         select(training_classroom_messages)
         .where(training_classroom_messages.c.session_id == session_id)
         .order_by(training_classroom_messages.c.created_at.asc())
     ).mappings().all()
+
+    # 构造恢复用 metadata
+    base_metadata: dict[str, Any] = dict(row["metadata"]) if isinstance(row["metadata"], dict) else {}
+    kb_id = _resolve_kb_id(session, str(row["app_id"]))
+    current_state = row["current_state"]
+
+    is_last = False
+    if current_state == "SUMMARY" and kb_id is not None:
+        meta_inputs = base_metadata.get("inputs") if isinstance(base_metadata, dict) else {}
+        query_str = str(meta_inputs.get("jobTitle", "")) if isinstance(meta_inputs, dict) else ""
+        total_sections = _count_sections(session, kb_id, query_str)
+        is_last = row["current_section_index"] >= total_sections - 1
+
+    base_metadata["pendingActions"] = _get_pending_actions(current_state, row, is_last)
+    base_metadata["contextSummary"] = _get_context_summary(session, session_id)
+    base_metadata["currentDocument"] = _get_current_document(session, row, kb_id)
+    base_metadata["currentSectionIndex"] = row["current_section_index"]
+
     return ClassroomSessionDetailResponse(
         sessionId=str(row["session_id"]),
         appId=str(row["app_id"]),
@@ -162,7 +284,7 @@ def get_classroom_session(session: Session, session_id: str, credential: str | N
         currentState=row["current_state"],
         currentSectionIndex=row["current_section_index"],
         messages=[_to_message(item) for item in messages],
-        metadata=row["metadata"] or {},
+        metadata=base_metadata,
         createdAt=row["created_at"].isoformat(),
         updatedAt=row["updated_at"].isoformat(),
     )
