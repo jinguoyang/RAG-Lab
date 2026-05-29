@@ -9,13 +9,19 @@ from itertools import cycle, islice
 from typing import Any
 
 import httpx
-from sqlalchemy import insert
+from sqlalchemy import insert, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.db_types import new_id
 from app.schemas.training_question import QuestionDraftDTO, QuestionOptionDTO
-from app.services.training_agent_service import evidence_preview, read_training_evidence, resolve_training_context
+from app.services.training_agent_service import (
+    TrainingAgentConflictError,
+    TrainingAgentNotFoundError,
+    evidence_preview,
+    read_training_evidence,
+    resolve_training_context,
+)
 from app.services.training_llm_json_service import TrainingLLMOutputError, parse_training_json
 from app.services.training_skill_registry_service import record_training_skill_call
 from app.tables import training_questions
@@ -344,3 +350,61 @@ def create_question_drafts(session: Session, credential: str, request: Any) -> l
 
     session.commit()
     return responses
+
+
+def _review_question(session: Session, question_id: str, user_id: str, new_status: str) -> QuestionDraftDTO:
+    """通用审核逻辑：将 draft 题目改为 published/approved 或 rejected。"""
+    row = session.execute(
+        select(training_questions).where(training_questions.c.question_id == question_id)
+    ).mappings().first()
+    if row is None:
+        raise TrainingAgentNotFoundError(f"Question {question_id} not found.")
+    if row["status"] != "draft":
+        raise TrainingAgentConflictError(
+            f"Question {question_id} is '{row['status']}', only 'draft' questions can be reviewed."
+        )
+
+    now = datetime.now(UTC)
+    existing_meta = dict(row["metadata"] or {})
+    existing_meta["reviewedBy"] = user_id
+    existing_meta["reviewedAt"] = now.isoformat()
+
+    session.execute(
+        update(training_questions)
+        .where(training_questions.c.question_id == question_id)
+        .values(
+            status=new_status,
+            updated_at=now,
+            updated_by=user_id,
+            metadata=existing_meta,
+        )
+    )
+    session.commit()
+
+    options = [QuestionOptionDTO(**o) for o in (row["options"] or [])]
+    return QuestionDraftDTO(
+        questionId=str(row["question_id"]),
+        planId=str(row["plan_id"]),
+        appId=str(row["app_id"]),
+        questionType=row["question_type"],
+        category=row["category"],
+        content=row["content"],
+        options=options,
+        correctAnswer=row["correct_answer"],
+        explanation=row["explanation"],
+        rubric=row["rubric"],
+        evidenceChunkIds=row["evidence_chunk_ids"] or [],
+        status=new_status,
+        createdAt=row["created_at"].isoformat(),
+        updatedAt=now.isoformat(),
+    )
+
+
+def publish_question(session: Session, question_id: str, user_id: str) -> QuestionDraftDTO:
+    """将 draft 题目发布为 published。"""
+    return _review_question(session, question_id, user_id, "published")
+
+
+def reject_question(session: Session, question_id: str, user_id: str) -> QuestionDraftDTO:
+    """将 draft 题目拒绝为 rejected。"""
+    return _review_question(session, question_id, user_id, "rejected")

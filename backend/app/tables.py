@@ -771,6 +771,41 @@ training_skill_calls = sa.Table(
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
 )
 
+training_progress_records = sa.Table(
+    "training_progress_records",
+    metadata,
+    sa.Column("progress_id", UUIDString(), primary_key=True),
+    sa.Column("session_id", UUIDString(), nullable=False),
+    sa.Column("app_id", UUIDString(), nullable=False),
+    sa.Column("end_user_id", sa.String(length=128), nullable=False),
+    sa.Column("plan_id", UUIDString(), nullable=True),
+    sa.Column("current_section_index", sa.Integer(), nullable=False, server_default="0"),
+    sa.Column("completed_sections", sa.Integer(), nullable=False, server_default="0"),
+    sa.Column("total_sections", sa.Integer(), nullable=False, server_default="0"),
+    sa.Column("last_score", sa.Integer(), nullable=True),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("metadata", sa.JSON(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+)
+
+training_answer_records = sa.Table(
+    "training_answer_records",
+    metadata,
+    sa.Column("answer_id", UUIDString(), primary_key=True),
+    sa.Column("session_id", UUIDString(), nullable=False),
+    sa.Column("app_id", UUIDString(), nullable=False),
+    sa.Column("end_user_id", sa.String(length=128), nullable=False),
+    sa.Column("question_id", UUIDString(), nullable=False),
+    sa.Column("question_type", sa.String(length=32), nullable=False),
+    sa.Column("answer", sa.Text(), nullable=False),
+    sa.Column("score", sa.Integer(), nullable=True),
+    sa.Column("is_correct", sa.Boolean(), nullable=True),
+    sa.Column("explanation", sa.Text(), nullable=True),
+    sa.Column("metadata", sa.JSON(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+)
+
 evaluation_samples = sa.Table(
     "evaluation_samples",
     metadata,

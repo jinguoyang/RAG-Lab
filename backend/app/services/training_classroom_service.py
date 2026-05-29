@@ -56,8 +56,8 @@ CLASSROOM_TRANSITIONS: dict[str, list[str]] = {
     "TEACH": ["CHECK_UNDERSTAND", "QUIZ", "OFF_TOPIC"],
     "CHECK_UNDERSTAND": ["QUIZ", "TEACH"],
     "QUIZ": ["GRADE"],
-    "GRADE": ["REVIEW"],
-    "REVIEW": ["SUMMARY", "TEACH"],
+    "GRADE": ["REVIEW", "QUIZ"],
+    "REVIEW": ["SUMMARY", "TEACH", "QUIZ"],
     "SUMMARY": ["NEXT_SECTION", "COMPLETED"],
     "NEXT_SECTION": ["TEACH"],
     "COMPLETED": [],
@@ -228,6 +228,22 @@ def _update_state(session: Session, session_id: str, next_state: str, updated_by
     session.execute(update(training_classroom_sessions).where(training_classroom_sessions.c.session_id == session_id).values(**values))
 
 
+def _merge_session_metadata(session: Session, session_id: str, extra: dict[str, Any]) -> None:
+    """将额外字段合并到会话 metadata 中，供下游状态读取。"""
+    row = session.execute(
+        select(training_classroom_sessions.c.metadata)
+        .where(training_classroom_sessions.c.session_id == session_id)
+        .limit(1)
+    ).scalar()
+    current = dict(row) if isinstance(row, dict) else {}
+    current.update(extra)
+    session.execute(
+        update(training_classroom_sessions)
+        .where(training_classroom_sessions.c.session_id == session_id)
+        .values(metadata=current, updated_at=datetime.now(UTC))
+    )
+
+
 def _button_group(*items: tuple[str, str, dict[str, Any]]) -> ClassroomUiActionDTO:
     """生成前端可直接渲染的按钮组动作。"""
     return ClassroomUiActionDTO(
@@ -284,7 +300,7 @@ def _quiz_payload(session: Session, state_row: Any, kb_id: Any) -> tuple[str, li
     question = session.execute(
         select(training_questions)
         .where(training_questions.c.app_id == state_row["app_id"])
-        .where(training_questions.c.status.in_(["approved", "draft"]))
+        .where(training_questions.c.status.in_(["approved", "published"]))
         .order_by(training_questions.c.created_at.asc())
         .limit(1)
     ).mappings().first()
@@ -314,6 +330,20 @@ def _quiz_payload(session: Session, state_row: Any, kb_id: Any) -> tuple[str, li
         },
     )
     return f"请完成本节测验。\n\n{content}", [action], citations
+
+
+def _get_passing_score(state_row) -> int:
+    """从会话 metadata 中读取通过分数线，默认 80。"""
+    metadata = state_row["metadata"] or {}
+    inputs = metadata.get("inputs") if isinstance(metadata, dict) else {}
+    scenario_config = inputs.get("scenarioConfig") if isinstance(inputs, dict) else {}
+    return int(scenario_config.get("passingScore", 80)) if isinstance(scenario_config, dict) else 80
+
+
+def _count_sections(session: Session, kb_id: Any, query: str) -> int:
+    """读取当前知识库证据总数，作为课程章节数。"""
+    rows = read_training_evidence(session, kb_id, query, limit=50)
+    return len(rows)
 
 
 def _grade_subjective_answer(answer: str, rubric: dict[str, Any] | None) -> tuple[int, str]:
@@ -567,37 +597,98 @@ def submit_classroom_event(session: Session, credential: str, session_id: str, r
 
     if event_type in {"submit_answer", "submit_quiz"} and current_state == "QUIZ":
         score, explanation = _grade_answer(session, state_row, payload)
-        content = f"本次测验得分：{score}。\n{explanation}"
+        passing_score = _get_passing_score(state_row)
+        passed = score >= passing_score
+        _merge_session_metadata(session, session_id, {"lastScore": score, "lastPassed": passed, "lastPassingScore": passing_score})
+        if passed:
+            content = f"本次测验得分：{score}，达到通过线 {passing_score}。\n{explanation}"
+            actions = [_button_group(("查看复习建议", "continue", {}))]
+        else:
+            content = f"本次测验得分：{score}，未达到通过线 {passing_score}。\n{explanation}"
+            actions = [_button_group(("进入复习", "continue", {}))]
         return _event_to_response(
             session,
             state_row,
             event_type,
             "GRADE",
             content,
-            [_button_group(("查看复习建议", "continue", {}))],
+            actions,
             [],
-            {**payload, "score": score},
+            {**payload, "score": score, "passed": passed, "passingScore": passing_score},
         )
 
     if event_type == "continue" and current_state == "GRADE":
-        content = "请复盘错题或不确定的知识点，确认后继续查看本节小结。"
-        return _event_to_response(session, state_row, event_type, "REVIEW", content, [_button_group(("完成复习", "continue", {}))], [], payload)
+        metadata = state_row["metadata"] or {}
+        last_passed = metadata.get("lastPassed", True) if isinstance(metadata, dict) else True
+        if last_passed:
+            content = "测验通过，以下是本节复习建议：请回顾关键知识点，巩固学习成果。"
+            actions = [_button_group(("完成复习", "continue", {}))]
+        else:
+            last_score = metadata.get("lastScore", 0) if isinstance(metadata, dict) else 0
+            content, review_citations = _current_evidence(session, str(state_row["app_id"]), context.kb_row["kb_id"], state_row)
+            content = f"测验未通过（得分 {last_score}），请回顾以下错题和相关材料：\n\n{content}"
+            actions = [
+                _button_group(
+                    ("重新学习", "retry_teach", {}),
+                    ("重新测验", "retry_quiz", {}),
+                    ("完成复习", "continue", {}),
+                )
+            ]
+            return _event_to_response(session, state_row, event_type, "REVIEW", content, actions, review_citations, payload)
+        return _event_to_response(session, state_row, event_type, "REVIEW", content, actions, [], payload)
+
+    if event_type in {"retry_teach", "retry_quiz"} and current_state == "REVIEW":
+        if event_type == "retry_teach":
+            content, citations = _current_evidence(session, str(state_row["app_id"]), context.kb_row["kb_id"], state_row)
+            return _event_to_response(
+                session,
+                state_row,
+                event_type,
+                "TEACH",
+                f"让我们重新学习本节内容。\n\n{content}",
+                [_button_group(("听懂了，继续", "continue", {}), ("我还不清楚", "query", {}))],
+                citations,
+                payload,
+            )
+        # retry_quiz
+        visible, actions, citations = _quiz_payload(session, state_row, context.kb_row["kb_id"])
+        return _event_to_response(session, state_row, event_type, "QUIZ", visible, actions, citations, payload)
 
     if event_type == "continue" and current_state == "REVIEW":
-        content = "本节小结：请将关键流程、风险点和证据出处纳入实际作业。"
+        metadata = state_row["metadata"] or {}
+        last_passed = metadata.get("lastPassed", True) if isinstance(metadata, dict) else True
+        if last_passed:
+            content = "本节小结：请将关键流程、风险点和证据出处纳入实际作业。"
+        else:
+            content = "本节小结：你未通过测验，建议后续继续复习。请将关键流程、风险点和证据出处纳入实际作业。"
+        total_sections = _count_sections(session, context.kb_row["kb_id"], str((state_row["metadata"] or {}).get("inputs", {})))
+        current_index = state_row["current_section_index"]
+        if current_index < total_sections - 1:
+            actions = [_button_group(("下一节", "next_section", {}), ("完成课程", "complete", {}))]
+        else:
+            content += "\n\n所有章节已完成，你可以结束课程。"
+            actions = [_button_group(("完成课程", "complete", {}))]
         return _event_to_response(
             session,
             state_row,
             event_type,
             "SUMMARY",
             content,
-            [_button_group(("下一节", "next_section", {}), ("完成课程", "complete", {}))],
+            actions,
             [],
             payload,
         )
 
     if event_type == "next_section" and current_state == "SUMMARY":
         next_index = state_row["current_section_index"] + 1
+        metadata = state_row["metadata"] or {}
+        inputs = metadata.get("inputs") if isinstance(metadata, dict) else {}
+        query_str = str(inputs.get("jobTitle", "")) if isinstance(inputs, dict) else ""
+        total_sections = _count_sections(session, context.kb_row["kb_id"], query_str)
+        if next_index >= total_sections:
+            raise ClassroomTransitionError(
+                f"当前已是最后一节（index={state_row['current_section_index']}，共 {total_sections} 节），不能再进入下一节"
+            )
         progress = ClassroomProgressUpdateDTO(sectionIndex=next_index, completedSections=next_index)
         next_state_row = dict(state_row)
         next_state_row["current_section_index"] = next_index
@@ -615,6 +706,15 @@ def submit_classroom_event(session: Session, credential: str, session_id: str, r
         )
 
     if event_type == "complete" and current_state == "SUMMARY":
+        metadata = state_row["metadata"] or {}
+        inputs = metadata.get("inputs") if isinstance(metadata, dict) else {}
+        query_str = str(inputs.get("jobTitle", "")) if isinstance(inputs, dict) else ""
+        total_sections = _count_sections(session, context.kb_row["kb_id"], query_str)
+        current_index = state_row["current_section_index"]
+        if current_index < total_sections - 1:
+            raise ClassroomTransitionError(
+                f"当前在第 {current_index + 1} 节（共 {total_sections} 节），还有未完成的章节，请继续学习"
+            )
         return _event_to_response(session, state_row, event_type, "COMPLETED", "课程已完成。", [], [], payload)
 
     raise ClassroomTransitionError(f"不允许在 {current_state} 阶段执行 {event_type}")

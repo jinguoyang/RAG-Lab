@@ -4,11 +4,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_current_user
 from app.api.routes.app_runtime import _extract_bearer_token, _raise_runtime_error
 from app.core.database import get_db_session
+from app.schemas.auth import CurrentUserResponse
 from app.schemas.training_plan import PlanDraftDTO, PlanDraftRequest
-from app.services.training_agent_service import TrainingAgentConflictError
-from app.services.training_plan_service import create_plan_draft
+from app.services.training_agent_service import TrainingAgentConflictError, TrainingAgentNotFoundError
+from app.services.training_plan_service import create_plan_draft, publish_plan, reject_plan
 
 router = APIRouter(prefix="/training/plans", tags=["training"])
 
@@ -28,3 +30,33 @@ def create_training_plan_draft(
     except Exception as exc:
         _raise_runtime_error(exc)
         raise
+
+
+@router.post("/{plan_id}/publish", response_model=PlanDraftDTO)
+def publish_training_plan(
+    plan_id: str,
+    current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
+    session: Session = Depends(get_db_session),
+) -> PlanDraftDTO:
+    """管理员发布学习计划。"""
+    try:
+        return publish_plan(session, plan_id, current_user.user.userId)
+    except TrainingAgentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except TrainingAgentConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.post("/{plan_id}/reject", response_model=PlanDraftDTO)
+def reject_training_plan(
+    plan_id: str,
+    current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
+    session: Session = Depends(get_db_session),
+) -> PlanDraftDTO:
+    """管理员拒绝学习计划。"""
+    try:
+        return reject_plan(session, plan_id, current_user.user.userId)
+    except TrainingAgentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except TrainingAgentConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc

@@ -7,13 +7,15 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
-from sqlalchemy import insert
+from sqlalchemy import insert, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.db_types import new_id
 from app.schemas.training_plan import AbilityGroupDTO, DocumentDTO, PlanDraftDTO
 from app.services.training_agent_service import (
+    TrainingAgentConflictError,
+    TrainingAgentNotFoundError,
     evidence_preview,
     evidence_title,
     read_training_evidence,
@@ -362,3 +364,61 @@ def create_plan_draft(session: Session, credential: str, request: Any) -> PlanDr
         createdAt=now.isoformat(),
         updatedAt=now.isoformat(),
     )
+
+
+def _review_plan(session: Session, plan_id: str, user_id: str, new_status: str) -> PlanDraftDTO:
+    """通用审核逻辑：将 draft 计划改为 published 或 rejected。"""
+    row = session.execute(
+        select(training_plans).where(training_plans.c.plan_id == plan_id)
+    ).mappings().first()
+    if row is None:
+        raise TrainingAgentNotFoundError(f"Plan {plan_id} not found.")
+    if row["status"] != "draft":
+        raise TrainingAgentConflictError(
+            f"Plan {plan_id} is '{row['status']}', only 'draft' plans can be reviewed."
+        )
+
+    now = datetime.now(UTC)
+    existing_meta = dict(row["metadata"] or {})
+    existing_meta["reviewedBy"] = user_id
+    existing_meta["reviewedAt"] = now.isoformat()
+
+    session.execute(
+        update(training_plans)
+        .where(training_plans.c.plan_id == plan_id)
+        .values(
+            status=new_status,
+            updated_at=now,
+            updated_by=user_id,
+            metadata=existing_meta,
+        )
+    )
+    session.commit()
+
+    ability_groups = [AbilityGroupDTO(**g) for g in (row["ability_groups"] or [])]
+    documents = [DocumentDTO(**d) for d in (row["documents"] or [])]
+    return PlanDraftDTO(
+        planId=str(row["plan_id"]),
+        appId=str(row["app_id"]),
+        jobTitle=row["job_title"],
+        jobDescription=row["job_description"] or "",
+        status=new_status,
+        abilityGroups=ability_groups,
+        documents=documents,
+        evidenceChunkIds=row["evidence_chunk_ids"] or [],
+        recommendReason=row["recommend_reason"] or "",
+        readingOrder=row["reading_order"] or [],
+        version=row["version"],
+        createdAt=row["created_at"].isoformat(),
+        updatedAt=now.isoformat(),
+    )
+
+
+def publish_plan(session: Session, plan_id: str, user_id: str) -> PlanDraftDTO:
+    """将 draft 学习计划发布为 published。"""
+    return _review_plan(session, plan_id, user_id, "published")
+
+
+def reject_plan(session: Session, plan_id: str, user_id: str) -> PlanDraftDTO:
+    """将 draft 学习计划拒绝为 rejected。"""
+    return _review_plan(session, plan_id, user_id, "rejected")

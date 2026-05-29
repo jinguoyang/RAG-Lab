@@ -40,3 +40,4 @@ class QuestionDraftDTO(BaseModel):
     evidenceChunkIds: list[str] = Field(default_factory=list)
     status: str = "draft"
     createdAt: str
+    updatedAt: str | None = None
