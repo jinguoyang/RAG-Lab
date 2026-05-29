@@ -13,9 +13,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
-from uuid import UUID
 
 from app.services.qa_providers import ProviderCandidate
+from app.services.token_utils import rrf_score
 
 
 @dataclass(frozen=True)
@@ -37,6 +37,43 @@ class RankedCandidate:
     original_rank: int
     original_score: float | None
     final_score: float = 0.0
+
+
+def _compute_jaccard_similarity(text_a: str, text_b: str) -> float:
+    """计算两个文本的 Jaccard 相似度（基于词集合）。
+
+    Args:
+        text_a: 文本 A
+        text_b: 文本 B
+
+    Returns:
+        Jaccard 相似度 (0-1)
+    """
+    if not text_a or not text_b:
+        return 0.0
+
+    # 对中文按字符分词，对英文按空格分词
+    def _tokenize(text: str) -> set[str]:
+        tokens = set()
+        for word in text.lower().split():
+            if len(word) > 1:  # 过滤单字符噪声
+                tokens.add(word)
+        # 对中文字符也加入
+        for char in text:
+            if '一' <= char <= '鿿':
+                tokens.add(char)
+        return tokens
+
+    tokens_a = _tokenize(text_a)
+    tokens_b = _tokenize(text_b)
+
+    if not tokens_a and not tokens_b:
+        return 0.0
+
+    intersection = tokens_a & tokens_b
+    union = tokens_a | tokens_b
+
+    return len(intersection) / len(union) if union else 0.0
 
 
 def _compute_mmr_score(
@@ -61,16 +98,13 @@ def _compute_mmr_score(
     if not selected:
         return relevance
 
-    # 计算与已选候选的最大相似度
-    # 简化实现：使用内容长度差异作为相似度代理
+    # 计算与已选候选的最大相似度（使用 Jaccard 相似度）
     max_similarity = 0.0
+    candidate_content = candidate.content or ""
     for selected_candidate in selected:
-        if candidate.content and selected_candidate.content:
-            # 简化的相似度计算
-            len_diff = abs(len(candidate.content) - len(selected_candidate.content))
-            max_len = max(len(candidate.content), len(selected_candidate.content))
-            similarity = 1.0 - (len_diff / max_len) if max_len > 0 else 0.0
-            max_similarity = max(max_similarity, similarity)
+        selected_content = selected_candidate.content or ""
+        similarity = _compute_jaccard_similarity(candidate_content, selected_content)
+        max_similarity = max(max_similarity, similarity)
 
     return lambda_param * relevance - (1 - lambda_param) * max_similarity
 
@@ -116,9 +150,8 @@ def mmr_diversify(
     return selected
 
 
-def _rrf_score(rank: int, k: int = 60) -> float:
-    """计算 RRF (Reciprocal Rank Fusion) 分数。"""
-    return 1.0 / (k + rank)
+# 使用共享的 rrf_score 函数
+_rrf_score = rrf_score
 
 
 def multi_query_rrf_fusion(

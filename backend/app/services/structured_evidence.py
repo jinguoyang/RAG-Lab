@@ -171,7 +171,7 @@ def index_flowchart_block(block: DocumentBlock, document_id: str) -> FlowchartIn
                 "label": "next",
             })
 
-    summary = block.image.caption or block.text[:100]
+    summary = block.image.caption or (block.text or "")[:100]
 
     return FlowchartIndex(
         block_id=block.block_id,

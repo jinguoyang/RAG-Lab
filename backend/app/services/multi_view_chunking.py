@@ -15,9 +15,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from app.services.parsed_document_v2 import DocumentBlock, ParsedDocumentV2
+from app.services.token_utils import estimate_tokens
 
 
 class ChunkStrategy(str, Enum):
@@ -58,11 +59,8 @@ class ChunkResult:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-def _estimate_tokens(text: str) -> int:
-    """估算 token 数量。"""
-    ascii_chars = sum(1 for c in text if ord(c) < 128)
-    non_ascii_chars = len(text) - ascii_chars
-    return max(1, ascii_chars // 4 + non_ascii_chars)
+# 向后兼容的别名
+_estimate_tokens = estimate_tokens
 
 
 def _fixed_chunking(

@@ -177,19 +177,32 @@ def load_fixture(fixture_path: str) -> list[EvaluationSample]:
     return samples if samples else DEFAULT_SAMPLES
 
 
-def evaluate_sample(sample: EvaluationSample) -> EvaluationResult:
+def evaluate_sample(sample: EvaluationSample, use_real_qa: bool = False) -> EvaluationResult:
     """评测单个样本。
 
     Args:
         sample: 评测样本
+        use_real_qa: 是否调用真实 QA Pipeline（当前未实现）
 
     Returns:
         评测结果
     """
     start_time = time.monotonic()
 
-    # 模拟 QA 运行
-    # 实际实现应调用 QA Run API
+    if use_real_qa:
+        # TODO: 接入真实 QA Run API
+        # from app.services.qa_run_service import create_qa_run, get_qa_run_detail
+        # response = create_qa_run(session, current_user, kb_id, QARunCreateRequest(query=sample.query))
+        # detail = get_qa_run_detail(session, current_user, kb_id, response.run_id)
+        import warnings
+        warnings.warn(
+            "真实 QA 评测尚未实现，当前返回模拟指标",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    # 当前为模拟评测，返回占位指标
+    # 生产环境应接入真实 QA Pipeline 并计算实际指标
     actual_answer = f"这是对 '{sample.query}' 的回答"
     recall_at_k = 0.8
     mrr = 0.7
@@ -199,7 +212,7 @@ def evaluate_sample(sample: EvaluationSample) -> EvaluationResult:
     refusal_correct = True
 
     if sample.should_refuse:
-        # 应该拒绝但没有拒绝
+        # 应该拒绝但没有拒绝（模拟实现总是生成答案）
         refusal_correct = False
 
     latency_ms = int((time.monotonic() - start_time) * 1000)

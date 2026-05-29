@@ -18,6 +18,7 @@ from enum import Enum
 from typing import Any
 
 from app.services.multi_view_chunking import ChunkResult
+from app.services.token_utils import estimate_tokens
 
 
 class PackingStrategy(str, Enum):
@@ -38,11 +39,8 @@ class PackedContext:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-def _estimate_tokens(text: str) -> int:
-    """估算 token 数量。"""
-    ascii_chars = sum(1 for c in text if ord(c) < 128)
-    non_ascii_chars = len(text) - ascii_chars
-    return max(1, ascii_chars // 4 + non_ascii_chars)
+# 向后兼容的别名
+_estimate_tokens = estimate_tokens
 
 
 def find_parent_chunk(

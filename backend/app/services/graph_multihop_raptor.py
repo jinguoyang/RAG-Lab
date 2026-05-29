@@ -116,6 +116,9 @@ def graph_retrieval_multihop(
 ) -> GraphRetrievalResult:
     """执行多跳图检索。
 
+    ⚠️ 当前为模拟实现，返回占位数据。
+    生产环境应使用 Neo4jGraphRetrievalProvider 执行真实图查询。
+
     Args:
         query: 查询
         graph_depth: 图深度
@@ -123,8 +126,14 @@ def graph_retrieval_multihop(
         path_mode: 路径模式
 
     Returns:
-        图检索结果
+        图检索结果（当前为模拟数据）
     """
+    import warnings
+    warnings.warn(
+        "graph_retrieval_multihop 使用模拟数据，生产环境请使用 Neo4jGraphRetrievalProvider",
+        UserWarning,
+        stacklevel=2,
+    )
     # 模拟实现：创建简单的图结构
     nodes = []
     edges = []
@@ -183,16 +192,28 @@ def graph_retrieval_multihop(
 def build_raptor_index(
     chunks: list[dict[str, Any]],
     max_levels: int = 3,
+    use_llm: bool = False,
 ) -> RaptorIndex:
     """构建 RAPTOR 层级摘要索引。
+
+    ⚠️ 当前为简化实现，仅做文本截断和拼接。
+    生产环境应设置 use_llm=True 并接入 LLM Provider 生成真正摘要。
 
     Args:
         chunks: Chunk 列表
         max_levels: 最大层级数
+        use_llm: 是否使用 LLM 生成摘要（当前未实现）
 
     Returns:
         RAPTOR 索引
     """
+    if use_llm:
+        import warnings
+        warnings.warn(
+            "RAPTOR LLM 摘要尚未实现，当前使用文本截断作为占位",
+            UserWarning,
+            stacklevel=2,
+        )
     if not chunks:
         return RaptorIndex(
             document_id="empty",

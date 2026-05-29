@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Protocol
-from datetime import UTC, datetime
+from uuid import uuid4
 
 from app.services.document_parsing import (
     DocumentParseError,
@@ -187,7 +187,7 @@ def route_and_parse(
         (ParsedDocument, ParseTaskRecord) 元组
     """
     from pathlib import PurePath
-    import time
+    import time as _time
 
     if isinstance(strategy, str):
         try:
@@ -197,7 +197,7 @@ def route_and_parse(
 
     normalized_name = PurePath(file_name).name or "uploaded-document"
     extension = PurePath(normalized_name).suffix.lower()
-    start_time = time.monotonic()
+    start_time = _time.monotonic()
 
     # 获取解析器优先级列表
     parser_candidates = _select_parser_for_strategy(strategy, extension)
@@ -223,7 +223,7 @@ def route_and_parse(
                 chunk_size,
                 chunk_overlap,
             )
-            duration_ms = int((time.monotonic() - start_time) * 1000)
+            duration_ms = int((_time.monotonic() - start_time) * 1000)
 
             # 构建质量标记
             quality_flags = {
@@ -235,7 +235,7 @@ def route_and_parse(
             }
 
             task_record = ParseTaskRecord(
-                task_id=f"parse_{int(time.time())}",
+                task_id=str(uuid4()),
                 file_name=normalized_name,
                 strategy=strategy.value,
                 parser_name=parser_name,
@@ -249,19 +249,19 @@ def route_and_parse(
 
             return result, task_record
 
-        except (DocumentParseError, Exception) as exc:
+        except (DocumentParseError, OSError, ValueError) as exc:
             last_error = exc
             fallback_used = True
             fallback_reason = f"Parser {parser_name} failed: {exc}"
             continue
 
     # 所有解析器都失败
-    duration_ms = int((time.monotonic() - start_time) * 1000)
+    duration_ms = int((_time.monotonic() - start_time) * 1000)
     error_code = "ALL_PARSERS_FAILED"
     error_message = str(last_error) if last_error else "No suitable parser found"
 
     task_record = ParseTaskRecord(
-        task_id=f"parse_{int(time.time())}",
+        task_id=str(uuid4()),
         file_name=normalized_name,
         strategy=strategy.value,
         parser_name="none",

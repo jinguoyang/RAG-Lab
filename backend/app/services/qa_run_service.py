@@ -73,6 +73,7 @@ from app.services.qa_providers import ProviderCandidate, ProviderError, QARunPro
 from app.services.permission_service import build_chunk_access_filter_context, has_kb_permission
 from app.services.knowledge_base_service import KnowledgeBaseDisabledError
 from app.services.config_effectiveness import build_trace_effective_configs
+from app.services.token_utils import rrf_score as _rrf_score
 
 
 logger = logging.getLogger(__name__)
@@ -508,11 +509,6 @@ def _filter_candidates_by_score_threshold(
 def _weighted_score(candidate: ProviderCandidate, fusion_weights: dict[str, float]) -> float:
     """计算融合排序分，低层 Provider 原始分只在通道权重范围内参与排序。"""
     return (candidate.raw_score or 0) * fusion_weights.get(candidate.source_type, 1)
-
-
-def _rrf_score(rank: int, k: int = 60) -> float:
-    """计算 RRF (Reciprocal Rank Fusion) 分数。"""
-    return 1.0 / (k + rank)
 
 
 def _fuse_provider_candidates(
@@ -1042,14 +1038,16 @@ def _execute_provider_qa_run(
     retrieval_queries = [rewritten_query]
     if multi_query_params["enabled"] and multi_query_params["queryCount"] > 1:
         # B-317: 使用 LLM 生成多个查询变体
+        multi_query_error = None
         try:
             multi_variants = provider_set.llm.generate_multi_queries(
                 rewritten_query,
                 multi_query_params["queryCount"],
             )
             retrieval_queries.extend(multi_variants)
-        except ProviderError:
-            pass  # 多查询生成失败时保留单查询
+        except ProviderError as exc:
+            multi_query_error = str(exc)
+            logger.warning("Multi-query generation failed: %s", exc)
         if query != rewritten_query and pipeline_params["queryRewrite"]["preserveOriginalQuery"]:
             retrieval_queries.append(query)
         _insert_trace_step(
@@ -1057,10 +1055,16 @@ def _execute_provider_qa_run(
             run_id,
             trace_order,
             "multiQuery",
-            "success",
+            "partial" if multi_query_error else "success",
             {"rewrittenQuery": rewritten_query, "queryCount": multi_query_params["queryCount"]},
-            {"queries": retrieval_queries, "mergeStrategy": multi_query_params["mergeStrategy"]},
+            {
+                "queries": retrieval_queries,
+                "mergeStrategy": multi_query_params["mergeStrategy"],
+                "multiQueryError": multi_query_error,
+            },
             {"actualQueryCount": len(retrieval_queries)},
+            error_code="PROVIDER_ERROR" if multi_query_error else None,
+            error_message=multi_query_error,
             started_at=started_at,
         )
     else:

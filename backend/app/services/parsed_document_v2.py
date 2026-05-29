@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 
 @dataclass(frozen=True)
@@ -107,9 +107,9 @@ class ImageBlock:
             result["altText"] = self.alt_text
         if self.bbox:
             result["bbox"] = self.bbox.to_dict()
-        if self.width:
+        if self.width is not None:
             result["width"] = self.width
-        if self.height:
+        if self.height is not None:
             result["height"] = self.height
         return result
 

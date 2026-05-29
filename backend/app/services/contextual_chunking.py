@@ -15,7 +15,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import Any
-from uuid import uuid4
 
 from app.services.multi_view_chunking import ChunkResult
 from app.services.parsed_document_v2 import ParsedDocumentV2
@@ -159,6 +158,8 @@ def generate_contextual_metadata(
 class ContextualChunkingCache:
     """上下文分块缓存管理器。"""
 
+    MAX_CACHE_SIZE = 10000  # 最大缓存条目数
+
     def __init__(self):
         self._cache: dict[str, ContextualCacheEntry] = {}
 
@@ -187,6 +188,13 @@ class ContextualChunkingCache:
         metadata: ContextualMetadata,
     ) -> None:
         """缓存上下文元数据。"""
+        # 如果缓存已满，淘汰最早的条目
+        if len(self._cache) >= self.MAX_CACHE_SIZE:
+            # 淘汰前 10% 的条目
+            keys_to_remove = list(self._cache.keys())[:self.MAX_CACHE_SIZE // 10]
+            for key in keys_to_remove:
+                del self._cache[key]
+
         cache_key = _compute_cache_key(
             doc_hash, chunk_id, chunk_revision_id, prompt_version, model_version
         )
