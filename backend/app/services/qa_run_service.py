@@ -75,6 +75,7 @@ from app.services.knowledge_base_service import KnowledgeBaseDisabledError
 from app.services.config_effectiveness import build_trace_effective_configs
 from app.services.answer_citation_verifier import verify_answer
 from app.services.corrective_rag import execute_corrective_rag
+from app.services.multi_query_fusion import mmr_diversify
 from app.services.token_utils import rrf_score as _rrf_score
 
 
@@ -306,7 +307,7 @@ def _build_effective_pipeline_params(
         "retrievalScoreThreshold": retrieval_score_threshold,
         "fusionWeights": fusion_weights,
         "fusion": {
-            "method": _as_string(node_params.get("fusion", {}).get("method"), "weighted", {"chunkIdDedupe", "rrf", "weighted"}),
+            "method": _as_string(node_params.get("fusion", {}).get("method"), "weighted", {"chunkIdDedupe", "mmr", "rrf", "weighted"}),
             "candidateLimit": candidate_limit,
             "dedupBy": _as_string(node_params.get("fusion", {}).get("dedupBy"), "chunkId", {"chunkId", "source"}),
             "rrfK": _as_positive_int(node_params.get("fusion", {}).get("rrfK"), 60, minimum=10, maximum=120),
@@ -745,7 +746,7 @@ def _fuse_provider_candidates(
 ) -> list[ProviderCandidate]:
     """融合 Dense/Sparse/Graph 候选，按 chunk_id 去重并保留多路命中诊断。
 
-    B-317: 支持 weighted 和 rrf 两种融合方法。
+    B-317/B-322: 支持 weighted、rrf 和 mmr 三种融合方法。
     """
     weights = fusion_weights or {"dense": 1, "sparse": 1, "graph": 1}
 
@@ -829,6 +830,19 @@ def _fuse_provider_candidates(
             },
         )
     fused = sorted(fused_by_key.values(), key=lambda item: item.metadata.get("fusedScore") or 0, reverse=True)
+    if fusion_method == "mmr":
+        limit = candidate_limit or len(fused)
+        diversified = mmr_diversify(fused, lambda_param=0.5, limit=limit)
+        return [
+            ProviderCandidate(
+                source_type=item.source_type,
+                chunk_id=item.chunk_id,
+                raw_score=item.raw_score,
+                content=item.content,
+                metadata={**item.metadata, "mmrApplied": True, "mmrLambda": 0.5},
+            )
+            for item in diversified
+        ]
     return fused[:candidate_limit] if candidate_limit else fused
 
 

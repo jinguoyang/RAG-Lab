@@ -34,7 +34,7 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 - Sprint 63 已完成收口，主题为 E34 RAG 配置真实生效与关键 no-op 修复：B-316、B-317 已 Done。
 - Sprint 64 已进入复核，主题为 E34 文档高保真解析与 ParsedDocumentV2：B-318、B-319 已有服务/API/单测证据，待确认入库主链路接入。
 - Sprint 65 开发中，主题为 E34 多视图分块与 Contextual Chunking：B-320、B-321 已有服务和单测，待接入入库、异步任务和检索 trace。
-- Sprint 66 开发中，主题为 E34 多查询融合与大小 Chunk 上下文：B-322 保留 In Progress，B-323 已补入 QA Run chunkWindow 上下文扩展并进入 In Review。
+- Sprint 66 已进入复核，主题为 E34 多查询融合与大小 Chunk 上下文：B-322 已补入 QA Run MMR 融合运行时接入，B-323 已补入 QA Run chunkWindow 上下文扩展。
 - Sprint 67 已进入复核，主题为 E34 结构化证据检索与 Corrective RAG：B-324、B-325 已接入 QA Run trace，待真实专项复测。
 - Sprint 68 已进入复核，主题为 E34 多跳推理、引用校验与高质量 RAG 验收：B-326 已取消 mock 图结果并要求显式 RAPTOR summarizer，B-327 已有 E2E 脚本和真实小样本复测记录。
 - 下一版本为 V1.9，计划承接 E23 图快照保留与配置治理、E24 文档解析能力增强；E27 RAG App 运行治理与接入可见性已完成。E28 文档库功能已全部完成。
@@ -92,7 +92,7 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 | Sprint 63 | 高质量 RAG 核心优化 | 配置真实生效与关键 no-op 修复 | Done | `sprint61-80/Sprint-63.md` |
 | Sprint 64 | 高质量 RAG 核心优化 | 文档高保真解析与 ParsedDocumentV2 | In Review | `sprint61-80/Sprint-64.md` |
 | Sprint 65 | 高质量 RAG 核心优化 | 多视图分块与 Contextual Chunking | In Progress | `sprint61-80/Sprint-65.md` |
-| Sprint 66 | 高质量 RAG 核心优化 | 多查询融合与大小 Chunk 上下文 | In Progress | `sprint61-80/Sprint-66.md` |
+| Sprint 66 | 高质量 RAG 核心优化 | 多查询融合与大小 Chunk 上下文 | In Review | `sprint61-80/Sprint-66.md` |
 | Sprint 67 | 高质量 RAG 核心优化 | 结构化证据检索与 Corrective RAG | In Review | `sprint61-80/Sprint-67.md` |
 | Sprint 68 | 高质量 RAG 核心优化 | 多跳推理、引用校验与 E2E 验收 | In Review | `sprint61-80/Sprint-68.md` |
 

@@ -126,6 +126,44 @@ class TestFusionMethodRRF:
         assert len(result) == 1
         assert result[0].metadata.get("fusionMethod") == "weighted"
 
+    def test_mmr_fusion_prefers_diverse_candidate(self):
+        """MMR 融合应在高相关候选中保留更多样的上下文。"""
+        candidates = [
+            ProviderCandidate(
+                source_type="dense",
+                chunk_id=uuid4(),
+                raw_score=0.90,
+                content="alpha beta gamma",
+                metadata={},
+            ),
+            ProviderCandidate(
+                source_type="sparse",
+                chunk_id=uuid4(),
+                raw_score=0.89,
+                content="alpha beta gamma delta",
+                metadata={},
+            ),
+            ProviderCandidate(
+                source_type="graph",
+                chunk_id=uuid4(),
+                raw_score=0.70,
+                content="railway signal safety",
+                metadata={},
+            ),
+        ]
+
+        result = _fuse_provider_candidates(
+            candidates,
+            fusion_method="mmr",
+            candidate_limit=2,
+        )
+
+        assert [item.content for item in result] == [
+            "alpha beta gamma",
+            "railway signal safety",
+        ]
+        assert all(item.metadata.get("fusionMethod") == "mmr" for item in result)
+
 
 class TestFusionMethodValidation:
     """融合方法验证测试。"""

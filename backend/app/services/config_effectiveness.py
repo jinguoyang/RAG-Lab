@@ -176,7 +176,7 @@ def build_default_capability_registry() -> list[NodeCapability]:
             stage="fusion",
             items=[
                 _i("method", "effective", "qa_run_service._fuse_provider_candidates",
-                   "B-317: 支持 weighted 和 rrf 两种融合算法", "sprint63"),
+                   "B-317/B-322: 支持 weighted、rrf 和 mmr 融合算法", "sprint63"),
                 _i("rrfK", "effective", "qa_run_service._fuse_provider_candidates",
                    "B-317: RRF K 参数在 method=rrf 时生效", "sprint63"),
                 _i("candidateLimit", "effective", "qa_run_service._build_effective_pipeline_params",
