@@ -14,6 +14,7 @@ from app.services.multi_view_chunking import (
     _semantic_chunking,
     _table_aware_chunking,
 )
+from app.services.document_parsing import ParsedChunk, ParsedDocument
 from app.services.parsed_document_v2 import (
     DocumentBlock,
     Page,
@@ -210,6 +211,37 @@ class TestExecuteChunking:
         doc = self._create_test_doc()
         _, revision = execute_chunking(doc, ChunkStrategy.FIXED)
         assert len(revision.source_block_range) == 2
+
+
+class TestDocumentServiceStrategyAdapter:
+    """入库 Worker 使用多视图分块策略的适配测试。"""
+
+    def test_apply_heading_strategy_to_parsed_document(self):
+        """非 fixed 策略应能把旧 ParsedDocument 转成可入库 Chunk。"""
+        from app.services.document_service import _apply_chunk_strategy_to_parsed_document
+
+        parsed_doc = ParsedDocument(
+            parser_name="markdown",
+            parser_version="test",
+            source_file_name="policy.md",
+            mime_type="text/markdown",
+            chunks=[
+                ParsedChunk("## 第一章\n安全要求", 5, "第一章", 1, {"blockIndex": 1}),
+                ParsedChunk("## 第二章\n巡检要求", 5, "第二章", 1, {"blockIndex": 2}),
+            ],
+        )
+
+        chunks = _apply_chunk_strategy_to_parsed_document(
+            parsed_doc,
+            "heading",
+            {},
+            document_id="doc-001",
+        )
+
+        assert len(chunks) == 2
+        assert chunks[0].section == "第一章"
+        assert chunks[0].metadata["chunkStrategy"] == "heading"
+        assert chunks[0].metadata["sourceBlockIds"] == ["block_0"]
 
 
 class TestGetAvailableStrategies:

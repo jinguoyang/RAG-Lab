@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import PurePath
@@ -53,8 +53,10 @@ from app.tables import (
 )
 from app.services.chunk_payload import build_chunk_index_payload
 from app.services.dictionary_service import require_active_dict_item
-from app.services.document_parsing import DocumentParseError, parse_document
+from app.services.document_parsing import DocumentParseError, ParsedDocument, parse_document
+from app.services.multi_view_chunking import execute_chunking
 from app.services.object_storage import ObjectStorageProvider, get_object_storage_provider
+from app.services.parsed_document_v2 import convert_parsed_document_to_v2
 from app.services.graph_service import mark_graph_snapshots_stale
 from app.services.knowledge_base_service import KnowledgeBaseDisabledError
 from app.services.permission_service import build_chunk_access_filter_context, has_kb_permission
@@ -954,6 +956,60 @@ class _DictAsObj:
         return self._d.get(name)
 
 
+def _normalize_chunk_strategy(strategy: str | None) -> str:
+    """兼容历史 fixed_size 与新多视图策略命名。"""
+    if strategy in {None, "", "fixed_size"}:
+        return "fixed"
+    return str(strategy)
+
+
+def _chunk_param(params: dict | None, camel_key: str, snake_key: str, default: int) -> int:
+    """读取新旧分块参数名，保持历史 params 兼容。"""
+    if not isinstance(params, dict):
+        return default
+    value = params.get(camel_key, params.get(snake_key, default))
+    return int(value) if isinstance(value, (int, float)) and value > 0 else default
+
+
+def _apply_chunk_strategy_to_parsed_document(
+    parsed_document: ParsedDocument,
+    strategy: str,
+    params: dict | None,
+    document_id: str | UUID,
+) -> list[_DictAsObj]:
+    """将旧解析结果适配到多视图分块输出，供入库 Worker 统一写入 chunks。"""
+    parsed_v2 = convert_parsed_document_to_v2(parsed_document)
+    parsed_v2.document_id = str(document_id)
+    if _normalize_chunk_strategy(strategy) == "heading":
+        last_section = object()
+        heading_blocks = []
+        for block in parsed_v2.blocks:
+            block_type = "heading" if block.section and block.section != last_section else block.block_type
+            heading_blocks.append(replace(block, block_type=block_type))
+            last_section = block.section
+        parsed_v2.blocks = heading_blocks
+    chunk_results, revision = execute_chunking(parsed_v2, _normalize_chunk_strategy(strategy), params or {})
+    return [
+        _DictAsObj(
+            {
+                "content": chunk.content,
+                "token_count": chunk.token_count,
+                "section": chunk.section,
+                "page_no": chunk.page_no,
+                "metadata": {
+                    **chunk.metadata,
+                    "chunkStrategy": revision.strategy,
+                    "chunkViewType": revision.chunk_view_type,
+                    "sourceBlockIds": chunk.source_block_ids,
+                    "sourceBlockRange": revision.source_block_range,
+                    "parentChunkId": chunk.parent_chunk_id,
+                },
+            }
+        )
+        for chunk in chunk_results
+    ]
+
+
 def run_ingest_job(
     session: Session,
     current_user: CurrentUserResponse,
@@ -991,6 +1047,7 @@ def run_ingest_job(
     chunk_revision_id = chunk_revision_row["chunk_revision_id"] if chunk_revision_row else None
     chunk_strategy = chunk_revision_row.get("strategy", "fixed_size") if chunk_revision_row else "fixed_size"
     chunk_params = chunk_revision_row.get("params", {}) if chunk_revision_row else {}
+    normalized_chunk_strategy = _normalize_chunk_strategy(chunk_strategy)
 
     storage = storage_provider or get_object_storage_provider()
     file_row = None
@@ -1073,31 +1130,41 @@ def run_ingest_job(
                 parser_version = version_meta.get("parserVersion", "rechunk_reuse")
             else:
                 # No stored parsed_chunks: re-parse from source file
-                if chunk_strategy == "fixed_size":
-                    parsed_document = parse_document(
-                        file_name,
-                        file_row["mime_type"] if file_row else None,
-                        source_bytes or b"",
-                        chunk_size=chunk_params.get("chunk_size", 900),
-                        chunk_overlap=chunk_params.get("chunk_overlap", 120),
-                    )
-                else:
-                    raise ValueError(f"Unsupported chunking strategy: {chunk_strategy}")
-                parsed_chunks = parsed_document.chunks
-                parser_name = parsed_document.parser_name
-                parser_version = parsed_document.parser_version
-        else:
-            if chunk_strategy == "fixed_size":
                 parsed_document = parse_document(
                     file_name,
                     file_row["mime_type"] if file_row else None,
                     source_bytes or b"",
-                    chunk_size=chunk_params.get("chunk_size", 900),
-                    chunk_overlap=chunk_params.get("chunk_overlap", 120),
+                    chunk_size=_chunk_param(chunk_params, "chunkSize", "chunk_size", 900),
+                    chunk_overlap=_chunk_param(chunk_params, "chunkOverlap", "chunk_overlap", 120),
                 )
+                if normalized_chunk_strategy == "fixed":
+                    parsed_chunks = parsed_document.chunks
+                else:
+                    parsed_chunks = _apply_chunk_strategy_to_parsed_document(
+                        parsed_document,
+                        normalized_chunk_strategy,
+                        chunk_params,
+                        document_row["document_id"],
+                    )
+                parser_name = parsed_document.parser_name
+                parser_version = parsed_document.parser_version
+        else:
+            parsed_document = parse_document(
+                file_name,
+                file_row["mime_type"] if file_row else None,
+                source_bytes or b"",
+                chunk_size=_chunk_param(chunk_params, "chunkSize", "chunk_size", 900),
+                chunk_overlap=_chunk_param(chunk_params, "chunkOverlap", "chunk_overlap", 120),
+            )
+            if normalized_chunk_strategy == "fixed":
+                parsed_chunks = parsed_document.chunks
             else:
-                raise ValueError(f"Unsupported chunking strategy: {chunk_strategy}")
-            parsed_chunks = parsed_document.chunks
+                parsed_chunks = _apply_chunk_strategy_to_parsed_document(
+                    parsed_document,
+                    normalized_chunk_strategy,
+                    chunk_params,
+                    document_row["document_id"],
+                )
             parser_name = parsed_document.parser_name
             parser_version = parsed_document.parser_version
         stage_timings["parse"] = round(time.perf_counter() - stage_started_at, 3)
