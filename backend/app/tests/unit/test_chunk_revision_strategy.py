@@ -243,6 +243,36 @@ class TestDocumentServiceStrategyAdapter:
         assert chunks[0].metadata["chunkStrategy"] == "heading"
         assert chunks[0].metadata["sourceBlockIds"] == ["block_0"]
 
+    def test_attach_contextual_metadata_to_ingest_chunks(self):
+        """入库 Chunk 应带上下文摘要与 Late Chunking 预留元数据。"""
+        from app.services.contextual_chunking import get_contextual_cache
+        from app.services.document_service import _attach_contextual_metadata_to_chunks
+
+        get_contextual_cache().clear()
+        parsed_doc = ParsedDocument(
+            parser_name="markdown",
+            parser_version="test",
+            source_file_name="policy.md",
+            mime_type="text/markdown",
+            chunks=[
+                ParsedChunk("## 第一章\n安全要求", 5, "第一章", 1, {"blockIndex": 1}),
+            ],
+        )
+
+        chunks = _attach_contextual_metadata_to_chunks(
+            parsed_doc,
+            parsed_doc.chunks,
+            chunk_revision_id="rev-contextual",
+            document_id="doc-001",
+        )
+
+        assert chunks[0].content == "## 第一章\n安全要求"
+        assert chunks[0].metadata["contextualSummary"]
+        assert chunks[0].metadata["documentBrief"]
+        assert chunks[0].metadata["sectionPath"] == ["第一章"]
+        assert chunks[0].metadata["generationMeta"]["chunkRevisionId"] == "rev-contextual"
+        assert chunks[0].metadata["lateChunking"]["status"] == "reserved"
+
 
 class TestGetAvailableStrategies:
     """获取可用策略测试。"""

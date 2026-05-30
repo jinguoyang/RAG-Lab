@@ -54,7 +54,8 @@ from app.tables import (
 from app.services.chunk_payload import build_chunk_index_payload
 from app.services.dictionary_service import require_active_dict_item
 from app.services.document_parsing import DocumentParseError, ParsedDocument, parse_document
-from app.services.multi_view_chunking import execute_chunking
+from app.services.contextual_chunking import generate_contextual_metadata_with_cache
+from app.services.multi_view_chunking import ChunkResult, execute_chunking
 from app.services.object_storage import ObjectStorageProvider, get_object_storage_provider
 from app.services.parsed_document_v2 import convert_parsed_document_to_v2
 from app.services.graph_service import mark_graph_snapshots_stale
@@ -1010,6 +1011,102 @@ def _apply_chunk_strategy_to_parsed_document(
     ]
 
 
+def _metadata_section_path(metadata: dict, fallback_section: str | None) -> list[str]:
+    """统一旧 metadata 中章节路径的字符串和列表表示。"""
+    section_path = metadata.get("sectionPath") or metadata.get("section_path")
+    if isinstance(section_path, list):
+        return [str(item) for item in section_path if item]
+    if isinstance(section_path, str) and section_path:
+        return [section_path]
+    return [fallback_section] if fallback_section else []
+
+
+def _ingest_chunk_to_chunk_result(parsed, index: int) -> ChunkResult:
+    """把入库前的 ParsedChunk/_DictAsObj 适配为上下文服务使用的 ChunkResult。"""
+    metadata = parsed.metadata or {}
+    chunk_id = metadata.get("chunkId") or metadata.get("chunk_id") or f"chunk_{index}"
+    source_block_ids = metadata.get("sourceBlockIds") or metadata.get("source_block_ids")
+    if not isinstance(source_block_ids, list) or not source_block_ids:
+        source_block_ids = [f"block_{index}"]
+    return ChunkResult(
+        chunk_id=str(chunk_id),
+        content=parsed.content,
+        token_count=parsed.token_count,
+        chunk_index=index,
+        section=parsed.section,
+        page_no=parsed.page_no,
+        source_block_ids=[str(block_id) for block_id in source_block_ids],
+        parent_chunk_id=metadata.get("parentChunkId") or metadata.get("parent_chunk_id"),
+        metadata=dict(metadata),
+    )
+
+
+def _attach_contextual_metadata_to_chunks(
+    parsed_document: ParsedDocument,
+    parsed_chunks: list,
+    chunk_revision_id: str | UUID | None,
+    document_id: str | UUID,
+) -> list[_DictAsObj]:
+    """为入库 Chunk 补充 Contextual Chunking 元数据，保留原始正文作为引用来源。"""
+    if chunk_revision_id is None:
+        return [_DictAsObj(getattr(chunk, "_d", None) or {
+            "content": chunk.content,
+            "token_count": chunk.token_count,
+            "section": chunk.section,
+            "page_no": chunk.page_no,
+            "metadata": chunk.metadata or {},
+        }) for chunk in parsed_chunks]
+
+    parsed_v2 = convert_parsed_document_to_v2(parsed_document)
+    parsed_v2.document_id = str(document_id)
+    chunk_results = [
+        _ingest_chunk_to_chunk_result(parsed, index)
+        for index, parsed in enumerate(parsed_chunks)
+    ]
+    contextual_by_chunk_id = {
+        item.chunk_id: item
+        for item in generate_contextual_metadata_with_cache(
+            parsed_v2,
+            chunk_results,
+            str(chunk_revision_id),
+        )
+    }
+
+    contextual_chunks: list[_DictAsObj] = []
+    for index, parsed in enumerate(parsed_chunks):
+        metadata = dict(parsed.metadata or {})
+        chunk_result = chunk_results[index]
+        contextual = contextual_by_chunk_id.get(chunk_result.chunk_id)
+        if contextual is not None:
+            metadata.update(
+                {
+                    "contextualSummary": contextual.contextual_summary,
+                    "documentBrief": contextual.document_brief,
+                    "generationMeta": contextual.generation_meta,
+                    "sectionPath": contextual.section_path
+                    or _metadata_section_path(metadata, parsed.section),
+                    "contextualChunking": {
+                        "enabled": True,
+                        "source": "ingest_worker",
+                        "cache": "memory",
+                    },
+                    "lateChunking": {
+                        "status": "reserved",
+                        "enabled": False,
+                    },
+                }
+            )
+        contextual_chunks.append(_DictAsObj({
+            "content": parsed.content,
+            "token_count": parsed.token_count,
+            "section": parsed.section,
+            "page_no": parsed.page_no,
+            "metadata": metadata,
+        }))
+
+    return contextual_chunks
+
+
 def run_ingest_job(
     session: Session,
     current_user: CurrentUserResponse,
@@ -1078,6 +1175,7 @@ def run_ingest_job(
     try:
         job_type = job_row.get("job_type", "upload_parse")
         is_rechunk = job_type == "rechunk" or (job_type == "reparse" and chunk_revision_row is not None)
+        parsed_document_for_context: ParsedDocument | None = None
 
         # Check if we can reuse parsed chunks from library
         parsed_chunks_from_library = None
@@ -1137,6 +1235,7 @@ def run_ingest_job(
                     chunk_size=_chunk_param(chunk_params, "chunkSize", "chunk_size", 900),
                     chunk_overlap=_chunk_param(chunk_params, "chunkOverlap", "chunk_overlap", 120),
                 )
+                parsed_document_for_context = parsed_document
                 if normalized_chunk_strategy == "fixed":
                     parsed_chunks = parsed_document.chunks
                 else:
@@ -1156,6 +1255,7 @@ def run_ingest_job(
                 chunk_size=_chunk_param(chunk_params, "chunkSize", "chunk_size", 900),
                 chunk_overlap=_chunk_param(chunk_params, "chunkOverlap", "chunk_overlap", 120),
             )
+            parsed_document_for_context = parsed_document
             if normalized_chunk_strategy == "fixed":
                 parsed_chunks = parsed_document.chunks
             else:
@@ -1167,6 +1267,13 @@ def run_ingest_job(
                 )
             parser_name = parsed_document.parser_name
             parser_version = parsed_document.parser_version
+        if parsed_document_for_context is not None and chunk_revision_id is not None:
+            parsed_chunks = _attach_contextual_metadata_to_chunks(
+                parsed_document_for_context,
+                parsed_chunks,
+                chunk_revision_id,
+                document_row["document_id"],
+            )
         stage_timings["parse"] = round(time.perf_counter() - stage_started_at, 3)
 
         # 解析完成后创建 ParseRevision（仅复用 parsed_chunks 时跳过）

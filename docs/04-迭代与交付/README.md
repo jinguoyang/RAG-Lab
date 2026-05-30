@@ -20,7 +20,7 @@
 - 下一版本为 V1.9，计划承接 E23 图快照保留与配置治理、E24 文档解析能力增强；E27 RAG App 运行治理与接入可见性已完成并纳入 V1.9 范围。E28 文档库核心功能已完成，Excel 预览和测试增强作为后续 Ready 项保留。
 - E31 图片多模态 RAG 演进已规划第一阶段，采用图片转视觉文本 Chunk 的方式融合现有 RAG 链路，计划见 [图片多模态 RAG 第一阶段实施计划](./plans/2026-05-21-image-rag-phase1.md)。
 - E33 员工培训 Agent 与外部培训应用已完成 Sprint 52-57、59-62 的代码和测试收口；Sprint 58 仍处于 In Review，P2 长期规划继续保留 Todo。
-- E34 高质量 RAG 核心优化不是全量完成状态：Sprint 63 Done，Sprint 64/66/67/68 In Review，Sprint 65 In Progress；具体边界以 [产品待办清单](./产品待办清单.md) 的 E34 状态收口说明为准。
+- E34 高质量 RAG 核心优化不是全量完成状态：Sprint 63 Done，Sprint 64 至 Sprint 68 In Review；具体边界以 [产品待办清单](./产品待办清单.md) 的 E34 状态收口说明为准。
 - 后续新工作应先进入产品待办清单，再建立新的 Sprint 或 Release 计划。
 - V1.8 Sprint 32 已补齐当前环境的真实 Provider 网络级复测结论，记录见 [V1.8 Provider 网络级复测记录](../06-发布与运维/V1.8-Provider网络级复测记录.md)；切换测试或预生产环境后必须重新执行并回填。
 
