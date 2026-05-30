@@ -53,10 +53,11 @@ from app.tables import (
 )
 from app.services.chunk_payload import build_chunk_index_payload
 from app.services.dictionary_service import require_active_dict_item
-from app.services.document_parsing import DocumentParseError, ParsedDocument, parse_document
+from app.services.document_parsing import DocumentParseError, ParsedDocument
 from app.services.contextual_chunking import generate_contextual_metadata_with_cache
 from app.services.multi_view_chunking import ChunkResult, execute_chunking
 from app.services.object_storage import ObjectStorageProvider, get_object_storage_provider
+from app.services.parser_routing import ParseTaskRecord, route_and_parse
 from app.services.parsed_document_v2 import convert_parsed_document_to_v2
 from app.services.graph_service import mark_graph_snapshots_stale
 from app.services.knowledge_base_service import KnowledgeBaseDisabledError
@@ -972,6 +973,53 @@ def _chunk_param(params: dict | None, camel_key: str, snake_key: str, default: i
     return int(value) if isinstance(value, (int, float)) and value > 0 else default
 
 
+def _parse_strategy_param(params: dict | None) -> str:
+    """读取入库解析策略，默认走基础解析路由。"""
+    if not isinstance(params, dict):
+        return "default"
+    value = params.get("parseStrategy") or params.get("parse_strategy") or "default"
+    return str(value) if value else "default"
+
+
+def _parse_task_record_to_options(record: ParseTaskRecord | None) -> dict:
+    """把 Parser Routing 记录写成 ParseRevision 可持久化的结构。"""
+    if record is None:
+        return {}
+    return {
+        "parserRouting": {
+            "taskId": record.task_id,
+            "fileName": record.file_name,
+            "strategy": record.strategy,
+            "parserName": record.parser_name,
+            "parserVersion": record.parser_version,
+            "durationMs": record.duration_ms,
+            "success": record.success,
+            "qualityFlags": record.quality_flags,
+            "errorCode": record.error_code,
+            "errorMessage": record.error_message,
+            "fallbackUsed": record.fallback_used,
+            "fallbackReason": record.fallback_reason,
+        }
+    }
+
+
+def _parse_document_for_ingest(
+    file_name: str,
+    mime_type: str | None,
+    source_bytes: bytes,
+    chunk_params: dict | None,
+) -> tuple[ParsedDocument, ParseTaskRecord]:
+    """入库解析统一走 Parser Routing，并沿用 ChunkRevision 的解析与分块参数。"""
+    return route_and_parse(
+        file_name=file_name,
+        mime_type=mime_type,
+        file_bytes=source_bytes,
+        strategy=_parse_strategy_param(chunk_params),
+        chunk_size=_chunk_param(chunk_params, "chunkSize", "chunk_size", 900),
+        chunk_overlap=_chunk_param(chunk_params, "chunkOverlap", "chunk_overlap", 120),
+    )
+
+
 def _apply_chunk_strategy_to_parsed_document(
     parsed_document: ParsedDocument,
     strategy: str,
@@ -1176,6 +1224,7 @@ def run_ingest_job(
         job_type = job_row.get("job_type", "upload_parse")
         is_rechunk = job_type == "rechunk" or (job_type == "reparse" and chunk_revision_row is not None)
         parsed_document_for_context: ParsedDocument | None = None
+        parse_task_record: ParseTaskRecord | None = None
 
         # Check if we can reuse parsed chunks from library
         parsed_chunks_from_library = None
@@ -1228,12 +1277,11 @@ def run_ingest_job(
                 parser_version = version_meta.get("parserVersion", "rechunk_reuse")
             else:
                 # No stored parsed_chunks: re-parse from source file
-                parsed_document = parse_document(
-                    file_name,
-                    file_row["mime_type"] if file_row else None,
-                    source_bytes or b"",
-                    chunk_size=_chunk_param(chunk_params, "chunkSize", "chunk_size", 900),
-                    chunk_overlap=_chunk_param(chunk_params, "chunkOverlap", "chunk_overlap", 120),
+                parsed_document, parse_task_record = _parse_document_for_ingest(
+                    file_name=file_name,
+                    mime_type=file_row["mime_type"] if file_row else None,
+                    source_bytes=source_bytes or b"",
+                    chunk_params=chunk_params,
                 )
                 parsed_document_for_context = parsed_document
                 if normalized_chunk_strategy == "fixed":
@@ -1248,12 +1296,11 @@ def run_ingest_job(
                 parser_name = parsed_document.parser_name
                 parser_version = parsed_document.parser_version
         else:
-            parsed_document = parse_document(
-                file_name,
-                file_row["mime_type"] if file_row else None,
-                source_bytes or b"",
-                chunk_size=_chunk_param(chunk_params, "chunkSize", "chunk_size", 900),
-                chunk_overlap=_chunk_param(chunk_params, "chunkOverlap", "chunk_overlap", 120),
+            parsed_document, parse_task_record = _parse_document_for_ingest(
+                file_name=file_name,
+                mime_type=file_row["mime_type"] if file_row else None,
+                source_bytes=source_bytes or b"",
+                chunk_params=chunk_params,
             )
             parsed_document_for_context = parsed_document
             if normalized_chunk_strategy == "fixed":
@@ -1288,16 +1335,18 @@ def run_ingest_job(
                 else None
             )
         else:
-            parse_options_for_revision = None
+            parse_options_for_revision = _parse_task_record_to_options(parse_task_record)
             if is_image:
                 vision_settings = get_settings()
-                parse_options_for_revision = {
-                    "sourceModality": "image",
-                    "provider": vision_settings.vision_text_provider,
-                    "model": vision_settings.vision_text_model or vision_settings.llm_model,
-                    "maxImageSide": vision_settings.vision_text_max_image_side,
-                    "authHeader": vision_settings.vision_text_auth_header,
-                }
+                parse_options_for_revision.update(
+                    {
+                        "sourceModality": "image",
+                        "provider": vision_settings.vision_text_provider,
+                        "model": vision_settings.vision_text_model or vision_settings.llm_model,
+                        "maxImageSide": vision_settings.vision_text_max_image_side,
+                        "authHeader": vision_settings.vision_text_auth_header,
+                    }
+                )
             generated_parse_revision_id = create_parse_revision(
                 session=session,
                 document_version_id=version_row["version_id"],

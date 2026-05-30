@@ -755,7 +755,7 @@ def test_run_ingest_job_parse_revision_options_contain_source_modality():
     env = _make_run_ingest_job_mocks()
 
     with (
-        patch("app.services.document_service.parse_document", return_value=env["parsed_doc"]),
+        patch("app.services.document_service._parse_document_for_ingest", return_value=(env["parsed_doc"], None)),
         patch("app.services.document_service.get_settings", return_value=env["mock_settings"]),
         patch("app.services.document_service.get_qa_run_providers", return_value=env["mock_provider_set"]),
         patch("app.services.document_service._update_ingest_progress"),
@@ -791,7 +791,7 @@ def test_run_ingest_job_version_metadata_contains_vision_text_provider():
     env = _make_run_ingest_job_mocks()
 
     with (
-        patch("app.services.document_service.parse_document", return_value=env["parsed_doc"]),
+        patch("app.services.document_service._parse_document_for_ingest", return_value=(env["parsed_doc"], None)),
         patch("app.services.document_service.get_settings", return_value=env["mock_settings"]),
         patch("app.services.document_service.get_qa_run_providers", return_value=env["mock_provider_set"]),
         patch("app.services.document_service._update_ingest_progress"),
@@ -841,7 +841,7 @@ def test_run_ingest_job_image_chunk_content_not_empty():
     env = _make_run_ingest_job_mocks()
 
     with (
-        patch("app.services.document_service.parse_document", return_value=env["parsed_doc"]),
+        patch("app.services.document_service._parse_document_for_ingest", return_value=(env["parsed_doc"], None)),
         patch("app.services.document_service.get_settings", return_value=env["mock_settings"]),
         patch("app.services.document_service.get_qa_run_providers", return_value=env["mock_provider_set"]),
         patch("app.services.document_service._update_ingest_progress"),
@@ -885,7 +885,7 @@ def test_run_ingest_job_image_chunk_metadata_source_modality():
     env = _make_run_ingest_job_mocks()
 
     with (
-        patch("app.services.document_service.parse_document", return_value=env["parsed_doc"]),
+        patch("app.services.document_service._parse_document_for_ingest", return_value=(env["parsed_doc"], None)),
         patch("app.services.document_service.get_settings", return_value=env["mock_settings"]),
         patch("app.services.document_service.get_qa_run_providers", return_value=env["mock_provider_set"]),
         patch("app.services.document_service._update_ingest_progress"),
@@ -928,7 +928,7 @@ def test_run_ingest_job_image_chunk_metadata_source_file_name():
     env = _make_run_ingest_job_mocks()
 
     with (
-        patch("app.services.document_service.parse_document", return_value=env["parsed_doc"]),
+        patch("app.services.document_service._parse_document_for_ingest", return_value=(env["parsed_doc"], None)),
         patch("app.services.document_service.get_settings", return_value=env["mock_settings"]),
         patch("app.services.document_service.get_qa_run_providers", return_value=env["mock_provider_set"]),
         patch("app.services.document_service._update_ingest_progress"),
@@ -975,7 +975,7 @@ def test_run_ingest_job_image_dense_payload_contains_content_and_filters():
         return {"content": "x"}
 
     with (
-        patch("app.services.document_service.parse_document", return_value=env["parsed_doc"]),
+        patch("app.services.document_service._parse_document_for_ingest", return_value=(env["parsed_doc"], None)),
         patch("app.services.document_service.get_settings", return_value=env["mock_settings"]),
         patch("app.services.document_service.get_qa_run_providers", return_value=env["mock_provider_set"]),
         patch("app.services.document_service._update_ingest_progress"),
@@ -1017,7 +1017,7 @@ def test_run_ingest_job_image_chunk_no_visual_index():
     env = _make_run_ingest_job_mocks()
 
     with (
-        patch("app.services.document_service.parse_document", return_value=env["parsed_doc"]),
+        patch("app.services.document_service._parse_document_for_ingest", return_value=(env["parsed_doc"], None)),
         patch("app.services.document_service.get_settings", return_value=env["mock_settings"]),
         patch("app.services.document_service.get_qa_run_providers", return_value=env["mock_provider_set"]),
         patch("app.services.document_service._update_ingest_progress"),

@@ -16,6 +16,65 @@ from app.services.parser_routing import (
 from app.services.document_parsing import DocumentParseError
 
 
+def test_ingest_parse_uses_parser_routing(monkeypatch):
+    """入库解析应通过 Parser Routing，而不是直接调用旧 parse_document。"""
+    from app.services.document_parsing import ParsedChunk, ParsedDocument
+    from app.services.document_service import _parse_document_for_ingest
+    from app.services.parser_routing import ParseTaskRecord
+
+    captured = {}
+
+    def fake_route_and_parse(file_name, mime_type, file_bytes, strategy, chunk_size, chunk_overlap):
+        captured.update(
+            {
+                "file_name": file_name,
+                "mime_type": mime_type,
+                "file_bytes": file_bytes,
+                "strategy": strategy,
+                "chunk_size": chunk_size,
+                "chunk_overlap": chunk_overlap,
+            }
+        )
+        return (
+            ParsedDocument(
+                parser_name="mock_parser",
+                parser_version="1.0",
+                source_file_name=file_name,
+                mime_type=mime_type,
+                chunks=[ParsedChunk("正文", 2, None, None)],
+            ),
+            ParseTaskRecord(
+                task_id="task-1",
+                file_name=file_name,
+                strategy=strategy,
+                parser_name="mock",
+                parser_version="1.0",
+                duration_ms=7,
+                success=True,
+            ),
+        )
+
+    monkeypatch.setattr("app.services.document_service.route_and_parse", fake_route_and_parse)
+
+    parsed, record = _parse_document_for_ingest(
+        file_name="sample.md",
+        mime_type="text/markdown",
+        source_bytes=b"# title",
+        chunk_params={"parseStrategy": "table-priority", "chunkSize": 321, "chunkOverlap": 12},
+    )
+
+    assert parsed.parser_name == "mock_parser"
+    assert record.parser_name == "mock"
+    assert captured == {
+        "file_name": "sample.md",
+        "mime_type": "text/markdown",
+        "file_bytes": b"# title",
+        "strategy": "table-priority",
+        "chunk_size": 321,
+        "chunk_overlap": 12,
+    }
+
+
 class TestParserRouting:
     """解析器路由测试。"""
 
