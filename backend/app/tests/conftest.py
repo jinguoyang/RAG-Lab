@@ -32,7 +32,10 @@ def db(engine):
     session = Session(bind=connection)
     yield session
     session.close()
-    transaction.rollback()
+    # 服务层用例可能会调用 session.commit()，此时外层 transaction 已失效；
+    # 只回滚仍然有效的事务，避免 teardown 产生 SQLAlchemy warning。
+    if transaction.is_active:
+        transaction.rollback()
     connection.close()
 
 

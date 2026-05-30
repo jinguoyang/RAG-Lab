@@ -1,6 +1,8 @@
 # 员工培训 Agent 与外部培训应用实施计划
 
 > 本计划是 E33 的开发计划，承接 [员工培训 Agent 平台侧设计规范](../specs/2026-05-26-employee-training-agent-platform-design.md) 和 [外部培训应用设计规范](../specs/2026-05-26-external-training-app-design.md)。Sprint 47-51 保留为 E32 场景化智能应用基座；Sprint 52-53 按本计划重排。
+>
+> 2026-05-30 收口说明：本文作为历史计划和执行依据保留；当前 Backlog 与 Sprint 状态以 `docs/04-迭代与交付/产品待办清单.md` 和 `docs/04-迭代与交付/sprints/README.md` 为准。Sprint 52-57 已完成收口，Sprint 58 仍处于 In Review，P2 长期规划继续保留 Todo。
 
 **目标：** 将员工培训助手从演示型能力升级为平台可复用 Agent，并用一个无 LLM 能力的外部培训应用验证审核、上课和结构化答题接入。
 

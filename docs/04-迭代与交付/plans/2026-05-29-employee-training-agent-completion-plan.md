@@ -1,5 +1,7 @@
 # 员工培训智能体完整化实施计划
 
+> 2026-05-30 收口说明：本文作为历史计划和执行依据保留；当前 Backlog 与 Sprint 状态以 `docs/04-迭代与交付/产品待办清单.md` 和 `docs/04-迭代与交付/sprints/README.md` 为准。Sprint 59-62 已按平台侧培训测试收口为 Done，端到端外部联调与 OpenAPI/系统文档复核仍在 Sprint 58 In Review 中跟踪。
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:test-driven-development` before production code changes. Use `superpowers:executing-plans` or `superpowers:subagent-driven-development` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 将当前“员工培训 Agent 可用骨架”完善为产品级完整员工培训智能体，覆盖 AI 学习规划、AI 出题、交互式教学、主观题评分、学习进度闭环、管理员审核发布、安全边界和端到端验收。

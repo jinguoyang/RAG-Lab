@@ -20,17 +20,17 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 - Sprint 48 已完成，主题为 E32 场景向导与知识库问答助手：P13 场景助手创建、短期 Embed Token、嵌入页、问答反馈和 retrieve 证据摘要。
 - Sprint 49 至 Sprint 50 已完成，主题为 E32 场景化智能应用后续能力：员工培训助手、培训测验、培训报告、验收硬化和文档同步。
 - Sprint 51 已完成，主题为 E32 语义检索 + LLM 测验生成：Milvus 向量语义检索、LLM 智能出题、LLM 结构化讲解和模板回退。
-- Sprint 52 待开发，已按 E33 新口径重排为平台课堂 Agent 基线：多轮对话、课堂状态机、受控答疑和结构化课堂事件 API；原自适应培训和掌握度计划降为低优先级后续。
-- Sprint 53 待开发，已按 E33 新口径重排为外部培训应用基线：独立项目、数据库迁移、平台接入和学习计划审核 UI；原嵌入页 SSE、Markdown 和运营分析计划降为低优先级后续。
+- Sprint 52 已完成收口，主题为 E33 平台课堂 Agent 基线：多轮对话、课堂状态机、受控答疑和结构化课堂事件 API；原自适应培训和掌握度计划降为低优先级后续。
+- Sprint 53 已完成收口，主题为 E33 外部培训应用基线：独立项目、数据库迁移、平台接入和学习计划审核 UI；原嵌入页 SSE、Markdown 和运营分析计划降为低优先级后续。
 - Sprint 54 已完成，主题为 E31 mimo-v2.5 图片 Provider 对齐与样本问答验收硬化：对齐小米图片理解 API、记录安全 usage 摘要，并用两张 `docs/examples` 图片验证问答召回。
-- Sprint 55 待开发，主题为 E33 平台结构化学习计划：岗位描述生成学习计划、AI 草稿校验、平台业务数据落库和学习计划版本快照。
-- Sprint 56 待开发，主题为 E33 题库生成与审核：练习题/认证题草稿、认证题审核门禁、rubric 和题库发布。
-- Sprint 57 待开发，主题为 E33 外部培训应用课堂交互：题库审核页面、课堂页面、A/B/C/D 结构化答题组件和事件提交。
-- Sprint 58 待开发，主题为 E33 员工培训 Agent 端到端验收：计划生成、审核、上课、答题、追溯和文档同步。
-- Sprint 59 待开发，主题为 E33 员工培训 Skill 与 LLM 结构化基座：Skill Registry、Skill 调用审计和 LLM JSON 输出校验。
-- Sprint 60 待开发，主题为 E33 员工培训 AI 生成与主观题评分：AI 学习计划、AI 题库和主观题 LLM 批改。
-- Sprint 61 待开发，主题为 E33 员工培训进度、审核发布与断线续接：学习进度、答题记录、章节边界、发布版本和恢复上下文。
-- Sprint 62 待开发，主题为 E33 员工培训安全、报表与端到端验收：权限隔离、培训报表和完整链路 E2E。
+- Sprint 55 已完成收口，主题为 E33 平台结构化学习计划：岗位描述生成学习计划、AI 草稿校验、平台业务数据落库和学习计划版本快照。
+- Sprint 56 已完成收口，主题为 E33 题库生成与审核：练习题/认证题草稿、认证题审核门禁、rubric 和题库发布。
+- Sprint 57 已完成收口，主题为 E33 外部培训应用课堂交互：题库审核页面、课堂页面、A/B/C/D 结构化答题组件和事件提交。
+- Sprint 58 已进入复核，主题为 E33 员工培训 Agent 端到端验收：平台侧 E2E 和外部应用后端/前端验证已通过，外部应用联调与 OpenAPI/系统文档仍需复核。
+- Sprint 59 已完成收口，主题为 E33 员工培训 Skill 与 LLM 结构化基座：Skill Registry、Skill 调用审计和 LLM JSON 输出校验。
+- Sprint 60 已完成收口，主题为 E33 员工培训 AI 生成与主观题评分：AI 学习计划、AI 题库和主观题 LLM 批改。
+- Sprint 61 已完成收口，主题为 E33 员工培训进度、审核发布与断线续接：学习进度、答题记录、章节边界、发布版本和恢复上下文。
+- Sprint 62 已完成收口，主题为 E33 员工培训安全、报表与端到端验收：权限隔离、培训报表和完整链路 E2E。
 - Sprint 63 已完成收口，主题为 E34 RAG 配置真实生效与关键 no-op 修复：B-316、B-317 已 Done。
 - Sprint 64 已进入复核，主题为 E34 文档高保真解析与 ParsedDocumentV2：B-318、B-319 已有服务/API/单测证据，待确认入库主链路接入。
 - Sprint 65 开发中，主题为 E34 多视图分块与 Contextual Chunking：B-320、B-321 已有服务和单测，待接入入库、异步任务和检索 trace。
@@ -78,17 +78,17 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 | Sprint 49 | 场景化智能应用 | 员工培训助手运行时 | Done | `sprint41-60/Sprint-49.md` |
 | Sprint 50 | 场景化智能应用 | 验收硬化与文档同步 | Done | `sprint41-60/Sprint-50.md` |
 | Sprint 51 | 场景化智能应用 | 语义检索 + LLM 测验生成 | Done | `sprint41-60/Sprint-51.md` |
-| Sprint 52 | 员工培训 Agent 深化 | 平台课堂 Agent 基线 | Todo | `sprint41-60/Sprint-52.md` |
-| Sprint 53 | 员工培训 Agent 深化 | 外部培训应用基线 | Todo | `sprint41-60/Sprint-53.md` |
+| Sprint 52 | 员工培训 Agent 深化 | 平台课堂 Agent 基线 | Done | `sprint41-60/Sprint-52.md` |
+| Sprint 53 | 员工培训 Agent 深化 | 外部培训应用基线 | Done | `sprint41-60/Sprint-53.md` |
 | Sprint 54 | 多模态 RAG Phase 1 硬化 | mimo-v2.5 图片 Provider 对齐与样本问答验收 | Done | `sprint41-60/Sprint-54.md` |
-| Sprint 55 | 员工培训 Agent 深化 | 平台结构化学习计划 | Todo | `sprint41-60/Sprint-55.md` |
-| Sprint 56 | 员工培训 Agent 深化 | 题库生成与审核 | Todo | `sprint41-60/Sprint-56.md` |
-| Sprint 57 | 员工培训 Agent 深化 | 外部培训应用课堂交互 | Todo | `sprint41-60/Sprint-57.md` |
-| Sprint 58 | 员工培训 Agent 深化 | 员工培训 Agent 端到端验收 | Todo | `sprint41-60/Sprint-58.md` |
-| Sprint 59 | 员工培训 Agent 完整化 | Skill 与 LLM 结构化基座 | Ready | `sprint41-60/Sprint-59.md` |
-| Sprint 60 | 员工培训 Agent 完整化 | AI 生成与主观题评分 | Ready | `sprint41-60/Sprint-60.md` |
-| Sprint 61 | 员工培训 Agent 完整化 | 进度、审核发布与断线续接 | Ready | `sprint61-80/Sprint-61.md` |
-| Sprint 62 | 员工培训 Agent 完整化 | 安全、报表与端到端验收 | Ready | `sprint61-80/Sprint-62.md` |
+| Sprint 55 | 员工培训 Agent 深化 | 平台结构化学习计划 | Done | `sprint41-60/Sprint-55.md` |
+| Sprint 56 | 员工培训 Agent 深化 | 题库生成与审核 | Done | `sprint41-60/Sprint-56.md` |
+| Sprint 57 | 员工培训 Agent 深化 | 外部培训应用课堂交互 | Done | `sprint41-60/Sprint-57.md` |
+| Sprint 58 | 员工培训 Agent 深化 | 员工培训 Agent 端到端验收 | In Review | `sprint41-60/Sprint-58.md` |
+| Sprint 59 | 员工培训 Agent 完整化 | Skill 与 LLM 结构化基座 | Done | `sprint41-60/Sprint-59.md` |
+| Sprint 60 | 员工培训 Agent 完整化 | AI 生成与主观题评分 | Done | `sprint41-60/Sprint-60.md` |
+| Sprint 61 | 员工培训 Agent 完整化 | 进度、审核发布与断线续接 | Done | `sprint61-80/Sprint-61.md` |
+| Sprint 62 | 员工培训 Agent 完整化 | 安全、报表与端到端验收 | Done | `sprint61-80/Sprint-62.md` |
 | Sprint 63 | 高质量 RAG 核心优化 | 配置真实生效与关键 no-op 修复 | Done | `sprint61-80/Sprint-63.md` |
 | Sprint 64 | 高质量 RAG 核心优化 | 文档高保真解析与 ParsedDocumentV2 | In Review | `sprint61-80/Sprint-64.md` |
 | Sprint 65 | 高质量 RAG 核心优化 | 多视图分块与 Contextual Chunking | In Progress | `sprint61-80/Sprint-65.md` |
