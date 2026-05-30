@@ -1,5 +1,6 @@
 """语义检索测试：验证 retrieve 接口使用向量检索替代 ILIKE。"""
 from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -18,12 +19,14 @@ class TestSemanticRetrieve:
     """retrieve_app_runtime_evidence 应使用 EmbeddingProvider + DenseRetrievalProvider。"""
 
     @patch("app.services.app_runtime_service._resolve_runtime_context_without_quota")
+    @patch("app.services.app_runtime_service.build_chunk_access_filter_context")
     @patch("app.services.app_runtime_service._build_provider_set")
-    def test_retrieve_uses_vector_search(self, mock_providers, mock_ctx):
+    def test_retrieve_uses_vector_search(self, mock_providers, mock_access_filter, mock_ctx):
         """当 dense_retrieval_provider != local 时，应走 Milvus 向量检索。"""
         from app.schemas.app_runtime import AppRuntimeRetrieveRequest
 
         mock_ctx.return_value = _make_mock_context()
+        mock_access_filter.return_value = SimpleNamespace(filter_hash="filter-hash")
 
         shared_chunk_id = uuid4()
 
@@ -60,6 +63,9 @@ class TestSemanticRetrieve:
 
             mock_embedding.embed_query.assert_called_once_with("test query")
             mock_dense.retrieve.assert_called_once()
+            retrieve_args = mock_dense.retrieve.call_args.args
+            assert len(retrieve_args) == 5
+            assert retrieve_args[4].filter_hash == "filter-hash"
             assert len(result.evidences) == 1
             assert result.metadata["retrievalMode"] == "vector"
 

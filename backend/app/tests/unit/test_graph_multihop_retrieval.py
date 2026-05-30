@@ -3,12 +3,7 @@
 验证图多跳检索、RAPTOR 索引构建和搜索功能。
 """
 
-import pytest
-
 from app.services.graph_multihop_raptor import (
-    GraphRetrievalResult,
-    RaptorIndex,
-    SummaryNode,
     build_raptor_index,
     get_graph_multihop_info,
     graph_retrieval_multihop,
@@ -20,18 +15,21 @@ class TestGraphRetrievalMultihop:
     """图多跳检索测试。"""
 
     def test_graph_retrieval_basic(self):
-        """应能执行图检索。"""
+        """无真实图 Provider 时不应返回伪造节点。"""
         result = graph_retrieval_multihop("test query", graph_depth=2)
         assert result is not None
-        assert len(result.nodes) > 0
-        assert len(result.edges) > 0
+        assert result.nodes == []
+        assert result.edges == []
+        assert result.paths == []
+        assert result.permission_status == "partial"
+        assert result.metadata["fallbackReason"] == "graphProviderRequired"
 
     def test_graph_retrieval_respects_depth(self):
-        """应受 graph_depth 约束。"""
+        """降级结果仍应记录 graph_depth 参数。"""
         result_depth1 = graph_retrieval_multihop("test", graph_depth=1)
         result_depth2 = graph_retrieval_multihop("test", graph_depth=2)
-        # 更深的图应该有更多节点
-        assert len(result_depth2.nodes) >= len(result_depth1.nodes)
+        assert result_depth1.metadata["graphDepth"] == 1
+        assert result_depth2.metadata["graphDepth"] == 2
 
     def test_graph_retrieval_respects_max_nodes(self):
         """应受 max_nodes 约束。"""
@@ -39,21 +37,22 @@ class TestGraphRetrievalMultihop:
         assert len(result.nodes) <= 5
 
     def test_graph_retrieval_has_paths(self):
-        """应返回路径。"""
+        """无真实 Provider 时路径为空，并显式说明降级。"""
         result = graph_retrieval_multihop("test", graph_depth=2)
-        assert len(result.paths) > 0
-        assert result.paths[0].length > 0
+        assert result.paths == []
+        assert result.metadata["fallbackReason"] == "graphProviderRequired"
 
     def test_graph_retrieval_permission_status(self):
         """应返回权限状态。"""
         result = graph_retrieval_multihop("test")
-        assert result.permission_status in ["ok", "partial", "denied"]
+        assert result.permission_status == "partial"
 
     def test_graph_retrieval_metadata(self):
         """应包含元数据。"""
         result = graph_retrieval_multihop("test", graph_depth=2, max_nodes=10)
         assert "graphDepth" in result.metadata
         assert "maxNodes" in result.metadata
+        assert result.metadata["requiresProvider"] is True
 
 
 class TestBuildRaptorIndex:
@@ -106,6 +105,21 @@ class TestBuildRaptorIndex:
         leaf_nodes = [n for n in index.summary_nodes if n.level == 0]
         assert len(leaf_nodes) == 2
         assert "chunk_0" in leaf_nodes[0].source_chunk_ids
+
+    def test_build_raptor_index_uses_summarizer_when_llm_enabled(self):
+        """启用 LLM 摘要时必须调用显式 summarizer，而不是静默文本截断占位。"""
+        chunks = [
+            {"chunkId": "chunk_0", "content": "Alpha beta", "documentId": "doc_0"},
+            {"chunkId": "chunk_1", "content": "Gamma delta", "documentId": "doc_0"},
+        ]
+
+        def summarizer(text: str, metadata: dict) -> str:
+            return f"summary-level-{metadata['level']}:{text[:5]}"
+
+        index = build_raptor_index(chunks, max_levels=2, use_llm=True, summarizer=summarizer)
+
+        assert any(node.content.startswith("summary-level-") for node in index.summary_nodes)
+        assert index.metadata["summaryMode"] == "llm"
 
 
 class TestSearchRaptorIndex:

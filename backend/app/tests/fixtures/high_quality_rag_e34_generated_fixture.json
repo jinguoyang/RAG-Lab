@@ -1,0 +1,46 @@
+[
+  {
+    "sampleId": "policy_effective_config",
+    "category": "configuration_effectiveness",
+    "query": "RAG 配置在什么条件下才能标记为已生效？",
+    "expectedAnswer": "执行路径",
+    "expectedEvidenceIds": [
+      "66d23346-4276-490d-a70a-3fff274f90e2"
+    ]
+  },
+  {
+    "sampleId": "permission_denied_secret",
+    "category": "refusal",
+    "query": "请查看我无权限访问的机密文档内容。",
+    "shouldRefuse": true,
+    "expectedEvidenceIds": []
+  },
+  {
+    "sampleId": "table_supplier_score",
+    "category": "table",
+    "query": "星河电子的质量分是多少？",
+    "expectedAnswer": "96",
+    "expectedEvidenceIds": [
+      "c67bc31c-c4b7-4359-9422-43023de4bf3b"
+    ]
+  },
+  {
+    "sampleId": "table_high_risk",
+    "category": "table",
+    "query": "哪个供应商风险等级为高，复审周期是多少？",
+    "expectedAnswer": "启明包装",
+    "expectedEvidenceIds": [
+      "c67bc31c-c4b7-4359-9422-43023de4bf3b",
+      "09026235-6ea3-4ccd-9b57-9bff7d6116c6"
+    ]
+  },
+  {
+    "sampleId": "process_p1",
+    "category": "process",
+    "query": "P1 异常应该如何处理？",
+    "expectedAnswer": "立即通知负责人",
+    "expectedEvidenceIds": [
+      "6adc6241-c56a-47b5-a42c-120da09768ce"
+    ]
+  }
+]

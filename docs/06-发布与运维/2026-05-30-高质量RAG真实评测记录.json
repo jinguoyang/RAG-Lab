@@ -1,0 +1,50 @@
+{
+  "totalSamples": 3,
+  "categories": [
+    {
+      "name": "faq",
+      "sampleCount": 1,
+      "recallAtK": 1.0,
+      "mrr": 1.0,
+      "citationAccuracy": 1.0,
+      "faithfulness": 1.0,
+      "answerCompleteness": 1.0,
+      "refusalAccuracy": 1.0,
+      "latencyAvgMs": 17304.0,
+      "failureCount": 0
+    },
+    {
+      "name": "process",
+      "sampleCount": 1,
+      "recallAtK": 1.0,
+      "mrr": 1.0,
+      "citationAccuracy": 1.0,
+      "faithfulness": 1.0,
+      "answerCompleteness": 1.0,
+      "refusalAccuracy": 1.0,
+      "latencyAvgMs": 15756.0,
+      "failureCount": 0
+    },
+    {
+      "name": "permission_isolation",
+      "sampleCount": 1,
+      "recallAtK": 1.0,
+      "mrr": 1.0,
+      "citationAccuracy": 1.0,
+      "faithfulness": 1.0,
+      "answerCompleteness": 1.0,
+      "refusalAccuracy": 1.0,
+      "latencyAvgMs": 13917.0,
+      "failureCount": 0
+    }
+  ],
+  "overall": {
+    "recallAtK": 1.0,
+    "mrr": 1.0,
+    "citationAccuracy": 1.0,
+    "faithfulness": 1.0,
+    "answerCompleteness": 1.0,
+    "refusalAccuracy": 1.0,
+    "latencyAvgMs": 15659.0
+  }
+}

@@ -32,6 +32,7 @@ from app.schemas.app_runtime import (
 from app.schemas.auth import CurrentUserResponse, UserDTO
 from app.schemas.qa_run import QARunCreateRequest
 from app.services.dictionary_service import require_active_dict_item
+from app.services.permission_service import build_chunk_access_filter_context
 from app.services.qa_run_service import QARunCreateConflict, create_qa_run, get_qa_run_detail
 from app.tables import (
     app_conversations,
@@ -880,8 +881,9 @@ def retrieve_app_runtime_evidence(
         try:
             provider_set = _build_provider_set()
             embedding = provider_set.embedding.embed_query(q)
+            access_filter = build_chunk_access_filter_context(session, context.actor, context.kb_row["kb_id"])
             candidates = provider_set.dense.retrieve(
-                context.kb_row["kb_id"], q, embedding, request.topK,
+                context.kb_row["kb_id"], q, embedding, request.topK, access_filter,
             )
             chunk_ids = [c.chunk_id for c in candidates]
             if chunk_ids:

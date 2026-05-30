@@ -1,0 +1,4673 @@
+{
+  "recordType": "E34-generated-documents-real-rag-retest",
+  "createdAt": "2026-05-30T14:54:26+08:00",
+  "apiBaseUrl": "http://127.0.0.1:8000/api/v1",
+  "kbId": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+  "kbName": "E34-high-quality-rag-retest-20260530",
+  "configRevisionId": "69aa9c03-59c2-4096-b48c-52b6d9ea814f",
+  "generatedFiles": [
+    "backend/app/tests/fixtures/e34_generated_documents/E34-高质量RAG复测-政策.md",
+    "backend/app/tests/fixtures/e34_generated_documents/E34-高质量RAG复测-表格.md",
+    "backend/app/tests/fixtures/e34_generated_documents/E34-高质量RAG复测-流程.md"
+  ],
+  "fixture": "backend/app/tests/fixtures/high_quality_rag_e34_generated_fixture.json",
+  "command": "python backend/scripts/evaluate_high_quality_rag.py --kb-id 0c80a297-7269-42a7-ba5b-1c17f070bdf0 --api-base-url http://127.0.0.1:8000/api/v1 --dev-user admin --fixture backend/app/tests/fixtures/high_quality_rag_e34_generated_fixture.json",
+  "parsingAndIndexing": {
+    "libraryParseChunkCounts": {
+      "policy": 4,
+      "table": 3,
+      "process": 4
+    },
+    "kbBindingChunkCounts": {
+      "policy": 4,
+      "table": 3,
+      "process": 4
+    },
+    "successfulRetryJobIds": [
+      "624c142e-a639-446c-92a8-04208af6af34",
+      "92924f55-9cfc-44ad-9b23-f148bf8f20e8",
+      "18827f9e-aa66-4c34-8a15-735521fe9a0e"
+    ],
+    "providerStatuses": {
+      "parse": "success",
+      "embedding": "success",
+      "milvus": "success",
+      "opensearch": "success",
+      "neo4j": "success"
+    },
+    "note": "首次绑定暴露 Milvus collection 要求 security_level 字段；已在 Milvus 行转换中补默认 public 后重试成功。"
+  },
+  "evaluationReport": {
+    "totalSamples": 5,
+    "categories": [
+      {
+        "name": "configuration_effectiveness",
+        "sampleCount": 1,
+        "recallAtK": 1.0,
+        "mrr": 1.0,
+        "citationAccuracy": 1.0,
+        "faithfulness": 1.0,
+        "answerCompleteness": 1.0,
+        "refusalAccuracy": 1.0,
+        "latencyAvgMs": 9015.0,
+        "failureCount": 0
+      },
+      {
+        "name": "refusal",
+        "sampleCount": 1,
+        "recallAtK": 1.0,
+        "mrr": 1.0,
+        "citationAccuracy": 1.0,
+        "faithfulness": 1.0,
+        "answerCompleteness": 1.0,
+        "refusalAccuracy": 1.0,
+        "latencyAvgMs": 9071.0,
+        "failureCount": 0
+      },
+      {
+        "name": "table",
+        "sampleCount": 2,
+        "recallAtK": 1.0,
+        "mrr": 0.75,
+        "citationAccuracy": 1.0,
+        "faithfulness": 1.0,
+        "answerCompleteness": 1.0,
+        "refusalAccuracy": 1.0,
+        "latencyAvgMs": 10598.0,
+        "failureCount": 0
+      },
+      {
+        "name": "process",
+        "sampleCount": 1,
+        "recallAtK": 1.0,
+        "mrr": 1.0,
+        "citationAccuracy": 1.0,
+        "faithfulness": 1.0,
+        "answerCompleteness": 1.0,
+        "refusalAccuracy": 1.0,
+        "latencyAvgMs": 15828.0,
+        "failureCount": 0
+      }
+    ],
+    "overall": {
+      "recallAtK": 1.0,
+      "mrr": 0.9,
+      "citationAccuracy": 1.0,
+      "faithfulness": 1.0,
+      "answerCompleteness": 1.0,
+      "refusalAccuracy": 1.0,
+      "latencyAvgMs": 11022.0
+    }
+  },
+  "qaRuns": [
+    {
+      "runId": "09b73829-cc7a-4508-ad2b-74f2d04cbb60",
+      "sourceRunId": null,
+      "status": "success",
+      "kbId": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+      "configRevisionId": "69aa9c03-59c2-4096-b48c-52b6d9ea814f",
+      "query": "RAG 配置在什么条件下才能标记为已生效？",
+      "rewrittenQuery": "RAG 配置在什么条件下才能标记为已生效？",
+      "answer": "根据提供的证据，RAG 配置标记为“已生效”的条件是：\n\n它必须在**运行时被后端读取**、**改变执行路径**，并且**进入 Trace 记录**。\n\n仅在页面展示但不影响执行结果的配置必须标记为“规划中”。",
+      "retrievalDiagnostics": {
+        "denseCount": 0,
+        "sparseCount": 10,
+        "graphCount": 1,
+        "fusedCount": 10,
+        "droppedByPermission": 0,
+        "providerErrors": [],
+        "pipelineParams": {
+          "queryRewrite": {
+            "enabled": true,
+            "rewriteStrategy": "hybrid",
+            "preserveOriginalQuery": true
+          },
+          "multiQuery": {
+            "enabled": false,
+            "queryCount": 3,
+            "mergeStrategy": "rrf"
+          },
+          "retrievalTopK": {
+            "dense": 20,
+            "sparse": 15,
+            "graph": 50
+          },
+          "retrievalScoreThreshold": {
+            "dense": 0.75,
+            "sparse": 0.2,
+            "graph": 0
+          },
+          "fusionWeights": {
+            "dense": 0.4,
+            "sparse": 0.3,
+            "graph": 0.3
+          },
+          "fusion": {
+            "method": "weighted",
+            "candidateLimit": 40,
+            "dedupBy": "chunkId",
+            "rrfK": 60
+          },
+          "rerankTopN": 5,
+          "rerank": {
+            "enabled": true,
+            "topN": 5,
+            "scoreThreshold": 0
+          },
+          "graph": {
+            "graphDepth": 2,
+            "graphExpansionLimit": 50,
+            "mustFallbackToChunk": true
+          },
+          "maxContextTokens": 6000,
+          "contextPacking": {
+            "maxContextTokens": 6000,
+            "chunkWindow": 1,
+            "packingStrategy": "citation-aware",
+            "citationPolicy": "strict"
+          },
+          "citation": {
+            "minEvidence": 1,
+            "citationPolicy": "strict"
+          },
+          "temperature": 0.1,
+          "maxOutputTokens": 1200
+        }
+      },
+      "overrideSnapshot": {},
+      "pipelineSnapshot": {
+        "version": "1.0",
+        "constraintsVersion": "1.0",
+        "mode": "constrained-stage-pipeline",
+        "stages": [
+          "preprocess",
+          "retrieval",
+          "fusion",
+          "generation",
+          "diagnostics"
+        ],
+        "templateId": "system_default",
+        "nodes": [
+          {
+            "id": "input",
+            "type": "input",
+            "stage": "preprocess",
+            "enabled": true,
+            "locked": true,
+            "params": {}
+          },
+          {
+            "id": "queryRewrite",
+            "type": "queryRewrite",
+            "stage": "preprocess",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "promptVersion": "v2",
+              "rewriteStrategy": "hybrid",
+              "preserveOriginalQuery": true,
+              "expansionCount": 3
+            }
+          },
+          {
+            "id": "multiQuery",
+            "type": "multiQuery",
+            "stage": "preprocess",
+            "enabled": false,
+            "locked": false,
+            "params": {
+              "queryCount": 3,
+              "mergeStrategy": "rrf"
+            }
+          },
+          {
+            "id": "dense",
+            "type": "denseRetrieval",
+            "stage": "retrieval",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "topK": 20,
+              "scoreThreshold": 0.75,
+              "fusionWeight": 0.4,
+              "embeddingModel": "bge-m3",
+              "metadataFilter": "active-documents"
+            }
+          },
+          {
+            "id": "sparse",
+            "type": "sparseRetrieval",
+            "stage": "retrieval",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "topK": 15,
+              "scoreThreshold": 0.2,
+              "fusionWeight": 0.3,
+              "matchMode": "bm25+phrase",
+              "metadataFilter": "active-documents"
+            }
+          },
+          {
+            "id": "graph",
+            "type": "graphRetrieval",
+            "stage": "retrieval",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "graphDepth": 2,
+              "graphExpansionLimit": 50,
+              "maxNodes": 50,
+              "fusionWeight": 0.3,
+              "pathMode": "entity-path",
+              "mustFallbackToChunk": true
+            }
+          },
+          {
+            "id": "fusion",
+            "type": "fusion",
+            "stage": "fusion",
+            "enabled": true,
+            "locked": true,
+            "params": {
+              "method": "weighted",
+              "rrfK": 60,
+              "candidateLimit": 40,
+              "dedupBy": "chunkId"
+            }
+          },
+          {
+            "id": "permissionFilter",
+            "type": "permissionFilter",
+            "stage": "fusion",
+            "enabled": true,
+            "locked": true,
+            "params": {}
+          },
+          {
+            "id": "rerank",
+            "type": "rerank",
+            "stage": "fusion",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "model": "bge-reranker-v2-m3",
+              "topN": 5,
+              "scoreThreshold": 0,
+              "keepRejectedReason": true
+            }
+          },
+          {
+            "id": "contextPacking",
+            "type": "contextPacking",
+            "stage": "generation",
+            "enabled": true,
+            "locked": true,
+            "params": {
+              "maxContextTokens": 6000,
+              "packingStrategy": "citation-aware",
+              "chunkWindow": 1,
+              "citationPolicy": "strict"
+            }
+          },
+          {
+            "id": "generation",
+            "type": "generation",
+            "stage": "generation",
+            "enabled": true,
+            "locked": true,
+            "params": {
+              "model": "claude-3-5-sonnet",
+              "temperature": 0.1,
+              "maxOutputTokens": 1200,
+              "citationPolicy": "strict"
+            }
+          },
+          {
+            "id": "citation",
+            "type": "citation",
+            "stage": "generation",
+            "enabled": true,
+            "locked": true,
+            "params": {
+              "minEvidence": 1,
+              "citationPolicy": "strict",
+              "enableGraphLinks": true
+            }
+          },
+          {
+            "id": "output",
+            "type": "output",
+            "stage": "diagnostics",
+            "enabled": true,
+            "locked": true,
+            "params": {}
+          }
+        ]
+      },
+      "nodeParamSnapshot": {
+        "queryRewrite": {
+          "enabled": true,
+          "rewriteStrategy": "hybrid",
+          "preserveOriginalQuery": true
+        },
+        "multiQuery": {
+          "enabled": false,
+          "queryCount": 3,
+          "mergeStrategy": "rrf"
+        },
+        "retrievalTopK": {
+          "dense": 20,
+          "sparse": 15,
+          "graph": 50
+        },
+        "retrievalScoreThreshold": {
+          "dense": 0.75,
+          "sparse": 0.2,
+          "graph": 0
+        },
+        "fusionWeights": {
+          "dense": 0.4,
+          "sparse": 0.3,
+          "graph": 0.3
+        },
+        "fusion": {
+          "method": "weighted",
+          "candidateLimit": 40,
+          "dedupBy": "chunkId",
+          "rrfK": 60
+        },
+        "rerankTopN": 5,
+        "rerank": {
+          "enabled": true,
+          "topN": 5,
+          "scoreThreshold": 0
+        },
+        "graph": {
+          "graphDepth": 2,
+          "graphExpansionLimit": 50,
+          "mustFallbackToChunk": true
+        },
+        "maxContextTokens": 6000,
+        "contextPacking": {
+          "maxContextTokens": 6000,
+          "chunkWindow": 1,
+          "packingStrategy": "citation-aware",
+          "citationPolicy": "strict"
+        },
+        "citation": {
+          "minEvidence": 1,
+          "citationPolicy": "strict"
+        },
+        "temperature": 0.1,
+        "maxOutputTokens": 1200
+      },
+      "feedbackStatus": "unrated",
+      "feedbackNote": null,
+      "failureType": null,
+      "candidates": [],
+      "evidence": [
+        {
+          "evidenceId": "ebfba111-2b3d-4305-8183-1abdd1824827",
+          "chunkId": "66d23346-4276-490d-a70a-3fff274f90e2",
+          "candidateId": "60a9dd2e-97a9-4d51-b97a-d9838e475539",
+          "contentSnapshot": "RAG 配置只有在运行时被后端读取、改变执行路径，并进入 Trace 记录时，才能标记为已生效。仅在页面展示但不影响执行结果的配置必须标记为规划中。",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "66d23346-4276-490d-a70a-3fff274f90e2",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "a53ecf9e-9de6-4097-8133-0fb05bd6c042",
+            "version_id": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "content_hash": "3882111e977ad888d3402edc6924db9cd5250f07fb77ec495679443dbb2dbe03",
+            "page_no": 0,
+            "section": "2. 配置真实生效要求",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "bae1cff0-ba5e-4b7f-a77d-5e055ca3460d",
+              "sourceFileName": "E34-高质量RAG复测-政策.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse"
+            ],
+            "retrievalScores": {
+              "sparse": 15.21797
+            },
+            "fusionWeights": {
+              "sparse": 0.3
+            },
+            "fusedScore": 4.565391,
+            "fusionMethod": "weighted",
+            "rerankProvider": "http",
+            "chunkId": "66d23346-4276-490d-a70a-3fff274f90e2",
+            "documentId": "a53ecf9e-9de6-4097-8133-0fb05bd6c042",
+            "documentName": "E34 高质量 RAG 复测政策",
+            "versionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "versionNo": 1,
+            "chunkRevisionId": "3b8a7869-dcb8-417d-befb-d5052a707e04",
+            "parseRevisionId": "a590f2fa-3dd6-4b3e-8276-09c3bfc49a29",
+            "documentVersionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "chunkIndex": 2,
+            "pageNo": null,
+            "sectionPath": "2. 配置真实生效要求",
+            "heading": "2. 配置真实生效要求",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测政策",
+          "versionNo": 1,
+          "chunkRevisionId": "3b8a7869-dcb8-417d-befb-d5052a707e04",
+          "parseRevisionId": "a590f2fa-3dd6-4b3e-8276-09c3bfc49a29",
+          "documentVersionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+          "pageNo": null,
+          "sectionPath": "2. 配置真实生效要求",
+          "chunkStatus": "active"
+        },
+        {
+          "evidenceId": "6128dbcf-b793-4930-a015-966b7bd4bad3",
+          "chunkId": "05b3b70d-a896-4aaf-a332-a24e6585d6a2",
+          "candidateId": "430c5d7c-f8f2-4a01-a76a-0401b529f78b",
+          "contentSnapshot": "高质量 RAG 评测至少记录 Recall@K、MRR、引用准确性、答案完整性、拒答准确性和平均延迟。",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "05b3b70d-a896-4aaf-a332-a24e6585d6a2",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "a53ecf9e-9de6-4097-8133-0fb05bd6c042",
+            "version_id": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "content_hash": "8924e51e3806d01d5c1f13cd49d27dda143e0bc799c69766ddf0ca301488a713",
+            "page_no": 0,
+            "section": "4. 质量评估指标",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "bae1cff0-ba5e-4b7f-a77d-5e055ca3460d",
+              "sourceFileName": "E34-高质量RAG复测-政策.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse"
+            ],
+            "retrievalScores": {
+              "sparse": 2.91681
+            },
+            "fusionWeights": {
+              "sparse": 0.3
+            },
+            "fusedScore": 0.8750429999999999,
+            "fusionMethod": "weighted",
+            "rerankProvider": "http",
+            "chunkId": "05b3b70d-a896-4aaf-a332-a24e6585d6a2",
+            "documentId": "a53ecf9e-9de6-4097-8133-0fb05bd6c042",
+            "documentName": "E34 高质量 RAG 复测政策",
+            "versionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "versionNo": 1,
+            "chunkRevisionId": "3b8a7869-dcb8-417d-befb-d5052a707e04",
+            "parseRevisionId": "a590f2fa-3dd6-4b3e-8276-09c3bfc49a29",
+            "documentVersionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "chunkIndex": 4,
+            "pageNo": null,
+            "sectionPath": "4. 质量评估指标",
+            "heading": "4. 质量评估指标",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测政策",
+          "versionNo": 1,
+          "chunkRevisionId": "3b8a7869-dcb8-417d-befb-d5052a707e04",
+          "parseRevisionId": "a590f2fa-3dd6-4b3e-8276-09c3bfc49a29",
+          "documentVersionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+          "pageNo": null,
+          "sectionPath": "4. 质量评估指标",
+          "chunkStatus": "active"
+        },
+        {
+          "evidenceId": "72ba7d38-4391-4664-88ce-978720843b85",
+          "chunkId": "91626567-92fe-43c5-8574-6ceb1cda2c68",
+          "candidateId": "1eb4c515-6904-4bb5-ac7f-89a4806cbda4",
+          "contentSnapshot": "异常处理流程包含以下步骤：",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "91626567-92fe-43c5-8574-6ceb1cda2c68",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "version_id": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "content_hash": "a98369d719b9c402de0a9dc9fe7df290f2ec61f8d4019869c46270d866fa2847",
+            "page_no": 0,
+            "section": "1. 异常处理流程",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "93475afd-950d-4ff0-b5dc-a601fdc9a790",
+              "sourceFileName": "E34-高质量RAG复测-流程.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse"
+            ],
+            "retrievalScores": {
+              "sparse": 2.2940784
+            },
+            "fusionWeights": {
+              "sparse": 0.3
+            },
+            "fusedScore": 0.68822352,
+            "fusionMethod": "weighted",
+            "rerankProvider": "http",
+            "chunkId": "91626567-92fe-43c5-8574-6ceb1cda2c68",
+            "documentId": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "documentName": "E34 高质量 RAG 复测流程",
+            "versionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "versionNo": 1,
+            "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+            "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+            "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkIndex": 1,
+            "pageNo": null,
+            "sectionPath": "1. 异常处理流程",
+            "heading": "1. 异常处理流程",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测流程",
+          "versionNo": 1,
+          "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+          "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+          "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+          "pageNo": null,
+          "sectionPath": "1. 异常处理流程",
+          "chunkStatus": "active"
+        },
+        {
+          "evidenceId": "99a65546-b28c-4335-bf13-4f1cc1de43dd",
+          "chunkId": "1afd54de-b3f3-489c-b4f5-19b3b8e3aadf",
+          "candidateId": "3f27d3b3-ecf9-49ca-a8e0-18f6867dd275",
+          "contentSnapshot": "只有当监控恢复正常、用户影响解除、复盘记录完成时，异常处理流程才算完成。",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "1afd54de-b3f3-489c-b4f5-19b3b8e3aadf",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "version_id": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "content_hash": "d57452d0480d23bd6ab9083edd4a9b40603636de887a9fd053fba371820bc810",
+            "page_no": 0,
+            "section": "3. 完成标准",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "93475afd-950d-4ff0-b5dc-a601fdc9a790",
+              "sourceFileName": "E34-高质量RAG复测-流程.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse"
+            ],
+            "retrievalScores": {
+              "sparse": 2.9422145
+            },
+            "fusionWeights": {
+              "sparse": 0.3
+            },
+            "fusedScore": 0.88266435,
+            "fusionMethod": "weighted",
+            "rerankProvider": "http",
+            "chunkId": "1afd54de-b3f3-489c-b4f5-19b3b8e3aadf",
+            "documentId": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "documentName": "E34 高质量 RAG 复测流程",
+            "versionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "versionNo": 1,
+            "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+            "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+            "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkIndex": 4,
+            "pageNo": null,
+            "sectionPath": "3. 完成标准",
+            "heading": "3. 完成标准",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测流程",
+          "versionNo": 1,
+          "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+          "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+          "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+          "pageNo": null,
+          "sectionPath": "3. 完成标准",
+          "chunkStatus": "active"
+        },
+        {
+          "evidenceId": "dbde4a27-effa-475e-999c-d452a5ac779c",
+          "chunkId": "6adc6241-c56a-47b5-a42c-120da09768ce",
+          "candidateId": "b5aa0a87-a0d5-43d2-976d-d7c8ade88332",
+          "contentSnapshot": "如果异常等级为 P1，必须立即通知负责人并启动跨团队会议；如果异常等级为 P3，可以在工作时间内处理。",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "6adc6241-c56a-47b5-a42c-120da09768ce",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "version_id": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "content_hash": "38b16a4d9e23a346f80eac0f82b36acee41466299fb180ec68aeac83f0e801d3",
+            "page_no": 0,
+            "section": "2. 分支规则",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "93475afd-950d-4ff0-b5dc-a601fdc9a790",
+              "sourceFileName": "E34-高质量RAG复测-流程.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse"
+            ],
+            "retrievalScores": {
+              "sparse": 1.9410412
+            },
+            "fusionWeights": {
+              "sparse": 0.3
+            },
+            "fusedScore": 0.58231236,
+            "fusionMethod": "weighted",
+            "rerankProvider": "http",
+            "chunkId": "6adc6241-c56a-47b5-a42c-120da09768ce",
+            "documentId": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "documentName": "E34 高质量 RAG 复测流程",
+            "versionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "versionNo": 1,
+            "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+            "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+            "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkIndex": 3,
+            "pageNo": null,
+            "sectionPath": "2. 分支规则",
+            "heading": "2. 分支规则",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测流程",
+          "versionNo": 1,
+          "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+          "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+          "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+          "pageNo": null,
+          "sectionPath": "2. 分支规则",
+          "chunkStatus": "active"
+        }
+      ],
+      "citations": [
+        {
+          "citationId": "ef97eec8-8433-4cad-804c-67c7c84e9ee3",
+          "evidenceId": "ebfba111-2b3d-4305-8183-1abdd1824827",
+          "label": "sparse#1",
+          "locationSnapshot": {
+            "documentId": "a53ecf9e-9de6-4097-8133-0fb05bd6c042",
+            "documentName": "E34 高质量 RAG 复测政策",
+            "versionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "chunkRevisionId": "3b8a7869-dcb8-417d-befb-d5052a707e04",
+            "parseRevisionId": "a590f2fa-3dd6-4b3e-8276-09c3bfc49a29",
+            "documentVersionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "chunkId": "66d23346-4276-490d-a70a-3fff274f90e2",
+            "chunkIndex": 2,
+            "pageNo": null,
+            "section": "2. 配置真实生效要求",
+            "sectionPath": "2. 配置真实生效要求",
+            "heading": "2. 配置真实生效要求",
+            "matchedChannels": [
+              "sparse"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        },
+        {
+          "citationId": "cf08c5fe-468c-4a60-ba94-507b8c5bac41",
+          "evidenceId": "6128dbcf-b793-4930-a015-966b7bd4bad3",
+          "label": "sparse#2",
+          "locationSnapshot": {
+            "documentId": "a53ecf9e-9de6-4097-8133-0fb05bd6c042",
+            "documentName": "E34 高质量 RAG 复测政策",
+            "versionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "chunkRevisionId": "3b8a7869-dcb8-417d-befb-d5052a707e04",
+            "parseRevisionId": "a590f2fa-3dd6-4b3e-8276-09c3bfc49a29",
+            "documentVersionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "chunkId": "05b3b70d-a896-4aaf-a332-a24e6585d6a2",
+            "chunkIndex": 4,
+            "pageNo": null,
+            "section": "4. 质量评估指标",
+            "sectionPath": "4. 质量评估指标",
+            "heading": "4. 质量评估指标",
+            "matchedChannels": [
+              "sparse"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        },
+        {
+          "citationId": "d4a64192-fcb6-45bd-a90d-d4c09f0030e4",
+          "evidenceId": "72ba7d38-4391-4664-88ce-978720843b85",
+          "label": "sparse#3",
+          "locationSnapshot": {
+            "documentId": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "documentName": "E34 高质量 RAG 复测流程",
+            "versionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+            "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+            "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkId": "91626567-92fe-43c5-8574-6ceb1cda2c68",
+            "chunkIndex": 1,
+            "pageNo": null,
+            "section": "1. 异常处理流程",
+            "sectionPath": "1. 异常处理流程",
+            "heading": "1. 异常处理流程",
+            "matchedChannels": [
+              "sparse"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        },
+        {
+          "citationId": "0cf5e279-fa23-4cbe-a2bf-b50350ff1b56",
+          "evidenceId": "99a65546-b28c-4335-bf13-4f1cc1de43dd",
+          "label": "sparse#4",
+          "locationSnapshot": {
+            "documentId": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "documentName": "E34 高质量 RAG 复测流程",
+            "versionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+            "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+            "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkId": "1afd54de-b3f3-489c-b4f5-19b3b8e3aadf",
+            "chunkIndex": 4,
+            "pageNo": null,
+            "section": "3. 完成标准",
+            "sectionPath": "3. 完成标准",
+            "heading": "3. 完成标准",
+            "matchedChannels": [
+              "sparse"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        },
+        {
+          "citationId": "05459e3d-3f97-4841-9272-be93014a72d3",
+          "evidenceId": "dbde4a27-effa-475e-999c-d452a5ac779c",
+          "label": "sparse#5",
+          "locationSnapshot": {
+            "documentId": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "documentName": "E34 高质量 RAG 复测流程",
+            "versionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+            "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+            "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkId": "6adc6241-c56a-47b5-a42c-120da09768ce",
+            "chunkIndex": 3,
+            "pageNo": null,
+            "section": "2. 分支规则",
+            "sectionPath": "2. 分支规则",
+            "heading": "2. 分支规则",
+            "matchedChannels": [
+              "sparse"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        }
+      ],
+      "trace": [],
+      "metrics": {
+        "latencyMs": 9015,
+        "hitCount": 10,
+        "evidenceCount": 5,
+        "citationCount": 5,
+        "tokenUsage": {
+          "inputTokens": 924,
+          "outputTokens": 373,
+          "totalTokens": 1297
+        },
+        "retrievalDiagnostics": {
+          "denseCount": 0,
+          "sparseCount": 10,
+          "graphCount": 1,
+          "fusedCount": 10,
+          "droppedByPermission": 0,
+          "providerErrors": [],
+          "pipelineParams": {
+            "queryRewrite": {
+              "enabled": true,
+              "rewriteStrategy": "hybrid",
+              "preserveOriginalQuery": true
+            },
+            "multiQuery": {
+              "enabled": false,
+              "queryCount": 3,
+              "mergeStrategy": "rrf"
+            },
+            "retrievalTopK": {
+              "dense": 20,
+              "sparse": 15,
+              "graph": 50
+            },
+            "retrievalScoreThreshold": {
+              "dense": 0.75,
+              "sparse": 0.2,
+              "graph": 0
+            },
+            "fusionWeights": {
+              "dense": 0.4,
+              "sparse": 0.3,
+              "graph": 0.3
+            },
+            "fusion": {
+              "method": "weighted",
+              "candidateLimit": 40,
+              "dedupBy": "chunkId",
+              "rrfK": 60
+            },
+            "rerankTopN": 5,
+            "rerank": {
+              "enabled": true,
+              "topN": 5,
+              "scoreThreshold": 0
+            },
+            "graph": {
+              "graphDepth": 2,
+              "graphExpansionLimit": 50,
+              "mustFallbackToChunk": true
+            },
+            "maxContextTokens": 6000,
+            "contextPacking": {
+              "maxContextTokens": 6000,
+              "chunkWindow": 1,
+              "packingStrategy": "citation-aware",
+              "citationPolicy": "strict"
+            },
+            "citation": {
+              "minEvidence": 1,
+              "citationPolicy": "strict"
+            },
+            "temperature": 0.1,
+            "maxOutputTokens": 1200
+          }
+        },
+        "configAudit": {
+          "effectiveCount": 40,
+          "ignoredCount": 8
+        }
+      },
+      "createdAt": "2026-05-30T14:49:58.829127+08:00"
+    },
+    {
+      "runId": "f12576e5-6cdc-4786-9ff5-bd309aa49a2b",
+      "sourceRunId": null,
+      "status": "success",
+      "kbId": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+      "configRevisionId": "69aa9c03-59c2-4096-b48c-52b6d9ea814f",
+      "query": "请查看我无权限访问的机密文档内容。",
+      "rewrittenQuery": "请查看我无权限访问的机密文档内容。",
+      "answer": "资料不足。\n\n根据[1]，当用户请求查看无权限资料时，系统必须回答“资料不足”，且不能编造外部信息。同时，根据[4]，所有回答必须基于已授权证据生成。当前，我无法获取任何支持该请求的授权证据。",
+      "retrievalDiagnostics": {
+        "denseCount": 0,
+        "sparseCount": 7,
+        "graphCount": 0,
+        "fusedCount": 7,
+        "droppedByPermission": 0,
+        "providerErrors": [],
+        "pipelineParams": {
+          "queryRewrite": {
+            "enabled": true,
+            "rewriteStrategy": "hybrid",
+            "preserveOriginalQuery": true
+          },
+          "multiQuery": {
+            "enabled": false,
+            "queryCount": 3,
+            "mergeStrategy": "rrf"
+          },
+          "retrievalTopK": {
+            "dense": 20,
+            "sparse": 15,
+            "graph": 50
+          },
+          "retrievalScoreThreshold": {
+            "dense": 0.75,
+            "sparse": 0.2,
+            "graph": 0
+          },
+          "fusionWeights": {
+            "dense": 0.4,
+            "sparse": 0.3,
+            "graph": 0.3
+          },
+          "fusion": {
+            "method": "weighted",
+            "candidateLimit": 40,
+            "dedupBy": "chunkId",
+            "rrfK": 60
+          },
+          "rerankTopN": 5,
+          "rerank": {
+            "enabled": true,
+            "topN": 5,
+            "scoreThreshold": 0
+          },
+          "graph": {
+            "graphDepth": 2,
+            "graphExpansionLimit": 50,
+            "mustFallbackToChunk": true
+          },
+          "maxContextTokens": 6000,
+          "contextPacking": {
+            "maxContextTokens": 6000,
+            "chunkWindow": 1,
+            "packingStrategy": "citation-aware",
+            "citationPolicy": "strict"
+          },
+          "citation": {
+            "minEvidence": 1,
+            "citationPolicy": "strict"
+          },
+          "temperature": 0.1,
+          "maxOutputTokens": 1200
+        }
+      },
+      "overrideSnapshot": {},
+      "pipelineSnapshot": {
+        "version": "1.0",
+        "constraintsVersion": "1.0",
+        "mode": "constrained-stage-pipeline",
+        "stages": [
+          "preprocess",
+          "retrieval",
+          "fusion",
+          "generation",
+          "diagnostics"
+        ],
+        "templateId": "system_default",
+        "nodes": [
+          {
+            "id": "input",
+            "type": "input",
+            "stage": "preprocess",
+            "enabled": true,
+            "locked": true,
+            "params": {}
+          },
+          {
+            "id": "queryRewrite",
+            "type": "queryRewrite",
+            "stage": "preprocess",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "promptVersion": "v2",
+              "rewriteStrategy": "hybrid",
+              "preserveOriginalQuery": true,
+              "expansionCount": 3
+            }
+          },
+          {
+            "id": "multiQuery",
+            "type": "multiQuery",
+            "stage": "preprocess",
+            "enabled": false,
+            "locked": false,
+            "params": {
+              "queryCount": 3,
+              "mergeStrategy": "rrf"
+            }
+          },
+          {
+            "id": "dense",
+            "type": "denseRetrieval",
+            "stage": "retrieval",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "topK": 20,
+              "scoreThreshold": 0.75,
+              "fusionWeight": 0.4,
+              "embeddingModel": "bge-m3",
+              "metadataFilter": "active-documents"
+            }
+          },
+          {
+            "id": "sparse",
+            "type": "sparseRetrieval",
+            "stage": "retrieval",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "topK": 15,
+              "scoreThreshold": 0.2,
+              "fusionWeight": 0.3,
+              "matchMode": "bm25+phrase",
+              "metadataFilter": "active-documents"
+            }
+          },
+          {
+            "id": "graph",
+            "type": "graphRetrieval",
+            "stage": "retrieval",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "graphDepth": 2,
+              "graphExpansionLimit": 50,
+              "maxNodes": 50,
+              "fusionWeight": 0.3,
+              "pathMode": "entity-path",
+              "mustFallbackToChunk": true
+            }
+          },
+          {
+            "id": "fusion",
+            "type": "fusion",
+            "stage": "fusion",
+            "enabled": true,
+            "locked": true,
+            "params": {
+              "method": "weighted",
+              "rrfK": 60,
+              "candidateLimit": 40,
+              "dedupBy": "chunkId"
+            }
+          },
+          {
+            "id": "permissionFilter",
+            "type": "permissionFilter",
+            "stage": "fusion",
+            "enabled": true,
+            "locked": true,
+            "params": {}
+          },
+          {
+            "id": "rerank",
+            "type": "rerank",
+            "stage": "fusion",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "model": "bge-reranker-v2-m3",
+              "topN": 5,
+              "scoreThreshold": 0,
+              "keepRejectedReason": true
+            }
+          },
+          {
+            "id": "contextPacking",
+            "type": "contextPacking",
+            "stage": "generation",
+            "enabled": true,
+            "locked": true,
+            "params": {
+              "maxContextTokens": 6000,
+              "packingStrategy": "citation-aware",
+              "chunkWindow": 1,
+              "citationPolicy": "strict"
+            }
+          },
+          {
+            "id": "generation",
+            "type": "generation",
+            "stage": "generation",
+            "enabled": true,
+            "locked": true,
+            "params": {
+              "model": "claude-3-5-sonnet",
+              "temperature": 0.1,
+              "maxOutputTokens": 1200,
+              "citationPolicy": "strict"
+            }
+          },
+          {
+            "id": "citation",
+            "type": "citation",
+            "stage": "generation",
+            "enabled": true,
+            "locked": true,
+            "params": {
+              "minEvidence": 1,
+              "citationPolicy": "strict",
+              "enableGraphLinks": true
+            }
+          },
+          {
+            "id": "output",
+            "type": "output",
+            "stage": "diagnostics",
+            "enabled": true,
+            "locked": true,
+            "params": {}
+          }
+        ]
+      },
+      "nodeParamSnapshot": {
+        "queryRewrite": {
+          "enabled": true,
+          "rewriteStrategy": "hybrid",
+          "preserveOriginalQuery": true
+        },
+        "multiQuery": {
+          "enabled": false,
+          "queryCount": 3,
+          "mergeStrategy": "rrf"
+        },
+        "retrievalTopK": {
+          "dense": 20,
+          "sparse": 15,
+          "graph": 50
+        },
+        "retrievalScoreThreshold": {
+          "dense": 0.75,
+          "sparse": 0.2,
+          "graph": 0
+        },
+        "fusionWeights": {
+          "dense": 0.4,
+          "sparse": 0.3,
+          "graph": 0.3
+        },
+        "fusion": {
+          "method": "weighted",
+          "candidateLimit": 40,
+          "dedupBy": "chunkId",
+          "rrfK": 60
+        },
+        "rerankTopN": 5,
+        "rerank": {
+          "enabled": true,
+          "topN": 5,
+          "scoreThreshold": 0
+        },
+        "graph": {
+          "graphDepth": 2,
+          "graphExpansionLimit": 50,
+          "mustFallbackToChunk": true
+        },
+        "maxContextTokens": 6000,
+        "contextPacking": {
+          "maxContextTokens": 6000,
+          "chunkWindow": 1,
+          "packingStrategy": "citation-aware",
+          "citationPolicy": "strict"
+        },
+        "citation": {
+          "minEvidence": 1,
+          "citationPolicy": "strict"
+        },
+        "temperature": 0.1,
+        "maxOutputTokens": 1200
+      },
+      "feedbackStatus": "unrated",
+      "feedbackNote": null,
+      "failureType": null,
+      "candidates": [],
+      "evidence": [
+        {
+          "evidenceId": "da428453-6b06-4bfe-a219-b8b5e52cbe48",
+          "chunkId": "448cd10c-0653-46f2-94ff-c1c0f63e0cf4",
+          "candidateId": "8a3ad69e-e108-4254-b9b8-db590d066f61",
+          "contentSnapshot": "当检索不到授权证据、证据与问题无关，或用户请求查看无权限资料时，系统必须回答“资料不足”，不能编造外部信息。",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "448cd10c-0653-46f2-94ff-c1c0f63e0cf4",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "a53ecf9e-9de6-4097-8133-0fb05bd6c042",
+            "version_id": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "content_hash": "aecafd0931244780f6d03ac0db4c97205ab18e97831c360082bc88f06da4e75a",
+            "page_no": 0,
+            "section": "3. 拒答规则",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "bae1cff0-ba5e-4b7f-a77d-5e055ca3460d",
+              "sourceFileName": "E34-高质量RAG复测-政策.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse"
+            ],
+            "retrievalScores": {
+              "sparse": 10.874738
+            },
+            "fusionWeights": {
+              "sparse": 0.3
+            },
+            "fusedScore": 3.2624214,
+            "fusionMethod": "weighted",
+            "rerankProvider": "http",
+            "chunkId": "448cd10c-0653-46f2-94ff-c1c0f63e0cf4",
+            "documentId": "a53ecf9e-9de6-4097-8133-0fb05bd6c042",
+            "documentName": "E34 高质量 RAG 复测政策",
+            "versionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "versionNo": 1,
+            "chunkRevisionId": "3b8a7869-dcb8-417d-befb-d5052a707e04",
+            "parseRevisionId": "a590f2fa-3dd6-4b3e-8276-09c3bfc49a29",
+            "documentVersionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "chunkIndex": 3,
+            "pageNo": null,
+            "sectionPath": "3. 拒答规则",
+            "heading": "3. 拒答规则",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测政策",
+          "versionNo": 1,
+          "chunkRevisionId": "3b8a7869-dcb8-417d-befb-d5052a707e04",
+          "parseRevisionId": "a590f2fa-3dd6-4b3e-8276-09c3bfc49a29",
+          "documentVersionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+          "pageNo": null,
+          "sectionPath": "3. 拒答规则",
+          "chunkStatus": "active"
+        },
+        {
+          "evidenceId": "f8a1903a-f5b4-41ed-9250-9c5603c55e6f",
+          "chunkId": "6adc6241-c56a-47b5-a42c-120da09768ce",
+          "candidateId": "bf75f67f-d79b-431e-8b90-98c9c5ca1468",
+          "contentSnapshot": "如果异常等级为 P1，必须立即通知负责人并启动跨团队会议；如果异常等级为 P3，可以在工作时间内处理。",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "6adc6241-c56a-47b5-a42c-120da09768ce",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "version_id": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "content_hash": "38b16a4d9e23a346f80eac0f82b36acee41466299fb180ec68aeac83f0e801d3",
+            "page_no": 0,
+            "section": "2. 分支规则",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "93475afd-950d-4ff0-b5dc-a601fdc9a790",
+              "sourceFileName": "E34-高质量RAG复测-流程.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse"
+            ],
+            "retrievalScores": {
+              "sparse": 1.1180853
+            },
+            "fusionWeights": {
+              "sparse": 0.3
+            },
+            "fusedScore": 0.33542559,
+            "fusionMethod": "weighted",
+            "rerankProvider": "http",
+            "chunkId": "6adc6241-c56a-47b5-a42c-120da09768ce",
+            "documentId": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "documentName": "E34 高质量 RAG 复测流程",
+            "versionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "versionNo": 1,
+            "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+            "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+            "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkIndex": 3,
+            "pageNo": null,
+            "sectionPath": "2. 分支规则",
+            "heading": "2. 分支规则",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测流程",
+          "versionNo": 1,
+          "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+          "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+          "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+          "pageNo": null,
+          "sectionPath": "2. 分支规则",
+          "chunkStatus": "active"
+        },
+        {
+          "evidenceId": "35e8f370-83c0-4a26-9dca-36255168b2e2",
+          "chunkId": "09026235-6ea3-4ccd-9b57-9bff7d6116c6",
+          "candidateId": "cfb62111-21ee-46c9-abb9-e5fdd2e14684",
+          "contentSnapshot": "星河电子的质量分最高，为 96 分。启明包装的风险等级为高，复审周期为 3 个月。",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "09026235-6ea3-4ccd-9b57-9bff7d6116c6",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "version_id": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "content_hash": "15e1b4ddea06bb6521306bc3cb79a526088e91184c1fba616d9a788dd1a38e84",
+            "page_no": 0,
+            "section": "2. 表格结论",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "78314d67-b984-4e07-a090-7c9324bbd289",
+              "sourceFileName": "E34-高质量RAG复测-表格.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse"
+            ],
+            "retrievalScores": {
+              "sparse": 0.7000109
+            },
+            "fusionWeights": {
+              "sparse": 0.3
+            },
+            "fusedScore": 0.21000327,
+            "fusionMethod": "weighted",
+            "rerankProvider": "http",
+            "chunkId": "09026235-6ea3-4ccd-9b57-9bff7d6116c6",
+            "documentId": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "documentName": "E34 高质量 RAG 复测表格",
+            "versionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "versionNo": 1,
+            "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+            "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+            "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkIndex": 2,
+            "pageNo": null,
+            "sectionPath": "2. 表格结论",
+            "heading": "2. 表格结论",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测表格",
+          "versionNo": 1,
+          "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+          "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+          "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+          "pageNo": null,
+          "sectionPath": "2. 表格结论",
+          "chunkStatus": "active"
+        },
+        {
+          "evidenceId": "ddd48e5e-b487-4552-9ab3-1f429fe21c90",
+          "chunkId": "29c89d94-63a9-4b2d-8a84-c7bda4394161",
+          "candidateId": "eb24b89f-6195-403a-8dd3-921bb52bda04",
+          "contentSnapshot": "本复测政策适用于研发、测试、运维三个角色共同维护的内部知识库。政策要求所有回答必须基于已授权证据生成，并在答案中保留引用编号。",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "29c89d94-63a9-4b2d-8a84-c7bda4394161",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "a53ecf9e-9de6-4097-8133-0fb05bd6c042",
+            "version_id": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "content_hash": "480614a75a81d5bf0d00d566c5136202aca06fad73a7bb2722ac97a5e9fa0afd",
+            "page_no": 0,
+            "section": "1. 适用范围",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "bae1cff0-ba5e-4b7f-a77d-5e055ca3460d",
+              "sourceFileName": "E34-高质量RAG复测-政策.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse"
+            ],
+            "retrievalScores": {
+              "sparse": 2.8679514
+            },
+            "fusionWeights": {
+              "sparse": 0.3
+            },
+            "fusedScore": 0.86038542,
+            "fusionMethod": "weighted",
+            "rerankProvider": "http",
+            "chunkId": "29c89d94-63a9-4b2d-8a84-c7bda4394161",
+            "documentId": "a53ecf9e-9de6-4097-8133-0fb05bd6c042",
+            "documentName": "E34 高质量 RAG 复测政策",
+            "versionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "versionNo": 1,
+            "chunkRevisionId": "3b8a7869-dcb8-417d-befb-d5052a707e04",
+            "parseRevisionId": "a590f2fa-3dd6-4b3e-8276-09c3bfc49a29",
+            "documentVersionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "chunkIndex": 1,
+            "pageNo": null,
+            "sectionPath": "1. 适用范围",
+            "heading": "1. 适用范围",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测政策",
+          "versionNo": 1,
+          "chunkRevisionId": "3b8a7869-dcb8-417d-befb-d5052a707e04",
+          "parseRevisionId": "a590f2fa-3dd6-4b3e-8276-09c3bfc49a29",
+          "documentVersionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+          "pageNo": null,
+          "sectionPath": "1. 适用范围",
+          "chunkStatus": "active"
+        },
+        {
+          "evidenceId": "5ede9588-aa96-4fb6-b9f2-922d2c4bb25a",
+          "chunkId": "55948c11-8e32-4b27-9b08-d1e678e32963",
+          "candidateId": "2bde1acf-e3eb-4736-bd91-68ee90172015",
+          "contentSnapshot": "回答供应商评分问题时，必须引用供应商评分表中的对应行，不能只引用表格结论段落。",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "55948c11-8e32-4b27-9b08-d1e678e32963",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "version_id": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "content_hash": "3566302ee6b8dc250a123979a7125f18386b727638be199cd312b30e8f6ecee9",
+            "page_no": 0,
+            "section": "3. 表格引用要求",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "78314d67-b984-4e07-a090-7c9324bbd289",
+              "sourceFileName": "E34-高质量RAG复测-表格.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse"
+            ],
+            "retrievalScores": {
+              "sparse": 2.3565671
+            },
+            "fusionWeights": {
+              "sparse": 0.3
+            },
+            "fusedScore": 0.70697013,
+            "fusionMethod": "weighted",
+            "rerankProvider": "http",
+            "chunkId": "55948c11-8e32-4b27-9b08-d1e678e32963",
+            "documentId": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "documentName": "E34 高质量 RAG 复测表格",
+            "versionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "versionNo": 1,
+            "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+            "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+            "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkIndex": 3,
+            "pageNo": null,
+            "sectionPath": "3. 表格引用要求",
+            "heading": "3. 表格引用要求",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测表格",
+          "versionNo": 1,
+          "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+          "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+          "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+          "pageNo": null,
+          "sectionPath": "3. 表格引用要求",
+          "chunkStatus": "active"
+        }
+      ],
+      "citations": [
+        {
+          "citationId": "51b92541-31a2-47b8-b881-12f061eb9f20",
+          "evidenceId": "da428453-6b06-4bfe-a219-b8b5e52cbe48",
+          "label": "sparse#1",
+          "locationSnapshot": {
+            "documentId": "a53ecf9e-9de6-4097-8133-0fb05bd6c042",
+            "documentName": "E34 高质量 RAG 复测政策",
+            "versionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "chunkRevisionId": "3b8a7869-dcb8-417d-befb-d5052a707e04",
+            "parseRevisionId": "a590f2fa-3dd6-4b3e-8276-09c3bfc49a29",
+            "documentVersionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "chunkId": "448cd10c-0653-46f2-94ff-c1c0f63e0cf4",
+            "chunkIndex": 3,
+            "pageNo": null,
+            "section": "3. 拒答规则",
+            "sectionPath": "3. 拒答规则",
+            "heading": "3. 拒答规则",
+            "matchedChannels": [
+              "sparse"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        },
+        {
+          "citationId": "dcf7fcc5-bb05-49a2-8a02-3f5c0af6452b",
+          "evidenceId": "f8a1903a-f5b4-41ed-9250-9c5603c55e6f",
+          "label": "sparse#2",
+          "locationSnapshot": {
+            "documentId": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "documentName": "E34 高质量 RAG 复测流程",
+            "versionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+            "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+            "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkId": "6adc6241-c56a-47b5-a42c-120da09768ce",
+            "chunkIndex": 3,
+            "pageNo": null,
+            "section": "2. 分支规则",
+            "sectionPath": "2. 分支规则",
+            "heading": "2. 分支规则",
+            "matchedChannels": [
+              "sparse"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        },
+        {
+          "citationId": "8a305f3d-f87d-4552-a38d-27aaebaced7c",
+          "evidenceId": "35e8f370-83c0-4a26-9dca-36255168b2e2",
+          "label": "sparse#3",
+          "locationSnapshot": {
+            "documentId": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "documentName": "E34 高质量 RAG 复测表格",
+            "versionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+            "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+            "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkId": "09026235-6ea3-4ccd-9b57-9bff7d6116c6",
+            "chunkIndex": 2,
+            "pageNo": null,
+            "section": "2. 表格结论",
+            "sectionPath": "2. 表格结论",
+            "heading": "2. 表格结论",
+            "matchedChannels": [
+              "sparse"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        },
+        {
+          "citationId": "64793583-78d3-424d-b96e-fbd8a19d1fab",
+          "evidenceId": "ddd48e5e-b487-4552-9ab3-1f429fe21c90",
+          "label": "sparse#4",
+          "locationSnapshot": {
+            "documentId": "a53ecf9e-9de6-4097-8133-0fb05bd6c042",
+            "documentName": "E34 高质量 RAG 复测政策",
+            "versionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "chunkRevisionId": "3b8a7869-dcb8-417d-befb-d5052a707e04",
+            "parseRevisionId": "a590f2fa-3dd6-4b3e-8276-09c3bfc49a29",
+            "documentVersionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "chunkId": "29c89d94-63a9-4b2d-8a84-c7bda4394161",
+            "chunkIndex": 1,
+            "pageNo": null,
+            "section": "1. 适用范围",
+            "sectionPath": "1. 适用范围",
+            "heading": "1. 适用范围",
+            "matchedChannels": [
+              "sparse"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        },
+        {
+          "citationId": "4e79ec3a-e492-4cad-97a7-b2f7bb566b04",
+          "evidenceId": "5ede9588-aa96-4fb6-b9f2-922d2c4bb25a",
+          "label": "sparse#5",
+          "locationSnapshot": {
+            "documentId": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "documentName": "E34 高质量 RAG 复测表格",
+            "versionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+            "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+            "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkId": "55948c11-8e32-4b27-9b08-d1e678e32963",
+            "chunkIndex": 3,
+            "pageNo": null,
+            "section": "3. 表格引用要求",
+            "sectionPath": "3. 表格引用要求",
+            "heading": "3. 表格引用要求",
+            "matchedChannels": [
+              "sparse"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        }
+      ],
+      "trace": [],
+      "metrics": {
+        "latencyMs": 9071,
+        "hitCount": 7,
+        "evidenceCount": 5,
+        "citationCount": 5,
+        "tokenUsage": {
+          "inputTokens": 778,
+          "outputTokens": 337,
+          "totalTokens": 1115
+        },
+        "retrievalDiagnostics": {
+          "denseCount": 0,
+          "sparseCount": 7,
+          "graphCount": 0,
+          "fusedCount": 7,
+          "droppedByPermission": 0,
+          "providerErrors": [],
+          "pipelineParams": {
+            "queryRewrite": {
+              "enabled": true,
+              "rewriteStrategy": "hybrid",
+              "preserveOriginalQuery": true
+            },
+            "multiQuery": {
+              "enabled": false,
+              "queryCount": 3,
+              "mergeStrategy": "rrf"
+            },
+            "retrievalTopK": {
+              "dense": 20,
+              "sparse": 15,
+              "graph": 50
+            },
+            "retrievalScoreThreshold": {
+              "dense": 0.75,
+              "sparse": 0.2,
+              "graph": 0
+            },
+            "fusionWeights": {
+              "dense": 0.4,
+              "sparse": 0.3,
+              "graph": 0.3
+            },
+            "fusion": {
+              "method": "weighted",
+              "candidateLimit": 40,
+              "dedupBy": "chunkId",
+              "rrfK": 60
+            },
+            "rerankTopN": 5,
+            "rerank": {
+              "enabled": true,
+              "topN": 5,
+              "scoreThreshold": 0
+            },
+            "graph": {
+              "graphDepth": 2,
+              "graphExpansionLimit": 50,
+              "mustFallbackToChunk": true
+            },
+            "maxContextTokens": 6000,
+            "contextPacking": {
+              "maxContextTokens": 6000,
+              "chunkWindow": 1,
+              "packingStrategy": "citation-aware",
+              "citationPolicy": "strict"
+            },
+            "citation": {
+              "minEvidence": 1,
+              "citationPolicy": "strict"
+            },
+            "temperature": 0.1,
+            "maxOutputTokens": 1200
+          }
+        },
+        "configAudit": {
+          "effectiveCount": 40,
+          "ignoredCount": 8
+        }
+      },
+      "createdAt": "2026-05-30T14:50:36.13757+08:00"
+    },
+    {
+      "runId": "1d96ed26-ee5c-430c-9440-57be617e22c9",
+      "sourceRunId": null,
+      "status": "success",
+      "kbId": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+      "configRevisionId": "69aa9c03-59c2-4096-b48c-52b6d9ea814f",
+      "query": "星河电子的质量分是多少？",
+      "rewrittenQuery": "星河电子的质量分是多少？",
+      "answer": "根据供应商评分表中的对应行，星河电子的质量分为 96 分。\n\n**引用：**  \n[2] | 星河电子 | 96 | 92 | 低 | 12个月 |",
+      "retrievalDiagnostics": {
+        "denseCount": 0,
+        "sparseCount": 8,
+        "graphCount": 0,
+        "fusedCount": 8,
+        "droppedByPermission": 0,
+        "providerErrors": [],
+        "pipelineParams": {
+          "queryRewrite": {
+            "enabled": true,
+            "rewriteStrategy": "hybrid",
+            "preserveOriginalQuery": true
+          },
+          "multiQuery": {
+            "enabled": false,
+            "queryCount": 3,
+            "mergeStrategy": "rrf"
+          },
+          "retrievalTopK": {
+            "dense": 20,
+            "sparse": 15,
+            "graph": 50
+          },
+          "retrievalScoreThreshold": {
+            "dense": 0.75,
+            "sparse": 0.2,
+            "graph": 0
+          },
+          "fusionWeights": {
+            "dense": 0.4,
+            "sparse": 0.3,
+            "graph": 0.3
+          },
+          "fusion": {
+            "method": "weighted",
+            "candidateLimit": 40,
+            "dedupBy": "chunkId",
+            "rrfK": 60
+          },
+          "rerankTopN": 5,
+          "rerank": {
+            "enabled": true,
+            "topN": 5,
+            "scoreThreshold": 0
+          },
+          "graph": {
+            "graphDepth": 2,
+            "graphExpansionLimit": 50,
+            "mustFallbackToChunk": true
+          },
+          "maxContextTokens": 6000,
+          "contextPacking": {
+            "maxContextTokens": 6000,
+            "chunkWindow": 1,
+            "packingStrategy": "citation-aware",
+            "citationPolicy": "strict"
+          },
+          "citation": {
+            "minEvidence": 1,
+            "citationPolicy": "strict"
+          },
+          "temperature": 0.1,
+          "maxOutputTokens": 1200
+        }
+      },
+      "overrideSnapshot": {},
+      "pipelineSnapshot": {
+        "version": "1.0",
+        "constraintsVersion": "1.0",
+        "mode": "constrained-stage-pipeline",
+        "stages": [
+          "preprocess",
+          "retrieval",
+          "fusion",
+          "generation",
+          "diagnostics"
+        ],
+        "templateId": "system_default",
+        "nodes": [
+          {
+            "id": "input",
+            "type": "input",
+            "stage": "preprocess",
+            "enabled": true,
+            "locked": true,
+            "params": {}
+          },
+          {
+            "id": "queryRewrite",
+            "type": "queryRewrite",
+            "stage": "preprocess",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "promptVersion": "v2",
+              "rewriteStrategy": "hybrid",
+              "preserveOriginalQuery": true,
+              "expansionCount": 3
+            }
+          },
+          {
+            "id": "multiQuery",
+            "type": "multiQuery",
+            "stage": "preprocess",
+            "enabled": false,
+            "locked": false,
+            "params": {
+              "queryCount": 3,
+              "mergeStrategy": "rrf"
+            }
+          },
+          {
+            "id": "dense",
+            "type": "denseRetrieval",
+            "stage": "retrieval",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "topK": 20,
+              "scoreThreshold": 0.75,
+              "fusionWeight": 0.4,
+              "embeddingModel": "bge-m3",
+              "metadataFilter": "active-documents"
+            }
+          },
+          {
+            "id": "sparse",
+            "type": "sparseRetrieval",
+            "stage": "retrieval",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "topK": 15,
+              "scoreThreshold": 0.2,
+              "fusionWeight": 0.3,
+              "matchMode": "bm25+phrase",
+              "metadataFilter": "active-documents"
+            }
+          },
+          {
+            "id": "graph",
+            "type": "graphRetrieval",
+            "stage": "retrieval",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "graphDepth": 2,
+              "graphExpansionLimit": 50,
+              "maxNodes": 50,
+              "fusionWeight": 0.3,
+              "pathMode": "entity-path",
+              "mustFallbackToChunk": true
+            }
+          },
+          {
+            "id": "fusion",
+            "type": "fusion",
+            "stage": "fusion",
+            "enabled": true,
+            "locked": true,
+            "params": {
+              "method": "weighted",
+              "rrfK": 60,
+              "candidateLimit": 40,
+              "dedupBy": "chunkId"
+            }
+          },
+          {
+            "id": "permissionFilter",
+            "type": "permissionFilter",
+            "stage": "fusion",
+            "enabled": true,
+            "locked": true,
+            "params": {}
+          },
+          {
+            "id": "rerank",
+            "type": "rerank",
+            "stage": "fusion",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "model": "bge-reranker-v2-m3",
+              "topN": 5,
+              "scoreThreshold": 0,
+              "keepRejectedReason": true
+            }
+          },
+          {
+            "id": "contextPacking",
+            "type": "contextPacking",
+            "stage": "generation",
+            "enabled": true,
+            "locked": true,
+            "params": {
+              "maxContextTokens": 6000,
+              "packingStrategy": "citation-aware",
+              "chunkWindow": 1,
+              "citationPolicy": "strict"
+            }
+          },
+          {
+            "id": "generation",
+            "type": "generation",
+            "stage": "generation",
+            "enabled": true,
+            "locked": true,
+            "params": {
+              "model": "claude-3-5-sonnet",
+              "temperature": 0.1,
+              "maxOutputTokens": 1200,
+              "citationPolicy": "strict"
+            }
+          },
+          {
+            "id": "citation",
+            "type": "citation",
+            "stage": "generation",
+            "enabled": true,
+            "locked": true,
+            "params": {
+              "minEvidence": 1,
+              "citationPolicy": "strict",
+              "enableGraphLinks": true
+            }
+          },
+          {
+            "id": "output",
+            "type": "output",
+            "stage": "diagnostics",
+            "enabled": true,
+            "locked": true,
+            "params": {}
+          }
+        ]
+      },
+      "nodeParamSnapshot": {
+        "queryRewrite": {
+          "enabled": true,
+          "rewriteStrategy": "hybrid",
+          "preserveOriginalQuery": true
+        },
+        "multiQuery": {
+          "enabled": false,
+          "queryCount": 3,
+          "mergeStrategy": "rrf"
+        },
+        "retrievalTopK": {
+          "dense": 20,
+          "sparse": 15,
+          "graph": 50
+        },
+        "retrievalScoreThreshold": {
+          "dense": 0.75,
+          "sparse": 0.2,
+          "graph": 0
+        },
+        "fusionWeights": {
+          "dense": 0.4,
+          "sparse": 0.3,
+          "graph": 0.3
+        },
+        "fusion": {
+          "method": "weighted",
+          "candidateLimit": 40,
+          "dedupBy": "chunkId",
+          "rrfK": 60
+        },
+        "rerankTopN": 5,
+        "rerank": {
+          "enabled": true,
+          "topN": 5,
+          "scoreThreshold": 0
+        },
+        "graph": {
+          "graphDepth": 2,
+          "graphExpansionLimit": 50,
+          "mustFallbackToChunk": true
+        },
+        "maxContextTokens": 6000,
+        "contextPacking": {
+          "maxContextTokens": 6000,
+          "chunkWindow": 1,
+          "packingStrategy": "citation-aware",
+          "citationPolicy": "strict"
+        },
+        "citation": {
+          "minEvidence": 1,
+          "citationPolicy": "strict"
+        },
+        "temperature": 0.1,
+        "maxOutputTokens": 1200
+      },
+      "feedbackStatus": "unrated",
+      "feedbackNote": null,
+      "failureType": null,
+      "candidates": [],
+      "evidence": [
+        {
+          "evidenceId": "8d915627-2327-4702-8fd6-658562dacb0a",
+          "chunkId": "09026235-6ea3-4ccd-9b57-9bff7d6116c6",
+          "candidateId": "c507d2fc-d18d-4387-9ef3-3b6fbaaf358a",
+          "contentSnapshot": "星河电子的质量分最高，为 96 分。启明包装的风险等级为高，复审周期为 3 个月。",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "09026235-6ea3-4ccd-9b57-9bff7d6116c6",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "version_id": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "content_hash": "15e1b4ddea06bb6521306bc3cb79a526088e91184c1fba616d9a788dd1a38e84",
+            "page_no": 0,
+            "section": "2. 表格结论",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "78314d67-b984-4e07-a090-7c9324bbd289",
+              "sourceFileName": "E34-高质量RAG复测-表格.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse"
+            ],
+            "retrievalScores": {
+              "sparse": 10.935878
+            },
+            "fusionWeights": {
+              "sparse": 0.3
+            },
+            "fusedScore": 3.2807634,
+            "fusionMethod": "weighted",
+            "rerankProvider": "http",
+            "chunkId": "09026235-6ea3-4ccd-9b57-9bff7d6116c6",
+            "documentId": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "documentName": "E34 高质量 RAG 复测表格",
+            "versionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "versionNo": 1,
+            "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+            "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+            "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkIndex": 2,
+            "pageNo": null,
+            "sectionPath": "2. 表格结论",
+            "heading": "2. 表格结论",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测表格",
+          "versionNo": 1,
+          "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+          "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+          "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+          "pageNo": null,
+          "sectionPath": "2. 表格结论",
+          "chunkStatus": "active"
+        },
+        {
+          "evidenceId": "fdd9eb24-281b-4908-bac1-a5dad4d59943",
+          "chunkId": "c67bc31c-c4b7-4359-9422-43023de4bf3b",
+          "candidateId": "210c0352-3c07-4986-b70e-76e3abde3b16",
+          "contentSnapshot": "| 供应商 | 质量分 | 交付分 | 风险等级 | 复审周期 |\n| --- | ---: | ---: | --- | --- |\n| 星河电子 | 96 | 92 | 低 | 12个月 |\n| 北辰材料 | 82 | 75 | 中 | 6个月 |\n| 启明包装 | 68 | 71 | 高 | 3个月 |",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "c67bc31c-c4b7-4359-9422-43023de4bf3b",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "version_id": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "content_hash": "32b909edbebd2ea61905420972ed8ae5af552e2e13c547634f025bcbc6ef5b3a",
+            "page_no": 0,
+            "section": "1. 供应商评分表",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "78314d67-b984-4e07-a090-7c9324bbd289",
+              "sourceFileName": "E34-高质量RAG复测-表格.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse"
+            ],
+            "retrievalScores": {
+              "sparse": 9.162603
+            },
+            "fusionWeights": {
+              "sparse": 0.3
+            },
+            "fusedScore": 2.7487809000000003,
+            "fusionMethod": "weighted",
+            "rerankProvider": "http",
+            "chunkId": "c67bc31c-c4b7-4359-9422-43023de4bf3b",
+            "documentId": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "documentName": "E34 高质量 RAG 复测表格",
+            "versionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "versionNo": 1,
+            "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+            "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+            "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkIndex": 1,
+            "pageNo": null,
+            "sectionPath": "1. 供应商评分表",
+            "heading": "1. 供应商评分表",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测表格",
+          "versionNo": 1,
+          "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+          "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+          "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+          "pageNo": null,
+          "sectionPath": "1. 供应商评分表",
+          "chunkStatus": "active"
+        },
+        {
+          "evidenceId": "3b75ccc6-7fc8-46cf-a307-b5a4c2dca826",
+          "chunkId": "55948c11-8e32-4b27-9b08-d1e678e32963",
+          "candidateId": "38479957-8897-4107-b243-81e5e4eebfde",
+          "contentSnapshot": "回答供应商评分问题时，必须引用供应商评分表中的对应行，不能只引用表格结论段落。",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "55948c11-8e32-4b27-9b08-d1e678e32963",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "version_id": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "content_hash": "3566302ee6b8dc250a123979a7125f18386b727638be199cd312b30e8f6ecee9",
+            "page_no": 0,
+            "section": "3. 表格引用要求",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "78314d67-b984-4e07-a090-7c9324bbd289",
+              "sourceFileName": "E34-高质量RAG复测-表格.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse"
+            ],
+            "retrievalScores": {
+              "sparse": 1.5920668
+            },
+            "fusionWeights": {
+              "sparse": 0.3
+            },
+            "fusedScore": 0.47762003999999997,
+            "fusionMethod": "weighted",
+            "rerankProvider": "http",
+            "chunkId": "55948c11-8e32-4b27-9b08-d1e678e32963",
+            "documentId": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "documentName": "E34 高质量 RAG 复测表格",
+            "versionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "versionNo": 1,
+            "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+            "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+            "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkIndex": 3,
+            "pageNo": null,
+            "sectionPath": "3. 表格引用要求",
+            "heading": "3. 表格引用要求",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测表格",
+          "versionNo": 1,
+          "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+          "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+          "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+          "pageNo": null,
+          "sectionPath": "3. 表格引用要求",
+          "chunkStatus": "active"
+        },
+        {
+          "evidenceId": "dd1f996e-36f7-444e-a99d-731942e04d70",
+          "chunkId": "05b3b70d-a896-4aaf-a332-a24e6585d6a2",
+          "candidateId": "da2616a1-9447-44eb-ad46-a5cd113e7028",
+          "contentSnapshot": "高质量 RAG 评测至少记录 Recall@K、MRR、引用准确性、答案完整性、拒答准确性和平均延迟。",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "05b3b70d-a896-4aaf-a332-a24e6585d6a2",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "a53ecf9e-9de6-4097-8133-0fb05bd6c042",
+            "version_id": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "content_hash": "8924e51e3806d01d5c1f13cd49d27dda143e0bc799c69766ddf0ca301488a713",
+            "page_no": 0,
+            "section": "4. 质量评估指标",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "bae1cff0-ba5e-4b7f-a77d-5e055ca3460d",
+              "sourceFileName": "E34-高质量RAG复测-政策.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse"
+            ],
+            "retrievalScores": {
+              "sparse": 3.647254
+            },
+            "fusionWeights": {
+              "sparse": 0.3
+            },
+            "fusedScore": 1.0941762,
+            "fusionMethod": "weighted",
+            "rerankProvider": "http",
+            "chunkId": "05b3b70d-a896-4aaf-a332-a24e6585d6a2",
+            "documentId": "a53ecf9e-9de6-4097-8133-0fb05bd6c042",
+            "documentName": "E34 高质量 RAG 复测政策",
+            "versionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "versionNo": 1,
+            "chunkRevisionId": "3b8a7869-dcb8-417d-befb-d5052a707e04",
+            "parseRevisionId": "a590f2fa-3dd6-4b3e-8276-09c3bfc49a29",
+            "documentVersionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "chunkIndex": 4,
+            "pageNo": null,
+            "sectionPath": "4. 质量评估指标",
+            "heading": "4. 质量评估指标",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测政策",
+          "versionNo": 1,
+          "chunkRevisionId": "3b8a7869-dcb8-417d-befb-d5052a707e04",
+          "parseRevisionId": "a590f2fa-3dd6-4b3e-8276-09c3bfc49a29",
+          "documentVersionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+          "pageNo": null,
+          "sectionPath": "4. 质量评估指标",
+          "chunkStatus": "active"
+        },
+        {
+          "evidenceId": "5c5a80eb-bc5c-4f19-b657-2959f2bce3a2",
+          "chunkId": "fcd48f4e-9900-4239-8a17-29c913256c69",
+          "candidateId": "4f191832-43b2-49e1-b100-70ee7094001b",
+          "contentSnapshot": "1. 发现异常：监控系统或人工巡检发现异常。\n2. 建立工单：值班人员在 10 分钟内建立工单。\n3. 分级判断：根据影响范围判断为 P1、P2 或 P3。\n4. 处置恢复：责任团队执行回滚、扩容或配置修正。\n5. 复盘归档：恢复后 24 小时内完成复盘并归档证据。",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "fcd48f4e-9900-4239-8a17-29c913256c69",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "version_id": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "content_hash": "383c80f2f1bf2e5918c4814a7c3e232e4ec88e4be75f42c5ad3d44c375626a9f",
+            "page_no": 0,
+            "section": "1. 异常处理流程",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "93475afd-950d-4ff0-b5dc-a601fdc9a790",
+              "sourceFileName": "E34-高质量RAG复测-流程.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse"
+            ],
+            "retrievalScores": {
+              "sparse": 0.8297793
+            },
+            "fusionWeights": {
+              "sparse": 0.3
+            },
+            "fusedScore": 0.24893379,
+            "fusionMethod": "weighted",
+            "rerankProvider": "http",
+            "chunkId": "fcd48f4e-9900-4239-8a17-29c913256c69",
+            "documentId": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "documentName": "E34 高质量 RAG 复测流程",
+            "versionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "versionNo": 1,
+            "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+            "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+            "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkIndex": 2,
+            "pageNo": null,
+            "sectionPath": "1. 异常处理流程",
+            "heading": "1. 异常处理流程",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测流程",
+          "versionNo": 1,
+          "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+          "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+          "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+          "pageNo": null,
+          "sectionPath": "1. 异常处理流程",
+          "chunkStatus": "active"
+        }
+      ],
+      "citations": [
+        {
+          "citationId": "91021330-8510-46d4-9035-ae917c4d7040",
+          "evidenceId": "8d915627-2327-4702-8fd6-658562dacb0a",
+          "label": "sparse#1",
+          "locationSnapshot": {
+            "documentId": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "documentName": "E34 高质量 RAG 复测表格",
+            "versionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+            "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+            "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkId": "09026235-6ea3-4ccd-9b57-9bff7d6116c6",
+            "chunkIndex": 2,
+            "pageNo": null,
+            "section": "2. 表格结论",
+            "sectionPath": "2. 表格结论",
+            "heading": "2. 表格结论",
+            "matchedChannels": [
+              "sparse"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        },
+        {
+          "citationId": "f423ba39-2c7a-4d47-8296-e5ef227ba172",
+          "evidenceId": "fdd9eb24-281b-4908-bac1-a5dad4d59943",
+          "label": "sparse#2",
+          "locationSnapshot": {
+            "documentId": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "documentName": "E34 高质量 RAG 复测表格",
+            "versionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+            "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+            "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkId": "c67bc31c-c4b7-4359-9422-43023de4bf3b",
+            "chunkIndex": 1,
+            "pageNo": null,
+            "section": "1. 供应商评分表",
+            "sectionPath": "1. 供应商评分表",
+            "heading": "1. 供应商评分表",
+            "matchedChannels": [
+              "sparse"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        },
+        {
+          "citationId": "07e2ce71-caf8-436a-9e35-21bb0619035d",
+          "evidenceId": "3b75ccc6-7fc8-46cf-a307-b5a4c2dca826",
+          "label": "sparse#3",
+          "locationSnapshot": {
+            "documentId": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "documentName": "E34 高质量 RAG 复测表格",
+            "versionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+            "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+            "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkId": "55948c11-8e32-4b27-9b08-d1e678e32963",
+            "chunkIndex": 3,
+            "pageNo": null,
+            "section": "3. 表格引用要求",
+            "sectionPath": "3. 表格引用要求",
+            "heading": "3. 表格引用要求",
+            "matchedChannels": [
+              "sparse"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        },
+        {
+          "citationId": "1d50469b-4e9f-4ac5-9e70-ce8cb9694e98",
+          "evidenceId": "dd1f996e-36f7-444e-a99d-731942e04d70",
+          "label": "sparse#4",
+          "locationSnapshot": {
+            "documentId": "a53ecf9e-9de6-4097-8133-0fb05bd6c042",
+            "documentName": "E34 高质量 RAG 复测政策",
+            "versionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "chunkRevisionId": "3b8a7869-dcb8-417d-befb-d5052a707e04",
+            "parseRevisionId": "a590f2fa-3dd6-4b3e-8276-09c3bfc49a29",
+            "documentVersionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "chunkId": "05b3b70d-a896-4aaf-a332-a24e6585d6a2",
+            "chunkIndex": 4,
+            "pageNo": null,
+            "section": "4. 质量评估指标",
+            "sectionPath": "4. 质量评估指标",
+            "heading": "4. 质量评估指标",
+            "matchedChannels": [
+              "sparse"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        },
+        {
+          "citationId": "b2368a55-bc08-45e1-8309-40711f0973b3",
+          "evidenceId": "5c5a80eb-bc5c-4f19-b657-2959f2bce3a2",
+          "label": "sparse#5",
+          "locationSnapshot": {
+            "documentId": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "documentName": "E34 高质量 RAG 复测流程",
+            "versionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+            "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+            "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkId": "fcd48f4e-9900-4239-8a17-29c913256c69",
+            "chunkIndex": 2,
+            "pageNo": null,
+            "section": "1. 异常处理流程",
+            "sectionPath": "1. 异常处理流程",
+            "heading": "1. 异常处理流程",
+            "matchedChannels": [
+              "sparse"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        }
+      ],
+      "trace": [],
+      "metrics": {
+        "latencyMs": 9975,
+        "hitCount": 8,
+        "evidenceCount": 5,
+        "citationCount": 5,
+        "tokenUsage": {
+          "inputTokens": 978,
+          "outputTokens": 616,
+          "totalTokens": 1594
+        },
+        "retrievalDiagnostics": {
+          "denseCount": 0,
+          "sparseCount": 8,
+          "graphCount": 0,
+          "fusedCount": 8,
+          "droppedByPermission": 0,
+          "providerErrors": [],
+          "pipelineParams": {
+            "queryRewrite": {
+              "enabled": true,
+              "rewriteStrategy": "hybrid",
+              "preserveOriginalQuery": true
+            },
+            "multiQuery": {
+              "enabled": false,
+              "queryCount": 3,
+              "mergeStrategy": "rrf"
+            },
+            "retrievalTopK": {
+              "dense": 20,
+              "sparse": 15,
+              "graph": 50
+            },
+            "retrievalScoreThreshold": {
+              "dense": 0.75,
+              "sparse": 0.2,
+              "graph": 0
+            },
+            "fusionWeights": {
+              "dense": 0.4,
+              "sparse": 0.3,
+              "graph": 0.3
+            },
+            "fusion": {
+              "method": "weighted",
+              "candidateLimit": 40,
+              "dedupBy": "chunkId",
+              "rrfK": 60
+            },
+            "rerankTopN": 5,
+            "rerank": {
+              "enabled": true,
+              "topN": 5,
+              "scoreThreshold": 0
+            },
+            "graph": {
+              "graphDepth": 2,
+              "graphExpansionLimit": 50,
+              "mustFallbackToChunk": true
+            },
+            "maxContextTokens": 6000,
+            "contextPacking": {
+              "maxContextTokens": 6000,
+              "chunkWindow": 1,
+              "packingStrategy": "citation-aware",
+              "citationPolicy": "strict"
+            },
+            "citation": {
+              "minEvidence": 1,
+              "citationPolicy": "strict"
+            },
+            "temperature": 0.1,
+            "maxOutputTokens": 1200
+          }
+        },
+        "configAudit": {
+          "effectiveCount": 40,
+          "ignoredCount": 8
+        }
+      },
+      "createdAt": "2026-05-30T14:51:12.403758+08:00"
+    },
+    {
+      "runId": "83a6aaf7-ffb9-4b80-b36b-c749695cb25e",
+      "sourceRunId": null,
+      "status": "success",
+      "kbId": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+      "configRevisionId": "69aa9c03-59c2-4096-b48c-52b6d9ea814f",
+      "query": "哪个供应商风险等级为高，复审周期是多少？",
+      "rewrittenQuery": "哪个供应商风险等级为高，复审周期是多少？",
+      "answer": "根据证据 [2] 中的供应商评分表，启明包装的风险等级为高，复审周期为3个月。",
+      "retrievalDiagnostics": {
+        "denseCount": 0,
+        "sparseCount": 9,
+        "graphCount": 6,
+        "fusedCount": 9,
+        "droppedByPermission": 0,
+        "providerErrors": [],
+        "pipelineParams": {
+          "queryRewrite": {
+            "enabled": true,
+            "rewriteStrategy": "hybrid",
+            "preserveOriginalQuery": true
+          },
+          "multiQuery": {
+            "enabled": false,
+            "queryCount": 3,
+            "mergeStrategy": "rrf"
+          },
+          "retrievalTopK": {
+            "dense": 20,
+            "sparse": 15,
+            "graph": 50
+          },
+          "retrievalScoreThreshold": {
+            "dense": 0.75,
+            "sparse": 0.2,
+            "graph": 0
+          },
+          "fusionWeights": {
+            "dense": 0.4,
+            "sparse": 0.3,
+            "graph": 0.3
+          },
+          "fusion": {
+            "method": "weighted",
+            "candidateLimit": 40,
+            "dedupBy": "chunkId",
+            "rrfK": 60
+          },
+          "rerankTopN": 5,
+          "rerank": {
+            "enabled": true,
+            "topN": 5,
+            "scoreThreshold": 0
+          },
+          "graph": {
+            "graphDepth": 2,
+            "graphExpansionLimit": 50,
+            "mustFallbackToChunk": true
+          },
+          "maxContextTokens": 6000,
+          "contextPacking": {
+            "maxContextTokens": 6000,
+            "chunkWindow": 1,
+            "packingStrategy": "citation-aware",
+            "citationPolicy": "strict"
+          },
+          "citation": {
+            "minEvidence": 1,
+            "citationPolicy": "strict"
+          },
+          "temperature": 0.1,
+          "maxOutputTokens": 1200
+        }
+      },
+      "overrideSnapshot": {},
+      "pipelineSnapshot": {
+        "version": "1.0",
+        "constraintsVersion": "1.0",
+        "mode": "constrained-stage-pipeline",
+        "stages": [
+          "preprocess",
+          "retrieval",
+          "fusion",
+          "generation",
+          "diagnostics"
+        ],
+        "templateId": "system_default",
+        "nodes": [
+          {
+            "id": "input",
+            "type": "input",
+            "stage": "preprocess",
+            "enabled": true,
+            "locked": true,
+            "params": {}
+          },
+          {
+            "id": "queryRewrite",
+            "type": "queryRewrite",
+            "stage": "preprocess",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "promptVersion": "v2",
+              "rewriteStrategy": "hybrid",
+              "preserveOriginalQuery": true,
+              "expansionCount": 3
+            }
+          },
+          {
+            "id": "multiQuery",
+            "type": "multiQuery",
+            "stage": "preprocess",
+            "enabled": false,
+            "locked": false,
+            "params": {
+              "queryCount": 3,
+              "mergeStrategy": "rrf"
+            }
+          },
+          {
+            "id": "dense",
+            "type": "denseRetrieval",
+            "stage": "retrieval",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "topK": 20,
+              "scoreThreshold": 0.75,
+              "fusionWeight": 0.4,
+              "embeddingModel": "bge-m3",
+              "metadataFilter": "active-documents"
+            }
+          },
+          {
+            "id": "sparse",
+            "type": "sparseRetrieval",
+            "stage": "retrieval",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "topK": 15,
+              "scoreThreshold": 0.2,
+              "fusionWeight": 0.3,
+              "matchMode": "bm25+phrase",
+              "metadataFilter": "active-documents"
+            }
+          },
+          {
+            "id": "graph",
+            "type": "graphRetrieval",
+            "stage": "retrieval",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "graphDepth": 2,
+              "graphExpansionLimit": 50,
+              "maxNodes": 50,
+              "fusionWeight": 0.3,
+              "pathMode": "entity-path",
+              "mustFallbackToChunk": true
+            }
+          },
+          {
+            "id": "fusion",
+            "type": "fusion",
+            "stage": "fusion",
+            "enabled": true,
+            "locked": true,
+            "params": {
+              "method": "weighted",
+              "rrfK": 60,
+              "candidateLimit": 40,
+              "dedupBy": "chunkId"
+            }
+          },
+          {
+            "id": "permissionFilter",
+            "type": "permissionFilter",
+            "stage": "fusion",
+            "enabled": true,
+            "locked": true,
+            "params": {}
+          },
+          {
+            "id": "rerank",
+            "type": "rerank",
+            "stage": "fusion",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "model": "bge-reranker-v2-m3",
+              "topN": 5,
+              "scoreThreshold": 0,
+              "keepRejectedReason": true
+            }
+          },
+          {
+            "id": "contextPacking",
+            "type": "contextPacking",
+            "stage": "generation",
+            "enabled": true,
+            "locked": true,
+            "params": {
+              "maxContextTokens": 6000,
+              "packingStrategy": "citation-aware",
+              "chunkWindow": 1,
+              "citationPolicy": "strict"
+            }
+          },
+          {
+            "id": "generation",
+            "type": "generation",
+            "stage": "generation",
+            "enabled": true,
+            "locked": true,
+            "params": {
+              "model": "claude-3-5-sonnet",
+              "temperature": 0.1,
+              "maxOutputTokens": 1200,
+              "citationPolicy": "strict"
+            }
+          },
+          {
+            "id": "citation",
+            "type": "citation",
+            "stage": "generation",
+            "enabled": true,
+            "locked": true,
+            "params": {
+              "minEvidence": 1,
+              "citationPolicy": "strict",
+              "enableGraphLinks": true
+            }
+          },
+          {
+            "id": "output",
+            "type": "output",
+            "stage": "diagnostics",
+            "enabled": true,
+            "locked": true,
+            "params": {}
+          }
+        ]
+      },
+      "nodeParamSnapshot": {
+        "queryRewrite": {
+          "enabled": true,
+          "rewriteStrategy": "hybrid",
+          "preserveOriginalQuery": true
+        },
+        "multiQuery": {
+          "enabled": false,
+          "queryCount": 3,
+          "mergeStrategy": "rrf"
+        },
+        "retrievalTopK": {
+          "dense": 20,
+          "sparse": 15,
+          "graph": 50
+        },
+        "retrievalScoreThreshold": {
+          "dense": 0.75,
+          "sparse": 0.2,
+          "graph": 0
+        },
+        "fusionWeights": {
+          "dense": 0.4,
+          "sparse": 0.3,
+          "graph": 0.3
+        },
+        "fusion": {
+          "method": "weighted",
+          "candidateLimit": 40,
+          "dedupBy": "chunkId",
+          "rrfK": 60
+        },
+        "rerankTopN": 5,
+        "rerank": {
+          "enabled": true,
+          "topN": 5,
+          "scoreThreshold": 0
+        },
+        "graph": {
+          "graphDepth": 2,
+          "graphExpansionLimit": 50,
+          "mustFallbackToChunk": true
+        },
+        "maxContextTokens": 6000,
+        "contextPacking": {
+          "maxContextTokens": 6000,
+          "chunkWindow": 1,
+          "packingStrategy": "citation-aware",
+          "citationPolicy": "strict"
+        },
+        "citation": {
+          "minEvidence": 1,
+          "citationPolicy": "strict"
+        },
+        "temperature": 0.1,
+        "maxOutputTokens": 1200
+      },
+      "feedbackStatus": "unrated",
+      "feedbackNote": null,
+      "failureType": null,
+      "candidates": [],
+      "evidence": [
+        {
+          "evidenceId": "19186f86-b08b-4fbf-9e45-bbaa92d1e60a",
+          "chunkId": "09026235-6ea3-4ccd-9b57-9bff7d6116c6",
+          "candidateId": "9163a95a-1d53-4c87-93e0-39c8499a1854",
+          "contentSnapshot": "星河电子的质量分最高，为 96 分。启明包装的风险等级为高，复审周期为 3 个月。",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "09026235-6ea3-4ccd-9b57-9bff7d6116c6",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "version_id": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "content_hash": "15e1b4ddea06bb6521306bc3cb79a526088e91184c1fba616d9a788dd1a38e84",
+            "page_no": 0,
+            "section": "2. 表格结论",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "78314d67-b984-4e07-a090-7c9324bbd289",
+              "sourceFileName": "E34-高质量RAG复测-表格.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse"
+            ],
+            "retrievalScores": {
+              "sparse": 14.652511
+            },
+            "fusionWeights": {
+              "sparse": 0.3
+            },
+            "fusedScore": 4.3957533,
+            "fusionMethod": "weighted",
+            "rerankProvider": "http",
+            "chunkId": "09026235-6ea3-4ccd-9b57-9bff7d6116c6",
+            "documentId": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "documentName": "E34 高质量 RAG 复测表格",
+            "versionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "versionNo": 1,
+            "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+            "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+            "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkIndex": 2,
+            "pageNo": null,
+            "sectionPath": "2. 表格结论",
+            "heading": "2. 表格结论",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测表格",
+          "versionNo": 1,
+          "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+          "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+          "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+          "pageNo": null,
+          "sectionPath": "2. 表格结论",
+          "chunkStatus": "active"
+        },
+        {
+          "evidenceId": "56681aa4-e690-441e-a9de-167152d819ec",
+          "chunkId": "c67bc31c-c4b7-4359-9422-43023de4bf3b",
+          "candidateId": "4aebf56c-96d9-4cb4-95eb-a8993b1a5733",
+          "contentSnapshot": "| 供应商 | 质量分 | 交付分 | 风险等级 | 复审周期 |\n| --- | ---: | ---: | --- | --- |\n| 星河电子 | 96 | 92 | 低 | 12个月 |\n| 北辰材料 | 82 | 75 | 中 | 6个月 |\n| 启明包装 | 68 | 71 | 高 | 3个月 |",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "c67bc31c-c4b7-4359-9422-43023de4bf3b",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "version_id": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "content_hash": "32b909edbebd2ea61905420972ed8ae5af552e2e13c547634f025bcbc6ef5b3a",
+            "page_no": 0,
+            "section": "1. 供应商评分表",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "78314d67-b984-4e07-a090-7c9324bbd289",
+              "sourceFileName": "E34-高质量RAG复测-表格.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse"
+            ],
+            "retrievalScores": {
+              "sparse": 15.492968
+            },
+            "fusionWeights": {
+              "sparse": 0.3
+            },
+            "fusedScore": 4.6478904,
+            "fusionMethod": "weighted",
+            "rerankProvider": "http",
+            "chunkId": "c67bc31c-c4b7-4359-9422-43023de4bf3b",
+            "documentId": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "documentName": "E34 高质量 RAG 复测表格",
+            "versionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "versionNo": 1,
+            "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+            "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+            "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkIndex": 1,
+            "pageNo": null,
+            "sectionPath": "1. 供应商评分表",
+            "heading": "1. 供应商评分表",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测表格",
+          "versionNo": 1,
+          "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+          "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+          "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+          "pageNo": null,
+          "sectionPath": "1. 供应商评分表",
+          "chunkStatus": "active"
+        },
+        {
+          "evidenceId": "10c84798-8b0a-4d43-bc1b-820f6ca104ee",
+          "chunkId": "6adc6241-c56a-47b5-a42c-120da09768ce",
+          "candidateId": "787a228b-b491-4504-b77c-a48443c70c9d",
+          "contentSnapshot": "如果异常等级为 P1，必须立即通知负责人并启动跨团队会议；如果异常等级为 P3，可以在工作时间内处理。",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "6adc6241-c56a-47b5-a42c-120da09768ce",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "version_id": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "content_hash": "38b16a4d9e23a346f80eac0f82b36acee41466299fb180ec68aeac83f0e801d3",
+            "page_no": 0,
+            "section": "2. 分支规则",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "93475afd-950d-4ff0-b5dc-a601fdc9a790",
+              "sourceFileName": "E34-高质量RAG复测-流程.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse",
+              "graph"
+            ],
+            "retrievalScores": {
+              "sparse": 4.157954,
+              "graph": null
+            },
+            "fusionWeights": {
+              "sparse": 0.3,
+              "graph": 0.3
+            },
+            "fusedScore": 1.2473862,
+            "fusionMethod": "weighted",
+            "entityName": "工作时间",
+            "entityKey": "entity:38910b866ebcbeaa",
+            "graphSnapshotId": "131f29e3-6d19-4694-a323-aba0f15dc93e",
+            "queryTerms": [
+              "哪个供应",
+              "个供应商",
+              "供应商风",
+              "应商风险",
+              "商风险等",
+              "风险等级",
+              "险等级为",
+              "等级为高",
+              "哪个供",
+              "个供应",
+              "供应商",
+              "应商风",
+              "商风险",
+              "风险等",
+              "险等级",
+              "等级为",
+              "级为高",
+              "个供",
+              "供应",
+              "应商",
+              "商风",
+              "风险",
+              "险等",
+              "等级",
+              "级为",
+              "为高",
+              "复审周期",
+              "审周期是",
+              "周期是多",
+              "期是多少",
+              "复审周",
+              "审周期"
+            ],
+            "rerankProvider": "http",
+            "chunkId": "6adc6241-c56a-47b5-a42c-120da09768ce",
+            "documentId": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "documentName": "E34 高质量 RAG 复测流程",
+            "versionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "versionNo": 1,
+            "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+            "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+            "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkIndex": 3,
+            "pageNo": null,
+            "sectionPath": "2. 分支规则",
+            "heading": "2. 分支规则",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测流程",
+          "versionNo": 1,
+          "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+          "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+          "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+          "pageNo": null,
+          "sectionPath": "2. 分支规则",
+          "chunkStatus": "active"
+        },
+        {
+          "evidenceId": "2d82a6c3-b101-4a77-9125-f6812326e312",
+          "chunkId": "05b3b70d-a896-4aaf-a332-a24e6585d6a2",
+          "candidateId": "389d7f40-0acf-4444-8615-74d12e5cd5af",
+          "contentSnapshot": "高质量 RAG 评测至少记录 Recall@K、MRR、引用准确性、答案完整性、拒答准确性和平均延迟。",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "05b3b70d-a896-4aaf-a332-a24e6585d6a2",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "a53ecf9e-9de6-4097-8133-0fb05bd6c042",
+            "version_id": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "content_hash": "8924e51e3806d01d5c1f13cd49d27dda143e0bc799c69766ddf0ca301488a713",
+            "page_no": 0,
+            "section": "4. 质量评估指标",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "bae1cff0-ba5e-4b7f-a77d-5e055ca3460d",
+              "sourceFileName": "E34-高质量RAG复测-政策.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse"
+            ],
+            "retrievalScores": {
+              "sparse": 3.0218997
+            },
+            "fusionWeights": {
+              "sparse": 0.3
+            },
+            "fusedScore": 0.90656991,
+            "fusionMethod": "weighted",
+            "rerankProvider": "http",
+            "chunkId": "05b3b70d-a896-4aaf-a332-a24e6585d6a2",
+            "documentId": "a53ecf9e-9de6-4097-8133-0fb05bd6c042",
+            "documentName": "E34 高质量 RAG 复测政策",
+            "versionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "versionNo": 1,
+            "chunkRevisionId": "3b8a7869-dcb8-417d-befb-d5052a707e04",
+            "parseRevisionId": "a590f2fa-3dd6-4b3e-8276-09c3bfc49a29",
+            "documentVersionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "chunkIndex": 4,
+            "pageNo": null,
+            "sectionPath": "4. 质量评估指标",
+            "heading": "4. 质量评估指标",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测政策",
+          "versionNo": 1,
+          "chunkRevisionId": "3b8a7869-dcb8-417d-befb-d5052a707e04",
+          "parseRevisionId": "a590f2fa-3dd6-4b3e-8276-09c3bfc49a29",
+          "documentVersionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+          "pageNo": null,
+          "sectionPath": "4. 质量评估指标",
+          "chunkStatus": "active"
+        },
+        {
+          "evidenceId": "cfa7a7d9-bd3c-4375-b290-a2d7dc0b86e7",
+          "chunkId": "55948c11-8e32-4b27-9b08-d1e678e32963",
+          "candidateId": "0523233f-5f5a-4a3f-b131-8622cb1e5d93",
+          "contentSnapshot": "回答供应商评分问题时，必须引用供应商评分表中的对应行，不能只引用表格结论段落。",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "55948c11-8e32-4b27-9b08-d1e678e32963",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "version_id": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "content_hash": "3566302ee6b8dc250a123979a7125f18386b727638be199cd312b30e8f6ecee9",
+            "page_no": 0,
+            "section": "3. 表格引用要求",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "78314d67-b984-4e07-a090-7c9324bbd289",
+              "sourceFileName": "E34-高质量RAG复测-表格.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse"
+            ],
+            "retrievalScores": {
+              "sparse": 5.1635427
+            },
+            "fusionWeights": {
+              "sparse": 0.3
+            },
+            "fusedScore": 1.54906281,
+            "fusionMethod": "weighted",
+            "rerankProvider": "http",
+            "chunkId": "55948c11-8e32-4b27-9b08-d1e678e32963",
+            "documentId": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "documentName": "E34 高质量 RAG 复测表格",
+            "versionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "versionNo": 1,
+            "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+            "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+            "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkIndex": 3,
+            "pageNo": null,
+            "sectionPath": "3. 表格引用要求",
+            "heading": "3. 表格引用要求",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测表格",
+          "versionNo": 1,
+          "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+          "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+          "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+          "pageNo": null,
+          "sectionPath": "3. 表格引用要求",
+          "chunkStatus": "active"
+        }
+      ],
+      "citations": [
+        {
+          "citationId": "5efa2af9-bda8-47c3-b5f4-742aa951c184",
+          "evidenceId": "19186f86-b08b-4fbf-9e45-bbaa92d1e60a",
+          "label": "sparse#1",
+          "locationSnapshot": {
+            "documentId": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "documentName": "E34 高质量 RAG 复测表格",
+            "versionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+            "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+            "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkId": "09026235-6ea3-4ccd-9b57-9bff7d6116c6",
+            "chunkIndex": 2,
+            "pageNo": null,
+            "section": "2. 表格结论",
+            "sectionPath": "2. 表格结论",
+            "heading": "2. 表格结论",
+            "matchedChannels": [
+              "sparse"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        },
+        {
+          "citationId": "21b1628e-2594-4170-9e80-104d4e95c7b2",
+          "evidenceId": "56681aa4-e690-441e-a9de-167152d819ec",
+          "label": "sparse#2",
+          "locationSnapshot": {
+            "documentId": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "documentName": "E34 高质量 RAG 复测表格",
+            "versionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+            "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+            "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkId": "c67bc31c-c4b7-4359-9422-43023de4bf3b",
+            "chunkIndex": 1,
+            "pageNo": null,
+            "section": "1. 供应商评分表",
+            "sectionPath": "1. 供应商评分表",
+            "heading": "1. 供应商评分表",
+            "matchedChannels": [
+              "sparse"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        },
+        {
+          "citationId": "731635fa-d5e8-41e0-8585-178eef5fc894",
+          "evidenceId": "10c84798-8b0a-4d43-bc1b-820f6ca104ee",
+          "label": "sparse#3",
+          "locationSnapshot": {
+            "documentId": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "documentName": "E34 高质量 RAG 复测流程",
+            "versionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+            "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+            "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkId": "6adc6241-c56a-47b5-a42c-120da09768ce",
+            "chunkIndex": 3,
+            "pageNo": null,
+            "section": "2. 分支规则",
+            "sectionPath": "2. 分支规则",
+            "heading": "2. 分支规则",
+            "matchedChannels": [
+              "sparse",
+              "graph"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        },
+        {
+          "citationId": "07764b78-759b-45e3-922f-63abd5d70c04",
+          "evidenceId": "2d82a6c3-b101-4a77-9125-f6812326e312",
+          "label": "sparse#4",
+          "locationSnapshot": {
+            "documentId": "a53ecf9e-9de6-4097-8133-0fb05bd6c042",
+            "documentName": "E34 高质量 RAG 复测政策",
+            "versionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "chunkRevisionId": "3b8a7869-dcb8-417d-befb-d5052a707e04",
+            "parseRevisionId": "a590f2fa-3dd6-4b3e-8276-09c3bfc49a29",
+            "documentVersionId": "cff4d4ee-22f4-49d4-8671-2d7cc37a0971",
+            "chunkId": "05b3b70d-a896-4aaf-a332-a24e6585d6a2",
+            "chunkIndex": 4,
+            "pageNo": null,
+            "section": "4. 质量评估指标",
+            "sectionPath": "4. 质量评估指标",
+            "heading": "4. 质量评估指标",
+            "matchedChannels": [
+              "sparse"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        },
+        {
+          "citationId": "1e26b082-7c07-4b08-9a15-37519067d663",
+          "evidenceId": "cfa7a7d9-bd3c-4375-b290-a2d7dc0b86e7",
+          "label": "sparse#5",
+          "locationSnapshot": {
+            "documentId": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "documentName": "E34 高质量 RAG 复测表格",
+            "versionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+            "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+            "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkId": "55948c11-8e32-4b27-9b08-d1e678e32963",
+            "chunkIndex": 3,
+            "pageNo": null,
+            "section": "3. 表格引用要求",
+            "sectionPath": "3. 表格引用要求",
+            "heading": "3. 表格引用要求",
+            "matchedChannels": [
+              "sparse"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        }
+      ],
+      "trace": [],
+      "metrics": {
+        "latencyMs": 11221,
+        "hitCount": 9,
+        "evidenceCount": 5,
+        "citationCount": 5,
+        "tokenUsage": {
+          "inputTokens": 1011,
+          "outputTokens": 607,
+          "totalTokens": 1618
+        },
+        "retrievalDiagnostics": {
+          "denseCount": 0,
+          "sparseCount": 9,
+          "graphCount": 6,
+          "fusedCount": 9,
+          "droppedByPermission": 0,
+          "providerErrors": [],
+          "pipelineParams": {
+            "queryRewrite": {
+              "enabled": true,
+              "rewriteStrategy": "hybrid",
+              "preserveOriginalQuery": true
+            },
+            "multiQuery": {
+              "enabled": false,
+              "queryCount": 3,
+              "mergeStrategy": "rrf"
+            },
+            "retrievalTopK": {
+              "dense": 20,
+              "sparse": 15,
+              "graph": 50
+            },
+            "retrievalScoreThreshold": {
+              "dense": 0.75,
+              "sparse": 0.2,
+              "graph": 0
+            },
+            "fusionWeights": {
+              "dense": 0.4,
+              "sparse": 0.3,
+              "graph": 0.3
+            },
+            "fusion": {
+              "method": "weighted",
+              "candidateLimit": 40,
+              "dedupBy": "chunkId",
+              "rrfK": 60
+            },
+            "rerankTopN": 5,
+            "rerank": {
+              "enabled": true,
+              "topN": 5,
+              "scoreThreshold": 0
+            },
+            "graph": {
+              "graphDepth": 2,
+              "graphExpansionLimit": 50,
+              "mustFallbackToChunk": true
+            },
+            "maxContextTokens": 6000,
+            "contextPacking": {
+              "maxContextTokens": 6000,
+              "chunkWindow": 1,
+              "packingStrategy": "citation-aware",
+              "citationPolicy": "strict"
+            },
+            "citation": {
+              "minEvidence": 1,
+              "citationPolicy": "strict"
+            },
+            "temperature": 0.1,
+            "maxOutputTokens": 1200
+          }
+        },
+        "configAudit": {
+          "effectiveCount": 40,
+          "ignoredCount": 8
+        }
+      },
+      "createdAt": "2026-05-30T14:51:48.731035+08:00"
+    },
+    {
+      "runId": "0bd58986-2e70-41b6-9298-d80136792929",
+      "sourceRunId": null,
+      "status": "success",
+      "kbId": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+      "configRevisionId": "69aa9c03-59c2-4096-b48c-52b6d9ea814f",
+      "query": "P1 异常应该如何处理？",
+      "rewrittenQuery": "P1 异常应该如何处理？",
+      "answer": "根据提供的证据，P1异常的处理应遵循以下步骤：\n\n1. **立即通知并启动跨团队会议**：异常等级为P1时，必须立即通知负责人并启动跨团队会议（证据[1]）。\n2. **遵循异常处理流程**：\n   - 发现异常：通过监控系统或人工巡检发现异常（证据[2]步骤1）。\n   - 建立工单：值班人员在10分钟内建立工单（证据[2]步骤2）。\n   - 分级判断：异常已确定为P1等级（证据[2]步骤3）。\n   - 处置恢复：责任团队执行回滚、扩容或配置修正（证据[2]步骤4）。\n   - 复盘归档：恢复后24小时内完成复盘并归档证据（证据[2]步骤5）。\n3. **确保流程完成条件**：监控恢复正常、用户影响解除、复盘记录完成时，异常处理流程才算完成（证据[4]）。\n\n证据[5]涉及供应商评估，与异常处理无关。",
+      "retrievalDiagnostics": {
+        "denseCount": 0,
+        "sparseCount": 6,
+        "graphCount": 13,
+        "fusedCount": 6,
+        "droppedByPermission": 0,
+        "providerErrors": [],
+        "pipelineParams": {
+          "queryRewrite": {
+            "enabled": true,
+            "rewriteStrategy": "hybrid",
+            "preserveOriginalQuery": true
+          },
+          "multiQuery": {
+            "enabled": false,
+            "queryCount": 3,
+            "mergeStrategy": "rrf"
+          },
+          "retrievalTopK": {
+            "dense": 20,
+            "sparse": 15,
+            "graph": 50
+          },
+          "retrievalScoreThreshold": {
+            "dense": 0.75,
+            "sparse": 0.2,
+            "graph": 0
+          },
+          "fusionWeights": {
+            "dense": 0.4,
+            "sparse": 0.3,
+            "graph": 0.3
+          },
+          "fusion": {
+            "method": "weighted",
+            "candidateLimit": 40,
+            "dedupBy": "chunkId",
+            "rrfK": 60
+          },
+          "rerankTopN": 5,
+          "rerank": {
+            "enabled": true,
+            "topN": 5,
+            "scoreThreshold": 0
+          },
+          "graph": {
+            "graphDepth": 2,
+            "graphExpansionLimit": 50,
+            "mustFallbackToChunk": true
+          },
+          "maxContextTokens": 6000,
+          "contextPacking": {
+            "maxContextTokens": 6000,
+            "chunkWindow": 1,
+            "packingStrategy": "citation-aware",
+            "citationPolicy": "strict"
+          },
+          "citation": {
+            "minEvidence": 1,
+            "citationPolicy": "strict"
+          },
+          "temperature": 0.1,
+          "maxOutputTokens": 1200
+        }
+      },
+      "overrideSnapshot": {},
+      "pipelineSnapshot": {
+        "version": "1.0",
+        "constraintsVersion": "1.0",
+        "mode": "constrained-stage-pipeline",
+        "stages": [
+          "preprocess",
+          "retrieval",
+          "fusion",
+          "generation",
+          "diagnostics"
+        ],
+        "templateId": "system_default",
+        "nodes": [
+          {
+            "id": "input",
+            "type": "input",
+            "stage": "preprocess",
+            "enabled": true,
+            "locked": true,
+            "params": {}
+          },
+          {
+            "id": "queryRewrite",
+            "type": "queryRewrite",
+            "stage": "preprocess",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "promptVersion": "v2",
+              "rewriteStrategy": "hybrid",
+              "preserveOriginalQuery": true,
+              "expansionCount": 3
+            }
+          },
+          {
+            "id": "multiQuery",
+            "type": "multiQuery",
+            "stage": "preprocess",
+            "enabled": false,
+            "locked": false,
+            "params": {
+              "queryCount": 3,
+              "mergeStrategy": "rrf"
+            }
+          },
+          {
+            "id": "dense",
+            "type": "denseRetrieval",
+            "stage": "retrieval",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "topK": 20,
+              "scoreThreshold": 0.75,
+              "fusionWeight": 0.4,
+              "embeddingModel": "bge-m3",
+              "metadataFilter": "active-documents"
+            }
+          },
+          {
+            "id": "sparse",
+            "type": "sparseRetrieval",
+            "stage": "retrieval",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "topK": 15,
+              "scoreThreshold": 0.2,
+              "fusionWeight": 0.3,
+              "matchMode": "bm25+phrase",
+              "metadataFilter": "active-documents"
+            }
+          },
+          {
+            "id": "graph",
+            "type": "graphRetrieval",
+            "stage": "retrieval",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "graphDepth": 2,
+              "graphExpansionLimit": 50,
+              "maxNodes": 50,
+              "fusionWeight": 0.3,
+              "pathMode": "entity-path",
+              "mustFallbackToChunk": true
+            }
+          },
+          {
+            "id": "fusion",
+            "type": "fusion",
+            "stage": "fusion",
+            "enabled": true,
+            "locked": true,
+            "params": {
+              "method": "weighted",
+              "rrfK": 60,
+              "candidateLimit": 40,
+              "dedupBy": "chunkId"
+            }
+          },
+          {
+            "id": "permissionFilter",
+            "type": "permissionFilter",
+            "stage": "fusion",
+            "enabled": true,
+            "locked": true,
+            "params": {}
+          },
+          {
+            "id": "rerank",
+            "type": "rerank",
+            "stage": "fusion",
+            "enabled": true,
+            "locked": false,
+            "params": {
+              "model": "bge-reranker-v2-m3",
+              "topN": 5,
+              "scoreThreshold": 0,
+              "keepRejectedReason": true
+            }
+          },
+          {
+            "id": "contextPacking",
+            "type": "contextPacking",
+            "stage": "generation",
+            "enabled": true,
+            "locked": true,
+            "params": {
+              "maxContextTokens": 6000,
+              "packingStrategy": "citation-aware",
+              "chunkWindow": 1,
+              "citationPolicy": "strict"
+            }
+          },
+          {
+            "id": "generation",
+            "type": "generation",
+            "stage": "generation",
+            "enabled": true,
+            "locked": true,
+            "params": {
+              "model": "claude-3-5-sonnet",
+              "temperature": 0.1,
+              "maxOutputTokens": 1200,
+              "citationPolicy": "strict"
+            }
+          },
+          {
+            "id": "citation",
+            "type": "citation",
+            "stage": "generation",
+            "enabled": true,
+            "locked": true,
+            "params": {
+              "minEvidence": 1,
+              "citationPolicy": "strict",
+              "enableGraphLinks": true
+            }
+          },
+          {
+            "id": "output",
+            "type": "output",
+            "stage": "diagnostics",
+            "enabled": true,
+            "locked": true,
+            "params": {}
+          }
+        ]
+      },
+      "nodeParamSnapshot": {
+        "queryRewrite": {
+          "enabled": true,
+          "rewriteStrategy": "hybrid",
+          "preserveOriginalQuery": true
+        },
+        "multiQuery": {
+          "enabled": false,
+          "queryCount": 3,
+          "mergeStrategy": "rrf"
+        },
+        "retrievalTopK": {
+          "dense": 20,
+          "sparse": 15,
+          "graph": 50
+        },
+        "retrievalScoreThreshold": {
+          "dense": 0.75,
+          "sparse": 0.2,
+          "graph": 0
+        },
+        "fusionWeights": {
+          "dense": 0.4,
+          "sparse": 0.3,
+          "graph": 0.3
+        },
+        "fusion": {
+          "method": "weighted",
+          "candidateLimit": 40,
+          "dedupBy": "chunkId",
+          "rrfK": 60
+        },
+        "rerankTopN": 5,
+        "rerank": {
+          "enabled": true,
+          "topN": 5,
+          "scoreThreshold": 0
+        },
+        "graph": {
+          "graphDepth": 2,
+          "graphExpansionLimit": 50,
+          "mustFallbackToChunk": true
+        },
+        "maxContextTokens": 6000,
+        "contextPacking": {
+          "maxContextTokens": 6000,
+          "chunkWindow": 1,
+          "packingStrategy": "citation-aware",
+          "citationPolicy": "strict"
+        },
+        "citation": {
+          "minEvidence": 1,
+          "citationPolicy": "strict"
+        },
+        "temperature": 0.1,
+        "maxOutputTokens": 1200
+      },
+      "feedbackStatus": "unrated",
+      "feedbackNote": null,
+      "failureType": null,
+      "candidates": [],
+      "evidence": [
+        {
+          "evidenceId": "5bdccf86-85ba-4083-b869-25e277b3bb01",
+          "chunkId": "6adc6241-c56a-47b5-a42c-120da09768ce",
+          "candidateId": "689857f3-45f5-4105-ad66-8a663e50a9b3",
+          "contentSnapshot": "如果异常等级为 P1，必须立即通知负责人并启动跨团队会议；如果异常等级为 P3，可以在工作时间内处理。",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "6adc6241-c56a-47b5-a42c-120da09768ce",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "version_id": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "content_hash": "38b16a4d9e23a346f80eac0f82b36acee41466299fb180ec68aeac83f0e801d3",
+            "page_no": 0,
+            "section": "2. 分支规则",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "93475afd-950d-4ff0-b5dc-a601fdc9a790",
+              "sourceFileName": "E34-高质量RAG复测-流程.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse",
+              "graph"
+            ],
+            "retrievalScores": {
+              "sparse": 9.038609,
+              "graph": null
+            },
+            "fusionWeights": {
+              "sparse": 0.3,
+              "graph": 0.3
+            },
+            "fusedScore": 2.7115826999999997,
+            "fusionMethod": "weighted",
+            "entityName": "工作时间",
+            "entityKey": "entity:38910b866ebcbeaa",
+            "graphSnapshotId": "131f29e3-6d19-4694-a323-aba0f15dc93e",
+            "queryTerms": [
+              "p1",
+              "异常应该",
+              "常应该如",
+              "应该如何",
+              "该如何处",
+              "如何处理",
+              "异常应",
+              "常应该",
+              "应该如",
+              "该如何",
+              "如何处",
+              "何处理",
+              "异常",
+              "常应",
+              "应该",
+              "该如",
+              "何处",
+              "处理"
+            ],
+            "rerankProvider": "http",
+            "chunkId": "6adc6241-c56a-47b5-a42c-120da09768ce",
+            "documentId": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "documentName": "E34 高质量 RAG 复测流程",
+            "versionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "versionNo": 1,
+            "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+            "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+            "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkIndex": 3,
+            "pageNo": null,
+            "sectionPath": "2. 分支规则",
+            "heading": "2. 分支规则",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测流程",
+          "versionNo": 1,
+          "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+          "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+          "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+          "pageNo": null,
+          "sectionPath": "2. 分支规则",
+          "chunkStatus": "active"
+        },
+        {
+          "evidenceId": "a4a2eea7-860c-4712-b873-8851c9d54b14",
+          "chunkId": "fcd48f4e-9900-4239-8a17-29c913256c69",
+          "candidateId": "f31bf3dc-87df-46bb-9d73-2e2df2b1ddf3",
+          "contentSnapshot": "1. 发现异常：监控系统或人工巡检发现异常。\n2. 建立工单：值班人员在 10 分钟内建立工单。\n3. 分级判断：根据影响范围判断为 P1、P2 或 P3。\n4. 处置恢复：责任团队执行回滚、扩容或配置修正。\n5. 复盘归档：恢复后 24 小时内完成复盘并归档证据。",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "fcd48f4e-9900-4239-8a17-29c913256c69",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "version_id": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "content_hash": "383c80f2f1bf2e5918c4814a7c3e232e4ec88e4be75f42c5ad3d44c375626a9f",
+            "page_no": 0,
+            "section": "1. 异常处理流程",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "93475afd-950d-4ff0-b5dc-a601fdc9a790",
+              "sourceFileName": "E34-高质量RAG复测-流程.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse",
+              "graph"
+            ],
+            "retrievalScores": {
+              "sparse": 6.4817357,
+              "graph": null
+            },
+            "fusionWeights": {
+              "sparse": 0.3,
+              "graph": 0.3
+            },
+            "fusedScore": 1.94452071,
+            "fusionMethod": "weighted",
+            "entityName": "P1",
+            "entityKey": "entity:7299621edbcbed70",
+            "graphSnapshotId": "131f29e3-6d19-4694-a323-aba0f15dc93e",
+            "queryTerms": [
+              "p1",
+              "异常应该",
+              "常应该如",
+              "应该如何",
+              "该如何处",
+              "如何处理",
+              "异常应",
+              "常应该",
+              "应该如",
+              "该如何",
+              "如何处",
+              "何处理",
+              "异常",
+              "常应",
+              "应该",
+              "该如",
+              "何处",
+              "处理"
+            ],
+            "rerankProvider": "http",
+            "chunkId": "fcd48f4e-9900-4239-8a17-29c913256c69",
+            "documentId": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "documentName": "E34 高质量 RAG 复测流程",
+            "versionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "versionNo": 1,
+            "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+            "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+            "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkIndex": 2,
+            "pageNo": null,
+            "sectionPath": "1. 异常处理流程",
+            "heading": "1. 异常处理流程",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测流程",
+          "versionNo": 1,
+          "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+          "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+          "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+          "pageNo": null,
+          "sectionPath": "1. 异常处理流程",
+          "chunkStatus": "active"
+        },
+        {
+          "evidenceId": "5224b178-6805-4254-b46d-d84d92f937fb",
+          "chunkId": "91626567-92fe-43c5-8574-6ceb1cda2c68",
+          "candidateId": "485cdaa2-09f7-48cc-9a3a-cc5982f64988",
+          "contentSnapshot": "异常处理流程包含以下步骤：",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "91626567-92fe-43c5-8574-6ceb1cda2c68",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "version_id": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "content_hash": "a98369d719b9c402de0a9dc9fe7df290f2ec61f8d4019869c46270d866fa2847",
+            "page_no": 0,
+            "section": "1. 异常处理流程",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "93475afd-950d-4ff0-b5dc-a601fdc9a790",
+              "sourceFileName": "E34-高质量RAG复测-流程.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse",
+              "graph"
+            ],
+            "retrievalScores": {
+              "sparse": 6.4817357,
+              "graph": null
+            },
+            "fusionWeights": {
+              "sparse": 0.3,
+              "graph": 0.3
+            },
+            "fusedScore": 1.94452071,
+            "fusionMethod": "weighted",
+            "entityName": "异常处理流程",
+            "entityKey": "entity:0b91d240757903ad",
+            "graphSnapshotId": "131f29e3-6d19-4694-a323-aba0f15dc93e",
+            "queryTerms": [
+              "p1",
+              "异常应该",
+              "常应该如",
+              "应该如何",
+              "该如何处",
+              "如何处理",
+              "异常应",
+              "常应该",
+              "应该如",
+              "该如何",
+              "如何处",
+              "何处理",
+              "异常",
+              "常应",
+              "应该",
+              "该如",
+              "何处",
+              "处理"
+            ],
+            "rerankProvider": "http",
+            "chunkId": "91626567-92fe-43c5-8574-6ceb1cda2c68",
+            "documentId": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "documentName": "E34 高质量 RAG 复测流程",
+            "versionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "versionNo": 1,
+            "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+            "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+            "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkIndex": 1,
+            "pageNo": null,
+            "sectionPath": "1. 异常处理流程",
+            "heading": "1. 异常处理流程",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测流程",
+          "versionNo": 1,
+          "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+          "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+          "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+          "pageNo": null,
+          "sectionPath": "1. 异常处理流程",
+          "chunkStatus": "active"
+        },
+        {
+          "evidenceId": "acc5ac1f-9159-4b68-ae3d-8128cc9cc0b6",
+          "chunkId": "1afd54de-b3f3-489c-b4f5-19b3b8e3aadf",
+          "candidateId": "b38728f9-599c-4727-93ab-bebc2ed9a87b",
+          "contentSnapshot": "只有当监控恢复正常、用户影响解除、复盘记录完成时，异常处理流程才算完成。",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "1afd54de-b3f3-489c-b4f5-19b3b8e3aadf",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "version_id": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "content_hash": "d57452d0480d23bd6ab9083edd4a9b40603636de887a9fd053fba371820bc810",
+            "page_no": 0,
+            "section": "3. 完成标准",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "93475afd-950d-4ff0-b5dc-a601fdc9a790",
+              "sourceFileName": "E34-高质量RAG复测-流程.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse",
+              "graph"
+            ],
+            "retrievalScores": {
+              "sparse": 4.8550177,
+              "graph": null
+            },
+            "fusionWeights": {
+              "sparse": 0.3,
+              "graph": 0.3
+            },
+            "fusedScore": 1.45650531,
+            "fusionMethod": "weighted",
+            "entityName": "异常处理流程",
+            "entityKey": "entity:c82fc504a538a5d1",
+            "graphSnapshotId": "131f29e3-6d19-4694-a323-aba0f15dc93e",
+            "queryTerms": [
+              "p1",
+              "异常应该",
+              "常应该如",
+              "应该如何",
+              "该如何处",
+              "如何处理",
+              "异常应",
+              "常应该",
+              "应该如",
+              "该如何",
+              "如何处",
+              "何处理",
+              "异常",
+              "常应",
+              "应该",
+              "该如",
+              "何处",
+              "处理"
+            ],
+            "rerankProvider": "http",
+            "chunkId": "1afd54de-b3f3-489c-b4f5-19b3b8e3aadf",
+            "documentId": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "documentName": "E34 高质量 RAG 复测流程",
+            "versionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "versionNo": 1,
+            "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+            "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+            "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkIndex": 4,
+            "pageNo": null,
+            "sectionPath": "3. 完成标准",
+            "heading": "3. 完成标准",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测流程",
+          "versionNo": 1,
+          "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+          "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+          "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+          "pageNo": null,
+          "sectionPath": "3. 完成标准",
+          "chunkStatus": "active"
+        },
+        {
+          "evidenceId": "629928bc-8807-417b-8858-ade8e05445df",
+          "chunkId": "c67bc31c-c4b7-4359-9422-43023de4bf3b",
+          "candidateId": "a88da75c-b2c7-43b8-a16f-745761d46cff",
+          "contentSnapshot": "| 供应商 | 质量分 | 交付分 | 风险等级 | 复审周期 |\n| --- | ---: | ---: | --- | --- |\n| 星河电子 | 96 | 92 | 低 | 12个月 |\n| 北辰材料 | 82 | 75 | 中 | 6个月 |\n| 启明包装 | 68 | 71 | 高 | 3个月 |",
+          "sourceSnapshot": {
+            "sourceType": "sparse",
+            "chunk_id": "c67bc31c-c4b7-4359-9422-43023de4bf3b",
+            "kb_id": "0c80a297-7269-42a7-ba5b-1c17f070bdf0",
+            "document_id": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "version_id": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "content_hash": "32b909edbebd2ea61905420972ed8ae5af552e2e13c547634f025bcbc6ef5b3a",
+            "page_no": 0,
+            "section": "1. 供应商评分表",
+            "document_status": "active",
+            "version_status": "active",
+            "chunk_status": "active",
+            "security_level": "public",
+            "allow_subject_keys": [
+              "kb_role:kb_owner",
+              "platform_role:platform_admin",
+              "user:00000000-0000-0000-0000-000000000001"
+            ],
+            "deny_subject_keys": [],
+            "filter_hash": "2eb1740d19f7ebb56cc1c4267d8c034a58bc55de2047638f7448399346a8f6b8",
+            "metadata": {
+              "sourceFileId": "78314d67-b984-4e07-a090-7c9324bbd289",
+              "sourceFileName": "E34-高质量RAG复测-表格.md",
+              "embeddingProvider": "http",
+              "embeddingModel": "text-embedding-v2",
+              "embeddingDimension": 1536
+            },
+            "embedding_dimension": 1536,
+            "matchedChannels": [
+              "sparse"
+            ],
+            "retrievalScores": {
+              "sparse": 2.2066677
+            },
+            "fusionWeights": {
+              "sparse": 0.3
+            },
+            "fusedScore": 0.66200031,
+            "fusionMethod": "weighted",
+            "rerankProvider": "http",
+            "chunkId": "c67bc31c-c4b7-4359-9422-43023de4bf3b",
+            "documentId": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "documentName": "E34 高质量 RAG 复测表格",
+            "versionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "versionNo": 1,
+            "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+            "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+            "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkIndex": 1,
+            "pageNo": null,
+            "sectionPath": "1. 供应商评分表",
+            "heading": "1. 供应商评分表",
+            "summary": null,
+            "truthSource": "postgres_chunks"
+          },
+          "redactionStatus": "none",
+          "sourceStatus": "available",
+          "documentName": "E34 高质量 RAG 复测表格",
+          "versionNo": 1,
+          "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+          "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+          "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+          "pageNo": null,
+          "sectionPath": "1. 供应商评分表",
+          "chunkStatus": "active"
+        }
+      ],
+      "citations": [
+        {
+          "citationId": "724f531e-7349-4e7e-a8cd-8268e82bf517",
+          "evidenceId": "5bdccf86-85ba-4083-b869-25e277b3bb01",
+          "label": "sparse#1",
+          "locationSnapshot": {
+            "documentId": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "documentName": "E34 高质量 RAG 复测流程",
+            "versionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+            "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+            "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkId": "6adc6241-c56a-47b5-a42c-120da09768ce",
+            "chunkIndex": 3,
+            "pageNo": null,
+            "section": "2. 分支规则",
+            "sectionPath": "2. 分支规则",
+            "heading": "2. 分支规则",
+            "matchedChannels": [
+              "sparse",
+              "graph"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        },
+        {
+          "citationId": "4d279ad8-a63f-4c3f-8f8f-aae5dcadf714",
+          "evidenceId": "a4a2eea7-860c-4712-b873-8851c9d54b14",
+          "label": "sparse#2",
+          "locationSnapshot": {
+            "documentId": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "documentName": "E34 高质量 RAG 复测流程",
+            "versionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+            "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+            "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkId": "fcd48f4e-9900-4239-8a17-29c913256c69",
+            "chunkIndex": 2,
+            "pageNo": null,
+            "section": "1. 异常处理流程",
+            "sectionPath": "1. 异常处理流程",
+            "heading": "1. 异常处理流程",
+            "matchedChannels": [
+              "sparse",
+              "graph"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        },
+        {
+          "citationId": "1d9e7ae4-639c-4692-bb00-c1193481cb57",
+          "evidenceId": "5224b178-6805-4254-b46d-d84d92f937fb",
+          "label": "sparse#3",
+          "locationSnapshot": {
+            "documentId": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "documentName": "E34 高质量 RAG 复测流程",
+            "versionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+            "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+            "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkId": "91626567-92fe-43c5-8574-6ceb1cda2c68",
+            "chunkIndex": 1,
+            "pageNo": null,
+            "section": "1. 异常处理流程",
+            "sectionPath": "1. 异常处理流程",
+            "heading": "1. 异常处理流程",
+            "matchedChannels": [
+              "sparse",
+              "graph"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        },
+        {
+          "citationId": "7f276edb-2715-49ff-9c43-296c612f59ac",
+          "evidenceId": "acc5ac1f-9159-4b68-ae3d-8128cc9cc0b6",
+          "label": "sparse#4",
+          "locationSnapshot": {
+            "documentId": "1eb55c8e-3b47-41ec-aaed-0150814fa17f",
+            "documentName": "E34 高质量 RAG 复测流程",
+            "versionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkRevisionId": "974a16ea-998b-495b-be72-8a4092b69dc0",
+            "parseRevisionId": "92205bd8-5ca7-4f35-8592-d4aac2e42746",
+            "documentVersionId": "e4af6e68-eff4-461f-859e-be0bf8a0f636",
+            "chunkId": "1afd54de-b3f3-489c-b4f5-19b3b8e3aadf",
+            "chunkIndex": 4,
+            "pageNo": null,
+            "section": "3. 完成标准",
+            "sectionPath": "3. 完成标准",
+            "heading": "3. 完成标准",
+            "matchedChannels": [
+              "sparse",
+              "graph"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        },
+        {
+          "citationId": "2572ca0f-7668-4883-9063-373cb304e042",
+          "evidenceId": "629928bc-8807-417b-8858-ade8e05445df",
+          "label": "sparse#5",
+          "locationSnapshot": {
+            "documentId": "e3836026-a6e8-4a67-877b-9e6aa916d2e3",
+            "documentName": "E34 高质量 RAG 复测表格",
+            "versionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkRevisionId": "dde9c8ea-5140-4511-877e-3c8590a68299",
+            "parseRevisionId": "fa409d93-b210-4bc4-b072-fce5f3d273b5",
+            "documentVersionId": "c56ee494-c978-422e-b4d7-2d1809335400",
+            "chunkId": "c67bc31c-c4b7-4359-9422-43023de4bf3b",
+            "chunkIndex": 1,
+            "pageNo": null,
+            "section": "1. 供应商评分表",
+            "sectionPath": "1. 供应商评分表",
+            "heading": "1. 供应商评分表",
+            "matchedChannels": [
+              "sparse"
+            ],
+            "sourceModality": null,
+            "sourceFileId": null,
+            "region": null,
+            "imageWidth": null,
+            "imageHeight": null
+          }
+        }
+      ],
+      "trace": [],
+      "metrics": {
+        "latencyMs": 15828,
+        "hitCount": 6,
+        "evidenceCount": 5,
+        "citationCount": 5,
+        "tokenUsage": {
+          "inputTokens": 805,
+          "outputTokens": 1030,
+          "totalTokens": 1835
+        },
+        "retrievalDiagnostics": {
+          "denseCount": 0,
+          "sparseCount": 6,
+          "graphCount": 13,
+          "fusedCount": 6,
+          "droppedByPermission": 0,
+          "providerErrors": [],
+          "pipelineParams": {
+            "queryRewrite": {
+              "enabled": true,
+              "rewriteStrategy": "hybrid",
+              "preserveOriginalQuery": true
+            },
+            "multiQuery": {
+              "enabled": false,
+              "queryCount": 3,
+              "mergeStrategy": "rrf"
+            },
+            "retrievalTopK": {
+              "dense": 20,
+              "sparse": 15,
+              "graph": 50
+            },
+            "retrievalScoreThreshold": {
+              "dense": 0.75,
+              "sparse": 0.2,
+              "graph": 0
+            },
+            "fusionWeights": {
+              "dense": 0.4,
+              "sparse": 0.3,
+              "graph": 0.3
+            },
+            "fusion": {
+              "method": "weighted",
+              "candidateLimit": 40,
+              "dedupBy": "chunkId",
+              "rrfK": 60
+            },
+            "rerankTopN": 5,
+            "rerank": {
+              "enabled": true,
+              "topN": 5,
+              "scoreThreshold": 0
+            },
+            "graph": {
+              "graphDepth": 2,
+              "graphExpansionLimit": 50,
+              "mustFallbackToChunk": true
+            },
+            "maxContextTokens": 6000,
+            "contextPacking": {
+              "maxContextTokens": 6000,
+              "chunkWindow": 1,
+              "packingStrategy": "citation-aware",
+              "citationPolicy": "strict"
+            },
+            "citation": {
+              "minEvidence": 1,
+              "citationPolicy": "strict"
+            },
+            "temperature": 0.1,
+            "maxOutputTokens": 1200
+          }
+        },
+        "configAudit": {
+          "effectiveCount": 40,
+          "ignoredCount": 8
+        }
+      },
+      "createdAt": "2026-05-30T14:52:24.771233+08:00"
+    }
+  ],
+  "limitations": [
+    "样本为本地生成 Markdown 小样本，不代表 E34 全量生产数据覆盖。",
+    "表格样本为 Markdown 表格，不等同于复杂 PDF 表格 OCR。",
+    "流程样本为文本化流程，不等同于图片流程图解析。"
+  ]
+}

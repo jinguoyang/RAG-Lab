@@ -21,6 +21,7 @@ spec.loader.exec_module(evaluate_module)
 
 DEFAULT_SAMPLES = evaluate_module.DEFAULT_SAMPLES
 EvaluationSample = evaluate_module.EvaluationSample
+build_runner_from_config = evaluate_module.build_runner_from_config
 evaluate_sample = evaluate_module.evaluate_sample
 generate_category_report = evaluate_module.generate_category_report
 load_fixture = evaluate_module.load_fixture
@@ -55,11 +56,45 @@ class TestEvaluationSample:
 class TestEvaluateSample:
     """样本评测测试。"""
 
-    def test_real_evaluation_mode_fails_fast_until_implemented(self):
-        """真实评测未接入时不能返回模拟指标。"""
+    def test_real_evaluation_requires_runner_configuration(self):
+        """真实评测缺少 Runner 配置时必须明确失败，不能回退到模拟指标。"""
         sample = DEFAULT_SAMPLES[0]
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(RuntimeError, match="真实 QA 评测需要配置"):
             evaluate_sample(sample, use_real_qa=True)
+
+    def test_real_evaluation_uses_injected_runner(self):
+        """真实评测应使用注入的 QA Runner 结果计算指标。"""
+
+        class StubRunner:
+            """测试用 Runner，模拟真实 QA Run 返回的详情结构。"""
+
+            def run(self, sample):
+                return {
+                    "answer": "RAG 是 Retrieval Augmented Generation 的缩写。",
+                    "evidence": [
+                        {"evidenceId": "e1", "chunkId": "chunk-1", "contentSnapshot": "RAG 是 Retrieval Augmented Generation 的缩写。"},
+                    ],
+                    "citations": [
+                        {"citationId": "c1", "evidenceId": "e1"},
+                    ],
+                    "metrics": {"latencyMs": 123},
+                }
+
+        sample = EvaluationSample(
+            sample_id="real_001",
+            category="faq",
+            query="什么是 RAG?",
+            expected_answer="Retrieval Augmented Generation",
+            expected_evidence_ids=["chunk-1"],
+        )
+
+        result = evaluate_sample(sample, use_real_qa=True, runner=StubRunner())
+
+        assert result.actual_answer.startswith("RAG 是")
+        assert result.recall_at_k == 1.0
+        assert result.mrr == 1.0
+        assert result.citation_accuracy == 1.0
+        assert result.latency_ms == 123
 
     def test_evaluate_sample_basic(self):
         """应能评测样本。"""
@@ -113,10 +148,50 @@ class TestGenerateCategoryReport:
 class TestRunEvaluation:
     """运行评测测试。"""
 
+    def test_build_runner_prefers_explicit_config_over_env(self, monkeypatch):
+        """显式配置应优先于环境变量，便于命令行复测不同知识库。"""
+        monkeypatch.setenv("RAG_LAB_EVAL_KB_ID", "env-kb")
+        monkeypatch.setenv("RAG_LAB_EVAL_API_BASE_URL", "http://env.example/api/v1")
+        monkeypatch.setenv("RAG_LAB_EVAL_DEV_USER", "env-user")
+
+        runner = build_runner_from_config(
+            kb_id="cli-kb",
+            api_base_url="http://cli.example/api/v1",
+            config_revision_id="cli-revision",
+            dev_user="cli-user",
+            timeout_seconds=9,
+        )
+
+        assert runner.kb_id == "cli-kb"
+        assert runner.api_base_url == "http://cli.example/api/v1"
+        assert runner.config_revision_id == "cli-revision"
+        assert runner.dev_user == "cli-user"
+        assert runner.timeout_seconds == 9
+
     def test_run_evaluation_default(self):
-        """默认评测必须走真实链路，未实现时直接失败。"""
-        with pytest.raises(NotImplementedError):
+        """默认评测必须走真实链路，未配置时直接失败。"""
+        with pytest.raises(RuntimeError, match="真实 QA 评测需要配置"):
             run_evaluation()
+
+    def test_run_evaluation_accepts_real_runner(self):
+        """传入真实 Runner 时默认评测应使用 Runner 而不是模拟指标。"""
+
+        class StubRunner:
+            """测试用 Runner，为每个样本返回可计算的真实结果结构。"""
+
+            def run(self, sample):
+                answer = "抱歉，现有资料不足以回答您的问题。" if sample.should_refuse else "真实 QA 回答"
+                return {
+                    "answer": answer,
+                    "evidence": [{"evidenceId": "e1", "chunkId": "chunk-1", "contentSnapshot": "真实 QA 回答"}],
+                    "citations": [{"citationId": "c1", "evidenceId": "e1"}],
+                    "metrics": {"latencyMs": 7},
+                }
+
+        report = run_evaluation(use_real_qa=True, runner=StubRunner())
+
+        assert report["totalSamples"] == len(DEFAULT_SAMPLES)
+        assert report["overall"]["latencyAvgMs"] == 7
 
     def test_run_evaluation_mock_mode(self):
         """显式模拟模式应能运行默认评测。"""

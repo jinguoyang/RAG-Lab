@@ -13,6 +13,7 @@ RAPTOR 层级摘要索引，用于跨文档多跳关系和长文档主题聚合�
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from collections.abc import Callable
 from typing import Any
 
 
@@ -82,42 +83,16 @@ class RaptorIndex:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-def _create_mock_graph_node(node_id: str, name: str, node_type: str) -> GraphNode:
-    """创建模拟图节点。"""
-    return GraphNode(
-        node_id=node_id,
-        name=name,
-        node_type=node_type,
-        properties={"mock": True},
-    )
-
-
-def _create_mock_graph_edge(
-    edge_id: str,
-    source_id: str,
-    target_id: str,
-    relation_type: str,
-) -> GraphEdge:
-    """创建模拟图边。"""
-    return GraphEdge(
-        edge_id=edge_id,
-        source_id=source_id,
-        target_id=target_id,
-        relation_type=relation_type,
-        properties={"mock": True},
-    )
-
-
 def graph_retrieval_multihop(
     query: str,
     graph_depth: int = 2,
     max_nodes: int = 50,
     path_mode: str = "entity-path",
 ) -> GraphRetrievalResult:
-    """执行多跳图检索。
+    """返回图多跳能力的显式降级结果。
 
-    ⚠️ 当前为模拟实现，返回占位数据。
-    生产环境应使用 Neo4jGraphRetrievalProvider 执行真实图查询。
+    真实生产检索应通过 Neo4jGraphRetrievalProvider 执行。此函数不再
+    伪造节点和路径，避免测试或上层链路把 mock 数据误判为真实图证据。
 
     Args:
         query: 查询
@@ -126,65 +101,21 @@ def graph_retrieval_multihop(
         path_mode: 路径模式
 
     Returns:
-        图检索结果（当前为模拟数据）
+        无 Provider 时的显式降级结果
     """
-    import warnings
-    warnings.warn(
-        "graph_retrieval_multihop 使用模拟数据，生产环境请使用 Neo4jGraphRetrievalProvider",
-        UserWarning,
-        stacklevel=2,
-    )
-    # 模拟实现：创建简单的图结构
-    nodes = []
-    edges = []
-    paths = []
-
-    # 创建起始节点
-    start_node = _create_mock_graph_node("start", query[:50], "Query")
-    nodes.append(start_node)
-
-    # 按深度扩展
-    for depth in range(graph_depth):
-        for i in range(min(3, max_nodes // graph_depth)):
-            node_id = f"node_{depth}_{i}"
-            node = _create_mock_graph_node(
-                node_id,
-                f"Entity {depth}.{i}",
-                "Entity",
-            )
-            nodes.append(node)
-
-            # 创建边
-            source_id = "start" if depth == 0 else f"node_{depth-1}_{i}"
-            edge = _create_mock_graph_edge(
-                f"edge_{depth}_{i}",
-                source_id,
-                node_id,
-                "RELATED_TO",
-            )
-            edges.append(edge)
-
-    # 创建路径
-    if nodes:
-        path = GraphPath(
-            path_id="path_0",
-            nodes=nodes[:min(5, len(nodes))],
-            edges=edges[:min(4, len(edges))],
-            length=min(5, len(nodes)),
-            summary=f"路径包含 {min(5, len(nodes))} 个节点",
-        )
-        paths.append(path)
-
     return GraphRetrievalResult(
-        paths=paths,
-        nodes=nodes[:max_nodes],
-        edges=edges,
+        paths=[],
+        nodes=[],
+        edges=[],
         associated_chunk_ids=[],
-        permission_status="ok",
+        permission_status="partial",
         metadata={
+            "query": query,
             "graphDepth": graph_depth,
             "maxNodes": max_nodes,
             "pathMode": path_mode,
+            "requiresProvider": True,
+            "fallbackReason": "graphProviderRequired",
         },
     )
 
@@ -193,32 +124,30 @@ def build_raptor_index(
     chunks: list[dict[str, Any]],
     max_levels: int = 3,
     use_llm: bool = False,
+    summarizer: Callable[[str, dict[str, Any]], str] | None = None,
 ) -> RaptorIndex:
     """构建 RAPTOR 层级摘要索引。
 
-    ⚠️ 当前为简化实现，仅做文本截断和拼接。
-    生产环境应设置 use_llm=True 并接入 LLM Provider 生成真正摘要。
+    未提供 summarizer 时使用可解释的 extractive 摘要；启用 use_llm 时
+    必须显式传入 summarizer，避免把文本截断伪装成 LLM 摘要。
 
     Args:
         chunks: Chunk 列表
         max_levels: 最大层级数
-        use_llm: 是否使用 LLM 生成摘要（当前未实现）
+        use_llm: 是否使用外部 summarizer 生成摘要
+        summarizer: 摘要函数，接收文本和元数据
 
     Returns:
         RAPTOR 索引
     """
-    if use_llm:
-        import warnings
-        warnings.warn(
-            "RAPTOR LLM 摘要尚未实现，当前使用文本截断作为占位",
-            UserWarning,
-            stacklevel=2,
-        )
+    if use_llm and summarizer is None:
+        raise ValueError("use_llm=True requires an explicit summarizer")
     if not chunks:
         return RaptorIndex(
             document_id="empty",
             levels=0,
             summary_nodes=[],
+            metadata={"summaryMode": "empty"},
         )
 
     summary_nodes = []
@@ -228,10 +157,12 @@ def build_raptor_index(
     leaf_nodes = []
     for i, chunk in enumerate(chunks):
         summary_id = f"summary_0_{i}"
+        source_content = chunk.get("content", "")
+        content = summarizer(source_content, {"level": 0, "chunkId": chunk.get("chunkId")}) if use_llm and summarizer else source_content[:200]
         node = SummaryNode(
             summary_id=summary_id,
             level=0,
-            content=chunk.get("content", "")[:200],
+            content=content,
             source_chunk_ids=[chunk.get("chunkId", f"chunk_{i}")],
         )
         summary_nodes.append(node)
@@ -248,11 +179,16 @@ def build_raptor_index(
             children = current_level_nodes[i:i+2]
             combined_content = " ".join(child.content[:100] for child in children)
             summary_id = f"summary_{level}_{len(next_level_nodes)}"
+            content = (
+                summarizer(combined_content, {"level": level, "children": [child.summary_id for child in children]})
+                if use_llm and summarizer
+                else combined_content[:300]
+            )
 
             node = SummaryNode(
                 summary_id=summary_id,
                 level=level,
-                content=combined_content[:300],
+                content=content,
                 source_chunk_ids=[
                     chunk_id
                     for child in children
@@ -272,6 +208,7 @@ def build_raptor_index(
         metadata={
             "chunkCount": len(chunks),
             "summaryNodeCount": len(summary_nodes),
+            "summaryMode": "llm" if use_llm else "extractive",
         },
     )
 

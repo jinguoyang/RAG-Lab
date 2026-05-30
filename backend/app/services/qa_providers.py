@@ -9,6 +9,9 @@ from app.core.config import Settings, get_settings
 from app.services.permission_service import ChunkAccessFilterContext
 
 
+DEFAULT_REPLICA_SECURITY_LEVEL = "public"
+
+
 @dataclass(frozen=True)
 class ProviderCandidate:
     """统一检索候选，所有外部检索结果必须先归一化再进入 QA 编排。"""
@@ -206,6 +209,7 @@ class MilvusDenseRetrievalProvider(DenseRetrievalProvider):
         schema.add_field("document_status", DataType.VARCHAR, max_length=32)
         schema.add_field("version_status", DataType.VARCHAR, max_length=32)
         schema.add_field("chunk_status", DataType.VARCHAR, max_length=32)
+        schema.add_field("security_level", DataType.VARCHAR, max_length=32)
         schema.add_field("allow_subject_keys", DataType.JSON)
         schema.add_field("deny_subject_keys", DataType.JSON)
         schema.add_field("filter_hash", DataType.VARCHAR, max_length=128)
@@ -1257,6 +1261,7 @@ def _to_milvus_row(payload: dict) -> dict:
         "document_status": payload.get("documentStatus") or "",
         "version_status": payload.get("versionStatus") or "",
         "chunk_status": payload.get("chunkStatus") or "",
+        "security_level": payload.get("securityLevel") or DEFAULT_REPLICA_SECURITY_LEVEL,
         "allow_subject_keys": payload.get("allowSubjectKeys", []),
         "deny_subject_keys": payload.get("denySubjectKeys", []),
         "filter_hash": payload.get("filterHash") or "",

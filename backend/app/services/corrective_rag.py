@@ -186,6 +186,17 @@ def assess_evidence(
     Returns:
         证据评估结果
     """
+    if not candidates:
+        return EvidenceAssessment(
+            coverage_score=0.0,
+            relevance_score=0.0,
+            conflict_score=0.0,
+            permission_status="ok",
+            citation_locatability=0.0,
+            overall_sufficiency=0.0,
+            issues=["无证据：没有可用于回答的候选内容"],
+        )
+
     coverage = _assess_coverage(candidates, query)
     relevance = _assess_relevance(candidates)
     conflict = _assess_conflict(candidates)

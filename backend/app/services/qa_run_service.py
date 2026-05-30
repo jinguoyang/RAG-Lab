@@ -73,6 +73,8 @@ from app.services.qa_providers import ProviderCandidate, ProviderError, QARunPro
 from app.services.permission_service import build_chunk_access_filter_context, has_kb_permission
 from app.services.knowledge_base_service import KnowledgeBaseDisabledError
 from app.services.config_effectiveness import build_trace_effective_configs
+from app.services.answer_citation_verifier import verify_answer
+from app.services.corrective_rag import execute_corrective_rag
 from app.services.token_utils import rrf_score as _rrf_score
 
 
@@ -374,6 +376,229 @@ def _limit_candidate_pairs_by_context_tokens(
         selected.append((candidate, candidate_id))
         used_tokens += estimated_tokens
     return selected
+
+
+def _metadata_value(metadata: dict[str, Any], *keys: str) -> Any:
+    """兼容不同 Provider metadata 命名风格，按顺序读取第一个非空值。"""
+    for key in keys:
+        value = metadata.get(key)
+        if value is not None:
+            return value
+    return None
+
+
+def _build_structured_evidence_trace(candidates: list[ProviderCandidate]) -> dict[str, Any]:
+    """统计结构化证据候选，用于 QA Run trace 暴露真实链路覆盖情况。"""
+    table_count = 0
+    flowchart_count = 0
+    structured_count = 0
+    for candidate in candidates:
+        metadata = candidate.metadata if isinstance(candidate.metadata, dict) else {}
+        evidence_type = str(_metadata_value(metadata, "evidenceType", "blockType", "sourceBlockType") or "").lower()
+        is_table = evidence_type == "table" or metadata.get("isTable") is True
+        is_flowchart = evidence_type in {"flowchart", "diagram"} or metadata.get("isFlowchart") is True
+        if is_table:
+            table_count += 1
+        if is_flowchart:
+            flowchart_count += 1
+        if is_table or is_flowchart:
+            structured_count += 1
+    return {
+        "structuredEvidenceCount": structured_count,
+        "tableCount": table_count,
+        "flowchartCount": flowchart_count,
+        "textEvidenceCount": max(0, len(candidates) - structured_count),
+    }
+
+
+def _build_corrective_rag_trace(
+    candidates: list[ProviderCandidate],
+    query: str,
+    current_round: int = 0,
+    max_rounds: int = 2,
+) -> dict[str, Any]:
+    """执行 Corrective RAG 证据评估，返回可写入 trace 的受控动作。"""
+    decision, trace = execute_corrective_rag(
+        candidates,
+        query,
+        current_round=current_round,
+        max_rounds=max_rounds,
+    )
+    return {
+        "round": trace.round,
+        "action": decision.action.value,
+        "reason": decision.reason,
+        "suggestedQuery": decision.suggested_query,
+        "maxRounds": max_rounds,
+        "assessment": {
+            "coverageScore": trace.assessment.coverage_score,
+            "relevanceScore": trace.assessment.relevance_score,
+            "conflictScore": trace.assessment.conflict_score,
+            "permissionStatus": trace.assessment.permission_status,
+            "citationLocatability": trace.assessment.citation_locatability,
+            "overallSufficiency": trace.assessment.overall_sufficiency,
+            "issues": trace.assessment.issues,
+        },
+    }
+
+
+def _row_get(row: RowMapping | dict[str, Any], key: str) -> Any:
+    """读取 SQLAlchemy RowMapping 或普通 dict 的字段。"""
+    return row[key] if key in row else None
+
+
+def _candidate_from_context_row(
+    row: RowMapping | dict[str, Any],
+    source_candidate: ProviderCandidate,
+) -> ProviderCandidate:
+    """把相邻 Chunk 行转换为上下文候选，保留原命中 Chunk 的追溯信息。"""
+    row_metadata = _row_get(row, "metadata") or {}
+    metadata = row_metadata if isinstance(row_metadata, dict) else {}
+    source_metadata = source_candidate.metadata if isinstance(source_candidate.metadata, dict) else {}
+    chunk_id = _row_get(row, "chunk_id")
+    return ProviderCandidate(
+        source_type=source_candidate.source_type,
+        chunk_id=chunk_id,
+        raw_score=source_candidate.raw_score,
+        content=_row_get(row, "content") or "",
+        metadata={
+            **metadata,
+            "chunkId": str(chunk_id) if chunk_id else None,
+            "chunkIndex": _row_get(row, "chunk_index"),
+            "pageNo": _row_get(row, "page_no"),
+            "section": _row_get(row, "section"),
+            "documentId": str(_row_get(row, "document_id")) if _row_get(row, "document_id") else source_metadata.get("documentId"),
+            "versionId": str(_row_get(row, "version_id")) if _row_get(row, "version_id") else source_metadata.get("versionId"),
+            "chunkRevisionId": str(_row_get(row, "chunk_revision_id")) if _row_get(row, "chunk_revision_id") else source_metadata.get("chunkRevisionId"),
+            "parseRevisionId": str(_row_get(row, "parse_revision_id")) if _row_get(row, "parse_revision_id") else source_metadata.get("parseRevisionId"),
+            "documentVersionId": str(_row_get(row, "document_version_id")) if _row_get(row, "document_version_id") else source_metadata.get("documentVersionId"),
+            "expandedContext": True,
+            "expandedFromChunkId": str(source_candidate.chunk_id) if source_candidate.chunk_id else None,
+        },
+    )
+
+
+def _expand_context_pairs_with_chunk_window(
+    context_pairs: list[tuple[ProviderCandidate, UUID]],
+    adjacent_rows: list[RowMapping | dict[str, Any]],
+    chunk_window: int,
+) -> list[tuple[ProviderCandidate, UUID]]:
+    """将相邻 Chunk 行合并进上下文，避免改变原始 retrieved evidence。"""
+    if chunk_window <= 0 or not adjacent_rows:
+        return context_pairs
+    rows_by_index: dict[int, list[RowMapping | dict[str, Any]]] = {}
+    for row in adjacent_rows:
+        chunk_index = _row_get(row, "chunk_index")
+        if isinstance(chunk_index, int):
+            rows_by_index.setdefault(chunk_index, []).append(row)
+
+    expanded: list[tuple[ProviderCandidate, UUID]] = []
+    seen_chunk_ids: set[str] = set()
+    for candidate, candidate_id in context_pairs:
+        if candidate.chunk_id is not None:
+            seen_chunk_ids.add(str(candidate.chunk_id))
+        expanded.append((candidate, candidate_id))
+        metadata = candidate.metadata if isinstance(candidate.metadata, dict) else {}
+        base_index = _metadata_value(metadata, "chunkIndex", "chunk_index")
+        if not isinstance(base_index, int):
+            continue
+        for index in range(base_index - chunk_window, base_index + chunk_window + 1):
+            if index == base_index:
+                continue
+            for row in rows_by_index.get(index, []):
+                row_chunk_id = _row_get(row, "chunk_id")
+                row_chunk_key = str(row_chunk_id) if row_chunk_id else ""
+                if not row_chunk_key or row_chunk_key in seen_chunk_ids:
+                    continue
+                expanded.append((_candidate_from_context_row(row, candidate), candidate_id))
+                seen_chunk_ids.add(row_chunk_key)
+    return expanded
+
+
+def _fetch_authorized_chunk_window_rows(
+    session: Session,
+    kb_id: UUID,
+    context_pairs: list[tuple[ProviderCandidate, UUID]],
+    chunk_window: int,
+    access_filter,
+) -> list[RowMapping]:
+    """读取已命中 Chunk 附近的授权相邻 Chunk 行。"""
+    if chunk_window <= 0:
+        return []
+    chunk_indexes = []
+    for candidate, _candidate_id in context_pairs:
+        metadata = candidate.metadata if isinstance(candidate.metadata, dict) else {}
+        chunk_index = _metadata_value(metadata, "chunkIndex", "chunk_index")
+        if isinstance(chunk_index, int):
+            chunk_indexes.extend(range(chunk_index - chunk_window, chunk_index + chunk_window + 1))
+    if not chunk_indexes:
+        return []
+    rows = list(session.execute(
+        select(
+            chunks.c.chunk_id,
+            chunks.c.version_id,
+            chunks.c.document_id,
+            chunks.c.chunk_revision_id,
+            chunks.c.parse_revision_id,
+            chunks.c.document_version_id,
+            chunks.c.chunk_index,
+            chunks.c.page_no,
+            chunks.c.section,
+            chunks.c.content,
+            chunks.c.metadata,
+            chunk_access_filters.c.permission_code,
+            chunk_access_filters.c.document_status,
+            chunk_access_filters.c.version_status,
+            chunk_access_filters.c.chunk_status,
+            chunk_access_filters.c.allow_subject_keys,
+            chunk_access_filters.c.deny_subject_keys,
+        )
+        .select_from(chunks.join(chunk_access_filters, chunks.c.chunk_id == chunk_access_filters.c.chunk_id))
+        .where(
+            chunks.c.kb_id == kb_id,
+            chunks.c.status == access_filter.chunk_status,
+            chunks.c.chunk_index.in_(sorted(set(chunk_indexes))),
+            chunk_access_filters.c.kb_id == kb_id,
+            chunk_access_filters.c.permission_code == access_filter.permission_code,
+            chunk_access_filters.c.document_status == access_filter.document_status,
+            chunk_access_filters.c.version_status == access_filter.version_status,
+            chunk_access_filters.c.chunk_status == access_filter.chunk_status,
+        )
+    ).mappings().all())
+    return [row for row in rows if _chunk_access_filter_drop_reason(row, access_filter) is None]
+
+
+def _build_answer_verification_trace(
+    answer: str,
+    evidence: list[dict[str, Any]],
+    citations: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """执行答案引用校验，并返回 trace 友好的摘要。"""
+    result = verify_answer(answer, evidence, citations)
+    return {
+        "verified": result.is_verified,
+        "status": result.status.value,
+        "faithfulnessScore": result.faithfulness_score,
+        "suggestedAction": result.suggested_action,
+        "degradedAnswer": result.degraded_answer,
+        "clarificationQuestion": result.clarification_question,
+        "checks": [
+            {
+                "name": item.check_name,
+                "status": item.status.value,
+                "message": item.message,
+            }
+            for item in result.verification_results
+        ],
+        "citationChecks": [
+            {
+                "citationId": item.citation_id,
+                "valid": item.is_valid,
+                "issues": item.issues,
+            }
+            for item in result.citation_verifications
+        ],
+    }
 
 
 def _normalize_feedback_status(value: str) -> str:
@@ -1345,6 +1570,20 @@ def _execute_provider_qa_run(
     )
     trace_order += 1
 
+    structured_trace = _build_structured_evidence_trace([candidate for candidate, _candidate_id in authorized_pairs])
+    _insert_trace_step(
+        session,
+        run_id,
+        trace_order,
+        "structuredEvidence",
+        "success" if structured_trace["structuredEvidenceCount"] else "skipped",
+        {"authorizedCandidates": len(authorized_pairs)},
+        structured_trace,
+        {"note": "Structured evidence is detected from authorized candidate metadata before generation."},
+        started_at=started_at,
+    )
+    trace_order += 1
+
     if not authorized_pairs:
         session.execute(
             update(qa_runs)
@@ -1385,8 +1624,32 @@ def _execute_provider_qa_run(
         _safe_langfuse_call(langfuse.flush)
         return
 
-    context_pairs = _limit_candidate_pairs_by_context_tokens(
+    corrective_trace = _build_corrective_rag_trace(
+        [candidate for candidate, _candidate_id in authorized_pairs],
+        query,
+    )
+    _insert_trace_step(
+        session,
+        run_id,
+        trace_order,
+        "correctiveRag",
+        "success",
+        {"authorizedCandidates": len(authorized_pairs), "query": query},
+        corrective_trace,
+        {"mode": "rule", "maxRounds": corrective_trace["maxRounds"]},
+        started_at=started_at,
+    )
+    trace_order += 1
+
+    chunk_window = pipeline_params["contextPacking"].get("chunkWindow", 0)
+    adjacent_rows = _fetch_authorized_chunk_window_rows(session, kb_id, authorized_pairs, chunk_window, access_filter)
+    expanded_context_pairs = _expand_context_pairs_with_chunk_window(
         authorized_pairs,
+        adjacent_rows,
+        chunk_window,
+    )
+    context_pairs = _limit_candidate_pairs_by_context_tokens(
+        expanded_context_pairs,
         pipeline_params["maxContextTokens"],
     )
     context_candidates = [candidate for candidate, _candidate_id in context_pairs]
@@ -1397,41 +1660,52 @@ def _execute_provider_qa_run(
         "contextPacking",
         "success",
         {"authorizedEvidenceCount": len(authorized_pairs)},
-        {"contextCandidateCount": len(context_candidates), "maxContextTokens": pipeline_params["maxContextTokens"]},
+        {
+            "contextCandidateCount": len(context_candidates),
+            "expandedContextCandidates": max(0, len(expanded_context_pairs) - len(authorized_pairs)),
+            "chunkWindow": chunk_window,
+            "maxContextTokens": pipeline_params["maxContextTokens"],
+        },
         pipeline_params["contextPacking"],
         started_at=started_at,
     )
     trace_order += 1
-    try:
-        # B-317: 传递 maxOutputTokens 给 LLM Provider
-        answer = provider_set.llm.generate_answer(
-            query,
-            context_candidates,
-            temperature=pipeline_params["temperature"],
-            max_context_tokens=pipeline_params["maxContextTokens"],
-            max_output_tokens=pipeline_params.get("maxOutputTokens"),
-        )
-        generation_usage = getattr(provider_set.llm, "last_usage", {})
-        for key in ("inputTokens", "outputTokens", "totalTokens"):
-            aggregated_tokens[key] += generation_usage.get(key, 0)
-        _safe_langfuse_method(
-            lf_trace,
-            "generation",
-            name="generation",
-            input={"query": query, "evidenceCount": len(context_candidates)},
-            output=answer[:200],
-            model=generation_usage.get("model"),
-            usage={"input": generation_usage.get("inputTokens"), "output": generation_usage.get("outputTokens"), "total": generation_usage.get("totalTokens")},
-            metadata={"provider": settings.llm_provider, "temperature": pipeline_params["temperature"]},
-        )
-        generation_status = "success"
+    if corrective_trace["action"] == "answer_insufficient":
+        answer = "资料不足，无法基于当前授权证据回答。"
+        generation_status = "skipped"
         generation_error = None
-    except ProviderError as exc:
-        answer = f"Provider 生成失败，返回候选摘要供调试：{query}"
-        generation_status = "partial"
-        generation_error = str(exc)
         generation_usage = {}
-        provider_errors.append("generation")
+    else:
+        try:
+        # B-317: 传递 maxOutputTokens 给 LLM Provider
+            answer = provider_set.llm.generate_answer(
+                query,
+                context_candidates,
+                temperature=pipeline_params["temperature"],
+                max_context_tokens=pipeline_params["maxContextTokens"],
+                max_output_tokens=pipeline_params.get("maxOutputTokens"),
+            )
+            generation_usage = getattr(provider_set.llm, "last_usage", {})
+            for key in ("inputTokens", "outputTokens", "totalTokens"):
+                aggregated_tokens[key] += generation_usage.get(key, 0)
+            _safe_langfuse_method(
+                lf_trace,
+                "generation",
+                name="generation",
+                input={"query": query, "evidenceCount": len(context_candidates)},
+                output=answer[:200],
+                model=generation_usage.get("model"),
+                usage={"input": generation_usage.get("inputTokens"), "output": generation_usage.get("outputTokens"), "total": generation_usage.get("totalTokens")},
+                metadata={"provider": settings.llm_provider, "temperature": pipeline_params["temperature"]},
+            )
+            generation_status = "success"
+            generation_error = None
+        except ProviderError as exc:
+            answer = f"Provider 生成失败，返回候选摘要供调试：{query}"
+            generation_status = "partial"
+            generation_error = str(exc)
+            generation_usage = {}
+            provider_errors.append("generation")
     _insert_trace_step(
         session,
         run_id,
@@ -1452,10 +1726,27 @@ def _execute_provider_qa_run(
     )
     trace_order += 1
 
+    verifier_evidence: list[dict[str, Any]] = []
+    verifier_citations: list[dict[str, Any]] = []
     for evidence_order, (candidate, candidate_id) in enumerate(context_pairs, start=1):
         evidence_id = new_id()
         content_snapshot = candidate.content or "Provider 候选未返回正文，当前仅保留来源摘要。"
         content_hash = sha256(content_snapshot.encode("utf-8")).hexdigest()
+        evidence_payload = {
+            "evidenceId": str(evidence_id),
+            "content": content_snapshot,
+            "documentId": candidate.metadata.get("documentId"),
+            "blockId": candidate.metadata.get("blockId"),
+            "chunkId": str(candidate.chunk_id) if candidate.chunk_id else candidate.metadata.get("chunkId"),
+        }
+        citation_payload = {
+            "citationId": f"citation_{evidence_order}",
+            "documentId": candidate.metadata.get("documentId"),
+            "pageNo": candidate.metadata.get("pageNo"),
+            "blockId": candidate.metadata.get("blockId") or candidate.metadata.get("chunkId") or (str(candidate.chunk_id) if candidate.chunk_id else None),
+        }
+        verifier_evidence.append(evidence_payload)
+        verifier_citations.append(citation_payload)
         session.execute(
             insert(qa_run_evidence).values(
                 evidence_id=evidence_id,
@@ -1512,6 +1803,25 @@ def _execute_provider_qa_run(
         {"evidenceCount": len(context_pairs)},
         {"citationCount": len(context_pairs)},
         {"latencyMs": 0},
+        started_at=started_at,
+    )
+    trace_order += 1
+
+    verification_trace = _build_answer_verification_trace(answer, verifier_evidence, verifier_citations)
+    if verification_trace["suggestedAction"] == "refuse":
+        answer = "资料不足，无法基于当前授权证据回答。"
+        provider_errors.append("answerVerifier")
+    elif verification_trace["suggestedAction"] == "degrade" and verification_trace.get("degradedAnswer"):
+        answer = verification_trace["degradedAnswer"]
+    _insert_trace_step(
+        session,
+        run_id,
+        trace_order,
+        "answerVerifier",
+        "success" if verification_trace["verified"] else "partial",
+        {"evidenceCount": len(verifier_evidence), "citationCount": len(verifier_citations)},
+        verification_trace,
+        {"minFaithfulnessScore": 0.5},
         started_at=started_at,
     )
 

@@ -1,4 +1,4 @@
-from app.services.qa_providers import HttpLlmProvider
+from app.services.qa_providers import HttpLlmProvider, _to_milvus_row
 
 
 def test_http_llm_rewrite_query_normalizes_answer_like_output():
@@ -50,3 +50,34 @@ def test_http_llm_rewrite_query_limits_provider_output(monkeypatch):
 
     assert rewritten == "呆滞物料处置方式有哪些"
     assert captured["json"]["max_tokens"] == 64
+
+
+def test_to_milvus_row_defaults_security_level_for_legacy_collection() -> None:
+    """Milvus 旧 Collection 要求 security_level 时，写入行应提供兼容默认值。"""
+    row = _to_milvus_row(
+        {
+            "chunkId": "chunk-1",
+            "kbId": "kb-1",
+            "documentId": "doc-1",
+            "versionId": "version-1",
+            "embedding": [0.1, 0.2],
+        }
+    )
+
+    assert row["security_level"] == "public"
+
+
+def test_to_milvus_row_keeps_explicit_security_level() -> None:
+    """若调用方显式传入密级，应原样写入 Milvus 行。"""
+    row = _to_milvus_row(
+        {
+            "chunkId": "chunk-1",
+            "kbId": "kb-1",
+            "documentId": "doc-1",
+            "versionId": "version-1",
+            "securityLevel": "internal",
+            "embedding": [0.1, 0.2],
+        }
+    )
+
+    assert row["security_level"] == "internal"
