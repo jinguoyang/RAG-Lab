@@ -273,6 +273,32 @@ class TestDocumentServiceStrategyAdapter:
         assert chunks[0].metadata["generationMeta"]["chunkRevisionId"] == "rev-contextual"
         assert chunks[0].metadata["lateChunking"]["status"] == "reserved"
 
+    def test_attach_parsed_document_v2_provenance_to_ingest_chunks(self):
+        """入库 Chunk 应带 ParsedDocumentV2 块级 provenance。"""
+        from app.services.document_service import _attach_parsed_document_v2_provenance_to_chunks
+
+        parsed_doc = ParsedDocument(
+            parser_name="markdown",
+            parser_version="test",
+            source_file_name="policy.md",
+            mime_type="text/markdown",
+            chunks=[
+                ParsedChunk("## 第一章\n安全要求", 5, "第一章", 1, {}),
+            ],
+        )
+
+        chunks, parsed_v2 = _attach_parsed_document_v2_provenance_to_chunks(
+            parsed_doc,
+            parsed_doc.chunks,
+            document_id="doc-001",
+        )
+
+        assert parsed_v2.document_id == "doc-001"
+        assert chunks[0].metadata["parsedDocumentV2"]["contentHash"] == parsed_v2.content_hash
+        assert chunks[0].metadata["sourceBlockIds"] == ["block_0"]
+        assert chunks[0].metadata["provenance"]["blockIds"] == ["block_0"]
+        assert chunks[0].metadata["provenance"]["pageNo"] == 1
+
 
 class TestGetAvailableStrategies:
     """获取可用策略测试。"""

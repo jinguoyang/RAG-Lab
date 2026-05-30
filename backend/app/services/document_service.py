@@ -58,7 +58,7 @@ from app.services.contextual_chunking import generate_contextual_metadata_with_c
 from app.services.multi_view_chunking import ChunkResult, execute_chunking
 from app.services.object_storage import ObjectStorageProvider, get_object_storage_provider
 from app.services.parser_routing import ParseTaskRecord, route_and_parse
-from app.services.parsed_document_v2 import convert_parsed_document_to_v2
+from app.services.parsed_document_v2 import ParsedDocumentV2, convert_parsed_document_to_v2
 from app.services.graph_service import mark_graph_snapshots_stale
 from app.services.knowledge_base_service import KnowledgeBaseDisabledError
 from app.services.permission_service import build_chunk_access_filter_context, has_kb_permission
@@ -1003,6 +1003,25 @@ def _parse_task_record_to_options(record: ParseTaskRecord | None) -> dict:
     }
 
 
+def _parsed_document_v2_to_options(parsed_v2: ParsedDocumentV2 | None) -> dict:
+    """把 ParsedDocumentV2 摘要写入 ParseRevision，避免在状态源外维护重复证据。"""
+    if parsed_v2 is None:
+        return {}
+    return {
+        "parsedDocumentV2": {
+            "documentId": parsed_v2.document_id,
+            "sourceFileName": parsed_v2.source_file_name,
+            "mimeType": parsed_v2.mime_type,
+            "contentHash": parsed_v2.content_hash,
+            "parseVersion": parsed_v2.parse_version,
+            "providerName": parsed_v2.provider_name,
+            "providerVersion": parsed_v2.provider_version,
+            "pageCount": len(parsed_v2.pages),
+            "blockCount": len(parsed_v2.blocks),
+        }
+    }
+
+
 def _parse_document_for_ingest(
     file_name: str,
     mime_type: str | None,
@@ -1018,6 +1037,51 @@ def _parse_document_for_ingest(
         chunk_size=_chunk_param(chunk_params, "chunkSize", "chunk_size", 900),
         chunk_overlap=_chunk_param(chunk_params, "chunkOverlap", "chunk_overlap", 120),
     )
+
+
+def _attach_parsed_document_v2_provenance_to_chunks(
+    parsed_document: ParsedDocument,
+    parsed_chunks: list,
+    document_id: str | UUID,
+) -> tuple[list[_DictAsObj], ParsedDocumentV2]:
+    """为入库 Chunk 补充 ParsedDocumentV2 块级来源，供引用和后续结构化索引追溯。"""
+    parsed_v2 = convert_parsed_document_to_v2(parsed_document)
+    parsed_v2.document_id = str(document_id)
+    parsed_v2_summary = _parsed_document_v2_to_options(parsed_v2)["parsedDocumentV2"]
+
+    chunks_with_provenance: list[_DictAsObj] = []
+    for index, parsed in enumerate(parsed_chunks):
+        metadata = dict(parsed.metadata or {})
+        block = parsed_v2.blocks[index] if index < len(parsed_v2.blocks) else None
+        block_ids = metadata.get("sourceBlockIds") or metadata.get("source_block_ids")
+        if not isinstance(block_ids, list) or not block_ids:
+            block_ids = [block.block_id if block is not None else f"block_{index}"]
+        block_ids = [str(block_id) for block_id in block_ids]
+
+        section_path = _metadata_section_path(metadata, parsed.section)
+        metadata.update(
+            {
+                "parsedDocumentV2": parsed_v2_summary,
+                "sourceBlockIds": block_ids,
+                "sourceBlockRange": metadata.get("sourceBlockRange") or block_ids,
+                "sectionPath": section_path,
+                "provenance": {
+                    "blockIds": block_ids,
+                    "pageNo": parsed.page_no,
+                    "section": parsed.section,
+                    "contentHash": parsed_v2.content_hash,
+                },
+            }
+        )
+        chunks_with_provenance.append(_DictAsObj({
+            "content": parsed.content,
+            "token_count": parsed.token_count,
+            "section": parsed.section,
+            "page_no": parsed.page_no,
+            "metadata": metadata,
+        }))
+
+    return chunks_with_provenance, parsed_v2
 
 
 def _apply_chunk_strategy_to_parsed_document(
@@ -1224,6 +1288,7 @@ def run_ingest_job(
         job_type = job_row.get("job_type", "upload_parse")
         is_rechunk = job_type == "rechunk" or (job_type == "reparse" and chunk_revision_row is not None)
         parsed_document_for_context: ParsedDocument | None = None
+        parsed_document_v2_for_revision: ParsedDocumentV2 | None = None
         parse_task_record: ParseTaskRecord | None = None
 
         # Check if we can reuse parsed chunks from library
@@ -1314,6 +1379,12 @@ def run_ingest_job(
                 )
             parser_name = parsed_document.parser_name
             parser_version = parsed_document.parser_version
+        if parsed_document_for_context is not None:
+            parsed_chunks, parsed_document_v2_for_revision = _attach_parsed_document_v2_provenance_to_chunks(
+                parsed_document_for_context,
+                parsed_chunks,
+                document_row["document_id"],
+            )
         if parsed_document_for_context is not None and chunk_revision_id is not None:
             parsed_chunks = _attach_contextual_metadata_to_chunks(
                 parsed_document_for_context,
@@ -1336,6 +1407,7 @@ def run_ingest_job(
             )
         else:
             parse_options_for_revision = _parse_task_record_to_options(parse_task_record)
+            parse_options_for_revision.update(_parsed_document_v2_to_options(parsed_document_v2_for_revision))
             if is_image:
                 vision_settings = get_settings()
                 parse_options_for_revision.update(
