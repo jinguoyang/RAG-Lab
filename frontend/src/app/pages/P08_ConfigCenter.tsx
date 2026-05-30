@@ -1044,7 +1044,7 @@ export function ConfigCenter() {
   }
 
   return (
-    <div className="flex h-full flex-col space-y-6 overflow-hidden p-8">
+    <div className="flex h-full flex-col space-y-6 overflow-x-hidden overflow-y-auto p-8">
       <PageHeader
         title="配置中心"
         description="以受约束 Pipeline Designer 定义知识库默认检索链路、模型策略与 revision 生效关系。"

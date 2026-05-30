@@ -697,8 +697,8 @@ def _authorize_provider_candidates(
                 chunk_access_filters.c.permission_code == access_filter.permission_code,
             )
         ).mappings()
-    chunks_by_id = {row["chunk_id"]: row for row in rows}
-    filters_by_chunk_id = {row["chunk_id"]: row for row in filter_rows}
+    chunks_by_id = {str(row["chunk_id"]): row for row in rows}
+    filters_by_chunk_id = {str(row["chunk_id"]): row for row in filter_rows}
 
     authorized: list[tuple[ProviderCandidate, UUID]] = []
     candidate_records: list[dict[str, Any]] = []
@@ -706,7 +706,8 @@ def _authorize_provider_candidates(
     for candidate in candidates:
         candidate_id = new_id()
         chunk_id = candidate.chunk_id
-        chunk_row = chunks_by_id.get(chunk_id) if chunk_id is not None else None
+        chunk_id_str = str(chunk_id) if chunk_id is not None else None
+        chunk_row = chunks_by_id.get(chunk_id_str) if chunk_id_str is not None else None
         drop_reason: str | None = None
         if chunk_id is None:
             drop_reason = "missingChunkId"
@@ -715,7 +716,7 @@ def _authorize_provider_candidates(
         elif _chunk_is_governance_excluded(chunk_row):
             drop_reason = "governanceExcluded"
         else:
-            drop_reason = _chunk_access_filter_drop_reason(filters_by_chunk_id.get(chunk_id), access_filter)
+            drop_reason = _chunk_access_filter_drop_reason(filters_by_chunk_id.get(chunk_id_str), access_filter)
 
         if drop_reason is not None:
             dropped_count += 1
