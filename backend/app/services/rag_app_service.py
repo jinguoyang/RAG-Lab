@@ -17,6 +17,7 @@ from app.schemas.rag_app import (
     AppMessageDTO,
     AppTrainingReportDTO,
     AppTrainingResultDTO,
+    BatchDeleteRagAppsResponse,
     RagAppApiKeyCreateRequest,
     RagAppApiKeyCreateResponse,
     RagAppApiKeyDTO,
@@ -567,6 +568,45 @@ def delete_rag_app(
         detail={"name": app_row["name"]},
     )
     session.commit()
+
+
+def batch_delete_rag_apps(
+    session: Session,
+    current_user: CurrentUserResponse,
+    app_ids: list[UUID],
+) -> BatchDeleteRagAppsResponse:
+    """批量逻辑删除 RAG App；逐个校验权限并归档。"""
+    actor_id = current_user.user.userId
+    now = datetime.now(UTC)
+    deleted_count = 0
+
+    for app_id in app_ids:
+        app_row = _read_visible_app_row(session, current_user, app_id)
+        _ensure_app_manage_permission(session, current_user, app_row["kb_id"])
+        session.execute(
+            update(rag_apps)
+            .where(rag_apps.c.app_id == app_id, rag_apps.c.deleted_at.is_(None))
+            .values(
+                status="archived",
+                deleted_at=now,
+                deleted_by=actor_id,
+                updated_at=now,
+                updated_by=actor_id,
+            )
+        )
+        write_audit_log(
+            session,
+            current_user,
+            "rag_app.delete",
+            "rag_app",
+            app_id,
+            kb_id=app_row["kb_id"],
+            detail={"name": app_row["name"], "batch": True},
+        )
+        deleted_count += 1
+
+    session.commit()
+    return BatchDeleteRagAppsResponse(deleted_count=deleted_count)
 
 
 def list_rag_app_api_keys(

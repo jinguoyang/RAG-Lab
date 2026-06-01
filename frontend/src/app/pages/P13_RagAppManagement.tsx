@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { NavLink, useNavigate } from "react-router";
 import * as Tabs from "@radix-ui/react-tabs";
 import {
+  CheckSquare,
   Copy,
   FileText,
   KeyRound,
+  MinusSquare,
   Pencil,
   PlayCircle,
   Plus,
@@ -13,6 +15,7 @@ import {
   Search,
   ShieldCheck,
   ShieldOff,
+  Square,
   Trash2,
   Users,
   X,
@@ -50,6 +53,7 @@ import {
 import { listAgentScenarioTemplates } from "../services/agentScenarioService";
 import { chooseActiveDictionaryValue, fetchDictionaryItemsWithFallback } from "../services/dictionaryService";
 import {
+  batchDeleteRagApps,
   createRagApp,
   createRagAppApiKey,
   deleteRagApp,
@@ -207,8 +211,11 @@ export function RagAppManagement() {
   const [isRuntimeRunning, setIsRuntimeRunning] = useState(false);
   const [feedbackStatusItems, setFeedbackStatusItems] = useState<DictionaryItemDTO[]>([]);
   const [embedTokenPreview, setEmbedTokenPreview] = useState<{ token: string; expiresAt: string } | null>(null);
+  const [selectedAppIds, setSelectedAppIds] = useState<Set<string>>(new Set());
 
   const appRows = useMemo(() => apps.map(toRagAppViewModel), [apps]);
+  const isAllSelected = apps.length > 0 && apps.every((app) => selectedAppIds.has(app.appId));
+  const isIndeterminate = !isAllSelected && apps.some((app) => selectedAppIds.has(app.appId));
   const selectedAppView = selectedApp ? toRagAppViewModel(selectedApp) : null;
   const keyRows = useMemo(() => apiKeys.map(toRagAppApiKeyViewModel), [apiKeys]);
   const activeApiKeyCount = useMemo(
@@ -247,6 +254,7 @@ export function RagAppManagement() {
       setKnowledgeBases(kbPage.items);
       setApps(appPage.items);
       setTotalApps(appPage.total);
+      setSelectedAppIds(new Set());
     } catch (error) {
       setFeedback({
         variant: "error",
@@ -520,6 +528,61 @@ export function RagAppManagement() {
       setFeedback({
         variant: "error",
         title: "应用删除失败",
+        message: error instanceof Error ? error.message : "请刷新后重试。",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedAppIds(new Set());
+    } else {
+      setSelectedAppIds(new Set(apps.map((app) => app.appId)));
+    }
+  };
+
+  const handleToggleSelectApp = (appId: string) => {
+    setSelectedAppIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(appId)) {
+        next.delete(appId);
+      } else {
+        next.add(appId);
+      }
+      return next;
+    });
+  };
+
+  const handleBatchDelete = async () => {
+    const selectedIds = Array.from(selectedAppIds);
+    if (selectedIds.length === 0) return;
+
+    const selectedNames = apps
+      .filter((app) => selectedAppIds.has(app.appId))
+      .map((app) => app.name);
+
+    const confirmed = await confirmDialog({
+      title: "确认批量删除",
+      description: `删除后，选中的 ${selectedIds.length} 个应用会从列表中移除，外部 App Runtime 调用会被拒绝；历史调用和 QARun 不会被删除。`,
+      detail: selectedNames.length <= 5 ? selectedNames.join("、") : `${selectedNames.slice(0, 5).join("、")} 等 ${selectedNames.length} 个应用`,
+      confirmText: `删除 ${selectedIds.length} 个应用`,
+      variant: "destructive",
+    });
+    if (!confirmed) return;
+
+    setIsSaving(true);
+    try {
+      const response = await batchDeleteRagApps(selectedIds);
+      setSelectedAppIds(new Set());
+      setSelectedApp((current) => (current && selectedAppIds.has(current.appId) ? null : current));
+      setFeedback({ variant: "success", title: "批量删除完成", message: `已成功删除 ${response.deletedCount} 个应用。` });
+      await loadApps();
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "批量删除失败",
         message: error instanceof Error ? error.message : "请刷新后重试。",
       });
     } finally {
@@ -847,9 +910,48 @@ export function RagAppManagement() {
               </Button>
             </div>
 
-            <Table tableClassName="min-w-[860px]">
+            {selectedAppIds.size > 0 && (
+              <div className="flex items-center gap-3 rounded-lg border border-border-cream bg-ivory p-3">
+                <span className="text-sm text-near-black">
+                  已选中 <span className="font-medium">{selectedAppIds.size}</span> 个应用
+                </span>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={isSaving}
+                  onClick={() => void handleBatchDelete()}
+                >
+                  <Trash2 className="mr-1 h-3 w-3" /> 批量删除
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedAppIds(new Set())}
+                >
+                  取消选择
+                </Button>
+              </div>
+            )}
+
+            <Table tableClassName="min-w-[900px]">
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <button
+                      type="button"
+                      className="flex h-5 w-5 items-center justify-center text-stone-gray hover:text-near-black"
+                      onClick={handleToggleSelectAll}
+                      disabled={isLoadingApps || apps.length === 0}
+                    >
+                      {isAllSelected ? (
+                        <CheckSquare className="h-4 w-4" />
+                      ) : isIndeterminate ? (
+                        <MinusSquare className="h-4 w-4" />
+                      ) : (
+                        <Square className="h-4 w-4" />
+                      )}
+                    </button>
+                  </TableHead>
                   <TableHead>应用</TableHead>
                   <TableHead>场景</TableHead>
                   <TableHead>知识库</TableHead>
@@ -861,16 +963,39 @@ export function RagAppManagement() {
               <TableBody>
                 {isLoadingApps && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-stone-gray">加载中...</TableCell>
+                    <TableCell colSpan={7} className="text-stone-gray">加载中...</TableCell>
                   </TableRow>
                 )}
                 {!isLoadingApps && appRows.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-stone-gray">暂无 RAG 应用</TableCell>
+                    <TableCell colSpan={7} className="text-stone-gray">暂无 RAG 应用</TableCell>
                   </TableRow>
                 )}
                 {!isLoadingApps && appRows.map((app) => (
-                  <TableRow key={app.id} onClick={() => setSelectedApp(apps.find((item) => item.appId === app.id) ?? null)}>
+                  <TableRow
+                    key={app.id}
+                    className={selectedAppIds.has(app.id) ? "bg-parchment" : undefined}
+                    onClick={(event) => {
+                      if ((event.target as HTMLElement).closest('button[type="button"]')) return;
+                      setSelectedApp(apps.find((item) => item.appId === app.id) ?? null);
+                    }}
+                  >
+                    <TableCell>
+                      <button
+                        type="button"
+                        className="flex h-5 w-5 items-center justify-center text-stone-gray hover:text-near-black"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleToggleSelectApp(app.id);
+                        }}
+                      >
+                        {selectedAppIds.has(app.id) ? (
+                          <CheckSquare className="h-4 w-4 text-terracotta" />
+                        ) : (
+                          <Square className="h-4 w-4" />
+                        )}
+                      </button>
+                    </TableCell>
                     <TableCell>
                       <div className="font-medium text-near-black">{app.name}</div>
                       {app.description && (

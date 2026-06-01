@@ -5,6 +5,7 @@ import type {
   AppInvocationStatsDTO,
   AppConversationDetailDTO,
   AppTrainingReportDTO,
+  BatchDeleteRagAppsResponse,
   RagAppApiKeyCreateRequest,
   RagAppApiKeyCreateResponse,
   RagAppApiKeyDTO,
@@ -49,6 +50,10 @@ export async function updateRagApp(appId: string, payload: RagAppUpdateRequest):
 
 export async function deleteRagApp(appId: string): Promise<void> {
   return apiDelete(`/rag-apps/${appId}`);
+}
+
+export async function batchDeleteRagApps(appIds: string[]): Promise<BatchDeleteRagAppsResponse> {
+  return apiPostJson<BatchDeleteRagAppsResponse>("/rag-apps/batch-delete", { app_ids: appIds });
 }
 
 export async function listRagAppApiKeys(appId: string): Promise<RagAppApiKeyDTO[]> {

@@ -14,6 +14,8 @@ from app.schemas.rag_app import (
     AppInvocationDTO,
     AppInvocationStatsDTO,
     AppTrainingReportDTO,
+    BatchDeleteRagAppsRequest,
+    BatchDeleteRagAppsResponse,
     RagAppApiKeyCreateRequest,
     RagAppApiKeyCreateResponse,
     RagAppApiKeyDTO,
@@ -26,6 +28,7 @@ from app.services.rag_app_service import (
     RagAppConflictError,
     RagAppNotFoundError,
     RagAppPermissionError,
+    batch_delete_rag_apps,
     create_rag_app,
     create_rag_app_api_key,
     delete_rag_app,
@@ -107,6 +110,19 @@ def delete_rag_app_endpoint(
     """逻辑删除 RAG App；历史调用和 QARun 保持只读可追溯。"""
     try:
         delete_rag_app(session, current_user, app_id)
+    except Exception as exc:
+        _raise_rag_app_error(exc)
+
+
+@router.post("/batch-delete", response_model=BatchDeleteRagAppsResponse)
+def batch_delete_rag_apps_endpoint(
+    request: BatchDeleteRagAppsRequest,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> BatchDeleteRagAppsResponse:
+    """批量逻辑删除 RAG App；逐个校验权限并归档。"""
+    try:
+        return batch_delete_rag_apps(session, current_user, request.app_ids)
     except Exception as exc:
         _raise_rag_app_error(exc)
 

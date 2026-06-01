@@ -197,3 +197,15 @@ class AppConversationDetailDTO(BaseModel):
     createdAt: str
     updatedAt: str
     messages: list[AppMessageDTO]
+
+
+class BatchDeleteRagAppsRequest(BaseModel):
+    """批量删除 RAG App 请求；接受应用 ID 列表。"""
+
+    app_ids: list[UUID] = Field(min_length=1, max_length=100)
+
+
+class BatchDeleteRagAppsResponse(BaseModel):
+    """批量删除 RAG App 响应；返回成功删除的数量。"""
+
+    deleted_count: int

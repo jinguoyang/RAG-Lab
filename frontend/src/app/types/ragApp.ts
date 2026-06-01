@@ -164,6 +164,10 @@ export interface RagAppListParams {
   status?: RagAppStatus | "";
 }
 
+export interface BatchDeleteRagAppsResponse {
+  deletedCount: number;
+}
+
 export interface AppInvocationListParams {
   pageNo?: number;
   pageSize?: number;
