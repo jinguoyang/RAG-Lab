@@ -14,6 +14,7 @@
 ```text
 rag-lab/
 ├── AGENTS.md                  # Codex / Agent 协作约定
+├── CLAUDE.md                  # Claude / Agent 协作约定
 ├── DESIGN.md                  # 页面设计与视觉风格要求
 ├── README.md                  # 项目开发说明入口
 ├── frontend/                  # 当前正式前端入口，基于 React + Vite
