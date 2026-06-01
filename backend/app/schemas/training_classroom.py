@@ -1,7 +1,7 @@
 """员工培训课堂 Agent 平台侧 DTO。"""
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -13,6 +13,7 @@ class ClassroomSessionCreateRequest(BaseModel):
     planId: str | None = Field(default=None, max_length=36)
     endUserId: str = Field(min_length=1, max_length=128)
     inputs: dict[str, Any] | None = None
+    runtimeVersion: str | None = Field(default=None, max_length=32)
 
 
 class ClassroomEventSubmitRequest(BaseModel):
@@ -21,6 +22,7 @@ class ClassroomEventSubmitRequest(BaseModel):
     eventType: str = Field(min_length=1, max_length=32)
     payload: dict[str, Any] = Field(default_factory=dict)
     query: str | None = Field(default=None, max_length=4000)
+    requestId: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class ClassroomMessageDTO(BaseModel):
@@ -64,6 +66,21 @@ class ClassroomProgressUpdateDTO(BaseModel):
     sectionIndex: int | None = None
     sectionTotal: int | None = None
     completedSections: int | None = None
+
+
+class ClassroomDomainResult(BaseModel):
+    """课堂领域事件执行结果（不含持久化）。"""
+
+    eventType: str
+    resultState: str
+    responseMode: Literal["template", "teaching_narration", "rag_explain", "agent_task"] = "template"
+    responseContext: dict[str, Any] = Field(default_factory=dict)
+    visibleContent: str
+    uiActions: list[ClassroomUiActionDTO] = Field(default_factory=list)
+    citations: list[ClassroomCitationDTO] = Field(default_factory=list)
+    progressUpdate: ClassroomProgressUpdateDTO | None = None
+    userMessage: str | None = None
+    auditType: str | None = None
 
 
 class ClassroomSessionResponse(BaseModel):

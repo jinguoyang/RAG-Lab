@@ -21,6 +21,11 @@ from app.services.training_classroom_service import (
     get_classroom_session,
     submit_classroom_event,
 )
+from app.services.agent_runtime.runtime_facade import (
+    RuntimeVersion,
+    resolve_runtime_version,
+    submit_training_classroom_runtime_event,
+)
 
 router = APIRouter(prefix="/training/classroom", tags=["training"])
 
@@ -76,7 +81,17 @@ def submit_training_classroom_event(
     """提交课堂事件，并返回结构化 Agent 输出。"""
     credential = _extract_bearer_token(authorization)
     try:
-        return submit_classroom_event(session, credential, session_id, request)
+        # 读取会话的 runtime_version，委托给 facade 分流
+        from app.tables import training_classroom_sessions
+        from sqlalchemy import select
+
+        row = session.execute(
+            select(training_classroom_sessions.c.runtime_version)
+            .where(training_classroom_sessions.c.session_id == session_id)
+            .limit(1)
+        ).scalar()
+        rt_version = resolve_runtime_version(row)
+        return submit_training_classroom_runtime_event(session, credential, session_id, request, rt_version)
     except Exception as exc:
         _raise_training_classroom_error(exc)
         raise

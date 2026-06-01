@@ -727,6 +727,7 @@ training_classroom_sessions = sa.Table(
     sa.Column("updated_by", sa.String(length=128), nullable=True),
     sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
     sa.Column("deleted_by", sa.String(length=128), nullable=True),
+    sa.Column("runtime_version", sa.String(length=32), nullable=False, server_default="legacy_v1"),
 )
 
 training_classroom_messages = sa.Table(
@@ -754,6 +755,7 @@ training_classroom_events = sa.Table(
     sa.Column("status", sa.String(length=16), nullable=False),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column("created_by", sa.String(length=128), nullable=True),
+    sa.Column("request_id", sa.String(length=64), nullable=True),
 )
 
 training_skill_calls = sa.Table(

@@ -10,7 +10,14 @@
 
 **Tech Stack:** Python、FastAPI、SQLAlchemy、PostgreSQL、pytest、LangChain、LangGraph、现有 QARun、现有培训领域服务。
 
-**Design Spec:** `docs/04-迭代与交付/specs/2026-06-01-langchain-langgraph-agent-runtime-spec.md`
+**Design Specs:**
+
+- `docs/04-迭代与交付/specs/2026-06-01-langchain-langgraph-agent-runtime-spec.md`
+- `docs/04-迭代与交付/specs/2026-06-01-employee-training-graph-orchestration-spec.md`
+
+**Detailed Orchestration Plan:** `docs/04-迭代与交付/plans/2026-06-01-employee-training-graph-orchestration-plan.md`
+
+> 本文保持 P2 阶段级任务拆分。执行课堂 Primary 编排时，以详细编排计划为准；详细计划补充自由文本分类、自然语言领域命令、响应策略、幂等和异常分支。
 
 ---
 

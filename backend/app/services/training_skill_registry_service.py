@@ -108,8 +108,24 @@ _SKILLS: dict[str, TrainingSkillDTO] = {
         outputSchema={
             "type": "object",
             "properties": {
-                "intent": {"type": "string", "description": "识别出的意图类别"},
+                "intent": {
+                    "type": "string",
+                    "description": "识别出的意图类别",
+                    "enum": [
+                        "domain_command",
+                        "course_qa",
+                        "teaching_adjustment",
+                        "multi_tool_task",
+                        "classroom_meta",
+                        "content_feedback",
+                        "off_topic",
+                        "clarification_required",
+                        "forbidden",
+                    ],
+                },
                 "confidence": {"type": "number", "description": "置信度 0-1"},
+                "command": {"type": ["object", "null"], "description": "可选领域命令"},
+                "reason": {"type": "string", "description": "分类原因"},
             },
         },
     ),

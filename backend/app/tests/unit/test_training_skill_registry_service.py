@@ -58,6 +58,26 @@ def test_all_skills_have_non_empty_schemas():
         assert skill.outputSchema, f"{skill.skillName} outputSchema is empty"
 
 
+def test_classify_intent_schema_describes_structured_decision():
+    """Registry 应公开 Graph 实际使用的完整分类结构。"""
+    skill = get_training_skill("classifyIntent")
+    assert skill is not None
+    properties = skill.outputSchema["properties"]
+    assert set(properties["intent"]["enum"]) == {
+        "domain_command",
+        "course_qa",
+        "teaching_adjustment",
+        "multi_tool_task",
+        "classroom_meta",
+        "content_feedback",
+        "off_topic",
+        "clarification_required",
+        "forbidden",
+    }
+    assert "command" in properties
+    assert "reason" in properties
+
+
 # ---------------------------------------------------------------------------
 # record_training_skill_call
 # ---------------------------------------------------------------------------

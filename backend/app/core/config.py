@@ -195,6 +195,37 @@ class Settings(BaseSettings):
         default="rag-lab-local-embed-token-secret",
         validation_alias=AliasChoices("RAG_LAB_APP_RUNTIME_EMBED_TOKEN_SECRET", "APP_RUNTIME_EMBED_TOKEN_SECRET"),
     )
+    agent_runtime_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("RAG_LAB_AGENT_RUNTIME_ENABLED", "AGENT_RUNTIME_ENABLED"),
+    )
+    agent_runtime_default_version: str = Field(
+        default="legacy_v1",
+        pattern="^(legacy_v1|langgraph_shadow_v1|langgraph_primary_v1)$",
+        validation_alias=AliasChoices("RAG_LAB_AGENT_RUNTIME_DEFAULT_VERSION", "AGENT_RUNTIME_DEFAULT_VERSION"),
+    )
+    agent_runtime_checkpoint_backend: str = Field(
+        default="postgres",
+        pattern="^(postgres|memory)$",
+        validation_alias=AliasChoices("RAG_LAB_AGENT_RUNTIME_CHECKPOINT_BACKEND", "AGENT_RUNTIME_CHECKPOINT_BACKEND"),
+    )
+    agent_runtime_checkpoint_database_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "RAG_LAB_AGENT_RUNTIME_CHECKPOINT_DATABASE_URL",
+            "AGENT_RUNTIME_CHECKPOINT_DATABASE_URL",
+        ),
+    )
+    agent_runtime_summary_trigger_tokens: int = Field(
+        default=4000,
+        ge=512,
+        validation_alias=AliasChoices("RAG_LAB_AGENT_RUNTIME_SUMMARY_TRIGGER_TOKENS", "AGENT_RUNTIME_SUMMARY_TRIGGER_TOKENS"),
+    )
+    agent_runtime_summary_keep_messages: int = Field(
+        default=20,
+        ge=2,
+        validation_alias=AliasChoices("RAG_LAB_AGENT_RUNTIME_SUMMARY_KEEP_MESSAGES", "AGENT_RUNTIME_SUMMARY_KEEP_MESSAGES"),
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",

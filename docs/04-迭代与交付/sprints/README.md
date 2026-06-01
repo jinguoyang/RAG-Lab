@@ -95,6 +95,7 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 | Sprint 66 | 高质量 RAG 核心优化 | 多查询融合与大小 Chunk 上下文 | In Review | `sprint61-80/Sprint-66.md` |
 | Sprint 67 | 高质量 RAG 核心优化 | 结构化证据检索与 Corrective RAG | In Review | `sprint61-80/Sprint-67.md` |
 | Sprint 68 | 高质量 RAG 核心优化 | 多跳推理、引用校验与 E2E 验收 | In Review | `sprint61-80/Sprint-68.md` |
+| Sprint 69 | 平台 Agent Runtime | LangChain / LangGraph 基座与 P1 验收硬化 | In Review | `sprint61-80/Sprint-69.md` |
 
 ## 3. 单个 Sprint 文档约定
 

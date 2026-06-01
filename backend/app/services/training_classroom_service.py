@@ -13,6 +13,7 @@ from app.schemas.app_runtime import AppRuntimeChatRequest
 from app.schemas.training_classroom import (
     ClassroomCitationDTO,
     ClassroomControlDTO,
+    ClassroomDomainResult,
     ClassroomEventResponse,
     ClassroomMessageDTO,
     ClassroomProgressUpdateDTO,
@@ -106,9 +107,12 @@ def validate_classroom_transition(current_state: str, next_state: str) -> bool:
 
 def create_classroom_session(session: Session, credential: str, request: Any) -> ClassroomSessionResponse:
     """创建平台侧课堂会话，后续上下文和状态以此为准。"""
+    from app.services.agent_runtime.runtime_facade import resolve_runtime_version
+
     context = resolve_training_context(session, credential, request.appId)
     now = datetime.now(UTC)
     session_id = new_id()
+    runtime_version = resolve_runtime_version(getattr(request, "runtimeVersion", None))
     metadata = {"inputs": request.inputs or {}, "source": "employee_training_agent"}
     session.execute(
         insert(training_classroom_sessions).values(
@@ -127,6 +131,7 @@ def create_classroom_session(session: Session, credential: str, request: Any) ->
             updated_by=request.endUserId,
             deleted_at=None,
             deleted_by=None,
+            runtime_version=runtime_version.value,
         )
     )
     session.commit()
@@ -361,6 +366,7 @@ def _insert_event(
     payload: dict[str, Any],
     result_state: str,
     created_by: str | None,
+    request_id: str | None = None,
 ) -> str:
     """写入课堂事件审计，并返回事件 ID。"""
     event_id = new_id()
@@ -374,9 +380,24 @@ def _insert_event(
             status="processed",
             created_at=datetime.now(UTC),
             created_by=created_by,
+            request_id=request_id,
         )
     )
     return str(event_id)
+
+
+def read_classroom_event_by_request_id(
+    session: Session,
+    session_id: str,
+    request_id: str,
+) -> Any | None:
+    """查询同一会话中已有的 requestId 事件，用于幂等保护。"""
+    return session.execute(
+        select(training_classroom_events)
+        .where(training_classroom_events.c.session_id == session_id)
+        .where(training_classroom_events.c.request_id == request_id)
+        .limit(1)
+    ).mappings().first()
 
 
 def _update_state(session: Session, session_id: str, next_state: str, updated_by: str | None, section_index: int | None = None) -> None:
@@ -727,7 +748,474 @@ def _event_to_response(
     )
 
 
+def resolve_classroom_response_mode(
+    *,
+    event_type: str,
+    result_state: str,
+    response_context: dict[str, Any] | None = None,
+) -> str:
+    """确定性策略：根据事件类型和结果状态选择响应模式。"""
+    ctx = response_context or {}
+    if event_type in {"start_plan", "retry_teach", "next_section"} and result_state == "TEACH":
+        return "teaching_narration"
+    if event_type in {"submit_answer", "submit_quiz"} and result_state == "GRADE" and not ctx.get("passed", False):
+        return "rag_explain"
+    return "template"
+
+
+def apply_classroom_domain_event(
+    session: Session,
+    credential: str,
+    session_id: str,
+    request: Any,
+) -> ClassroomDomainResult:
+    """执行课堂领域事件，返回结果（不含消息/事件持久化）。
+
+    Graph Primary 路径调用此函数获取领域结果，
+    再由 persist_classroom_domain_response 负责持久化。
+    """
+    state_row = _read_session(session, session_id)
+    context = resolve_training_context(session, credential, str(state_row["app_id"]))
+    current_state = state_row["current_state"]
+    event_type = request.eventType
+    payload = request.payload or {}
+
+    if current_state == "COMPLETED":
+        raise ClassroomEventError("课堂已完成，不能继续推进")
+
+    # --- query 预处理 ---
+    user_message: str | None = None
+    if (event_type == "query" or request.query) and event_type != "continue":
+        query = (request.query or payload.get("query") or "").strip()
+        if not query:
+            raise ClassroomEventError("query is required")
+        user_message = query
+        if _is_continue_intent(query):
+            event_type = "continue"
+            payload = {}
+        elif _is_illegal_command(query):
+            return ClassroomDomainResult(
+                eventType="invalid_command",
+                resultState=current_state,
+                responseMode="template",
+                visibleContent="当前阶段不允许通过文本指令跳过或结束课程，请按页面按钮完成学习流程。",
+                uiActions=[_button_group(("继续学习", "continue", {}), ("继续追问", "query", {}))],
+                userMessage=user_message,
+                auditType="invalid_command",
+            )
+        elif _is_off_topic(query, state_row) and current_state in {"TEACH", "CHECK_UNDERSTAND", "OFF_TOPIC"}:
+            return ClassroomDomainResult(
+                eventType="off_topic",
+                resultState="OFF_TOPIC",
+                responseMode="template",
+                visibleContent="这个问题偏离了当前课程目标。请回到当前课程内容，或提出与本节材料相关的问题。",
+                uiActions=[_button_group(("回到课程", "continue", {}))],
+                userMessage=user_message,
+                auditType="off_topic",
+            )
+
+    # --- query 追问 ---
+    if event_type == "query" or request.query:
+        query_str = (request.query or payload.get("query") or "").strip()
+        content, citations = _answer_query_with_agent(session, credential, state_row, context.kb_row["kb_id"], query_str)
+        return ClassroomDomainResult(
+            eventType="query",
+            resultState="TEACH" if current_state in {"OFF_TOPIC", "CHECK_UNDERSTAND"} else current_state,
+            responseMode="agent_task",
+            visibleContent=content,
+            uiActions=[_button_group(("听懂了，继续", "continue", {}), ("继续追问", "query", {}))],
+            citations=citations,
+            userMessage=user_message,
+        )
+
+    # --- start ---
+    if event_type == "start":
+        if not validate_classroom_transition(current_state, "PLAN"):
+            raise ClassroomTransitionError(f"不允许从 {current_state} 流转到 PLAN")
+        content, citations = _plan_content(session, context.kb_row["kb_id"], state_row)
+        return ClassroomDomainResult(
+            eventType=event_type,
+            resultState="PLAN",
+            responseMode="template",
+            visibleContent=content,
+            uiActions=[_button_group(("开始学习", "continue", {}))],
+            citations=citations,
+            userMessage=user_message,
+        )
+
+    # --- continue/start_plan from PLAN ---
+    if event_type in {"continue", "start_plan"} and current_state == "PLAN":
+        content, citations = _current_evidence(session, str(state_row["app_id"]), context.kb_row["kb_id"], state_row)
+        return ClassroomDomainResult(
+            eventType=event_type,
+            resultState="TEACH",
+            responseMode="teaching_narration",
+            visibleContent=content,
+            uiActions=[_button_group(("听懂了，继续", "continue", {}), ("我还不清楚", "query", {}))],
+            citations=citations,
+            userMessage=user_message,
+        )
+
+    # --- continue from TEACH ---
+    if event_type == "continue" and current_state == "TEACH":
+        return ClassroomDomainResult(
+            eventType=event_type,
+            resultState="CHECK_UNDERSTAND",
+            responseMode="template",
+            visibleContent="你理解了本节内容吗？如果已经听懂，可以继续进入测验；如果还有疑问，可以继续追问。",
+            uiActions=[_button_group(("听懂了，继续", "continue", {}), ("我还不清楚", "query", {}))],
+            userMessage=user_message,
+        )
+
+    # --- continue/start_quiz from CHECK_UNDERSTAND ---
+    if event_type in {"continue", "start_quiz"} and current_state == "CHECK_UNDERSTAND":
+        visible, actions, citations = _quiz_payload(session, state_row, context.kb_row["kb_id"])
+        return ClassroomDomainResult(
+            eventType=event_type,
+            resultState="QUIZ",
+            responseMode="template",
+            visibleContent=visible,
+            uiActions=actions,
+            citations=citations,
+            userMessage=user_message,
+        )
+
+    # --- submit_answer/submit_quiz from QUIZ ---
+    if event_type in {"submit_answer", "submit_quiz"} and current_state == "QUIZ":
+        score, explanation = _grade_answer(session, state_row, payload)
+        passing_score = _get_passing_score(state_row)
+        passed = score >= passing_score
+        _merge_session_metadata(session, session_id, {"lastScore": score, "lastPassed": passed, "lastPassingScore": passing_score})
+        if HAS_SKILL_REGISTRY:
+            try:
+                record_training_skill_call(
+                    session,
+                    skill_name="gradeSubjectiveAnswer",
+                    status="success",
+                    session_id=session_id,
+                    app_id=str(state_row["app_id"]),
+                    input_summary=f"questionId={payload.get('questionId', '')}",
+                    output_summary=f"score={score},passed={passed}",
+                )
+            except Exception as exc:
+                logger.debug("非关键操作失败，已忽略: %s", exc)
+        if HAS_PROGRESS_SERVICE:
+            try:
+                q_id = str(payload.get("questionId") or "")
+                if q_id and q_id != "inline-true-false":
+                    q_row = session.execute(
+                        select(training_questions.c.question_type)
+                        .where(training_questions.c.question_id == q_id)
+                        .limit(1)
+                    ).scalar()
+                    actual_question_type = q_row or "single_choice"
+                    record_answer(
+                        session,
+                        session_id=session_id,
+                        app_id=str(state_row["app_id"]),
+                        end_user_id=str(state_row["end_user_id"]),
+                        question_id=q_id,
+                        question_type=actual_question_type,
+                        answer=str(payload.get("answer", "")),
+                        score=score,
+                        is_correct=passed,
+                        explanation=explanation,
+                    )
+            except Exception as exc:
+                logger.debug("非关键操作失败，已忽略: %s", exc)
+        response_ctx = {"score": score, "passed": passed, "passingScore": passing_score}
+        if passed:
+            content = f"本次测验得分：{score}，达到通过线 {passing_score}。\n{explanation}"
+            actions = [_button_group(("查看复习建议", "continue", {}))]
+        else:
+            content = f"本次测验得分：{score}，未达到通过线 {passing_score}。\n{explanation}"
+            actions = [_button_group(("进入复习", "continue", {}))]
+        return ClassroomDomainResult(
+            eventType=event_type,
+            resultState="GRADE",
+            responseMode=resolve_classroom_response_mode(event_type=event_type, result_state="GRADE", response_context=response_ctx),
+            responseContext=response_ctx,
+            visibleContent=content,
+            uiActions=actions,
+            userMessage=user_message,
+        )
+
+    # --- continue from GRADE ---
+    if event_type == "continue" and current_state == "GRADE":
+        metadata = state_row["metadata"] or {}
+        last_passed = metadata.get("lastPassed", True) if isinstance(metadata, dict) else True
+        if last_passed:
+            content = "测验通过，以下是本节复习建议：请回顾关键知识点，巩固学习成果。"
+            actions = [_button_group(("完成复习", "continue", {}))]
+            return ClassroomDomainResult(
+                eventType=event_type,
+                resultState="REVIEW",
+                responseMode="template",
+                visibleContent=content,
+                uiActions=actions,
+                userMessage=user_message,
+            )
+        last_score = metadata.get("lastScore", 0) if isinstance(metadata, dict) else 0
+        content, review_citations = _current_evidence(session, str(state_row["app_id"]), context.kb_row["kb_id"], state_row)
+        content = f"测验未通过（得分 {last_score}），请回顾以下错题和相关材料：\n\n{content}"
+        actions = [
+            _button_group(
+                ("重新学习", "retry_teach", {}),
+                ("重新测验", "retry_quiz", {}),
+                ("完成复习", "continue", {}),
+            )
+        ]
+        return ClassroomDomainResult(
+            eventType=event_type,
+            resultState="REVIEW",
+            responseMode="rag_explain",
+            visibleContent=content,
+            uiActions=actions,
+            citations=review_citations,
+            userMessage=user_message,
+        )
+
+    # --- retry_teach/retry_quiz from REVIEW ---
+    if event_type in {"retry_teach", "retry_quiz"} and current_state == "REVIEW":
+        if event_type == "retry_teach":
+            content, citations = _current_evidence(session, str(state_row["app_id"]), context.kb_row["kb_id"], state_row)
+            return ClassroomDomainResult(
+                eventType=event_type,
+                resultState="TEACH",
+                responseMode="teaching_narration",
+                visibleContent=f"让我们重新学习本节内容。\n\n{content}",
+                uiActions=[_button_group(("听懂了，继续", "continue", {}), ("我还不清楚", "query", {}))],
+                citations=citations,
+                userMessage=user_message,
+            )
+        visible, actions, citations = _quiz_payload(session, state_row, context.kb_row["kb_id"])
+        return ClassroomDomainResult(
+            eventType=event_type,
+            resultState="QUIZ",
+            responseMode="template",
+            visibleContent=visible,
+            uiActions=actions,
+            citations=citations,
+            userMessage=user_message,
+        )
+
+    # --- continue from REVIEW ---
+    if event_type == "continue" and current_state == "REVIEW":
+        metadata = state_row["metadata"] or {}
+        last_passed = metadata.get("lastPassed", True) if isinstance(metadata, dict) else True
+        if last_passed:
+            content = "本节小结：请将关键流程、风险点和证据出处纳入实际作业。"
+        else:
+            content = "本节小结：你未通过测验，建议后续继续复习。请将关键流程、风险点和证据出处纳入实际作业。"
+        _inputs = (state_row["metadata"] or {}).get("inputs", {})
+        _query_str = _inputs.get("jobTitle", "") if isinstance(_inputs, dict) else ""
+        total_sections = _count_sections(session, context.kb_row["kb_id"], _query_str, session_id=session_id)
+        current_index = state_row["current_section_index"]
+        if current_index < total_sections - 1:
+            actions = [_button_group(("下一节", "next_section", {}), ("完成课程", "complete", {}))]
+        else:
+            content += "\n\n所有章节已完成，你可以结束课程。"
+            actions = [_button_group(("完成课程", "complete", {}))]
+        return ClassroomDomainResult(
+            eventType=event_type,
+            resultState="SUMMARY",
+            responseMode="template",
+            visibleContent=content,
+            uiActions=actions,
+            userMessage=user_message,
+        )
+
+    # --- next_section from SUMMARY ---
+    if event_type == "next_section" and current_state == "SUMMARY":
+        next_index = state_row["current_section_index"] + 1
+        metadata = state_row["metadata"] or {}
+        inputs = metadata.get("inputs") if isinstance(metadata, dict) else {}
+        query_str = str(inputs.get("jobTitle", "")) if isinstance(inputs, dict) else ""
+        total_sections = _count_sections(session, context.kb_row["kb_id"], query_str, session_id=session_id)
+        if next_index >= total_sections:
+            raise ClassroomTransitionError(
+                f"当前已是最后一节（index={state_row['current_section_index']}，共 {total_sections} 节），不能再进入下一节"
+            )
+        progress = ClassroomProgressUpdateDTO(sectionIndex=next_index, completedSections=next_index)
+        next_state_row = dict(state_row)
+        next_state_row["current_section_index"] = next_index
+        content, citations = _current_evidence(session, str(state_row["app_id"]), context.kb_row["kb_id"], next_state_row)
+        if HAS_PROGRESS_SERVICE:
+            try:
+                update_progress(
+                    session,
+                    session_id=session_id,
+                    app_id=str(state_row["app_id"]),
+                    end_user_id=str(state_row["end_user_id"]),
+                    plan_id=str(state_row["plan_id"]) if state_row["plan_id"] else None,
+                    current_section_index=next_index,
+                    completed_sections=next_index,
+                    total_sections=total_sections,
+                    status="in_progress",
+                )
+            except Exception as exc:
+                logger.debug("非关键操作失败，已忽略: %s", exc)
+        return ClassroomDomainResult(
+            eventType=event_type,
+            resultState="TEACH",
+            responseMode="teaching_narration",
+            visibleContent=content,
+            uiActions=[_button_group(("听懂了，继续", "continue", {}), ("我还不清楚", "query", {}))],
+            citations=citations,
+            progressUpdate=progress,
+            userMessage=user_message,
+        )
+
+    # --- complete from SUMMARY ---
+    if event_type == "complete" and current_state == "SUMMARY":
+        metadata = state_row["metadata"] or {}
+        inputs = metadata.get("inputs") if isinstance(metadata, dict) else {}
+        query_str = str(inputs.get("jobTitle", "")) if isinstance(inputs, dict) else ""
+        total_sections = _count_sections(session, context.kb_row["kb_id"], query_str, session_id=session_id)
+        current_index = state_row["current_section_index"]
+        if current_index < total_sections - 1:
+            raise ClassroomTransitionError(
+                f"当前在第 {current_index + 1} 节（共 {total_sections} 节），还有未完成的章节，请继续学习"
+            )
+        last_score_val = metadata.get("lastScore") if isinstance(metadata, dict) else None
+        if HAS_PROGRESS_SERVICE:
+            try:
+                update_progress(
+                    session,
+                    session_id=session_id,
+                    app_id=str(state_row["app_id"]),
+                    end_user_id=str(state_row["end_user_id"]),
+                    plan_id=str(state_row["plan_id"]) if state_row["plan_id"] else None,
+                    current_section_index=current_index,
+                    completed_sections=total_sections,
+                    total_sections=total_sections,
+                    last_score=int(last_score_val) if last_score_val is not None else None,
+                    status="completed",
+                )
+            except Exception as exc:
+                logger.debug("非关键操作失败，已忽略: %s", exc)
+        return ClassroomDomainResult(
+            eventType=event_type,
+            resultState="COMPLETED",
+            responseMode="template",
+            visibleContent="课程已完成。",
+            userMessage=user_message,
+        )
+
+    raise ClassroomTransitionError(f"不允许在 {current_state} 阶段执行 {event_type}")
+
+
+def persist_classroom_domain_response(
+    session: Session,
+    session_id: str,
+    state_row: Any,
+    domain_result: ClassroomDomainResult,
+    end_user_id: str,
+    request_id: str | None = None,
+) -> ClassroomEventResponse:
+    """持久化课堂领域事件结果：写入消息、事件审计、更新状态。"""
+    if domain_result.userMessage:
+        _insert_message(session, session_id, "user", domain_result.userMessage, state_row["current_state"], end_user_id)
+
+    event_payload: dict[str, Any] = {"eventType": domain_result.eventType}
+    if domain_result.responseContext:
+        event_payload["responseContext"] = domain_result.responseContext
+
+    # 幂等快照：首次处理时保存完整响应快照
+    if request_id:
+        snapshot = {
+            "eventType": domain_result.eventType,
+            "resultState": domain_result.resultState,
+            "visibleContent": domain_result.visibleContent,
+            "responseMode": domain_result.responseMode,
+            "uiActions": [a.model_dump() for a in domain_result.uiActions],
+            "citations": [c.model_dump() for c in domain_result.citations],
+            "progressUpdate": domain_result.progressUpdate.model_dump() if domain_result.progressUpdate else None,
+        }
+        event_payload["_runtime"] = {"requestId": request_id, "responseSnapshot": snapshot}
+
+    event_id = _insert_event(
+        session, session_id, domain_result.eventType,
+        event_payload, domain_result.resultState, end_user_id,
+        request_id=request_id,
+    )
+    _insert_message(
+        session, session_id, "assistant", domain_result.visibleContent,
+        domain_result.resultState, None,
+        {"uiActions": [a.model_dump() for a in domain_result.uiActions]},
+    )
+    _update_state(
+        session, session_id, domain_result.resultState, end_user_id,
+        domain_result.progressUpdate.sectionIndex if domain_result.progressUpdate else None,
+    )
+    session.commit()
+
+    has_answer_action = any(a.actionType in {"single_choice", "true_false", "subjective"} for a in domain_result.uiActions)
+    requires_input = bool(domain_result.uiActions)
+    return ClassroomEventResponse(
+        eventId=event_id,
+        sessionId=session_id,
+        eventType=domain_result.eventType,
+        resultState=domain_result.resultState,
+        visibleContent=domain_result.visibleContent,
+        classroomState=domain_result.resultState,
+        uiActions=domain_result.uiActions,
+        citations=domain_result.citations,
+        control=ClassroomControlDTO(
+            canProceed=not requires_input,
+            requiresInput=requires_input,
+            inputType="answer" if has_answer_action else ("action" if requires_input else None),
+        ),
+        progressUpdate=domain_result.progressUpdate,
+        messages=[],
+        createdAt=datetime.now(UTC).isoformat(),
+    )
+
+
 def submit_classroom_event(session: Session, credential: str, session_id: str, request: Any) -> ClassroomEventResponse:
+    """提交课堂事件，由平台 Agent 状态机决定下一步输出。"""
+    state_row = _read_session(session, session_id)
+    request_id = getattr(request, "requestId", None)
+
+    # 幂等保护：相同 sessionId + requestId 返回首次快照
+    if request_id:
+        existing = read_classroom_event_by_request_id(session, session_id, request_id)
+        if existing is not None:
+            payload = existing.get("payload", {}) if hasattr(existing, "keys") else {}
+            runtime = payload.get("_runtime", {}) if isinstance(payload, dict) else {}
+            snapshot = runtime.get("responseSnapshot", {})
+            if snapshot:
+                from app.schemas.training_classroom import ClassroomUiActionDTO, ClassroomCitationDTO, ClassroomProgressUpdateDTO
+                ui_actions = [ClassroomUiActionDTO(**a) for a in snapshot.get("uiActions", [])]
+                citations = [ClassroomCitationDTO(**c) for c in snapshot.get("citations", [])]
+                progress_data = snapshot.get("progressUpdate")
+                progress = ClassroomProgressUpdateDTO(**progress_data) if progress_data else None
+                result_state = snapshot.get("resultState", state_row["current_state"])
+                has_answer = any(a.actionType in {"single_choice", "true_false", "subjective"} for a in ui_actions)
+                requires_input = bool(ui_actions)
+                return ClassroomEventResponse(
+                    eventId=str(existing["event_id"]) if "event_id" in existing else "",
+                    sessionId=session_id,
+                    eventType=snapshot.get("eventType", ""),
+                    resultState=result_state,
+                    visibleContent=snapshot.get("visibleContent", ""),
+                    classroomState=result_state,
+                    uiActions=ui_actions,
+                    citations=citations,
+                    control=ClassroomControlDTO(
+                        canProceed=not requires_input,
+                        requiresInput=requires_input,
+                        inputType="answer" if has_answer else ("action" if requires_input else None),
+                    ),
+                    progressUpdate=progress,
+                    createdAt=datetime.now(UTC).isoformat(),
+                )
+
+    domain_result = apply_classroom_domain_event(session, credential, session_id, request)
+    return persist_classroom_domain_response(
+        session, session_id, state_row, domain_result, state_row["end_user_id"],
+        request_id=request_id,
+    )
     """提交课堂事件，由平台 Agent 状态机决定下一步输出。"""
     state_row = _read_session(session, session_id)
     context = resolve_training_context(session, credential, str(state_row["app_id"]))
