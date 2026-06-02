@@ -63,8 +63,8 @@ class RechunkRequest(BaseModel):
             normalized_strategy = "fixed"
 
         if normalized_strategy == "fixed":
-            chunk_size = params.get("chunk_size") or params.get("chunkSize", 900)
-            chunk_overlap = params.get("chunk_overlap") or params.get("chunkOverlap", 0)
+            chunk_size = params.get("chunk_size", params.get("chunkSize", 900))
+            chunk_overlap = params.get("chunk_overlap", params.get("chunkOverlap", 0))
             if type(chunk_size) is not int or not 100 <= chunk_size <= 4000:
                 raise ValueError("chunk_size must be an integer between 100 and 4000.")
             if type(chunk_overlap) is not int or chunk_overlap < 0 or chunk_overlap >= chunk_size:

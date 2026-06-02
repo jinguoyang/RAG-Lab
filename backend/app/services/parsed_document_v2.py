@@ -62,6 +62,18 @@ class TableCell:
             result["bbox"] = self.bbox.to_dict()
         return result
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "TableCell":
+        """从持久化字典恢复表格单元格。"""
+        return cls(
+            row=int(data.get("row", 0)),
+            col=int(data.get("col", 0)),
+            text=str(data.get("text", "")),
+            row_span=int(data.get("rowSpan", 1)),
+            col_span=int(data.get("colSpan", 1)),
+            bbox=BoundingBox.from_dict(data["bbox"]) if data.get("bbox") else None,
+        )
+
 
 @dataclass(frozen=True)
 class TableBlock:
@@ -84,6 +96,17 @@ class TableBlock:
         if self.bbox:
             result["bbox"] = self.bbox.to_dict()
         return result
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "TableBlock":
+        """从持久化字典恢复表格块。"""
+        return cls(
+            rows=int(data.get("rows", 0)),
+            cols=int(data.get("cols", 0)),
+            cells=[TableCell.from_dict(item) for item in data.get("cells", [])],
+            caption=data.get("caption"),
+            bbox=BoundingBox.from_dict(data["bbox"]) if data.get("bbox") else None,
+        )
 
 
 @dataclass(frozen=True)
@@ -112,6 +135,18 @@ class ImageBlock:
         if self.height is not None:
             result["height"] = self.height
         return result
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ImageBlock":
+        """从持久化字典恢复图片/流程图块。"""
+        return cls(
+            caption=data.get("caption"),
+            ocr_text=data.get("ocrText"),
+            alt_text=data.get("altText"),
+            bbox=BoundingBox.from_dict(data["bbox"]) if data.get("bbox") else None,
+            width=int(data["width"]) if data.get("width") is not None else None,
+            height=int(data["height"]) if data.get("height") is not None else None,
+        )
 
 
 @dataclass(frozen=True)
@@ -159,6 +194,25 @@ class DocumentBlock:
             result["image"] = self.image.to_dict()
         return result
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "DocumentBlock":
+        """从持久化字典恢复文档块。"""
+        return cls(
+            block_id=str(data.get("blockId", "")),
+            block_type=str(data.get("blockType", "paragraph")),
+            text=str(data.get("text", "")),
+            page_no=int(data["pageNo"]) if data.get("pageNo") is not None else None,
+            char_start=int(data["charStart"]) if data.get("charStart") is not None else None,
+            char_end=int(data["charEnd"]) if data.get("charEnd") is not None else None,
+            bbox=BoundingBox.from_dict(data["bbox"]) if data.get("bbox") else None,
+            confidence=float(data.get("confidence", 1.0)),
+            section=data.get("section"),
+            section_path=list(data.get("sectionPath") or []),
+            metadata=dict(data.get("metadata") or {}),
+            table=TableBlock.from_dict(data["table"]) if data.get("table") else None,
+            image=ImageBlock.from_dict(data["image"]) if data.get("image") else None,
+        )
+
 
 @dataclass(frozen=True)
 class Page:
@@ -180,6 +234,17 @@ class Page:
         if self.block_ids:
             result["blockIds"] = self.block_ids
         return result
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Page":
+        """从持久化字典恢复页面信息。"""
+        return cls(
+            page_no=int(data.get("pageNo", 1)),
+            width=float(data["width"]) if data.get("width") is not None else None,
+            height=float(data["height"]) if data.get("height") is not None else None,
+            unit=str(data.get("unit", "point")),
+            block_ids=list(data.get("blockIds") or []),
+        )
 
 
 @dataclass
@@ -214,6 +279,22 @@ class ParsedDocumentV2:
             "blocks": [block.to_dict() for block in self.blocks],
             "metadata": self.metadata,
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ParsedDocumentV2":
+        """从持久化字典恢复统一解析契约，保证序列化结果可重放。"""
+        return cls(
+            document_id=data["documentId"],
+            source_file_name=data["sourceFileName"],
+            mime_type=data.get("mimeType"),
+            content_hash=data["contentHash"],
+            parse_version=data["parseVersion"],
+            provider_name=data["providerName"],
+            provider_version=data["providerVersion"],
+            pages=[Page.from_dict(item) for item in data.get("pages", [])],
+            blocks=[DocumentBlock.from_dict(item) for item in data.get("blocks", [])],
+            metadata=dict(data.get("metadata") or {}),
+        )
 
     def get_block_by_id(self, block_id: str) -> DocumentBlock | None:
         """根据 block_id 获取块。"""

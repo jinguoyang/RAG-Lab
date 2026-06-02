@@ -128,7 +128,10 @@ class TestB322MultiQueryRRFIntegration:
             assert "sourceQuery" in entry
             assert "sourceType" in entry
             assert "finalScore" in entry
-            assert entry["sourceQuery"] in ("原始查询", "同义词变体")
+            # 多来源查询合并是预期行为
+            source_queries = set(entry["sourceQuery"].split("; "))
+            assert source_queries
+            assert source_queries <= {"原始查询", "同义词变体"}
 
     def test_multi_query_count_affects_actual_queries(self):
         """验证 queryCount 改变会影响实际执行查询数量。"""
