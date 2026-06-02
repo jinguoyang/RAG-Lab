@@ -14,7 +14,32 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Protocol
+from uuid import UUID
+
+
+class GraphProviderLike(Protocol):
+    """图 Provider 最小接口，用于 graph_retrieval_multihop 委托。"""
+
+    def search_entities(
+        self,
+        kb_id: UUID,
+        keyword: str,
+        graph_snapshot_id: UUID | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        """按关键词搜索图实体。"""
+        ...
+
+    def search_paths(
+        self,
+        kb_id: UUID,
+        keyword: str,
+        graph_snapshot_id: UUID | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        """按关键词搜索图关系路径。"""
+        ...
 
 
 @dataclass(frozen=True)
@@ -88,34 +113,102 @@ def graph_retrieval_multihop(
     graph_depth: int = 2,
     max_nodes: int = 50,
     path_mode: str = "entity-path",
+    *,
+    graph_provider: GraphProviderLike | None = None,
+    kb_id: UUID | None = None,
+    graph_snapshot_id: UUID | None = None,
 ) -> GraphRetrievalResult:
-    """返回图多跳能力的显式降级结果。
-
-    真实生产检索应通过 Neo4jGraphRetrievalProvider 执行。此函数不再
-    伪造节点和路径，避免测试或上层链路把 mock 数据误判为真实图证据。
+    """图多跳检索：有 Provider 时委托真实图查询，否则返回显式降级结果。
 
     Args:
         query: 查询
-        graph_depth: 图深度
+        graph_depth: 图深度（传递给 Provider 的 max_nodes 上限倍数）
         max_nodes: 最大节点数
         path_mode: 路径模式
+        graph_provider: 可选的图检索 Provider
+        kb_id: 知识库 ID（Provider 调用必需）
+        graph_snapshot_id: 图快照 ID
 
     Returns:
-        无 Provider 时的显式降级结果
+        图检索结果
     """
+    if graph_provider is None or kb_id is None:
+        return GraphRetrievalResult(
+            paths=[],
+            nodes=[],
+            edges=[],
+            associated_chunk_ids=[],
+            permission_status="partial",
+            metadata={
+                "query": query,
+                "graphDepth": graph_depth,
+                "maxNodes": max_nodes,
+                "pathMode": path_mode,
+                "requiresProvider": True,
+                "fallbackReason": "graphProviderRequired",
+            },
+        )
+
+    # 委托 Provider 执行真实图检索
+    entities = graph_provider.search_entities(kb_id, query, graph_snapshot_id, max_nodes)
+    paths_data = graph_provider.search_paths(kb_id, query, graph_snapshot_id, max_nodes * graph_depth)
+
+    # 转换实体为 GraphNode
+    nodes = [
+        GraphNode(
+            node_id=e.get("entityKey", ""),
+            name=e.get("name", ""),
+            node_type=e.get("type", "entity"),
+            properties={"aliases": e.get("aliases", [])},
+        )
+        for e in entities
+    ]
+
+    # 转换路径为 GraphEdge 和 GraphPath
+    edges = []
+    paths = []
+    chunk_ids: set[str] = set()
+    for p in paths_data:
+        edge = GraphEdge(
+            edge_id=p.get("pathKey", p.get("relationKey", "")),
+            source_id=p.get("sourceEntityKey", ""),
+            target_id=p.get("targetEntityKey", ""),
+            relation_type=p.get("relationType", "RELATED_TO"),
+        )
+        edges.append(edge)
+
+        source_node = GraphNode(
+            node_id=p.get("sourceEntityKey", ""),
+            name=p.get("sourceName", ""),
+            node_type=p.get("sourceType", "entity"),
+        )
+        target_node = GraphNode(
+            node_id=p.get("targetEntityKey", ""),
+            name=p.get("targetName", ""),
+            node_type=p.get("targetType", "entity"),
+        )
+        gp = GraphPath(
+            path_id=p.get("pathKey", ""),
+            nodes=[source_node, target_node],
+            edges=[edge],
+            length=1,
+            summary=f"{source_node.name} --[{edge.relation_type}]--> {target_node.name}",
+        )
+        paths.append(gp)
+
     return GraphRetrievalResult(
-        paths=[],
-        nodes=[],
-        edges=[],
-        associated_chunk_ids=[],
-        permission_status="partial",
+        paths=paths,
+        nodes=nodes,
+        edges=edges,
+        associated_chunk_ids=list(chunk_ids),
+        permission_status="ok",
         metadata={
             "query": query,
             "graphDepth": graph_depth,
             "maxNodes": max_nodes,
             "pathMode": path_mode,
-            "requiresProvider": True,
-            "fallbackReason": "graphProviderRequired",
+            "entityCount": len(nodes),
+            "pathCount": len(paths),
         },
     )
 
