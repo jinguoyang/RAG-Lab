@@ -209,10 +209,14 @@ def route_and_parse(
     for parser_name in parser_candidates:
         provider = _PROVIDER_REGISTRY.get(parser_name)
         if provider is None:
+            fallback_used = True
+            fallback_reason = f"Parser {parser_name} not registered"
             continue
 
         capability = _PARSER_REGISTRY.get(parser_name)
         if capability and extension not in capability.supported_types:
+            fallback_used = True
+            fallback_reason = f"Parser {parser_name} does not support {extension}"
             continue
 
         try:

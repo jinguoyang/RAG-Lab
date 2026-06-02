@@ -212,6 +212,82 @@ class TestRouteAndParse:
         assert "strategy" in record.quality_flags
 
 
+class TestParserFallback:
+    """解析器 fallback 测试。"""
+
+    def test_fallback_to_basic_when_high_quality_parser_not_registered(self):
+        """高质量策略在没有高质量解析器时应回退到基础解析器。"""
+        content = "测试内容"
+        result, record = route_and_parse(
+            file_name="test.txt",
+            mime_type="text/plain",
+            file_bytes=content.encode("utf-8"),
+            strategy=ParseStrategy.HIGH_QUALITY,
+        )
+        assert result is not None
+        assert record.success is True
+        assert record.parser_name == "basic"
+        assert record.fallback_used is True
+        assert "layout" in record.fallback_reason
+
+    def test_fallback_to_basic_when_ocr_parser_not_registered(self):
+        """强 OCR 策略在没有 OCR 解析器时应回退到基础解析器。"""
+        content = "测试内容"
+        result, record = route_and_parse(
+            file_name="test.txt",
+            mime_type="text/plain",
+            file_bytes=content.encode("utf-8"),
+            strategy=ParseStrategy.STRONG_OCR,
+        )
+        assert result is not None
+        assert record.success is True
+        assert record.parser_name == "basic"
+        assert record.fallback_used is True
+        assert "ocr" in record.fallback_reason
+
+    def test_fallback_to_basic_when_table_parser_not_registered(self):
+        """表格优先策略在没有表格解析器时应回退到基础解析器。"""
+        content = "测试内容"
+        result, record = route_and_parse(
+            file_name="test.txt",
+            mime_type="text/plain",
+            file_bytes=content.encode("utf-8"),
+            strategy=ParseStrategy.TABLE_PRIORITY,
+        )
+        assert result is not None
+        assert record.success is True
+        assert record.parser_name == "basic"
+        assert record.fallback_used is True
+        assert "table" in record.fallback_reason
+
+    def test_fallback_when_parser_raises_exception(self):
+        """当解析器抛出异常时应回退到下一个解析器。"""
+        from app.services.document_parsing import ParsedDocument, ParsedChunk
+
+        class FailingParserProvider:
+            def parse(self, file_name, mime_type, file_bytes, chunk_size, chunk_overlap):
+                raise ValueError("Parser failed")
+
+        capability = ParserCapability(
+            parser_name="failing",
+            supported_types={".txt"},
+            cost_level="low",
+        )
+
+        register_parser_provider("failing", capability, FailingParserProvider())
+
+        content = "测试内容"
+        result, record = route_and_parse(
+            file_name="test.txt",
+            mime_type="text/plain",
+            file_bytes=content.encode("utf-8"),
+            strategy=ParseStrategy.DEFAULT,
+        )
+        assert result is not None
+        assert record.success is True
+        assert record.parser_name == "basic"
+
+
 class TestParserProviderRegistration:
     """解析器 Provider 注册测试。"""
 
