@@ -48,10 +48,12 @@ from app.services.document_service import (
     cancel_ingest_job,
     delete_document,
     download_document_source,
+    get_block_provenance,
     get_chunk,
     get_document_detail,
     get_document_quality_summary,
     get_ingest_job,
+    get_page_blocks,
     list_chunks,
     list_document_versions,
     list_documents,
@@ -406,6 +408,39 @@ def read_chunk(
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chunk not found.")
     return response
+
+
+@router.get("/{document_id}/provenance/blocks/{block_id}")
+def read_block_provenance(
+    kb_id: UUID,
+    document_id: UUID,
+    block_id: str,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> dict:
+    """返回指定块的 provenance 信息。"""
+    try:
+        result = get_block_provenance(session, current_user, kb_id, document_id, block_id)
+    except DocumentPermissionError as exc:
+        _raise_document_error(exc)
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Block not found.")
+    return result
+
+
+@router.get("/{document_id}/provenance/pages/{page_no}")
+def read_page_blocks(
+    kb_id: UUID,
+    document_id: UUID,
+    page_no: int,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> list[dict]:
+    """返回指定页面的所有块及其 provenance。"""
+    try:
+        return get_page_blocks(session, current_user, kb_id, document_id, page_no)
+    except DocumentPermissionError as exc:
+        _raise_document_error(exc)
 
 
 @chunk_router.patch("/{chunk_id}/governance", response_model=ChunkGovernanceResponse)

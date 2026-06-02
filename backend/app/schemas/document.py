@@ -87,6 +87,10 @@ class ChunkDTO(BaseModel):
     status: str
     metadata: dict = Field(default_factory=dict)
     createdAt: str
+    # B-319: Provenance 字段
+    sourceBlockIds: list[str] | None = None
+    sourceBlockRange: list[str] | None = None
+    provenance: list[dict] | None = None
 
 
 class ChunkGovernanceRequest(BaseModel):

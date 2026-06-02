@@ -480,6 +480,12 @@ def _to_ingest_job_dto(row: RowMapping) -> IngestJobDTO:
 
 def _to_chunk_dto(row: RowMapping) -> ChunkDTO:
     """将 Chunk 真值行转换为 API DTO。"""
+    metadata = row["metadata"] or {}
+    # B-319: 从 metadata 中提取 provenance 信息
+    source_block_ids = metadata.get("sourceBlockIds")
+    source_block_range = metadata.get("sourceBlockRange")
+    provenance = metadata.get("provenance")
+
     return ChunkDTO(
         chunkId=str(row["chunk_id"]),
         versionId=str(row["version_id"]),
@@ -500,8 +506,11 @@ def _to_chunk_dto(row: RowMapping) -> ChunkDTO:
         contentHash=row["content_hash"],
         tokenCount=row["token_count"],
         status=row["status"],
-        metadata=row["metadata"],
+        metadata=metadata,
         createdAt=row["created_at"].isoformat(),
+        sourceBlockIds=source_block_ids,
+        sourceBlockRange=source_block_range,
+        provenance=provenance,
     )
 
 
@@ -2832,6 +2841,88 @@ def get_chunk(
         .limit(1)
     ).mappings().first()
     return _to_chunk_dto(row) if row else None
+
+
+def get_block_provenance(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    document_id: UUID,
+    block_id: str,
+) -> dict | None:
+    """获取指定 block 的 provenance 信息。
+
+    从 Chunk metadata 中查找包含指定 block_id 的 chunk，返回其 provenance 信息。
+    """
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return None
+    _ensure_permission(session, current_user, kb_id, "kb.chunk.read")
+
+    # 查找包含该 block_id 的 chunk
+    # PostgreSQL JSON 查询：metadata->'sourceBlockIds' 包含指定 block_id
+    rows = session.execute(
+        select(chunks).where(
+            chunks.c.kb_id == kb_id,
+            chunks.c.document_id == document_id,
+            chunks.c.status == "active",
+            chunks.c.deleted_at.is_(None),
+        )
+    ).mappings().all()
+
+    for row in rows:
+        metadata = row["metadata"] or {}
+        source_block_ids = metadata.get("sourceBlockIds", [])
+        if block_id in source_block_ids:
+            provenance = metadata.get("provenance", {})
+            return {
+                "blockId": block_id,
+                "chunkId": str(row["chunk_id"]),
+                "pageNo": row["page_no"],
+                "section": row["section"],
+                "contentHash": provenance.get("contentHash"),
+                "sourceBlockIds": source_block_ids,
+            }
+
+    return None
+
+
+def get_page_blocks(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    document_id: UUID,
+    page_no: int,
+) -> list[dict]:
+    """获取指定页面的所有块及其 provenance。"""
+    if _read_visible_knowledge_base(session, current_user, kb_id) is None:
+        return []
+    _ensure_permission(session, current_user, kb_id, "kb.chunk.read")
+
+    rows = session.execute(
+        select(chunks).where(
+            chunks.c.kb_id == kb_id,
+            chunks.c.document_id == document_id,
+            chunks.c.page_no == page_no,
+            chunks.c.status == "active",
+            chunks.c.deleted_at.is_(None),
+        ).order_by(chunks.c.chunk_index.asc())
+    ).mappings().all()
+
+    result = []
+    for row in rows:
+        metadata = row["metadata"] or {}
+        provenance = metadata.get("provenance", {})
+        result.append({
+            "chunkId": str(row["chunk_id"]),
+            "chunkIndex": row["chunk_index"],
+            "pageNo": row["page_no"],
+            "section": row["section"],
+            "content": row["content"][:200] + "..." if len(row["content"]) > 200 else row["content"],
+            "sourceBlockIds": metadata.get("sourceBlockIds", []),
+            "provenance": provenance,
+        })
+
+    return result
 
 
 def update_chunk_governance(
