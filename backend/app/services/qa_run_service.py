@@ -75,6 +75,7 @@ from app.services.knowledge_base_service import KnowledgeBaseDisabledError
 from app.services.config_effectiveness import build_trace_effective_configs
 from app.services.answer_citation_verifier import verify_answer
 from app.services.corrective_rag import execute_corrective_rag
+from app.services.graph_multihop_raptor import build_raptor_index, graph_retrieval_multihop, search_raptor_index
 from app.services.structured_evidence import (
     StructuredEvidence,
     build_structured_indexes,
@@ -1853,6 +1854,71 @@ def _execute_provider_qa_run(
         {"authorizedCandidates": len(authorized_pairs), "query": query},
         corrective_trace,
         {"mode": "rule", "maxRounds": corrective_trace["maxRounds"]},
+        started_at=started_at,
+    )
+    trace_order += 1
+
+    # B-326: Graph/RAPTOR 辅助检索
+    graph_raptor_trace: dict[str, Any] = {"graphEnabled": False, "raptorEnabled": False}
+    if "graph" in enabled_channels and provider_set.graph is not None:
+        try:
+            graph_result = graph_retrieval_multihop(
+                rewritten_query,
+                graph_depth=pipeline_params["graph"].get("graphDepth", 2),
+                max_nodes=pipeline_params["graph"].get("graphExpansionLimit", 50),
+                graph_provider=provider_set.graph,
+                kb_id=kb_id,
+                graph_snapshot_id=graph_snapshot_id,
+            )
+            authorized_chunk_id_set = {
+                str(candidate.chunk_id)
+                for candidate, _candidate_id in authorized_pairs
+                if candidate.chunk_id is not None
+            }
+            authorized_graph_chunk_ids = sorted(
+                set(graph_result.associated_chunk_ids) & authorized_chunk_id_set
+            )
+            graph_raptor_trace["graphEnabled"] = True
+            graph_raptor_trace["graphDepth"] = pipeline_params["graph"].get("graphDepth", 2)
+            graph_raptor_trace["sourceChunkIds"] = authorized_graph_chunk_ids
+            graph_raptor_trace["pathCount"] = len(graph_result.paths)
+        except Exception as exc:
+            graph_raptor_trace["graphError"] = str(exc)
+
+        try:
+            raptor_index = build_raptor_index(
+                [
+                    {
+                        "chunkId": str(candidate.chunk_id),
+                        "documentId": str(candidate.metadata.get("documentId") or ""),
+                        "content": candidate.content or "",
+                    }
+                    for candidate, _candidate_id in authorized_pairs
+                    if candidate.chunk_id is not None
+                ],
+                max_levels=3,
+                use_llm=False,
+            )
+            raptor_hits = search_raptor_index(raptor_index, rewritten_query, max_results=5)
+            graph_raptor_trace["raptorEnabled"] = True
+            graph_raptor_trace["raptorHitCount"] = len(raptor_hits)
+            graph_raptor_trace["raptorSourceChunkIds"] = [
+                chunk_id
+                for hit in raptor_hits
+                for chunk_id in (hit.source_chunk_ids or [])
+            ]
+        except Exception as exc:
+            graph_raptor_trace["raptorError"] = str(exc)
+
+    _insert_trace_step(
+        session,
+        run_id,
+        trace_order,
+        "graphRaptor",
+        "success" if graph_raptor_trace.get("graphEnabled") or graph_raptor_trace.get("raptorEnabled") else "skipped",
+        {"authorizedCandidates": len(authorized_pairs)},
+        graph_raptor_trace,
+        {"note": "Graph multi-hop and RAPTOR auxiliary retrieval, filtered by PostgreSQL authorization."},
         started_at=started_at,
     )
     trace_order += 1
