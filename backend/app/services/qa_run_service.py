@@ -1737,6 +1737,28 @@ def _execute_provider_qa_run(
     )
     trace_order += 1
 
+    # B-321: Contextual Chunking 检索 trace
+    contextual_candidate_count = sum(
+        1 for candidate, _ in authorized_pairs
+        if (candidate.metadata or {}).get("contextualSummary")
+    )
+    _insert_trace_step(
+        session,
+        run_id,
+        trace_order,
+        "contextualChunking",
+        "success" if contextual_candidate_count else "skipped",
+        {"authorizedCandidates": len(authorized_pairs)},
+        {
+            "contextualFieldUsed": contextual_candidate_count > 0,
+            "contextualCandidateCount": contextual_candidate_count,
+            "citationSource": "originalChunk",
+        },
+        {"note": "Contextual fields detected in authorized chunk metadata. Citations use original chunks."},
+        started_at=started_at,
+    )
+    trace_order += 1
+
     # B-324: 结构化证据检索
     structured_evidence_list = _retrieve_structured_evidence(authorized_pairs, query)
     table_count = sum(1 for item in structured_evidence_list if item.evidence_type == "table")

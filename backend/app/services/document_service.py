@@ -51,7 +51,7 @@ from app.tables import (
     stored_files,
     users,
 )
-from app.services.chunk_payload import build_chunk_index_payload
+from app.services.chunk_payload import build_chunk_index_payload, build_chunk_retrieval_text
 from app.services.dictionary_service import require_active_dict_item
 from app.services.document_parsing import DocumentParseError, ParsedDocument
 from app.services.contextual_chunking import generate_contextual_metadata_with_cache
@@ -1494,7 +1494,13 @@ def run_ingest_job(
         for index, parsed in enumerate(parsed_chunks, start=1):
             content = parsed.content
             parsed_metadata = parsed.metadata or {}
-            embedding = embedding_provider.embed_query(content)
+            # B-321: 使用 contextual 字段构造检索文本
+            retrieval_text = build_chunk_retrieval_text({
+                "content": content,
+                "section_path": parsed_metadata.get("sectionPath"),
+                "metadata": parsed_metadata,
+            })
+            embedding = embedding_provider.embed_query(retrieval_text)
             row = session.execute(
                 insert(chunks)
                 .values(

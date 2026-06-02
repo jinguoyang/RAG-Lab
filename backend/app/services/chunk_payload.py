@@ -9,6 +9,25 @@ def _stringify(value: object) -> str | None:
     return str(value)
 
 
+def build_chunk_retrieval_text(chunk: Mapping[str, Any]) -> str:
+    """构造副本检索文本；正文仍保持 PostgreSQL Chunk 原文。"""
+    metadata = dict(chunk.get("metadata") or {})
+    section_path = chunk.get("section_path") or metadata.get("sectionPath") or []
+    if isinstance(section_path, list):
+        section_text = " / ".join(str(item) for item in section_path)
+    else:
+        section_text = str(section_path or "")
+    return "\n".join(
+        item
+        for item in (
+            section_text,
+            str(metadata.get("contextualSummary") or ""),
+            str(chunk.get("content") or ""),
+        )
+        if item
+    )
+
+
 def build_chunk_index_payload(
     chunk: Mapping[str, Any],
     document_status: str,
@@ -43,6 +62,7 @@ def build_chunk_index_payload(
         "denySubjectKeys": list(access_filter.get("denySubjectKeys") or []),
         "filterHash": access_filter.get("filterHash"),
         "metadata": dict(chunk.get("metadata") or {}),
+        "retrievalText": build_chunk_retrieval_text(chunk),
         "embedding": vector,
         "embeddingDimension": len(vector) if vector is not None else None,
     }
