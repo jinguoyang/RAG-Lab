@@ -473,6 +473,24 @@ def _candidate_to_chunk_result(candidate: ProviderCandidate) -> ChunkResult:
     )
 
 
+def _run_corrective_retrieval_once(
+    *,
+    action: str,
+    suggested_query: str | None,
+    original_query: str,
+    retrieve_candidates,
+    retrieve_structured,
+) -> list[ProviderCandidate]:
+    """按白名单动作执行最多一次补检，不允许绕过原始权限过滤。"""
+    if action == "rewrite_query":
+        return retrieve_candidates(suggested_query or original_query)
+    if action == "expand_scope":
+        return retrieve_candidates(original_query, expand_scope=True)
+    if action == "retrieve_structured":
+        return retrieve_structured(original_query)
+    return []
+
+
 def _retrieve_structured_evidence(
     authorized_pairs: list[tuple[ProviderCandidate, UUID]],
     query: str,
@@ -1794,6 +1812,38 @@ def _execute_provider_qa_run(
         [candidate for candidate, _candidate_id in authorized_pairs],
         query,
     )
+
+    # B-325: 受控重检索 — 补检结果必须重新走权限裁剪
+    corrective_action = corrective_trace["action"]
+    if corrective_action in {"rewrite_query", "expand_scope", "retrieve_structured"}:
+        corrective_query = corrective_trace.get("suggestedQuery") or query
+        re_retrieved: list[ProviderCandidate] = []
+        try:
+            re_embedding = provider_set.embedding.embed_query(corrective_query)
+            re_dense = provider_set.dense.retrieve(corrective_query, re_embedding, kb_id=kb_id, limit=20)
+            re_retrieved.extend(re_dense)
+        except ProviderError:
+            pass
+        try:
+            re_sparse = provider_set.sparse.retrieve(corrective_query, kb_id=kb_id, limit=20)
+            re_retrieved.extend(re_sparse)
+        except ProviderError:
+            pass
+        if re_retrieved:
+            re_authorized, re_dropped, re_records = _authorize_provider_candidates(
+                session, kb_id, re_retrieved, access_filter,
+            )
+            _persist_candidate_records(session, run_id, re_records)
+            if re_authorized:
+                authorized_pairs = authorized_pairs + re_authorized
+                corrective_trace["acceptedNewEvidence"] = True
+                corrective_trace["newEvidenceCount"] = len(re_authorized)
+            else:
+                corrective_trace["acceptedNewEvidence"] = False
+        corrective_trace["stoppedByMaxRounds"] = False
+    elif corrective_trace.get("round", 0) >= corrective_trace.get("maxRounds", 2):
+        corrective_trace["stoppedByMaxRounds"] = True
+
     _insert_trace_step(
         session,
         run_id,
