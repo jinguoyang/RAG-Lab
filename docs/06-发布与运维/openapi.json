@@ -86,6 +86,24 @@
         "summary": "Read Dependency Health",
         "description": "返回外部依赖配置健康摘要，不主动发起网络探测以避免发布检查阻塞。",
         "operationId": "read_dependency_health_api_v1_health_dependencies_get",
+        "parameters": [
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -93,6 +111,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DependencyHealthResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -108,6 +136,24 @@
         "summary": "Read Provider Diagnostics",
         "description": "返回 LLM、Embedding、Rerank 的连通性和限流诊断摘要。",
         "operationId": "read_provider_diagnostics_api_v1_health_provider_diagnostics_get",
+        "parameters": [
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -115,6 +161,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProviderDiagnosticsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -5629,6 +5685,226 @@
         }
       }
     },
+    "/api/v1/config-effectiveness": {
+      "get": {
+        "tags": [
+          "config-effectiveness"
+        ],
+        "summary": "Read Config Effectiveness",
+        "description": "返回所有默认节点配置项的生效状态清单。\n\n供前端配置中心渲染 effective / partiallyEffective / planned / deprecated 状态。",
+        "operationId": "read_config_effectiveness_api_v1_config_effectiveness_get",
+        "parameters": [
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Read Config Effectiveness Api V1 Config Effectiveness Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/config-effectiveness/{node_type}": {
+      "get": {
+        "tags": [
+          "config-effectiveness"
+        ],
+        "summary": "Read Node Effectiveness",
+        "description": "返回单个节点类型的配置项生效状态。",
+        "operationId": "read_node_effectiveness_api_v1_config_effectiveness__node_type__get",
+        "parameters": [
+          {
+            "name": "node_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Node Type"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Read Node Effectiveness Api V1 Config Effectiveness  Node Type  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/parser-routing/strategies": {
+      "get": {
+        "tags": [
+          "parser-routing"
+        ],
+        "summary": "Read Routing Strategies",
+        "description": "返回所有可用的解析路由策略和 Provider 信息。",
+        "operationId": "read_routing_strategies_api_v1_parser_routing_strategies_get",
+        "parameters": [
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Read Routing Strategies Api V1 Parser Routing Strategies Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/parser-routing/providers": {
+      "get": {
+        "tags": [
+          "parser-routing"
+        ],
+        "summary": "Read Parser Providers",
+        "description": "返回所有已注册的解析器 Provider 能力。",
+        "operationId": "read_parser_providers_api_v1_parser_routing_providers_get",
+        "parameters": [
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response Read Parser Providers Api V1 Parser Routing Providers Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/knowledge-bases/{kb_id}/qa-runs": {
       "get": {
         "tags": [
@@ -8268,6 +8544,66 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RagAppDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/rag-apps/batch-delete": {
+      "post": {
+        "tags": [
+          "rag-apps"
+        ],
+        "summary": "Batch Delete Rag Apps Endpoint",
+        "description": "批量逻辑删除 RAG App；逐个校验权限并归档。",
+        "operationId": "batch_delete_rag_apps_endpoint_api_v1_rag_apps_batch_delete_post",
+        "parameters": [
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchDeleteRagAppsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchDeleteRagAppsResponse"
                 }
               }
             }
@@ -11526,10 +11862,636 @@
           }
         }
       }
+    },
+    "/api/v1/training/plans/drafts": {
+      "post": {
+        "tags": [
+          "training"
+        ],
+        "summary": "Create Training Plan Draft",
+        "description": "基于员工培训 Agent 和知识库证据生成学习计划草稿。",
+        "operationId": "create_training_plan_draft_api_v1_training_plans_drafts_post",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanDraftRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanDraftDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/training/plans/{plan_id}/publish": {
+      "post": {
+        "tags": [
+          "training"
+        ],
+        "summary": "Publish Training Plan",
+        "description": "管理员发布学习计划。",
+        "operationId": "publish_training_plan_api_v1_training_plans__plan_id__publish_post",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanDraftDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/training/plans/{plan_id}/reject": {
+      "post": {
+        "tags": [
+          "training"
+        ],
+        "summary": "Reject Training Plan",
+        "description": "管理员拒绝学习计划。",
+        "operationId": "reject_training_plan_api_v1_training_plans__plan_id__reject_post",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanDraftDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/training/questions/drafts": {
+      "post": {
+        "tags": [
+          "training"
+        ],
+        "summary": "Create Training Question Drafts",
+        "description": "基于员工培训 Agent 和知识库证据生成题目草稿。",
+        "operationId": "create_training_question_drafts_api_v1_training_questions_drafts_post",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionDraftRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/QuestionDraftDTO"
+                  },
+                  "title": "Response Create Training Question Drafts Api V1 Training Questions Drafts Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/training/questions/{question_id}/publish": {
+      "post": {
+        "tags": [
+          "training"
+        ],
+        "summary": "Publish Training Question",
+        "description": "管理员发布题目。",
+        "operationId": "publish_training_question_api_v1_training_questions__question_id__publish_post",
+        "parameters": [
+          {
+            "name": "question_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Question Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionDraftDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/training/questions/{question_id}/reject": {
+      "post": {
+        "tags": [
+          "training"
+        ],
+        "summary": "Reject Training Question",
+        "description": "管理员拒绝题目。",
+        "operationId": "reject_training_question_api_v1_training_questions__question_id__reject_post",
+        "parameters": [
+          {
+            "name": "question_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Question Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionDraftDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/training/classroom/sessions": {
+      "post": {
+        "tags": [
+          "training"
+        ],
+        "summary": "Create Training Classroom Session",
+        "description": "创建员工培训课堂会话。",
+        "operationId": "create_training_classroom_session_api_v1_training_classroom_sessions_post",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassroomSessionCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassroomSessionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/training/classroom/sessions/{session_id}": {
+      "get": {
+        "tags": [
+          "training"
+        ],
+        "summary": "Read Training Classroom Session",
+        "description": "读取员工培训课堂会话。",
+        "operationId": "read_training_classroom_session_api_v1_training_classroom_sessions__session_id__get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassroomSessionDetailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/training/classroom/sessions/{session_id}/events": {
+      "post": {
+        "tags": [
+          "training"
+        ],
+        "summary": "Submit Training Classroom Event",
+        "description": "提交课堂事件，并返回结构化 Agent 输出。",
+        "operationId": "submit_training_classroom_event_api_v1_training_classroom_sessions__session_id__events_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassroomEventSubmitRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassroomEventResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/training/reports/summary": {
+      "get": {
+        "tags": [
+          "training"
+        ],
+        "summary": "Get Training Report Summary",
+        "description": "培训完成率、平均分、错题分布和薄弱能力统计。",
+        "operationId": "get_training_report_summary_api_v1_training_reports_summary_get",
+        "parameters": [
+          {
+            "name": "appId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Appid"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainingReportDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AbilityGroupDTO": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "description"
+        ],
+        "title": "AbilityGroupDTO",
+        "description": "学习计划中的能力分组。"
+      },
       "AddLibraryMemberRequest": {
         "properties": {
           "subjectType": {
@@ -13249,6 +14211,40 @@
         "title": "BatchActionSummary",
         "description": "批量操作汇总。"
       },
+      "BatchDeleteRagAppsRequest": {
+        "properties": {
+          "app_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "App Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "app_ids"
+        ],
+        "title": "BatchDeleteRagAppsRequest",
+        "description": "批量删除 RAG App 请求；接受应用 ID 列表。"
+      },
+      "BatchDeleteRagAppsResponse": {
+        "properties": {
+          "deleted_count": {
+            "type": "integer",
+            "title": "Deleted Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "deleted_count"
+        ],
+        "title": "BatchDeleteRagAppsResponse",
+        "description": "批量删除 RAG App 响应；返回成功删除的数量。"
+      },
       "Body_upload_document_api_v1_library_documents_post": {
         "properties": {
           "file": {
@@ -13640,6 +14636,495 @@
         ],
         "title": "ChunkGovernanceResponse",
         "description": "Chunk 治理标记结果，包含权限继承说明。"
+      },
+      "ClassroomCitationDTO": {
+        "properties": {
+          "documentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Documentid"
+          },
+          "chunkId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunkid"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          }
+        },
+        "type": "object",
+        "title": "ClassroomCitationDTO",
+        "description": "课堂引用。"
+      },
+      "ClassroomControlDTO": {
+        "properties": {
+          "canProceed": {
+            "type": "boolean",
+            "title": "Canproceed",
+            "default": true
+          },
+          "requiresInput": {
+            "type": "boolean",
+            "title": "Requiresinput",
+            "default": false
+          },
+          "inputType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inputtype"
+          }
+        },
+        "type": "object",
+        "title": "ClassroomControlDTO",
+        "description": "课堂控制信号。"
+      },
+      "ClassroomEventResponse": {
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "title": "Eventid"
+          },
+          "sessionId": {
+            "type": "string",
+            "title": "Sessionid"
+          },
+          "eventType": {
+            "type": "string",
+            "title": "Eventtype"
+          },
+          "resultState": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resultstate"
+          },
+          "visibleContent": {
+            "type": "string",
+            "title": "Visiblecontent"
+          },
+          "classroomState": {
+            "type": "string",
+            "title": "Classroomstate"
+          },
+          "uiActions": {
+            "items": {
+              "$ref": "#/components/schemas/ClassroomUiActionDTO"
+            },
+            "type": "array",
+            "title": "Uiactions"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/ClassroomCitationDTO"
+            },
+            "type": "array",
+            "title": "Citations"
+          },
+          "control": {
+            "$ref": "#/components/schemas/ClassroomControlDTO"
+          },
+          "progressUpdate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClassroomProgressUpdateDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ClassroomMessageDTO"
+            },
+            "type": "array",
+            "title": "Messages"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "eventId",
+          "sessionId",
+          "eventType",
+          "visibleContent",
+          "classroomState",
+          "createdAt"
+        ],
+        "title": "ClassroomEventResponse",
+        "description": "课堂事件响应。"
+      },
+      "ClassroomEventSubmitRequest": {
+        "properties": {
+          "eventType": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Eventtype"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query"
+          },
+          "requestId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requestid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "eventType"
+        ],
+        "title": "ClassroomEventSubmitRequest",
+        "description": "提交课堂事件请求。"
+      },
+      "ClassroomMessageDTO": {
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "title": "Messageid"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "stateAtTime": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stateattime"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "messageId",
+          "role",
+          "content",
+          "createdAt"
+        ],
+        "title": "ClassroomMessageDTO",
+        "description": "课堂消息。"
+      },
+      "ClassroomProgressUpdateDTO": {
+        "properties": {
+          "sectionIndex": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sectionindex"
+          },
+          "sectionTotal": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sectiontotal"
+          },
+          "completedSections": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completedsections"
+          }
+        },
+        "type": "object",
+        "title": "ClassroomProgressUpdateDTO",
+        "description": "课堂进度更新。"
+      },
+      "ClassroomSessionCreateRequest": {
+        "properties": {
+          "appId": {
+            "type": "string",
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Appid"
+          },
+          "planId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 36
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planid"
+          },
+          "endUserId": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Enduserid"
+          },
+          "inputs": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inputs"
+          },
+          "runtimeVersion": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtimeversion"
+          }
+        },
+        "type": "object",
+        "required": [
+          "appId",
+          "endUserId"
+        ],
+        "title": "ClassroomSessionCreateRequest",
+        "description": "创建课堂会话请求。"
+      },
+      "ClassroomSessionDetailResponse": {
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "title": "Sessionid"
+          },
+          "appId": {
+            "type": "string",
+            "title": "Appid"
+          },
+          "planId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planid"
+          },
+          "endUserId": {
+            "type": "string",
+            "title": "Enduserid"
+          },
+          "currentState": {
+            "type": "string",
+            "title": "Currentstate"
+          },
+          "currentSectionIndex": {
+            "type": "integer",
+            "title": "Currentsectionindex"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ClassroomMessageDTO"
+            },
+            "type": "array",
+            "title": "Messages"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "updatedAt": {
+            "type": "string",
+            "title": "Updatedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sessionId",
+          "appId",
+          "endUserId",
+          "currentState",
+          "currentSectionIndex",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "ClassroomSessionDetailResponse",
+        "description": "课堂会话详情响应。"
+      },
+      "ClassroomSessionResponse": {
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "title": "Sessionid"
+          },
+          "appId": {
+            "type": "string",
+            "title": "Appid"
+          },
+          "planId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planid"
+          },
+          "endUserId": {
+            "type": "string",
+            "title": "Enduserid"
+          },
+          "currentState": {
+            "type": "string",
+            "title": "Currentstate"
+          },
+          "currentSectionIndex": {
+            "type": "integer",
+            "title": "Currentsectionindex"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sessionId",
+          "appId",
+          "endUserId",
+          "currentState",
+          "currentSectionIndex",
+          "createdAt"
+        ],
+        "title": "ClassroomSessionResponse",
+        "description": "课堂会话响应。"
+      },
+      "ClassroomUiActionDTO": {
+        "properties": {
+          "actionType": {
+            "type": "string",
+            "title": "Actiontype"
+          },
+          "data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "actionType"
+        ],
+        "title": "ClassroomUiActionDTO",
+        "description": "课堂 UI 动作。"
       },
       "CompensationStatusDTO": {
         "properties": {
@@ -14671,62 +16156,6 @@
         "title": "DictionaryTypeDTO",
         "description": "系统字典类型，供平台字典管理页展示。"
       },
-      "DocumentDTO": {
-        "properties": {
-          "documentId": {
-            "type": "string",
-            "title": "Documentid"
-          },
-          "kbId": {
-            "type": "string",
-            "title": "Kbid"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "sourceType": {
-            "type": "string",
-            "title": "Sourcetype"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "activeVersionId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Activeversionid"
-          },
-          "createdAt": {
-            "type": "string",
-            "title": "Createdat"
-          },
-          "updatedAt": {
-            "type": "string",
-            "title": "Updatedat"
-          }
-        },
-        "type": "object",
-        "required": [
-          "documentId",
-          "kbId",
-          "name",
-          "sourceType",
-          "status",
-          "activeVersionId",
-          "createdAt",
-          "updatedAt"
-        ],
-        "title": "DocumentDTO",
-        "description": "文档主对象 DTO，接口层保持 camelCase 命名。"
-      },
       "DocumentDeleteCleanupJobDTO": {
         "properties": {
           "targetStore": {
@@ -14834,7 +16263,7 @@
       "DocumentDetailDTO": {
         "properties": {
           "document": {
-            "$ref": "#/components/schemas/DocumentDTO"
+            "$ref": "#/components/schemas/app__schemas__document__DocumentDTO"
           },
           "activeVersion": {
             "anyOf": [
@@ -15041,7 +16470,7 @@
           "document": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/DocumentDTO"
+                "$ref": "#/components/schemas/app__schemas__document__DocumentDTO"
               },
               {
                 "type": "null"
@@ -18797,7 +20226,7 @@
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/DocumentDTO"
+              "$ref": "#/components/schemas/app__schemas__document__DocumentDTO"
             },
             "type": "array",
             "title": "Items"
@@ -19394,6 +20823,117 @@
         ],
         "title": "PipelineValidationResultDTO",
         "description": "Pipeline 校验结果；保存接口会复用 normalizedPipelineDefinition。"
+      },
+      "PlanDraftDTO": {
+        "properties": {
+          "planId": {
+            "type": "string",
+            "title": "Planid"
+          },
+          "appId": {
+            "type": "string",
+            "title": "Appid"
+          },
+          "jobTitle": {
+            "type": "string",
+            "title": "Jobtitle"
+          },
+          "jobDescription": {
+            "type": "string",
+            "title": "Jobdescription",
+            "default": ""
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "draft"
+          },
+          "abilityGroups": {
+            "items": {
+              "$ref": "#/components/schemas/AbilityGroupDTO"
+            },
+            "type": "array",
+            "title": "Abilitygroups"
+          },
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/app__schemas__training_plan__DocumentDTO"
+            },
+            "type": "array",
+            "title": "Documents"
+          },
+          "evidenceChunkIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidencechunkids"
+          },
+          "recommendReason": {
+            "type": "string",
+            "title": "Recommendreason",
+            "default": ""
+          },
+          "readingOrder": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Readingorder"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "default": 1
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "updatedAt": {
+            "type": "string",
+            "title": "Updatedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "planId",
+          "appId",
+          "jobTitle",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "PlanDraftDTO",
+        "description": "学习计划草稿响应。"
+      },
+      "PlanDraftRequest": {
+        "properties": {
+          "appId": {
+            "type": "string",
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Appid"
+          },
+          "jobTitle": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Jobtitle"
+          },
+          "jobDescription": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Jobdescription",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "appId",
+          "jobTitle"
+        ],
+        "title": "PlanDraftRequest",
+        "description": "学习计划草稿生成请求。"
       },
       "ProviderCallMetricDTO": {
         "properties": {
@@ -20828,6 +22368,183 @@
         "title": "QARunTraceStepDTO",
         "description": "Executed Pipeline Trace 步骤摘要。"
       },
+      "QuestionDraftDTO": {
+        "properties": {
+          "questionId": {
+            "type": "string",
+            "title": "Questionid"
+          },
+          "planId": {
+            "type": "string",
+            "title": "Planid"
+          },
+          "appId": {
+            "type": "string",
+            "title": "Appid"
+          },
+          "questionType": {
+            "type": "string",
+            "title": "Questiontype"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "default": "practice"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionOptionDTO"
+            },
+            "type": "array",
+            "title": "Options"
+          },
+          "correctAnswer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correctanswer"
+          },
+          "explanation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explanation"
+          },
+          "rubric": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rubric"
+          },
+          "evidenceChunkIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidencechunkids"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "draft"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "updatedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updatedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "questionId",
+          "planId",
+          "appId",
+          "questionType",
+          "content",
+          "createdAt"
+        ],
+        "title": "QuestionDraftDTO",
+        "description": "题库草稿响应。"
+      },
+      "QuestionDraftRequest": {
+        "properties": {
+          "planId": {
+            "type": "string",
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Planid"
+          },
+          "appId": {
+            "type": "string",
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Appid"
+          },
+          "jobTitle": {
+            "type": "string",
+            "maxLength": 256,
+            "title": "Jobtitle",
+            "default": ""
+          },
+          "abilityGroups": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Abilitygroups"
+          },
+          "count": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Count",
+            "default": 3
+          },
+          "documentIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Documentids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "planId",
+          "appId"
+        ],
+        "title": "QuestionDraftRequest",
+        "description": "题库草稿生成请求。"
+      },
+      "QuestionOptionDTO": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "text"
+        ],
+        "title": "QuestionOptionDTO",
+        "description": "选择题选项。"
+      },
       "RagAppApiKeyCreateRequest": {
         "properties": {
           "expiresAt": {
@@ -21714,6 +23431,52 @@
         "title": "TokenUsageSummaryDTO",
         "description": "Token 消耗汇总，按 Provider 阶段聚合。"
       },
+      "TrainingReportDTO": {
+        "properties": {
+          "appId": {
+            "type": "string",
+            "title": "Appid"
+          },
+          "completionRate": {
+            "type": "number",
+            "title": "Completionrate"
+          },
+          "averageScore": {
+            "type": "number",
+            "title": "Averagescore"
+          },
+          "passedCount": {
+            "type": "integer",
+            "title": "Passedcount"
+          },
+          "totalCount": {
+            "type": "integer",
+            "title": "Totalcount"
+          },
+          "failedQuestionCount": {
+            "type": "integer",
+            "title": "Failedquestioncount"
+          },
+          "weaknesses": {
+            "items": {
+              "$ref": "#/components/schemas/WeaknessItemDTO"
+            },
+            "type": "array",
+            "title": "Weaknesses"
+          }
+        },
+        "type": "object",
+        "required": [
+          "appId",
+          "completionRate",
+          "averageScore",
+          "passedCount",
+          "totalCount",
+          "failedQuestionCount"
+        ],
+        "title": "TrainingReportDTO",
+        "description": "培训报表汇总。"
+      },
       "UpdateLibraryMemberRequest": {
         "properties": {
           "permissionLevel": {
@@ -22241,6 +24004,137 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "WeaknessItemDTO": {
+        "properties": {
+          "questionId": {
+            "type": "string",
+            "title": "Questionid"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "failCount": {
+            "type": "integer",
+            "title": "Failcount"
+          },
+          "failRate": {
+            "type": "number",
+            "title": "Failrate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "questionId",
+          "content",
+          "failCount",
+          "failRate"
+        ],
+        "title": "WeaknessItemDTO",
+        "description": "薄弱点条目。"
+      },
+      "app__schemas__document__DocumentDTO": {
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "title": "Documentid"
+          },
+          "kbId": {
+            "type": "string",
+            "title": "Kbid"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "sourceType": {
+            "type": "string",
+            "title": "Sourcetype"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "activeVersionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activeversionid"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "updatedAt": {
+            "type": "string",
+            "title": "Updatedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "documentId",
+          "kbId",
+          "name",
+          "sourceType",
+          "status",
+          "activeVersionId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "DocumentDTO",
+        "description": "文档主对象 DTO，接口层保持 camelCase 命名。"
+      },
+      "app__schemas__training_plan__DocumentDTO": {
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "title": "Documentid"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "relevance": {
+            "type": "number",
+            "title": "Relevance",
+            "default": 0.0
+          },
+          "abilityGroup": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abilitygroup"
+          },
+          "difficulty": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difficulty"
+          }
+        },
+        "type": "object",
+        "required": [
+          "documentId",
+          "title"
+        ],
+        "title": "DocumentDTO",
+        "description": "学习计划推荐文档。"
       }
     }
   }
