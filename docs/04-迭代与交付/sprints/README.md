@@ -34,7 +34,7 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 - Sprint 63 已完成收口，主题为 E34 RAG 配置真实生效与关键 no-op 修复：B-316、B-317 已 Done。
 - Sprint 64 已进入复核，主题为 E34 文档高保真解析与 ParsedDocumentV2：B-318 已接入入库 Worker Parser Routing，B-319 已把 ParsedDocumentV2 摘要和块级 provenance 写入入库链路，完整查询 API 待专项复核。
 - Sprint 65 已进入复核，主题为 E34 多视图分块与 Contextual Chunking：B-320 已接入入库 Worker 多视图策略适配，B-321 已接入入库 Worker 上下文 metadata 与 Late Chunking 预留标记。
-- Sprint 66 已进入复核，主题为 E34 多查询融合与大小 Chunk 上下文：B-322 已补入 QA Run MMR 融合运行时接入，B-323 已补入 QA Run chunkWindow 上下文扩展。
+- Sprint 66 已完成收口，主题为 E34 多查询融合与大小 Chunk 上下文：B-322 已完成 Multi Query + RRF/MMR 运行时接入验证，B-323 已完成 chunkWindow 真实复测，状态均置为 Done。
 - Sprint 67 已进入复核，主题为 E34 结构化证据检索与 Corrective RAG：B-324、B-325 已接入 QA Run trace，待真实专项复测。
 - Sprint 68 已进入复核，主题为 E34 多跳推理、引用校验与高质量 RAG 验收：B-326 已取消 mock 图结果并要求显式 RAPTOR summarizer，B-327 已有 E2E 脚本和真实小样本复测记录。
 - 下一版本为 V1.9，计划承接 E23 图快照保留与配置治理、E24 文档解析能力增强；E27 RAG App 运行治理与接入可见性已完成。E28 文档库功能已全部完成。

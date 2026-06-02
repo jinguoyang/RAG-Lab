@@ -12,6 +12,7 @@ from app.services.structured_evidence import (
     get_structured_retrieval_info,
     index_table_block,
     search_flowcharts_by_node,
+    search_flowcharts_by_step,
     search_tables_by_cell,
     search_tables_by_column,
     search_tables_by_row,
@@ -221,6 +222,25 @@ class TestSearchFlowchartsByNode:
         assert len(results) == 1
 
 
+class TestSearchFlowchartsByStep:
+    """按步骤搜索流程图测试。"""
+
+    def test_search_flowcharts_by_step(self):
+        """应能按步骤标签搜索。"""
+        from app.services.structured_evidence import FlowchartIndex
+
+        flowchart = FlowchartIndex(
+            block_id="block_0",
+            document_id="doc_0",
+            page_no=1,
+            nodes=[{"id": "n0", "label": "Start"}, {"id": "n1", "label": "End"}],
+            edges=[{"from": "n0", "to": "n1", "label": "Submit Form"}],
+            summary="Test",
+        )
+        results = search_flowcharts_by_step([flowchart], "Submit")
+        assert len(results) == 1
+
+
 class TestTableIndexToEvidence:
     """表格证据生成测试。"""
 
@@ -240,6 +260,27 @@ class TestTableIndexToEvidence:
         evidence = table_index_to_evidence(table)
         assert evidence.evidence_type == "table"
         assert "Test table" in evidence.content
+
+
+class TestFlowchartIndexToEvidence:
+    """流程图证据生成测试。"""
+
+    def test_flowchart_index_to_evidence(self):
+        """应能生成流程图证据。"""
+        from app.services.structured_evidence import FlowchartIndex
+
+        flowchart = FlowchartIndex(
+            block_id="block_0",
+            document_id="doc_0",
+            page_no=1,
+            nodes=[{"id": "n0", "label": "Start"}, {"id": "n1", "label": "End"}],
+            edges=[{"from": "n0", "to": "n1", "label": "Submit"}],
+            summary="Test flowchart",
+        )
+        evidence = flowchart_index_to_evidence(flowchart)
+        assert evidence.evidence_type == "flowchart"
+        assert "Test flowchart" in evidence.content
+        assert "Start" in evidence.content
 
 
 class TestGetStructuredRetrievalInfo:

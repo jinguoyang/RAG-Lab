@@ -19,8 +19,8 @@
 
 | Backlog | 标题 | 优先级 | 预估 | 状态 | Spec |
 | --- | --- | --- | --- | --- | --- |
-| B-324 | 表格与流程图结构化检索 | P0 | 3d | Ready | [Spec](../../specs/2026-05-30-rag-table-flowchart-retrieval-spec.md) |
-| B-325 | Agentic / Corrective RAG 重检索控制器 | P0 | 2d | Ready | [Spec](../../specs/2026-05-30-rag-agentic-corrective-rag-spec.md) |
+| B-324 | 表格与流程图结构化检索 | P0 | 3d | Done | [Spec](../../specs/2026-05-30-rag-table-flowchart-retrieval-spec.md) |
+| B-325 | Agentic / Corrective RAG 重检索控制器 | P0 | 2d | Done | [Spec](../../specs/2026-05-30-rag-agentic-corrective-rag-spec.md) |
 
 ## 4. 验收标准
 
@@ -52,4 +52,6 @@ git diff --check
 
 ## 8. 执行记录
 
-- 待执行。
+- 2026-06-02: B-324 单元测试 13 项全部通过（含 search_flowcharts_by_step 和 flowchart_index_to_evidence 测试），B-325 单元测试 13 项全部通过。
+- 2026-06-02: 代码已集成到 qa_run_service.py，structuredEvidence 和 correctiveRag trace 步骤正常写入。
+- 2026-06-02: Sprint 67 收口完成，状态更新为 Done。

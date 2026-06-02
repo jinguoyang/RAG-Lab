@@ -52,4 +52,8 @@ git diff --check
 
 ## 8. 执行记录
 
-- 待执行。
+- 2026-06-02: B-322/B-323 运行时接入验证完成。
+  - B-322: Multi Query + RRF/MMR 融合已接入 QA Run 运行时，支持 rrf、weighted、mmr 三种融合方法，trace 可解释来源。
+  - B-323: chunkWindow 上下文扩展已接入 QA Run 运行时，支持相邻块扩展、父子检索和三种打包策略。
+  - 测试证据: `test_rag_fusion_mmr_rrf.py`(13 用例)、`test_rag_fusion_rrf.py`(8 用例)、`test_multi_query_generation.py`(7 用例)、`test_parent_child_context_packing.py`(13 用例)、`test_qa_run_e34_runtime_chain.py`(4 用例)、`test_b322_b323_runtime_verification.py`(12 用例)。
+  - 全部 57 个单元测试通过，B-322 和 B-323 状态置为 Done。
