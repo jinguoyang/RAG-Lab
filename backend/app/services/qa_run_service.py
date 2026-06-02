@@ -76,7 +76,9 @@ from app.services.config_effectiveness import build_trace_effective_configs
 from app.services.answer_citation_verifier import verify_answer
 from app.services.corrective_rag import execute_corrective_rag
 from app.services.multi_query_fusion import mmr_diversify
-from app.services.token_utils import rrf_score as _rrf_score
+from app.services.multi_view_chunking import ChunkResult
+from app.services.parent_child_retrieval import PackingStrategy, pack_context_with_parent_child
+from app.services.token_utils import estimate_tokens, rrf_score as _rrf_score
 
 
 logger = logging.getLogger(__name__)
@@ -441,6 +443,71 @@ def _build_corrective_rag_trace(
             "issues": trace.assessment.issues,
         },
     }
+
+
+def _candidate_to_chunk_result(candidate: ProviderCandidate) -> ChunkResult:
+    """将 PostgreSQL 回表授权后的候选转换为 Parent-child 打包输入。"""
+    metadata = dict(candidate.metadata or {})
+    return ChunkResult(
+        chunk_id=str(candidate.chunk_id),
+        content=candidate.content or "",
+        token_count=estimate_tokens(candidate.content or ""),
+        chunk_index=int(metadata.get("chunkIndex") or 0),
+        section=metadata.get("section"),
+        page_no=metadata.get("pageNo"),
+        source_block_ids=list(metadata.get("sourceBlockIds") or []),
+        parent_chunk_id=metadata.get("parentChunkId"),
+        metadata=metadata,
+    )
+
+
+def _fetch_authorized_parent_chunk_rows(
+    session: Session,
+    kb_id: UUID,
+    context_pairs: list[tuple[ProviderCandidate, UUID]],
+    access_filter,
+) -> list[RowMapping]:
+    """读取命中子块声明的父 Chunk，并再次执行权限过滤。"""
+    parent_chunk_ids: set[UUID] = set()
+    for candidate, _candidate_id in context_pairs:
+        parent_chunk_id = (candidate.metadata or {}).get("parentChunkId")
+        if parent_chunk_id:
+            parent_chunk_ids.add(UUID(str(parent_chunk_id)))
+    if not parent_chunk_ids:
+        return []
+    rows = list(session.execute(
+        select(
+            chunks.c.chunk_id,
+            chunks.c.version_id,
+            chunks.c.document_id,
+            chunks.c.chunk_revision_id,
+            chunks.c.parse_revision_id,
+            chunks.c.document_version_id,
+            chunks.c.chunk_index,
+            chunks.c.page_no,
+            chunks.c.section,
+            chunks.c.content,
+            chunks.c.metadata,
+            chunk_access_filters.c.permission_code,
+            chunk_access_filters.c.document_status,
+            chunk_access_filters.c.version_status,
+            chunk_access_filters.c.chunk_status,
+            chunk_access_filters.c.allow_subject_keys,
+            chunk_access_filters.c.deny_subject_keys,
+        )
+        .select_from(chunks.join(chunk_access_filters, chunks.c.chunk_id == chunk_access_filters.c.chunk_id))
+        .where(
+            chunks.c.kb_id == kb_id,
+            chunks.c.chunk_id.in_(parent_chunk_ids),
+            chunks.c.status == "active",
+            chunk_access_filters.c.kb_id == kb_id,
+            chunk_access_filters.c.permission_code == access_filter.permission_code,
+            chunk_access_filters.c.document_status == access_filter.document_status,
+            chunk_access_filters.c.version_status == access_filter.version_status,
+            chunk_access_filters.c.chunk_status == access_filter.chunk_status,
+        )
+    ).mappings().all())
+    return [row for row in rows if _chunk_access_filter_drop_reason(row, access_filter) is None]
 
 
 def _row_get(row: RowMapping | dict[str, Any], key: str) -> Any:
@@ -1662,10 +1729,36 @@ def _execute_provider_qa_run(
         adjacent_rows,
         chunk_window,
     )
-    context_pairs = _limit_candidate_pairs_by_context_tokens(
-        expanded_context_pairs,
-        pipeline_params["maxContextTokens"],
+
+    # B-323: Parent-child 上下文打包
+    parent_rows = _fetch_authorized_parent_chunk_rows(session, kb_id, expanded_context_pairs, access_filter)
+    parent_pairs: list[tuple[ProviderCandidate, UUID]] = []
+    if parent_rows:
+        for row in parent_rows:
+            parent_candidate = _candidate_from_context_row(row, expanded_context_pairs[0][0])
+            parent_pairs.append((parent_candidate, expanded_context_pairs[0][1]))
+    all_context_pairs = expanded_context_pairs + parent_pairs
+    authorized_chunk_results = [_candidate_to_chunk_result(candidate) for candidate, _candidate_id in authorized_pairs]
+    all_authorized_chunk_results = [_candidate_to_chunk_result(candidate) for candidate, _candidate_id in all_context_pairs]
+    packing_strategy = pipeline_params["contextPacking"].get("packingStrategy", "relevance_first")
+    packed_context = pack_context_with_parent_child(
+        child_chunks=authorized_chunk_results,
+        all_chunks=all_authorized_chunk_results,
+        max_tokens=pipeline_params["maxContextTokens"],
+        packing_strategy=packing_strategy,
+        chunk_window=chunk_window,
     )
+    packed_chunk_ids = {chunk.chunk_id for chunk in packed_context.chunks}
+    context_pairs = [
+        pair
+        for pair in all_context_pairs
+        if pair[0].chunk_id is not None and str(pair[0].chunk_id) in packed_chunk_ids
+    ]
+    if not context_pairs:
+        context_pairs = _limit_candidate_pairs_by_context_tokens(
+            expanded_context_pairs,
+            pipeline_params["maxContextTokens"],
+        )
     context_candidates = [candidate for candidate, _candidate_id in context_pairs]
     _insert_trace_step(
         session,
@@ -1675,6 +1768,9 @@ def _execute_provider_qa_run(
         "success",
         {"authorizedEvidenceCount": len(authorized_pairs)},
         {
+            "packingStrategy": packing_strategy,
+            "parentExpandedCount": max(0, len(packed_context.chunks) - len(authorized_chunk_results)),
+            "truncatedByTokenBudget": bool(packed_context.truncation_log),
             "contextCandidateCount": len(context_candidates),
             "expandedContextCandidates": max(0, len(expanded_context_pairs) - len(authorized_pairs)),
             "chunkWindow": chunk_window,
