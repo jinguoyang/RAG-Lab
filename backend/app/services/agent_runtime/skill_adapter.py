@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass, field
 from enum import StrEnum
 from time import perf_counter
@@ -150,16 +151,26 @@ def create_skill_tool(
                     f"Skill {skill.name} 已达单会话调用上限 {skill.budget_calls_per_session}"
                 )
 
-        started = perf_counter()
-        try:
-            result = invoke_fn(**kwargs)
-        except Exception as exc:
-            _maybe_record_audit(skill, record_call_fn, "failed", kwargs, None, exc, started)
-            raise
+        max_attempts = 1 + (skill.max_retries if skill.side_effect_level == SkillSideEffectLevel.READ_ONLY else 0)
+        last_exc: Exception | None = None
+        for attempt in range(max_attempts):
+            started = perf_counter()
+            try:
+                result = _invoke_with_timeout(invoke_fn, kwargs, skill.timeout_seconds)
+            except SkillTimeoutError:
+                _maybe_record_audit(skill, record_call_fn, "timeout", kwargs, None, SkillTimeoutError("timeout"), started)
+                raise
+            except Exception as exc:
+                last_exc = exc
+                _maybe_record_audit(skill, record_call_fn, "failed", kwargs, None, exc, started)
+                if attempt < max_attempts - 1:
+                    continue
+                raise
 
-        latency_ms = round((perf_counter() - started) * 1000)
-        _maybe_record_audit(skill, record_call_fn, "success", kwargs, result, None, started)
-        return result
+            latency_ms = round((perf_counter() - started) * 1000)
+            _maybe_record_audit(skill, record_call_fn, "success", kwargs, result, None, started)
+            return result
+        raise last_exc  # type: ignore[misc]
 
     return StructuredTool.from_function(
         func=_execute,
@@ -232,3 +243,19 @@ def _maybe_record_audit(
 
 class SkillBudgetExceededError(Exception):
     """Skill 单会话调用次数超限。"""
+
+
+class SkillTimeoutError(TimeoutError):
+    """Skill 执行超过平台允许的时限。"""
+
+
+def _invoke_with_timeout(invoke_fn: Callable, kwargs: dict, timeout_seconds: float) -> Any:
+    """使用 ThreadPoolExecutor 对同步 Skill 设置超时。"""
+    executor = ThreadPoolExecutor(max_workers=1)
+    try:
+        future = executor.submit(invoke_fn, **kwargs)
+        return future.result(timeout=timeout_seconds)
+    except FuturesTimeoutError as exc:
+        raise SkillTimeoutError(f"Skill 执行超时: {timeout_seconds}s") from exc
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)

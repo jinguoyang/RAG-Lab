@@ -26,12 +26,12 @@ if str(BACKEND_DIR) not in sys.path:
 PYTHON = sys.executable
 
 
-def _run(cmd: list[str], *, timeout: int = 300) -> dict:
-    """运行子进程，cwd 固定为仓库根目录。"""
+def _run(cmd: list[str], *, timeout: int = 300, cwd: Path | None = None) -> dict:
+    """运行子进程。"""
     try:
         start = time.monotonic()
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout, cwd=str(ROOT_DIR),
+            cmd, capture_output=True, text=True, timeout=timeout, cwd=str(cwd or ROOT_DIR),
         )
         elapsed_ms = int((time.monotonic() - start) * 1000)
         return {"exitCode": result.returncode, "stdout": result.stdout, "stderr": result.stderr, "elapsedMs": elapsed_ms}
@@ -39,6 +39,11 @@ def _run(cmd: list[str], *, timeout: int = 300) -> dict:
         return {"exitCode": -1, "stdout": "", "stderr": "TIMEOUT", "elapsedMs": timeout * 1000}
     except Exception as exc:
         return {"exitCode": -1, "stdout": "", "stderr": str(exc), "elapsedMs": 0}
+
+
+def _run_backend(cmd: list[str], *, timeout: int = 300) -> dict:
+    """从 backend 目录执行依赖 .env 的脚本。"""
+    return _run(cmd, timeout=timeout, cwd=BACKEND_DIR)
 
 
 # ---------------------------------------------------------------------------
@@ -229,7 +234,7 @@ def check_provider_probe(*, skip: bool = False) -> dict:
     """真实 Provider 能力探测。"""
     if skip:
         return {"name": "providerProbe", "status": "NOT_RUN", "detail": "使用 --skip-provider 跳过"}
-    proc = _run([PYTHON, "backend/scripts/verify_agent_runtime_provider.py"])
+    proc = _run_backend([PYTHON, "scripts/verify_agent_runtime_provider.py"])
     return {
         "name": "providerProbe",
         "status": "PASS" if proc["exitCode"] == 0 else "FAIL",

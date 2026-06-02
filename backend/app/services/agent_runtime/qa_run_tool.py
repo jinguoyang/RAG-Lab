@@ -43,6 +43,7 @@ def create_bound_qa_run_tool(
     invoke_qa_run,
     record_skill_call=None,
     idempotency_store: dict[str, dict] | None = None,
+    agent_invocation_id: str | None = None,
 ):
     """将已授权 QARun 回调封装为 LangChain Tool。
 
@@ -60,7 +61,7 @@ def create_bound_qa_run_tool(
     def query_knowledge_base(query: str) -> dict:
         # 幂等检查
         if idempotency_store is not None:
-            cache_key = _build_idempotency_key(query)
+            cache_key = _build_idempotency_key(agent_invocation_id or "", query)
             cached = idempotency_store.get(cache_key)
             if cached is not None:
                 logger.debug("QARun Tool 幂等命中: %s", cache_key[:16])
@@ -98,7 +99,7 @@ def create_bound_qa_run_tool(
 
         # 写入幂等缓存
         if idempotency_store is not None:
-            cache_key = _build_idempotency_key(query)
+            cache_key = _build_idempotency_key(agent_invocation_id or "", query)
             idempotency_store[cache_key] = result
 
         return result
@@ -120,6 +121,7 @@ def create_qa_run_tool(
     credential: str,
     end_user_id: str | None,
     idempotency_store: dict[str, dict] | None = None,
+    agent_invocation_id: str | None = None,
 ):
     """创建 QARun Tool，封装 chat_with_app_runtime 调用。"""
 
@@ -147,9 +149,11 @@ def create_qa_run_tool(
     return create_bound_qa_run_tool(
         invoke_qa_run=query_knowledge_base,
         idempotency_store=idempotency_store,
+        agent_invocation_id=agent_invocation_id,
     )
 
 
-def _build_idempotency_key(query: str) -> str:
-    """基于查询文本构建幂等键。"""
-    return hashlib.sha256(query.encode()).hexdigest()[:32]
+def _build_idempotency_key(agent_invocation_id: str, query: str) -> str:
+    """按 Runtime Invocation 和查询文本构建幂等键。"""
+    raw = f"{agent_invocation_id}:{query}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:32]

@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import atexit
+import json
 import logging
 import uuid
 from dataclasses import dataclass
@@ -302,6 +303,7 @@ def submit_training_classroom_runtime_event(
             shadow_state=shadow_state,
             trace=trace,
         )
+        _record_shadow_diff(session, diff)
         logger.debug(
             "Shadow diff for session %s: identical=%s, key_diff=%s",
             session_id, diff.identical, diff.key_diff,
@@ -383,6 +385,28 @@ def submit_training_classroom_runtime_event(
         _record_fallback(session, session_id, request_id, str(exc))
         from app.services.training_classroom_service import submit_classroom_event
         return submit_classroom_event(session, credential, session_id, request)
+
+
+def _record_shadow_diff(session: Any, diff: ShadowDiffRecord) -> None:
+    """持久化 Shadow 差异记录到审计表。"""
+    try:
+        from app.services.training_skill_registry_service import record_training_skill_call
+        record_training_skill_call(
+            session,
+            skill_name="runtimeShadowDiff",
+            status="shadow_diff",
+            session_id=diff.trace.thread_id,
+            input_summary=json.dumps({
+                "agentInvocationId": diff.trace.agent_invocation_id,
+                "scenarioType": diff.trace.scenario_type,
+            }, ensure_ascii=False),
+            output_summary=json.dumps({
+                "identical": diff.identical,
+                "keyDiff": diff.key_diff,
+            }, ensure_ascii=False),
+        )
+    except Exception:
+        logger.debug("Shadow diff 审计记录失败，已忽略")
 
 
 def _record_fallback(session: Any, session_id: str, request_id: str | None, error: str) -> None:

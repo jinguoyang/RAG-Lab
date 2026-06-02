@@ -128,15 +128,21 @@ def test_qa_run_tool_no_idempotency_when_store_none():
 
 
 def test_idempotency_key_deterministic():
-    k1 = _build_idempotency_key("hello")
-    k2 = _build_idempotency_key("hello")
+    k1 = _build_idempotency_key("inv-001", "hello")
+    k2 = _build_idempotency_key("inv-001", "hello")
     assert k1 == k2
     assert len(k1) == 32
 
 
 def test_idempotency_key_different_for_different_input():
-    k1 = _build_idempotency_key("hello")
-    k2 = _build_idempotency_key("world")
+    k1 = _build_idempotency_key("inv-001", "hello")
+    k2 = _build_idempotency_key("inv-001", "world")
+    assert k1 != k2
+
+
+def test_idempotency_key_different_for_different_invocation():
+    k1 = _build_idempotency_key("inv-001", "相同问题")
+    k2 = _build_idempotency_key("inv-002", "相同问题")
     assert k1 != k2
 
 
