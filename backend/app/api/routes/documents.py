@@ -30,12 +30,14 @@ from app.schemas.document import (
     IngestJobDTO,
 )
 from app.services.dictionary_service import DictionaryValidationError
-from app.schemas.binding import RechunkRequest
+from app.schemas.binding import RechunkRequest, ChunkRevisionDTO
 from app.services.binding_service import (
     BindingBuildInProgressError,
     BindingNotFoundError,
     BindingVersionNotReadyError,
     rechunk_document,
+    list_chunk_revisions,
+    get_chunk_revision,
 )
 from app.services.document_service import (
     DocumentConflictError,
@@ -188,6 +190,45 @@ def rechunk_document_endpoint(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="BUILD_IN_PROGRESS") from exc
     except BindingVersionNotReadyError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="VERSION_NOT_READY") from exc
+
+
+@router.get("/{document_id}/chunk-revisions", response_model=list[ChunkRevisionDTO])
+def read_chunk_revisions(
+    kb_id: UUID,
+    document_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> list[ChunkRevisionDTO]:
+    """返回文档的所有分块版本。"""
+    try:
+        return list_chunk_revisions(session, current_user, kb_id, document_id)
+    except BindingNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="BINDING_NOT_FOUND") from exc
+
+
+@router.get("/{document_id}/chunk-revisions/{revision_id}", response_model=ChunkRevisionDTO)
+def read_chunk_revision(
+    kb_id: UUID,
+    document_id: UUID,
+    revision_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> ChunkRevisionDTO:
+    """返回单个分块版本详情。"""
+    try:
+        result = get_chunk_revision(session, current_user, kb_id, revision_id)
+    except BindingNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="BINDING_NOT_FOUND") from exc
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chunk revision not found.")
+    return result
+
+
+@router.get("/chunk-strategies", response_model=list[dict])
+def read_chunk_strategies() -> list[dict]:
+    """返回可用的分块策略列表。"""
+    from app.services.multi_view_chunking import get_available_strategies
+    return get_available_strategies()
 
 
 @router.get("/{document_id}", response_model=DocumentDetailDTO)

@@ -70,6 +70,7 @@ class BindingBuildInProgressError(Exception):
 
 def _to_chunk_revision_dto(row: dict) -> ChunkRevisionDTO:
     """将 chunk_revisions 行转换为 DTO。"""
+    strategy = row.get("strategy", "fixed_size")
     return ChunkRevisionDTO(
         chunkRevisionId=str(row["chunk_revision_id"]),
         bindingId=str(row["binding_id"]),
@@ -79,6 +80,9 @@ def _to_chunk_revision_dto(row: dict) -> ChunkRevisionDTO:
         parseRevisionId=str(row["parse_revision_id"]),
         status=row["status"],
         chunkCount=row["chunk_count"],
+        strategy=strategy,
+        params=row.get("params"),
+        chunkViewType=strategy,
         buildStartedAt=row["build_started_at"].isoformat() if row.get("build_started_at") else None,
         buildFinishedAt=row["build_finished_at"].isoformat() if row.get("build_finished_at") else None,
         activatedAt=row["activated_at"].isoformat() if row.get("activated_at") else None,
@@ -1045,3 +1049,56 @@ def rechunk_document(
         "strategy": strategy,
         "params": params,
     }
+
+
+def list_chunk_revisions(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    document_id: UUID,
+) -> list[ChunkRevisionDTO]:
+    """列出文档的所有分块版本。"""
+    _ensure_kb_permission(session, current_user, kb_id)
+
+    # 查找文档对应的 binding
+    binding_row = session.execute(
+        select(document_kb_bindings).where(
+            document_kb_bindings.c.kb_id == kb_id,
+            document_kb_bindings.c.document_id == document_id,
+        ).limit(1)
+    ).mappings().first()
+
+    if binding_row is None:
+        raise BindingNotFoundError(f"Binding not found for kb={kb_id}, doc={document_id}")
+
+    # 查询该 binding 的所有 ChunkRevision
+    rows = session.execute(
+        select(chunk_revisions).where(
+            chunk_revisions.c.binding_id == binding_row["binding_id"],
+            chunk_revisions.c.deleted_at.is_(None),
+        ).order_by(chunk_revisions.c.created_at.desc())
+    ).mappings().all()
+
+    return [_to_chunk_revision_dto(dict(row)) for row in rows]
+
+
+def get_chunk_revision(
+    session: Session,
+    current_user: CurrentUserResponse,
+    kb_id: UUID,
+    chunk_revision_id: UUID,
+) -> ChunkRevisionDTO | None:
+    """获取单个分块版本详情。"""
+    _ensure_kb_permission(session, current_user, kb_id)
+
+    row = session.execute(
+        select(chunk_revisions).where(
+            chunk_revisions.c.chunk_revision_id == chunk_revision_id,
+            chunk_revisions.c.deleted_at.is_(None),
+        ).limit(1)
+    ).mappings().first()
+
+    if row is None:
+        return None
+
+    return _to_chunk_revision_dto(dict(row))

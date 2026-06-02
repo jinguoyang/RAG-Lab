@@ -53,17 +53,37 @@ class RechunkRequest(BaseModel):
     params: dict | None = None
 
     @model_validator(mode="after")
-    def validate_fixed_size_params(self) -> "RechunkRequest":
-        """校验固定长度分块参数，避免非法作业进入异步队列。"""
-        if self.strategy != "fixed_size":
-            raise ValueError("Only fixed_size rechunk strategy is supported.")
+    def validate_rechunk_params(self) -> "RechunkRequest":
+        """校验分块参数，支持多种策略。"""
         params = self.params or {}
-        chunk_size = params.get("chunk_size")
-        chunk_overlap = params.get("chunk_overlap", 0)
-        if type(chunk_size) is not int or not 100 <= chunk_size <= 4000:
-            raise ValueError("chunk_size must be an integer between 100 and 4000.")
-        if type(chunk_overlap) is not int or chunk_overlap < 0 or chunk_overlap >= chunk_size:
-            raise ValueError("chunk_overlap must be a non-negative integer smaller than chunk_size.")
+
+        # 兼容旧命名
+        normalized_strategy = self.strategy
+        if normalized_strategy == "fixed_size":
+            normalized_strategy = "fixed"
+
+        if normalized_strategy == "fixed":
+            chunk_size = params.get("chunk_size") or params.get("chunkSize", 900)
+            chunk_overlap = params.get("chunk_overlap") or params.get("chunkOverlap", 0)
+            if type(chunk_size) is not int or not 100 <= chunk_size <= 4000:
+                raise ValueError("chunk_size must be an integer between 100 and 4000.")
+            if type(chunk_overlap) is not int or chunk_overlap < 0 or chunk_overlap >= chunk_size:
+                raise ValueError("chunk_overlap must be a non-negative integer smaller than chunk_size.")
+        elif normalized_strategy == "parent_child":
+            parent_size = params.get("parentSize", 2000)
+            child_size = params.get("childSize", 300)
+            if type(parent_size) is not int or parent_size < 500:
+                raise ValueError("parentSize must be an integer >= 500.")
+            if type(child_size) is not int or child_size < 100:
+                raise ValueError("childSize must be an integer >= 100.")
+            if child_size >= parent_size:
+                raise ValueError("childSize must be smaller than parentSize.")
+        elif normalized_strategy in ("heading", "semantic", "table_aware"):
+            # heading/semantic/table_aware 无需额外参数校验
+            pass
+        else:
+            raise ValueError(f"Unsupported chunk strategy: {self.strategy}")
+
         return self
 
 
@@ -77,6 +97,9 @@ class ChunkRevisionDTO(BaseModel):
     parseRevisionId: str
     status: str
     chunkCount: int
+    strategy: str = "fixed_size"
+    params: dict | None = None
+    chunkViewType: str | None = None
     buildStartedAt: str | None = None
     buildFinishedAt: str | None = None
     activatedAt: str | None = None
