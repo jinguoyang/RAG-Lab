@@ -129,7 +129,12 @@ def test_http_vision_text_provider_explicit_config():
 
 def test_http_vision_text_provider_requires_endpoint():
     """HttpVisionTextProvider 无 endpoint 时应抛出 ProviderError。"""
-    settings = Settings(_env_file=None, RAG_LAB_VISION_TEXT_PROVIDER="http")
+    settings = Settings(
+        _env_file=None,
+        RAG_LAB_VISION_TEXT_PROVIDER="http",
+        RAG_LAB_VISION_TEXT_ENDPOINT="",
+        RAG_LAB_LLM_ENDPOINT="",
+    )
     with pytest.raises(ProviderError):
         HttpVisionTextProvider(settings)
 
@@ -427,7 +432,7 @@ def test_parse_image_metadata_includes_provider_usage_summary():
 
 def test_examples_crrc_photo_parse_text_contains_retrieval_terms():
     """乔迁样本图片解析文本应包含问答召回所需的中车、CRRC 和乔迁关键词。"""
-    image_path = Path(__file__).resolve().parents[4] / "docs" / "examples" / "1I3A6520-opq3542107848.jpg"
+    image_path = Path(__file__).resolve().parents[4] / "docs" / "05-测试与验收" / "examples" / "1I3A6520-opq3542107848.jpg"
     provider = LocalVisionTextProvider()
     provider.extract_text = lambda request: VisionTextResult(
         caption="中国中车 CRRC 前台乔迁新禧活动照片",
@@ -448,7 +453,7 @@ def test_examples_crrc_photo_parse_text_contains_retrieval_terms():
 
 def test_examples_cat_photo_parse_text_contains_retrieval_terms():
     """猫咪样本图片解析文本应包含问答召回所需的猫、动物和炉火关键词。"""
-    image_path = Path(__file__).resolve().parents[4] / "docs" / "examples" / "oxlndt5t1zr31.jpg"
+    image_path = Path(__file__).resolve().parents[4] / "docs" / "05-测试与验收" / "examples" / "oxlndt5t1zr31.jpg"
     provider = LocalVisionTextProvider()
     provider.extract_text = lambda request: VisionTextResult(
         caption="一只猫坐在炉火旁",

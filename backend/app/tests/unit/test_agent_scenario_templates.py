@@ -1,5 +1,7 @@
 """内置场景模板接口测试。"""
 
+from unittest.mock import patch
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -9,7 +11,11 @@ def test_agent_scenario_templates_api_returns_builtin_templates():
     """场景模板接口应返回两个可创建智能应用的内置模板。"""
     client = TestClient(app)
 
-    response = client.get("/api/v1/agent-scenario-templates", headers={"X-Dev-User": "admin"})
+    with patch("app.api.deps.get_settings") as mock_settings:
+        mock_settings.return_value.dev_auth_enabled = True
+        mock_settings.return_value.dev_default_username = "admin"
+        mock_settings.return_value.dev_default_security_level = "public"
+        response = client.get("/api/v1/agent-scenario-templates", headers={"X-Dev-User": "admin"})
 
     assert response.status_code == 200
     data = response.json()

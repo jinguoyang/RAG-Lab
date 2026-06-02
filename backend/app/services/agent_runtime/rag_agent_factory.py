@@ -30,7 +30,7 @@ def build_rag_answer_agent(
             ModelCallLimitMiddleware(run_limit=3, exit_behavior="error"),
             ToolCallLimitMiddleware(
                 tool_name=qa_run_tool.name,
-                run_limit=1,
+                run_limit=2,
                 exit_behavior="error",
             ),
         ],

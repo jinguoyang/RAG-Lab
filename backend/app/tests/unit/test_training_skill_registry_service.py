@@ -84,7 +84,7 @@ def test_classify_intent_schema_describes_structured_decision():
 
 
 def test_record_training_skill_call_writes_row(db):
-    record_training_skill_call(
+    skill_call_id = record_training_skill_call(
         db,
         skill_name="buildLearningPlanDraft",
         status="success",
@@ -105,6 +105,7 @@ def test_record_training_skill_call_writes_row(db):
     assert row.app_id == "app-001"
     assert row.latency_ms == 120
     assert row.error_code is None
+    assert str(row.skill_call_id) == skill_call_id
 
 
 def test_record_training_skill_call_error_with_code(db):

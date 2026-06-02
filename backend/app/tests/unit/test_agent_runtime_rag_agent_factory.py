@@ -29,6 +29,6 @@ def test_build_rag_answer_agent_uses_langchain_create_agent_and_builtin_middlewa
     assert middleware[0] is summary
     assert middleware[1].run_limit == 3
     assert middleware[2].tool_name == "query_knowledge_base"
-    assert middleware[2].run_limit == 1
+    assert middleware[2].run_limit == 2
     assert create_agent.call_args.kwargs["tools"] == [qa_run_tool]
     assert create_agent.call_args.kwargs["checkpointer"] is checkpointer

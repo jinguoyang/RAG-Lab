@@ -1,6 +1,7 @@
 """App Runtime Embed Token 和 retrieve 单元测试。"""
 
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -157,11 +158,12 @@ def test_embed_token_can_be_used_for_retrieve(db):
     )
 
     token_response = create_app_runtime_embed_token(db, api_key, AppRuntimeEmbedTokenRequest(ttlSeconds=300))
-    result = retrieve_app_runtime_evidence(
-        db,
-        token_response.embedToken,
-        AppRuntimeRetrieveRequest(query="入职培训", topK=3),
-    )
+    with patch("app.services.app_runtime_service._build_provider_set", side_effect=RuntimeError("provider unavailable")):
+        result = retrieve_app_runtime_evidence(
+            db,
+            token_response.embedToken,
+            AppRuntimeRetrieveRequest(query="入职培训", topK=3),
+        )
 
     assert token_response.appId == str(app_id)
     assert token_response.embedToken.startswith("rlet_")
