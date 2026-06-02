@@ -3830,6 +3830,187 @@
         }
       }
     },
+    "/api/v1/knowledge-bases/{kb_id}/documents/{document_id}/chunk-revisions": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Read Chunk Revisions",
+        "description": "返回文档的所有分块版本。",
+        "operationId": "read_chunk_revisions_api_v1_knowledge_bases__kb_id__documents__document_id__chunk_revisions_get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ChunkRevisionDTO"
+                  },
+                  "title": "Response Read Chunk Revisions Api V1 Knowledge Bases  Kb Id  Documents  Document Id  Chunk Revisions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/documents/{document_id}/chunk-revisions/{revision_id}": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Read Chunk Revision",
+        "description": "返回单个分块版本详情。",
+        "operationId": "read_chunk_revision_api_v1_knowledge_bases__kb_id__documents__document_id__chunk_revisions__revision_id__get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "revision_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Revision Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChunkRevisionDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/documents/chunk-strategies": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Read Chunk Strategies",
+        "description": "返回可用的分块策略列表。",
+        "operationId": "read_chunk_strategies_api_v1_knowledge_bases__kb_id__documents_chunk_strategies_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Read Chunk Strategies Api V1 Knowledge Bases  Kb Id  Documents Chunk Strategies Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/knowledge-bases/{kb_id}/documents/{document_id}": {
       "get": {
         "tags": [
@@ -4296,6 +4477,171 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PageResponse_ChunkDTO_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/documents/{document_id}/provenance/blocks/{block_id}": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Read Block Provenance",
+        "description": "返回指定块的 provenance 信息。",
+        "operationId": "read_block_provenance_api_v1_knowledge_bases__kb_id__documents__document_id__provenance_blocks__block_id__get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "block_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Block Id"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Read Block Provenance Api V1 Knowledge Bases  Kb Id  Documents  Document Id  Provenance Blocks  Block Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kb_id}/documents/{document_id}/provenance/pages/{page_no}": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Read Page Blocks",
+        "description": "返回指定页面的所有块及其 provenance。",
+        "operationId": "read_page_blocks_api_v1_knowledge_bases__kb_id__documents__document_id__provenance_pages__page_no__get",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "page_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Page No"
+            }
+          },
+          {
+            "name": "X-Dev-User",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dev-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response Read Page Blocks Api V1 Knowledge Bases  Kb Id  Documents  Document Id  Provenance Pages  Page No  Get"
                 }
               }
             }
@@ -14557,6 +14903,49 @@
           "createdAt": {
             "type": "string",
             "title": "Createdat"
+          },
+          "sourceBlockIds": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceblockids"
+          },
+          "sourceBlockRange": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceblockrange"
+          },
+          "provenance": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provenance"
           }
         },
         "type": "object",
@@ -14636,6 +15025,143 @@
         ],
         "title": "ChunkGovernanceResponse",
         "description": "Chunk 治理标记结果，包含权限继承说明。"
+      },
+      "ChunkRevisionDTO": {
+        "properties": {
+          "chunkRevisionId": {
+            "type": "string",
+            "title": "Chunkrevisionid"
+          },
+          "bindingId": {
+            "type": "string",
+            "title": "Bindingid"
+          },
+          "knowledgeBaseId": {
+            "type": "string",
+            "title": "Knowledgebaseid"
+          },
+          "documentId": {
+            "type": "string",
+            "title": "Documentid"
+          },
+          "documentVersionId": {
+            "type": "string",
+            "title": "Documentversionid"
+          },
+          "parseRevisionId": {
+            "type": "string",
+            "title": "Parserevisionid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "chunkCount": {
+            "type": "integer",
+            "title": "Chunkcount"
+          },
+          "strategy": {
+            "type": "string",
+            "title": "Strategy",
+            "default": "fixed_size"
+          },
+          "params": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Params"
+          },
+          "chunkViewType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunkviewtype"
+          },
+          "buildStartedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buildstartedat"
+          },
+          "buildFinishedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buildfinishedat"
+          },
+          "activatedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activatedat"
+          },
+          "retiredAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retiredat"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "createdBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdby"
+          }
+        },
+        "type": "object",
+        "required": [
+          "chunkRevisionId",
+          "bindingId",
+          "knowledgeBaseId",
+          "documentId",
+          "documentVersionId",
+          "parseRevisionId",
+          "status",
+          "chunkCount",
+          "createdAt"
+        ],
+        "title": "ChunkRevisionDTO",
+        "description": "绑定版本修订记录。"
       },
       "ClassroomCitationDTO": {
         "properties": {

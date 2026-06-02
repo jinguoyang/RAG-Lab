@@ -11,6 +11,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 from pydantic import ValidationError  # noqa: E402
 
+from app.main import create_app  # noqa: E402
 from app.schemas.dictionary import DictionaryItemUpdateRequest  # noqa: E402
 
 
@@ -50,10 +51,22 @@ def _assert_openapi_paths_are_current(openapi: dict) -> None:
             raise SystemExit(f"OpenAPI is missing {required_path}.")
 
 
+def _assert_openapi_matches_runtime(committed_openapi: dict) -> None:
+    """确保归档 OpenAPI 与当前 FastAPI 路由集合一致。"""
+    committed_paths = set(committed_openapi.get("paths", {}))
+    runtime_paths = set(create_app().openapi().get("paths", {}))
+    missing = sorted(runtime_paths - committed_paths)
+    stale = sorted(committed_paths - runtime_paths)
+    if missing or stale:
+        raise SystemExit(f"OpenAPI paths mismatch: missing={missing}, stale={stale}")
+
+
 def main() -> None:
     """Run static contract checks for review-time regressions."""
     _assert_dictionary_update_rejects_nulls()
-    _assert_openapi_paths_are_current(_load_openapi())
+    openapi = _load_openapi()
+    _assert_openapi_paths_are_current(openapi)
+    _assert_openapi_matches_runtime(openapi)
     print("static API contract verified")
 
 
