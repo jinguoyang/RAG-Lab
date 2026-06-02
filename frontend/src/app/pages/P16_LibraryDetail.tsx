@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
-import { Copy, Download, Eye, FileText, RefreshCw, Settings2, Trash2, Upload } from "lucide-react";
+import { Download, Eye, FileText, RefreshCw, Settings2, Trash2, Upload } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { UnderlineTabs, UnderlineTabsList, UnderlineTabsTrigger, UnderlineTabsContent } from "../components/rag/UnderlineTabs";
 import { Button } from "../components/rag/Button";
@@ -8,6 +8,7 @@ import { Badge, StatusBadge } from "../components/rag/Badge";
 import { Alert } from "../components/rag/Alert";
 import { PdfPreview } from "../components/rag/PdfPreview";
 import { TextPreview } from "../components/rag/TextPreview";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
 import { Drawer, DrawerSection } from "../components/rag/Drawer";
 import { Input } from "../components/rag/Input";
@@ -108,6 +109,7 @@ export function LibraryDetail() {
   const [deleteImpact, setDeleteImpact] = useState<DeletionImpactAnalysis | null>(null);
   const [deleteImpactLoading, setDeleteImpactLoading] = useState(false);
   const [strongConfirmChecked, setStrongConfirmChecked] = useState(false);
+  const [previewParseRevision, setPreviewParseRevision] = useState<string | null>(null);
 
   const activeVersion = detail?.activeVersion ?? null;
   const selectedVersion = useMemo(
@@ -195,16 +197,6 @@ export function LibraryDetail() {
       URL.revokeObjectURL(url);
     } catch (error) {
       setFeedback({ variant: "error", title: "解析文本下载失败", message: error instanceof Error ? error.message : "请稍后重试。" });
-    }
-  }
-
-  async function handleCopyParseText(revision: ParseRevisionDTO) {
-    try {
-      const result = await fetchDocumentText(docId, "full", revision.parseRevisionId) as { text: string };
-      await navigator.clipboard.writeText(result.text);
-      setFeedback({ variant: "success", title: "已复制", message: "解析正文已复制到剪贴板。" });
-    } catch (error) {
-      setFeedback({ variant: "error", title: "复制失败", message: error instanceof Error ? error.message : "请稍后重试。" });
     }
   }
 
@@ -481,11 +473,8 @@ export function LibraryDetail() {
                     <TableCell className="max-w-[180px] truncate text-xs text-red-600">{revision.errorMessage ?? "-"}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="sm" title="查看正文" onClick={() => { setSelectedParseRevisionId(revision.parseRevisionId); setActiveTab("preview"); }}>
+                        <Button variant="ghost" size="sm" title="查看正文" onClick={() => setPreviewParseRevision(revision.parseRevisionId)}>
                           <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" title="复制解析文本" onClick={() => void handleCopyParseText(revision)}>
-                          <Copy className="h-4 w-4" />
                         </Button>
                         <Button variant="ghost" size="sm" title="下载解析文本" onClick={() => void handleDownloadParseText(revision)}>
                           <Download className="h-4 w-4" />
@@ -499,9 +488,7 @@ export function LibraryDetail() {
           </UnderlineTabsContent>
 
           <UnderlineTabsContent value="preview" className="space-y-6 outline-none">
-            {selectedParseRevision ? (
-              <TextPreview documentId={docId} parseRevisionId={selectedParseRevision.parseRevisionId} />
-            ) : previewType === "pdf" ? (
+            {previewType === "pdf" ? (
               <PdfPreview documentId={docId} fileName={doc.name} />
             ) : previewType === "docx" ? (
               <Suspense fallback={<Alert variant="info" title="正在加载 DOCX 预览器" message="首次打开 DOCX 预览时需要加载解析组件。" />}>
@@ -544,6 +531,19 @@ export function LibraryDetail() {
             )}
           </UnderlineTabsContent>
         </UnderlineTabs>
+
+        <Dialog open={!!previewParseRevision} onOpenChange={(open) => { if (!open) setPreviewParseRevision(null); }}>
+          <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+            <DialogHeader>
+              <DialogTitle>解析正文</DialogTitle>
+            </DialogHeader>
+            <div className="flex-1 overflow-auto">
+              {previewParseRevision && (
+                <TextPreview documentId={docId} parseRevisionId={previewParseRevision} />
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {showUpload && (
           <Drawer isOpen={showUpload} title="上传新源文件版本" onClose={() => { setShowUpload(false); setUploadFile(null); setUploadProgress(null); }}>
