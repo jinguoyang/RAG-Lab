@@ -144,9 +144,80 @@ def _check_external_app_build() -> dict:
         return {"name": "externalAppBuild", "status": "FAIL", "detail": str(exc)}
 
 
+def _has_blocking_status(checks: list[dict], *, allow_skips: bool) -> bool:
+    """真实联调默认不允许跳过服务级检查，显式降级仅用于本地构建复核。"""
+    if any(item["status"] == "FAIL" for item in checks):
+        return True
+    return not allow_skips and any(item["status"] == "SKIP" for item in checks)
+
+
+def _check_real_training_workflow() -> dict:
+    """执行真实业务流检查，按顺序调用已存在接口。"""
+    import httpx
+
+    try:
+        client = httpx.Client(base_url="http://localhost:8000", timeout=10.0)
+    except Exception as exc:
+        return {"name": "realTrainingWorkflow", "status": "SKIP", "detail": f"无法连接平台: {exc}"}
+
+    try:
+        # 1. 创建学习计划草稿
+        r = client.post("/training/plans/drafts", json={"jobTitle": "测试岗位", "description": "测试描述"})
+        if r.status_code not in (200, 201):
+            return {"name": "realTrainingWorkflow", "status": "FAIL", "detail": f"创建计划草稿失败: {r.status_code}"}
+        plan_id = r.json().get("planId") or r.json().get("id")
+        if not plan_id:
+            return {"name": "realTrainingWorkflow", "status": "FAIL", "detail": "创建计划草稿返回无 planId"}
+
+        # 2. 提交学习计划审核
+        r = client.post(f"/training/plans/{plan_id}/review")
+        if r.status_code not in (200, 201):
+            return {"name": "realTrainingWorkflow", "status": "FAIL", "detail": f"提交计划审核失败: {r.status_code}"}
+
+        # 3. 创建题库草稿
+        r = client.post("/training/questions/drafts", json={"planId": plan_id})
+        if r.status_code not in (200, 201):
+            return {"name": "realTrainingWorkflow", "status": "FAIL", "detail": f"创建题库草稿失败: {r.status_code}"}
+        question_id = r.json().get("questionId") or r.json().get("id")
+        if not question_id:
+            return {"name": "realTrainingWorkflow", "status": "FAIL", "detail": "创建题库草稿返回无 questionId"}
+
+        # 4. 提交题库审核
+        r = client.post(f"/training/questions/{question_id}/review")
+        if r.status_code not in (200, 201):
+            return {"name": "realTrainingWorkflow", "status": "FAIL", "detail": f"提交题库审核失败: {r.status_code}"}
+
+        # 5. 创建课堂会话
+        r = client.post("/classroom/sessions", json={"planId": plan_id})
+        if r.status_code not in (200, 201):
+            return {"name": "realTrainingWorkflow", "status": "FAIL", "detail": f"创建课堂会话失败: {r.status_code}"}
+        session_id = r.json().get("sessionId") or r.json().get("id")
+        if not session_id:
+            return {"name": "realTrainingWorkflow", "status": "FAIL", "detail": "创建课堂会话返回无 sessionId"}
+
+        # 6. 发送课堂事件
+        r = client.post(f"/classroom/sessions/{session_id}/events", json={"type": "start"})
+        if r.status_code not in (200, 201):
+            return {"name": "realTrainingWorkflow", "status": "FAIL", "detail": f"发送课堂事件失败: {r.status_code}"}
+
+        # 7. 查询课堂状态
+        r = client.get(f"/classroom/sessions/{session_id}")
+        if r.status_code != 200:
+            return {"name": "realTrainingWorkflow", "status": "FAIL", "detail": f"查询课堂状态失败: {r.status_code}"}
+
+        return {"name": "realTrainingWorkflow", "status": "PASS", "detail": "真实业务流全部通过"}
+    except httpx.ConnectError:
+        return {"name": "realTrainingWorkflow", "status": "SKIP", "detail": "平台未启动"}
+    except Exception as exc:
+        return {"name": "realTrainingWorkflow", "status": "FAIL", "detail": str(exc)}
+    finally:
+        client.close()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="B-296 外部培训应用真实联调验收")
     parser.add_argument("--skip-platform", action="store_true", help="跳过平台侧检查")
+    parser.add_argument("--allow-skips", action="store_true", help="仅本地复核时允许 SKIP 不阻断退出码")
     args = parser.parse_args()
 
     checks = [
@@ -159,6 +230,7 @@ def main() -> None:
 
     if not args.skip_platform:
         checks.append(_check_platform_training_tests())
+        checks.append(_check_real_training_workflow())
 
     passed = sum(1 for c in checks if c["status"] == "PASS")
     failed = sum(1 for c in checks if c["status"] == "FAIL")
@@ -176,7 +248,7 @@ def main() -> None:
 
     print(json.dumps(report, ensure_ascii=False, indent=2))
 
-    if failed > 0:
+    if _has_blocking_status(checks, allow_skips=args.allow_skips):
         sys.exit(1)
     sys.exit(0)
 
