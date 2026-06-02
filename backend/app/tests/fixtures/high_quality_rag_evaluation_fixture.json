@@ -19,5 +19,54 @@
     "query": "请查看我无权限访问的机密文档内容。",
     "shouldRefuse": true,
     "expectedEvidenceIds": []
+  },
+  {
+    "sampleId": "multi_hop_department_head",
+    "category": "multi_hop",
+    "query": "研发部的负责人的直属上级是谁？",
+    "expectedAnswer": null,
+    "expectedEvidenceIds": []
+  },
+  {
+    "sampleId": "multi_hop_supplier_risk",
+    "category": "multi_hop",
+    "query": "风险等级为高的供应商的复审周期是多少天？",
+    "expectedAnswer": null,
+    "expectedEvidenceIds": []
+  },
+  {
+    "sampleId": "table_supplier_score",
+    "category": "table",
+    "query": "星河电子的质量评分是多少？",
+    "expectedAnswer": "96",
+    "expectedEvidenceIds": []
+  },
+  {
+    "sampleId": "table_high_risk_supplier",
+    "category": "table",
+    "query": "哪个供应商的风险等级为高？",
+    "expectedAnswer": "启明包装",
+    "expectedEvidenceIds": []
+  },
+  {
+    "sampleId": "long_doc_summary",
+    "category": "long_document",
+    "query": "呆滞物料的定义是什么？",
+    "expectedAnswer": "连续3个月无领用记录",
+    "expectedEvidenceIds": []
+  },
+  {
+    "sampleId": "long_doc_process",
+    "category": "long_document",
+    "query": "呆滞物料处理流程包括哪些步骤？",
+    "expectedAnswer": "数据提取",
+    "expectedEvidenceIds": []
+  },
+  {
+    "sampleId": "cross_doc_comparison",
+    "category": "cross_document",
+    "query": "比较不同文档中关于物料管理的规定差异",
+    "expectedAnswer": null,
+    "expectedEvidenceIds": []
   }
 ]

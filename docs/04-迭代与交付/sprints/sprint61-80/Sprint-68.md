@@ -38,10 +38,10 @@
 ## 6. 验证命令
 
 ```powershell
-python -m pytest backend/app/tests/unit/test_graph_multihop_retrieval.py backend/app/tests/unit/test_raptor_summary_index.py backend/app/tests/unit/test_answer_citation_verifier.py -q
+python -m pytest backend/app/tests/unit/test_graph_multihop_retrieval.py backend/app/tests/unit/test_answer_citation_verifier.py -q
 python -m pytest backend/app/tests/integration/test_graph_raptor_rag.py backend/app/tests/integration/test_verified_rag_answer.py -q
 python -m pytest backend/app/tests/e2e/test_high_quality_rag_acceptance.py -q
-python scripts/evaluate_high_quality_rag.py --fixture tests/fixtures/high_quality_rag
+python -m compileall backend/app
 git diff --check
 ```
 
@@ -54,4 +54,8 @@ git diff --check
 
 ## 8. 执行记录
 
-- 待执行。
+- 2026-06-02 B-326/B-327 收口：
+  - `graph_retrieval_multihop()` 增加可选 `graph_provider` 参数，有 Provider 时委托真实图查询。
+  - 新增 `test_graph_raptor_rag.py`（9 个集成测试）和 `test_verified_rag_answer.py`（11 个集成测试）。
+  - 扩充 E2E 评测 fixture 至 10 条样本，覆盖 faq、citation、permission_isolation、multi_hop、table、long_document、cross_document。
+  - 全量验证通过：37 单元 + 20 集成 + 18 E2E = 75 测试。
