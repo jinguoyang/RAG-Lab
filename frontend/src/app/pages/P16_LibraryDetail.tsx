@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
-import { Copy, Download, FileText, RefreshCw, Settings2, Trash2, Upload } from "lucide-react";
+import { Copy, Download, Eye, FileText, RefreshCw, Settings2, Trash2, Upload } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { UnderlineTabs, UnderlineTabsList, UnderlineTabsTrigger, UnderlineTabsContent } from "../components/rag/UnderlineTabs";
 import { Button } from "../components/rag/Button";
@@ -481,8 +481,8 @@ export function LibraryDetail() {
                     <TableCell className="max-w-[180px] truncate text-xs text-red-600">{revision.errorMessage ?? "-"}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => { setSelectedParseRevisionId(revision.parseRevisionId); setActiveTab("preview"); }}>
-                          查看正文
+                        <Button variant="ghost" size="sm" title="查看正文" onClick={() => { setSelectedParseRevisionId(revision.parseRevisionId); setActiveTab("preview"); }}>
+                          <Eye className="h-4 w-4" />
                         </Button>
                         <Button variant="ghost" size="sm" title="复制解析文本" onClick={() => void handleCopyParseText(revision)}>
                           <Copy className="h-4 w-4" />
