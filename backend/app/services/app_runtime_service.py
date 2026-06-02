@@ -523,6 +523,12 @@ def _build_provider_set():
     return get_qa_run_providers()
 
 
+def _default_app_runtime_version() -> str:
+    """按开关解析新 App 会话版本，关闭时固定保留 Legacy。"""
+    settings = get_settings()
+    return settings.agent_runtime_default_version if settings.agent_runtime_enabled else "legacy_v1"
+
+
 def _get_or_create_conversation(
     session: Session,
     app_id: UUID,
@@ -551,7 +557,10 @@ def _get_or_create_conversation(
             app_id=app_id,
             end_user_id=request.endUserId,
             status="active",
-            metadata={"source": "app-runtime"},
+            metadata={
+                "source": "app-runtime",
+                "runtimeVersion": _default_app_runtime_version(),
+            },
             created_at=now,
             updated_at=now,
         )
@@ -655,6 +664,243 @@ def _to_response_usage(metrics: dict) -> dict:
     }
 
 
+def _invoke_customer_service_graph(
+    session: Session,
+    credential: str,
+    request: AppRuntimeChatRequest,
+    context,
+    conversation_row,
+    started_at,
+    started_counter,
+    invocation_id,
+) -> AppRuntimeChatResponse | None:
+    """knowledge_qa 场景：通过内部客服 Graph 路由，返回 None 表示不适用。"""
+    scenario_type = (context.app_row.get("metadata") or {}).get("scenario", {}).get("scenarioType")
+    runtime_version = (conversation_row.get("metadata") or {}).get("runtimeVersion", "legacy_v1")
+    if scenario_type != "knowledge_qa" or runtime_version != "langgraph_primary_v1":
+        return None
+
+    from app.services.agent_runtime.customer_service_agent import (
+        ensure_customer_service_tool_result,
+        invoke_customer_service_agent,
+    )
+    from app.services.agent_runtime.model_adapter import create_chat_model
+    from app.services.agent_runtime.qa_run_tool import create_bound_qa_run_tool
+    from app.services.agent_runtime.rag_agent_factory import build_rag_answer_agent
+    from app.services.agent_runtime.runtime_facade import _get_shared_checkpointer
+    from app.services.agent_runtime.scenario_registry import get_scenario_registry
+    from app.services.training_skill_registry_service import record_training_skill_call
+
+    conversation_id = str(conversation_row["conversation_id"])
+    tool_result: dict = {}
+    skill_call_state: dict[str, str] = {}
+
+    def invoke_qa_run(query: str) -> dict:
+        """调用现有受控 QARun 链路，保留权限、Evidence 和 Citation 真值。"""
+        qa_response = create_qa_run(
+            session,
+            context.actor,
+            context.kb_row["kb_id"],
+            QARunCreateRequest(
+                query=query,
+                configRevisionId=context.revision_id,
+                overrideParams={
+                    "appRuntime": {
+                        "appId": str(context.app_row["app_id"]),
+                        "conversationId": conversation_id,
+                        "endUserId": request.endUserId,
+                        "scenarioType": scenario_type,
+                    }
+                },
+            ),
+        )
+        if qa_response is None:
+            return {"answer": "", "runId": "", "citations": []}
+        detail = get_qa_run_detail(
+            session,
+            context.actor,
+            context.kb_row["kb_id"],
+            UUID(qa_response.runId),
+            include_trace=False,
+            include_candidates=False,
+        )
+        if detail is None:
+            return {"answer": "", "runId": "", "citations": []}
+        result = {
+            "answer": detail.answer or "",
+            "runId": detail.runId,
+            "citations": [
+                {
+                    "citationId": c.citationId,
+                    "evidenceId": c.evidenceId,
+                    "label": c.label,
+                    "chunkId": c.locationSnapshot.get("chunkId"),
+                }
+                for c in detail.citations
+            ],
+            "usage": _to_response_usage(detail.metrics or {}),
+        }
+        tool_result.clear()
+        tool_result.update(result)
+        return result
+
+    checkpointer = _get_shared_checkpointer()
+
+    def record_skill_call(**kwargs) -> str:
+        """记录客服只读 QARun Tool 审计，并把标识带回 Runtime Trace。"""
+        skill_call_id = record_training_skill_call(
+            session,
+            skill_name="query_knowledge_base",
+            app_id=str(context.app_row["app_id"]),
+            **kwargs,
+        )
+        skill_call_state["skillCallId"] = skill_call_id
+        return skill_call_id
+
+    qa_run_tool = create_bound_qa_run_tool(
+        invoke_qa_run=invoke_qa_run,
+        record_skill_call=record_skill_call,
+    )
+    settings = get_settings()
+    rag_agent = build_rag_answer_agent(
+        model=create_chat_model(settings),
+        qa_run_tool=qa_run_tool,
+        checkpointer=checkpointer,
+        trigger_tokens=settings.agent_runtime_summary_trigger_tokens,
+        keep_messages=settings.agent_runtime_summary_keep_messages,
+        system_prompt="你是内部客服助手。回答前必须调用 query_knowledge_base；没有授权依据时不要猜测。",
+    )
+
+    def invoke_rag_agent(query: str) -> dict:
+        """调用共用 LangChain Agent，并关联本轮 Tool 与摘要信息。"""
+        tool_result.clear()
+        skill_call_state.clear()
+        agent_trace = invoke_customer_service_agent(
+            rag_agent=rag_agent,
+            conversation_id=conversation_id,
+            query=query,
+        )
+        tool_invocation_mode = ensure_customer_service_tool_result(
+            qa_run_tool=qa_run_tool,
+            query=query,
+            agent_answer=agent_trace["answer"],
+            tool_result=tool_result,
+        )
+        if tool_invocation_mode == "guard" or agent_trace.get("modelStatus") != "success":
+            # 模型跳过 Tool 或命中调用限额时，只返回 QARun 授权回答。
+            agent_trace["answer"] = tool_result.get("answer", "")
+        if not tool_result or not skill_call_state.get("skillCallId"):
+            raise AppRuntimeConflictError("AGENT_QA_RUN_TOOL_NOT_CALLED")
+        return {
+            **tool_result,
+            **skill_call_state,
+            **agent_trace,
+            "toolInvocationMode": tool_invocation_mode,
+        }
+
+    graph_builder = get_scenario_registry().get(scenario_type)
+    if graph_builder is None:
+        raise AppRuntimeConflictError("AGENT_SCENARIO_GRAPH_NOT_FOUND")
+    graph = graph_builder(
+        checkpointer=checkpointer,
+        invoke_rag_agent=invoke_rag_agent,
+    )
+
+    result = graph.invoke(
+        {"conversationId": conversation_id, "query": request.query},
+        {"configurable": {"thread_id": conversation_id}},
+    )
+
+    # 持久化消息
+    _insert_message(
+        session,
+        conversation_row["conversation_id"],
+        "user",
+        request.query,
+        "success",
+        started_at,
+        metadata={"hasInputs": bool(request.inputs), "route": "customer_service_graph"},
+    )
+    assistant_message_row = _insert_message(
+        session,
+        conversation_row["conversation_id"],
+        "assistant",
+        result.get("answer", ""),
+        "success",
+        datetime.now(UTC),
+        qa_run_id=UUID(result["qaRunId"]) if result.get("qaRunId") else None,
+        metadata={"route": "customer_service_graph", "citationCount": len(result.get("citations", []))},
+    )
+    session.execute(
+        update(app_conversations)
+        .where(app_conversations.c.conversation_id == conversation_row["conversation_id"])
+        .values(updated_at=datetime.now(UTC))
+    )
+    session.execute(
+        update(rag_app_api_keys)
+        .where(rag_app_api_keys.c.api_key_id == context.key_row["api_key_id"])
+        .values(last_used_at=started_at),
+    )
+
+    # 从 Checkpoint 获取 thread 信息，供调用审计和外部诊断串联。
+    checkpoint_state = graph.get_state({"configurable": {"thread_id": conversation_id}})
+    checkpoint_id = str(checkpoint_state.config.get("configurable", {}).get("checkpoint_id", "")) if checkpoint_state.config else ""
+    _finalize_invocation(
+        session,
+        invocation_id,
+        started_counter,
+        status="success",
+        conversation_id=conversation_row["conversation_id"],
+        message_id=assistant_message_row["message_id"],
+        qa_run_id=UUID(result["qaRunId"]) if result.get("qaRunId") else None,
+        response_summary={
+            "agentInvocationId": str(invocation_id),
+            "threadId": conversation_id,
+            "checkpointId": checkpoint_id,
+            "scenarioType": scenario_type,
+            "runtimeVersion": "langgraph_primary_v1",
+            "qaRunId": result.get("qaRunId", ""),
+            "skillCallId": result.get("skillCallId", ""),
+            "modelCallId": result.get("modelCallId", ""),
+            "modelStatus": result.get("modelStatus", "success"),
+            "summaryVersion": result.get("summaryVersion", 0),
+            "summaryStatus": result.get("summaryStatus", "not_triggered"),
+            "toolInvocationMode": result.get("toolInvocationMode", ""),
+            "answerLength": len(result.get("answer", "")),
+            "citationCount": len(result.get("citations", [])),
+        },
+    )
+    session.commit()
+
+    return AppRuntimeChatResponse(
+        answer=result.get("answer", ""),
+        conversationId=conversation_id,
+        messageId=str(assistant_message_row["message_id"]),
+        runId=result.get("qaRunId", ""),
+        citations=[
+            AppRuntimeCitationDTO(
+                citationId=c.get("citationId", ""),
+                evidenceId=c.get("evidenceId", ""),
+                label=c.get("label"),
+                locationSnapshot={"chunkId": c.get("chunkId", "")},
+            )
+            for c in result.get("citations", [])
+        ],
+        usage=result.get("usage", {}),
+        metadata={
+            "appId": str(context.app_row["app_id"]),
+            "kbId": str(context.kb_row["kb_id"]),
+            "configRevisionId": str(context.revision_id),
+            "threadId": conversation_id,
+            "runtimeVersion": "langgraph_primary_v1",
+            "checkpointId": checkpoint_id,
+            "summaryVersion": result.get("summaryVersion", 0),
+            "summaryStatus": result.get("summaryStatus", "not_triggered"),
+            "authType": "embedToken" if credential.startswith(EMBED_TOKEN_PREFIX) else "apiKey",
+        },
+    )
+
+
 def chat_with_app_runtime(
     session: Session,
     credential: str,
@@ -667,6 +913,14 @@ def chat_with_app_runtime(
     invocation_id = _insert_running_invocation(session, context, request, started_at)
     try:
         conversation_row = _get_or_create_conversation(session, context.app_row["app_id"], request, started_at)
+
+        # knowledge_qa 场景：通过内部客服 Graph 路由
+        graph_response = _invoke_customer_service_graph(
+            session, credential, request, context, conversation_row, started_at, started_counter, invocation_id,
+        )
+        if graph_response is not None:
+            return graph_response
+
         _insert_message(
             session,
             conversation_row["conversation_id"],

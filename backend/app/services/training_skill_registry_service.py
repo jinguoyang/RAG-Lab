@@ -163,11 +163,12 @@ def record_training_skill_call(
     output_summary: str | None = None,
     error_code: str | None = None,
     latency_ms: int | None = None,
-) -> None:
+) -> str:
     """向审计表写入一条 Skill 调用记录。"""
+    skill_call_id = new_id()
     session.execute(
         insert(training_skill_calls).values(
-            skill_call_id=new_id(),
+            skill_call_id=skill_call_id,
             session_id=session_id,
             app_id=app_id,
             skill_name=skill_name,
@@ -179,3 +180,4 @@ def record_training_skill_call(
             created_at=datetime.now(UTC),
         )
     )
+    return str(skill_call_id)
