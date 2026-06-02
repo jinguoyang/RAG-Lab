@@ -499,14 +499,16 @@ export function LibraryDetail() {
           </UnderlineTabsContent>
 
           <UnderlineTabsContent value="preview" className="space-y-6 outline-none">
-            {previewType === "pdf" ? (
+            {selectedParseRevision ? (
+              <TextPreview documentId={docId} parseRevisionId={selectedParseRevision.parseRevisionId} />
+            ) : previewType === "pdf" ? (
               <PdfPreview documentId={docId} fileName={doc.name} />
             ) : previewType === "docx" ? (
               <Suspense fallback={<Alert variant="info" title="正在加载 DOCX 预览器" message="首次打开 DOCX 预览时需要加载解析组件。" />}>
                 <DocxPreview documentId={docId} />
               </Suspense>
-            ) : previewType === "markdown" || previewType === "text" || selectedParseRevision ? (
-              <TextPreview documentId={docId} parseRevisionId={selectedParseRevision?.parseRevisionId} />
+            ) : previewType === "markdown" || previewType === "text" ? (
+              <TextPreview documentId={docId} />
             ) : (
               <div className="rounded-lg border border-border-cream bg-ivory py-12 text-center">
                 <FileText className="mx-auto mb-4 h-12 w-12 text-stone-gray" />
