@@ -75,6 +75,18 @@ from app.services.knowledge_base_service import KnowledgeBaseDisabledError
 from app.services.config_effectiveness import build_trace_effective_configs
 from app.services.answer_citation_verifier import verify_answer
 from app.services.corrective_rag import execute_corrective_rag
+from app.services.structured_evidence import (
+    StructuredEvidence,
+    build_structured_indexes,
+    flowchart_index_to_evidence,
+    search_flowcharts_by_node,
+    search_flowcharts_by_step,
+    search_tables_by_cell,
+    search_tables_by_column,
+    search_tables_by_row,
+    table_index_to_evidence,
+)
+from app.services.parsed_document_v2 import DocumentBlock, ParsedDocumentV2
 from app.services.multi_query_fusion import mmr_diversify
 from app.services.multi_view_chunking import ChunkResult
 from app.services.parent_child_retrieval import PackingStrategy, pack_context_with_parent_child
@@ -459,6 +471,58 @@ def _candidate_to_chunk_result(candidate: ProviderCandidate) -> ChunkResult:
         parent_chunk_id=metadata.get("parentChunkId"),
         metadata=metadata,
     )
+
+
+def _retrieve_structured_evidence(
+    authorized_pairs: list[tuple[ProviderCandidate, UUID]],
+    query: str,
+) -> list[StructuredEvidence]:
+    """检索表格和流程图证据，并只保留可回落到授权 Chunk 的结果。"""
+    authorized_chunk_ids_by_block: dict[str, set[str]] = {}
+    blocks_by_document_id: dict[str, dict[str, DocumentBlock]] = {}
+    for candidate, chunk_id in authorized_pairs:
+        metadata = dict(candidate.metadata or {})
+        document_id = str(metadata.get("documentId") or "")
+        for block_data in metadata.get("structuredBlocks") or []:
+            block = DocumentBlock.from_dict(block_data)
+            blocks_by_document_id.setdefault(document_id, {})[block.block_id] = block
+            authorized_chunk_ids_by_block.setdefault(block.block_id, set()).add(str(chunk_id))
+
+    evidence: list[StructuredEvidence] = []
+    for document_id, blocks_by_id in blocks_by_document_id.items():
+        parsed_document = ParsedDocumentV2(
+            document_id=document_id,
+            source_file_name="runtime-structured-blocks",
+            mime_type=None,
+            content_hash="runtime",
+            parse_version="runtime",
+            provider_name="postgres-chunk-metadata",
+            provider_version="runtime",
+            blocks=list(blocks_by_id.values()),
+        )
+        tables, flowcharts = build_structured_indexes(parsed_document)
+        matched_tables = {
+            item.block_id: item
+            for item in (
+                search_tables_by_column(tables, query)
+                + search_tables_by_cell(tables, query)
+                + search_tables_by_row(tables, query)
+            )
+        }
+        matched_flowcharts = {
+            item.block_id: item
+            for item in (
+                search_flowcharts_by_node(flowcharts, query)
+                + search_flowcharts_by_step(flowcharts, query)
+            )
+        }
+        evidence.extend(table_index_to_evidence(item) for item in matched_tables.values())
+        evidence.extend(flowchart_index_to_evidence(item) for item in matched_flowcharts.values())
+    return [
+        item
+        for item in evidence
+        if authorized_chunk_ids_by_block.get(item.block_id)
+    ]
 
 
 def _fetch_authorized_parent_chunk_rows(
@@ -1036,6 +1100,8 @@ def _authorize_provider_candidates(
             )
             continue
 
+        # B-324: PostgreSQL 回表 metadata 必须覆盖 Provider 副本 metadata
+        chunk_metadata = dict(chunk_row["metadata"] or {}) if chunk_row["metadata"] else {}
         authorized_candidate = ProviderCandidate(
             source_type=candidate.source_type,
             chunk_id=chunk_row["chunk_id"],
@@ -1043,6 +1109,7 @@ def _authorize_provider_candidates(
             content=chunk_row["content"],
             metadata={
                 **candidate.metadata,
+                **chunk_metadata,
                 "chunkId": str(chunk_row["chunk_id"]),
                 "documentId": str(chunk_row["document_id"]),
                 "documentName": chunk_row["document_name"],
@@ -1651,16 +1718,34 @@ def _execute_provider_qa_run(
     )
     trace_order += 1
 
-    structured_trace = _build_structured_evidence_trace([candidate for candidate, _candidate_id in authorized_pairs])
+    # B-324: 结构化证据检索
+    structured_evidence_list = _retrieve_structured_evidence(authorized_pairs, query)
+    table_count = sum(1 for item in structured_evidence_list if item.evidence_type == "table")
+    flowchart_count = sum(1 for item in structured_evidence_list if item.evidence_type == "flowchart")
+    structured_evidence_trace = [
+        {
+            "evidenceId": item.evidence_id,
+            "evidenceType": item.evidence_type,
+            "blockId": item.block_id,
+            "documentId": item.document_id,
+            "authorized": bool(authorized_chunk_ids_by_block.get(item.block_id)) if 'authorized_chunk_ids_by_block' in dir() else True,
+        }
+        for item in structured_evidence_list
+    ]
     _insert_trace_step(
         session,
         run_id,
         trace_order,
         "structuredEvidence",
-        "success" if structured_trace["structuredEvidenceCount"] else "skipped",
+        "success" if structured_evidence_list else "skipped",
         {"authorizedCandidates": len(authorized_pairs)},
-        structured_trace,
-        {"note": "Structured evidence is detected from authorized candidate metadata before generation."},
+        {
+            "retrievalExecuted": True,
+            "tableCount": table_count,
+            "flowchartCount": flowchart_count,
+            "evidence": structured_evidence_trace,
+        },
+        {"note": "Structured evidence retrieved from authorized chunk metadata."},
         started_at=started_at,
     )
     trace_order += 1
