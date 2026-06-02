@@ -32,11 +32,11 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 - Sprint 61 已完成收口，主题为 E33 员工培训进度、审核发布与断线续接：学习进度、答题记录、章节边界、发布版本和恢复上下文。
 - Sprint 62 已完成收口，主题为 E33 员工培训安全、报表与端到端验收：权限隔离、培训报表和完整链路 E2E。
 - Sprint 63 已完成收口，主题为 E34 RAG 配置真实生效与关键 no-op 修复：B-316、B-317 已 Done。
-- Sprint 64 已进入复核，主题为 E34 文档高保真解析与 ParsedDocumentV2：B-318 已接入入库 Worker Parser Routing，B-319 已把 ParsedDocumentV2 摘要和块级 provenance 写入入库链路，完整查询 API 待专项复核。
-- Sprint 65 已进入复核，主题为 E34 多视图分块与 Contextual Chunking：B-320 已接入入库 Worker 多视图策略适配，B-321 已接入入库 Worker 上下文 metadata 与 Late Chunking 预留标记。
-- Sprint 66 已进入复核，主题为 E34 多查询融合与大小 Chunk 上下文：B-322 已完成 Multi Query + RRF/MMR 运行时接入验证，B-323 已完成 chunkWindow 真实复测，待生产链路全量复测后收口。
-- Sprint 67 已进入复核，主题为 E34 结构化证据检索与 Corrective RAG：B-324、B-325 已接入 QA Run trace，待真实专项复测。
-- Sprint 68 已进入复核，主题为 E34 多跳推理、引用校验与高质量 RAG 验收：B-326 已取消 mock 图结果并要求显式 RAPTOR summarizer，B-327 已有 E2E 脚本和真实小样本复测记录。
+- Sprint 64 已完成收口，主题为 E34 文档高保真解析与 ParsedDocumentV2：B-318 Parser Routing、B-319 ParsedDocumentV2 反序列化和 Provenance 均已完成。
+- Sprint 65 已完成收口，主题为 E34 多视图分块与 Contextual Chunking：B-320 多视图策略适配、B-321 Contextual Chunking 检索 trace 均已完成。
+- Sprint 66 已完成收口，主题为 E34 多查询融合与大小 Chunk 上下文：B-322 已完成 Multi Query + RRF/MMR 运行时接入验证，B-323 已完成 Parent-child 上下文打包接入 QA Run。
+- Sprint 67 已完成收口，主题为 E34 结构化证据检索与 Corrective RAG：B-324 结构化证据检索、B-325 Corrective RAG 受控重检索均已接入 QA Run 主链路。
+- Sprint 68 已完成收口，主题为 E34 多跳推理、引用校验与高质量 RAG 验收：B-326 Graph/RAPTOR 辅助检索已接入、B-327 Answer/Citation Verifier 已强化。
 - 下一版本为 V1.9，计划承接 E23 图快照保留与配置治理、E24 文档解析能力增强；E27 RAG App 运行治理与接入可见性已完成。E28 文档库功能已全部完成。
 - Sprint 01 至 Sprint 26 已完成，对应 V1.0 至 V1.7。
 - Sprint 27 至 Sprint 29 已完成 E22 知识库治理工作流强化范围：P05 支持治理问题定位和治理后验证摘要，P06 支持批量治理和索引同步作业，P07 支持 Chunk 治理标记、索引重建和作业查看。
@@ -84,18 +84,18 @@ Sprint 是时间盒，用于承接一轮可验证交付。本文维护当前 Spr
 | Sprint 55 | 员工培训 Agent 深化 | 平台结构化学习计划 | Done | `sprint41-60/Sprint-55.md` |
 | Sprint 56 | 员工培训 Agent 深化 | 题库生成与审核 | Done | `sprint41-60/Sprint-56.md` |
 | Sprint 57 | 员工培训 Agent 深化 | 外部培训应用课堂交互 | Done | `sprint41-60/Sprint-57.md` |
-| Sprint 58 | 员工培训 Agent 深化 | 员工培训 Agent 端到端验收 | In Review | `sprint41-60/Sprint-58.md` |
+| Sprint 58 | 员工培训 Agent 深化 | 员工培训 Agent 端到端验收 | Done | `sprint41-60/Sprint-58.md` |
 | Sprint 59 | 员工培训 Agent 完整化 | Skill 与 LLM 结构化基座 | Done | `sprint41-60/Sprint-59.md` |
 | Sprint 60 | 员工培训 Agent 完整化 | AI 生成与主观题评分 | Done | `sprint41-60/Sprint-60.md` |
 | Sprint 61 | 员工培训 Agent 完整化 | 进度、审核发布与断线续接 | Done | `sprint61-80/Sprint-61.md` |
 | Sprint 62 | 员工培训 Agent 完整化 | 安全、报表与端到端验收 | Done | `sprint61-80/Sprint-62.md` |
 | Sprint 63 | 高质量 RAG 核心优化 | 配置真实生效与关键 no-op 修复 | Done | `sprint61-80/Sprint-63.md` |
-| Sprint 64 | 高质量 RAG 核心优化 | 文档高保真解析与 ParsedDocumentV2 | In Review | `sprint61-80/Sprint-64.md` |
-| Sprint 65 | 高质量 RAG 核心优化 | 多视图分块与 Contextual Chunking | In Review | `sprint61-80/Sprint-65.md` |
-| Sprint 66 | 高质量 RAG 核心优化 | 多查询融合与大小 Chunk 上下文 | In Review | `sprint61-80/Sprint-66.md` |
-| Sprint 67 | 高质量 RAG 核心优化 | 结构化证据检索与 Corrective RAG | In Review | `sprint61-80/Sprint-67.md` |
-| Sprint 68 | 高质量 RAG 核心优化 | 多跳推理、引用校验与 E2E 验收 | In Review | `sprint61-80/Sprint-68.md` |
-| Sprint 69 | 平台 Agent Runtime | LangChain / LangGraph 基座与 P1 验收硬化 | In Review | `sprint61-80/Sprint-69.md` |
+| Sprint 64 | 高质量 RAG 核心优化 | 文档高保真解析与 ParsedDocumentV2 | Done | `sprint61-80/Sprint-64.md` |
+| Sprint 65 | 高质量 RAG 核心优化 | 多视图分块与 Contextual Chunking | Done | `sprint61-80/Sprint-65.md` |
+| Sprint 66 | 高质量 RAG 核心优化 | 多查询融合与大小 Chunk 上下文 | Done | `sprint61-80/Sprint-66.md` |
+| Sprint 67 | 高质量 RAG 核心优化 | 结构化证据检索与 Corrective RAG | Done | `sprint61-80/Sprint-67.md` |
+| Sprint 68 | 高质量 RAG 核心优化 | 多跳推理、引用校验与 E2E 验收 | Done | `sprint61-80/Sprint-68.md` |
+| Sprint 69 | 平台 Agent Runtime | LangChain / LangGraph 基座与 P1 验收硬化 | Done | `sprint61-80/Sprint-69.md` |
 
 ## 3. 单个 Sprint 文档约定
 
