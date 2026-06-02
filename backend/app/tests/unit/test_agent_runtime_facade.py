@@ -1,4 +1,7 @@
-"""Agent Runtime Task 8: Scenario Registry 与 Runtime Facade 测试。"""
+"""Agent Runtime Facade 测试。
+
+覆盖：版本路由、Shadow 投影与差异记录、Primary Graph 调用、降级、Trace 上下文。
+"""
 
 from types import SimpleNamespace
 from unittest.mock import ANY, MagicMock, Mock, patch
@@ -8,11 +11,14 @@ import pytest
 import app.services.agent_runtime.runtime_facade as runtime_facade
 from app.services.agent_runtime.runtime_facade import (
     RuntimeVersion,
+    ShadowDiffRecord,
+    compute_shadow_diff,
     resolve_runtime_version,
     run_shadow_projection,
     submit_training_classroom_runtime_event,
 )
 from app.services.agent_runtime.scenario_registry import ScenarioGraphRegistry
+from app.services.agent_runtime.types import RuntimeTraceContext
 
 
 # ---------------------------------------------------------------------------
@@ -50,6 +56,72 @@ def test_shadow_projection_does_not_call_model_or_qarun():
     assert result["sessionId"] == "s1"
     call_model.assert_not_called()
     call_qa_run.assert_not_called()
+
+
+def test_shadow_projection_records_meta():
+    """Shadow 应记录运行证据元数据。"""
+    result = run_shadow_projection(
+        state={"sessionId": "s1"},
+        call_model=None,
+        call_qa_run=None,
+    )
+    assert result["_shadowMeta"]["_shadowRan"] is True
+    assert "_shadowTimestamp" in result["_shadowMeta"]
+
+
+def test_shadow_projection_includes_trace_context():
+    """Shadow 应在元数据中记录 Trace 上下文。"""
+    trace = RuntimeTraceContext(
+        agent_invocation_id="inv-001",
+        thread_id="s1",
+        scenario_type="test",
+    )
+    result = run_shadow_projection(
+        state={"sessionId": "s1"},
+        call_model=None,
+        call_qa_run=None,
+        trace=trace,
+    )
+    assert result["_shadowMeta"]["_traceContext"]["agentInvocationId"] == "inv-001"
+
+
+# ---------------------------------------------------------------------------
+# Shadow Diff
+# ---------------------------------------------------------------------------
+
+
+def test_compute_shadow_diff_identical_keys():
+    """当 Legacy 和 Shadow 的业务 key 完全一致时，identical=True。"""
+    trace = RuntimeTraceContext(agent_invocation_id="inv-1", thread_id="s1")
+    legacy = SimpleNamespace(visibleContent="ok", citations=[], sessionId="s1")
+    shadow = {"sessionId": "s1", "visibleContent": "ok", "citations": []}
+    diff = compute_shadow_diff(legacy_response=legacy, shadow_state=shadow, trace=trace)
+    assert diff.identical is True
+    assert diff.key_diff == []
+
+
+def test_compute_shadow_diff_detects_extra_keys():
+    """Shadow 有额外 key 时应被检测到。"""
+    trace = RuntimeTraceContext(agent_invocation_id="inv-1", thread_id="s1")
+    legacy = {"sessionId": "s1", "visibleContent": "ok"}
+    shadow = {"sessionId": "s1", "visibleContent": "ok", "_shadowMeta": {}, "extraField": "x"}
+    diff = compute_shadow_diff(legacy_response=legacy, shadow_state=shadow, trace=trace)
+    # _shadowMeta 以 _ 开头，被排除
+    assert "extraField" in diff.key_diff
+    assert diff.identical is False
+
+
+def test_shadow_diff_record_fields():
+    trace = RuntimeTraceContext(agent_invocation_id="inv-1", thread_id="s1")
+    record = ShadowDiffRecord(
+        trace=trace,
+        legacy_response_keys=["a"],
+        shadow_state_keys=["a", "b"],
+        key_diff=["b"],
+        identical=False,
+    )
+    assert record.identical is False
+    assert record.trace.agent_invocation_id == "inv-1"
 
 
 # ---------------------------------------------------------------------------
@@ -180,16 +252,48 @@ def test_build_graph_passes_classroom_end_user_to_qa_run_tool():
     qa_tool = Mock()
     qa_module = SimpleNamespace(create_qa_run_tool=Mock(return_value=qa_tool))
     graph_builder = Mock(return_value=Mock())
+    trace = RuntimeTraceContext(agent_invocation_id="inv-1", thread_id="s1")
     with (
         patch("app.services.training_classroom_service._read_session", return_value={"end_user_id": "user-1"}),
         patch("app.services.agent_runtime.runtime_facade._get_shared_checkpointer", return_value=Mock()),
         patch("app.services.agent_runtime.graphs.employee_training_graph.build_employee_training_graph", graph_builder),
         patch.dict("sys.modules", {"app.services.agent_runtime.qa_run_tool": qa_module}),
     ):
-        runtime_facade._build_graph_for_session(Mock(), "cred", "s1")
+        runtime_facade._build_graph_for_session(Mock(), "cred", "s1", trace)
 
     qa_module.create_qa_run_tool.assert_called_once_with(
         session=ANY,
         credential="cred",
         end_user_id="user-1",
+        idempotency_store=ANY,
     )
+
+
+# ---------------------------------------------------------------------------
+# Trace 上下文
+# ---------------------------------------------------------------------------
+
+
+def test_primary_generates_trace_context():
+    """Primary 路径应生成 agentInvocationId。"""
+    mock_request = Mock(eventType="start", payload={}, query=None, requestId=None)
+    mock_graph = MagicMock()
+    mock_graph.invoke.return_value = {
+        "sessionId": "s1",
+        "eventType": "start",
+        "visibleContent": "ok",
+        "domainResult": {"resultState": "X", "eventType": "start"},
+        "citations": [],
+        "pendingActions": [],
+    }
+    with patch("app.services.agent_runtime.runtime_facade._build_graph_for_session", return_value=mock_graph):
+        submit_training_classroom_runtime_event(
+            Mock(), "cred", "s1", mock_request, RuntimeVersion.LANGGRAPH_PRIMARY,
+        )
+        # 验证 _build_graph_for_session 收到了 trace 参数
+        call_args = runtime_facade._build_graph_for_session  # mock 已被 patch
+        # Graph invoke 的 initial_state 应包含 _traceContext
+        invoke_args = mock_graph.invoke.call_args
+        initial_state = invoke_args[0][0]
+        assert "_traceContext" in initial_state
+        assert "agentInvocationId" in initial_state["_traceContext"]

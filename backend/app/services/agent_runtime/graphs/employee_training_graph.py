@@ -58,6 +58,7 @@ class EmployeeTrainingState(TypedDict, total=False):
     _app_id: str
     _persistedEventId: str
     _persistedProgressUpdate: dict[str, Any] | None
+    _traceContext: dict[str, Any]
 
 
 # ---------------------------------------------------------------------------

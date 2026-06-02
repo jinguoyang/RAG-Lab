@@ -1,10 +1,22 @@
-"""平台 Agent Runtime Facade。"""
+"""平台 Agent Runtime Facade。
+
+职责：
+- 业务服务唯一调用入口。
+- 版本路由（Legacy / Shadow / Primary）。
+- Graph 执行、Trace 关联和降级记录。
+- Shadow 模式状态镜像与差异记录。
+"""
 from __future__ import annotations
 
 import atexit
 import logging
+import uuid
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
+
+from app.services.agent_runtime.types import RuntimeTraceContext
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +34,82 @@ def resolve_runtime_version(value: str | None) -> RuntimeVersion:
     return RuntimeVersion(value or RuntimeVersion.LEGACY)
 
 
-def run_shadow_projection(*, state: dict, call_model, call_qa_run) -> dict:
-    """Shadow 只投影状态，不重复调用真实模型、QARun 或领域写操作。"""
-    return dict(state)
+# ---------------------------------------------------------------------------
+# Shadow 模式状态差异记录
+# ---------------------------------------------------------------------------
 
+
+@dataclass
+class ShadowDiffRecord:
+    """Shadow 模式状态差异记录。"""
+
+    trace: RuntimeTraceContext
+    legacy_response_keys: list[str]
+    shadow_state_keys: list[str]
+    key_diff: list[str]  # Shadow 有但 Legacy 没有的 key
+    identical: bool
+
+
+def run_shadow_projection(
+    *,
+    state: dict,
+    call_model,
+    call_qa_run,
+    trace: RuntimeTraceContext | None = None,
+) -> dict:
+    """Shadow 只投影状态，不重复调用真实模型、QARun 或领域写操作。
+
+    返回包含原始状态和差异元数据的字典。
+    """
+    shadow_state = dict(state)
+
+    # 记录 Shadow 运行证据
+    shadow_meta = {
+        "_shadowRan": True,
+        "_shadowTimestamp": datetime.now(UTC).isoformat(),
+    }
+    if trace is not None:
+        shadow_meta["_traceContext"] = trace.to_dict()
+
+    shadow_state["_shadowMeta"] = shadow_meta
+    return shadow_state
+
+
+def compute_shadow_diff(
+    *,
+    legacy_response: Any,
+    shadow_state: dict,
+    trace: RuntimeTraceContext,
+) -> ShadowDiffRecord:
+    """比较 Legacy 响应与 Shadow 投影状态的 key 差异。"""
+    legacy_keys = sorted(_extract_response_keys(legacy_response))
+    shadow_keys = sorted(k for k in shadow_state.keys() if not k.startswith("_"))
+    key_diff = sorted(set(shadow_keys) - set(legacy_keys))
+    return ShadowDiffRecord(
+        trace=trace,
+        legacy_response_keys=legacy_keys,
+        shadow_state_keys=shadow_keys,
+        key_diff=key_diff,
+        identical=len(key_diff) == 0,
+    )
+
+
+def _extract_response_keys(response: Any) -> list[str]:
+    """从响应对象提取 key 列表。"""
+    if isinstance(response, dict):
+        return list(response.keys())
+    if hasattr(response, "model_dump"):
+        dumped = response.model_dump()
+        if isinstance(dumped, dict):
+            return list(dumped.keys())
+    if hasattr(response, "__dict__"):
+        return [k for k in response.__dict__.keys() if not k.startswith("_")]
+    return []
+
+
+# ---------------------------------------------------------------------------
+# 共享 Checkpointer
+# ---------------------------------------------------------------------------
 
 _shared_checkpointer = None
 _shared_checkpointer_context = None
@@ -63,7 +147,17 @@ def _get_shared_checkpointer():
 atexit.register(_close_shared_checkpointer)
 
 
-def _build_graph_for_session(session: Any, credential: str, session_id: str):
+# ---------------------------------------------------------------------------
+# Graph 构建
+# ---------------------------------------------------------------------------
+
+
+def _build_graph_for_session(
+    session: Any,
+    credential: str,
+    session_id: str,
+    trace: RuntimeTraceContext,
+):
     """为当前会话构建并返回 EmployeeTrainingGraph。
 
     依赖注入：将 DB session 和 service 函数通过闭包传给 Graph 节点。
@@ -125,12 +219,16 @@ def _build_graph_for_session(session: Any, credential: str, session_id: str):
         except Exception as exc:
             logger.debug("Classifier 不可用: %s", exc)
 
+    # QARun Tool 使用幂等缓存，绑定到本次 invocation
+    idempotency_store: dict[str, dict] = {}
+
     try:
         from app.services.agent_runtime.qa_run_tool import create_qa_run_tool
         qa_run_tool = create_qa_run_tool(
             session=session,
             credential=credential,
             end_user_id=str(state_row["end_user_id"]),
+            idempotency_store=idempotency_store,
         )
     except Exception as exc:
         logger.debug("QARunTool 不可用: %s", exc)
@@ -140,6 +238,11 @@ def _build_graph_for_session(session: Any, credential: str, session_id: str):
         build_agent_fn = build_rag_answer_agent
     except Exception as exc:
         logger.debug("RAG Agent Factory 不可用: %s", exc)
+
+    def record_skill_call_fn(session, **kwargs):
+        """将 Trace 上下文注入审计记录。"""
+        kwargs.setdefault("session_id", trace.thread_id)
+        return record_training_skill_call(session, **kwargs)
 
     graph = build_employee_training_graph(
         checkpointer=checkpointer,
@@ -154,10 +257,15 @@ def _build_graph_for_session(session: Any, credential: str, session_id: str):
         persist_domain_response_fn=persist_fn,
         build_agent_fn=build_agent_fn,
         classifier=classifier,
-        record_skill_call_fn=record_training_skill_call,
+        record_skill_call_fn=record_skill_call_fn,
         system_prompt="你是员工培训课堂 AI 助手。",
     )
     return graph
+
+
+# ---------------------------------------------------------------------------
+# 公开入口
+# ---------------------------------------------------------------------------
 
 
 def submit_training_classroom_runtime_event(
@@ -168,6 +276,14 @@ def submit_training_classroom_runtime_event(
     runtime_version: RuntimeVersion,
 ) -> Any:
     """课堂事件入口，根据 runtime_version 分流到 Legacy / Shadow / Primary。"""
+    # 生成本次调用的 Trace 上下文
+    trace = RuntimeTraceContext(
+        agent_invocation_id=str(uuid.uuid4()),
+        thread_id=session_id,
+        scenario_type="employee_training",
+        runtime_version=runtime_version.value,
+    )
+
     if runtime_version == RuntimeVersion.LEGACY:
         from app.services.training_classroom_service import submit_classroom_event
         return submit_classroom_event(session, credential, session_id, request)
@@ -179,15 +295,24 @@ def submit_training_classroom_runtime_event(
             state={"sessionId": session_id, "eventType": request.eventType},
             call_model=None,
             call_qa_run=None,
+            trace=trace,
         )
-        logger.debug("Shadow projection for session %s: %s", session_id, shadow_state.keys())
+        diff = compute_shadow_diff(
+            legacy_response=primary_response,
+            shadow_state=shadow_state,
+            trace=trace,
+        )
+        logger.debug(
+            "Shadow diff for session %s: identical=%s, key_diff=%s",
+            session_id, diff.identical, diff.key_diff,
+        )
         return primary_response
 
     # LANGGRAPH_PRIMARY — 走 Graph 编排
     request_id = getattr(request, "requestId", None)
     graph_started = False
     try:
-        graph = _build_graph_for_session(session, credential, session_id)
+        graph = _build_graph_for_session(session, credential, session_id, trace)
         initial_state = {
             "sessionId": session_id,
             "requestId": request_id or "",
@@ -195,10 +320,15 @@ def submit_training_classroom_runtime_event(
             "payload": request.payload or {},
             "query": request.query or "",
             "_credential": credential,
+            "_traceContext": trace.to_dict(),
         }
         config = {"configurable": {"thread_id": session_id}}
         graph_started = True
         result_state = graph.invoke(initial_state, config=config)
+
+        # 更新 Trace 上下文（Graph 执行后可能填充了 qaRunId 等）
+        trace.qa_run_id = result_state.get("qaRunId", "")
+        trace.skill_call_id = result_state.get("skillCallId", "")
 
         # 从 Graph 结果组装响应
         from app.schemas.training_classroom import (
@@ -208,7 +338,6 @@ def submit_training_classroom_runtime_event(
             ClassroomCitationDTO,
             ClassroomProgressUpdateDTO,
         )
-        from datetime import UTC, datetime
 
         content = result_state.get("visibleContent", "处理完成。")
         citations_raw = result_state.get("citations", [])

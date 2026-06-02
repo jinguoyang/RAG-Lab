@@ -25,6 +25,7 @@ class InternalCustomerServiceState(TypedDict, total=False):
     summaryVersion: int
     summaryStatus: str
     toolInvocationMode: str
+    _traceContext: dict[str, Any]
 
 
 def build_internal_customer_service_graph(*, checkpointer, invoke_rag_agent):
