@@ -45,5 +45,10 @@ env/
 # Claude Code local settings
 .claude/
 
+# Root-level temp files (Playwright testing / pytest config)
+/package.json
+/package-lock.json
+pytest.ini
+
 # examples doc
 docs/05-测试与验收/examples/
