@@ -22,10 +22,30 @@ export function DocxPreview({ documentId }: DocxPreviewProps) {
 
         const { blob } = await downloadLibraryDocument(documentId);
         const arrayBuffer = await blob.arrayBuffer();
-        const result = await mammoth.convertToHtml({ arrayBuffer });
+        const result = await mammoth.convertToHtml(
+          { arrayBuffer },
+          {
+            styleMap: [
+              "p[style-name='Heading 1'] => h1:fresh",
+              "p[style-name='Heading 2'] => h2:fresh",
+              "p[style-name='Heading 3'] => h3:fresh",
+              "p[style-name='Heading 4'] => h4:fresh",
+              "p[style-name='Title'] => h1:fresh",
+              "p[style-name='Subtitle'] => h2:fresh",
+              "p[style-name='Quote'] => blockquote:fresh",
+              "p[style-name='List Paragraph'] => li:fresh",
+            ],
+          },
+        );
 
         if (!cancelled) {
-          setHtml(DOMPurify.sanitize(result.value));
+          setHtml(
+            DOMPurify.sanitize(result.value, {
+              ADD_TAGS: ["img"],
+              ADD_ATTR: ["src", "alt", "width", "height"],
+              ALLOW_DATA_ATTR: true,
+            }),
+          );
         }
       } catch (err) {
         if (!cancelled) {
@@ -66,7 +86,7 @@ export function DocxPreview({ documentId }: DocxPreviewProps) {
         <span className="text-sm font-medium text-near-black">文档预览</span>
       </div>
       <div
-        className="prose max-h-[500px] overflow-auto p-4"
+        className="prose max-w-none max-h-[500px] overflow-auto p-4"
         dangerouslySetInnerHTML={{ __html: html ?? "" }}
       />
     </div>

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { Download, Eye, FileText, RefreshCw, Settings2, Trash2, Upload } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
@@ -18,6 +18,7 @@ import {
   createLibraryParseRevision,
   deleteLibraryVersion,
   downloadLibraryDocument,
+  previewLibraryDocument,
   fetchDocumentText,
   fetchDocumentUsage,
   fetchLibraryDetail,
@@ -37,10 +38,6 @@ import type {
   UploadProgress,
 } from "../types/library";
 import { formatFileSize, parseStatusVariant } from "../utils/format";
-
-const DocxPreview = lazy(async () => ({
-  default: (await import("../components/rag/DocxPreview")).DocxPreview,
-}));
 
 function getPreviewType(fileName: string): "pdf" | "markdown" | "text" | "docx" | "unsupported" {
   const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
@@ -490,9 +487,7 @@ export function LibraryDetail() {
             {previewType === "pdf" ? (
               <PdfPreview documentId={docId} fileName={doc.name} />
             ) : previewType === "docx" ? (
-              <Suspense fallback={<Alert variant="info" title="正在加载 DOCX 预览器" message="首次打开 DOCX 预览时需要加载解析组件。" />}>
-                <DocxPreview documentId={docId} />
-              </Suspense>
+              <PdfPreview documentId={docId} fileName={doc.name} downloadFn={previewLibraryDocument} />
             ) : previewType === "markdown" || previewType === "text" ? (
               <TextPreview documentId={docId} />
             ) : (
@@ -576,6 +571,7 @@ export function LibraryDetail() {
                   onParserNameChange={setUploadParserName}
                   contentFormat={uploadContentFormat}
                   onContentFormatChange={setUploadContentFormat}
+                  fileName={uploadFile?.name}
                 />
               </div>
               {uploading && uploadProgress && (
@@ -622,6 +618,7 @@ export function LibraryDetail() {
                   onParserNameChange={setParserName}
                   contentFormat={contentFormat}
                   onContentFormatChange={setContentFormat}
+                  fileName={selectedVersion?.fileName}
                 />
                 <div className="flex justify-end gap-2">
                   <Button variant="secondary" onClick={() => setShowReparse(false)}>取消</Button>

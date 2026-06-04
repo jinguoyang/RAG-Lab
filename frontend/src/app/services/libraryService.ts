@@ -144,6 +144,12 @@ export async function downloadLibraryDocument(
   return apiDownload(`/library/documents/${documentId}/download${query}`);
 }
 
+export async function previewLibraryDocument(
+  documentId: string,
+): Promise<ApiDownload> {
+  return apiDownload(`/library/documents/${documentId}/preview`);
+}
+
 export async function updateLibraryDocument(
   documentId: string,
   body: { name?: string; status?: string },

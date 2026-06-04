@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { FileText } from "lucide-react";
 import { downloadLibraryDocument } from "../../services/libraryService";
+import type { ApiDownload } from "../../services/apiClient";
 
 interface PdfPreviewProps {
   documentId: string;
   fileName: string;
+  downloadFn?: (documentId: string) => Promise<ApiDownload>;
 }
 
-export function PdfPreview({ documentId, fileName }: PdfPreviewProps) {
+export function PdfPreview({ documentId, fileName, downloadFn }: PdfPreviewProps) {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -19,7 +21,8 @@ export function PdfPreview({ documentId, fileName }: PdfPreviewProps) {
       setLoading(true);
       setError(null);
       try {
-        const result = await downloadLibraryDocument(documentId);
+        const fetchFn = downloadFn ?? downloadLibraryDocument;
+        const result = await fetchFn(documentId);
         objectUrl = URL.createObjectURL(result.blob);
         setPdfUrl(objectUrl);
       } catch {
