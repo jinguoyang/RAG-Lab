@@ -68,6 +68,7 @@ from app.tables import (
     qa_run_trace_steps,
     qa_runs,
     graph_snapshots,
+    users,
 )
 from app.services.qa_providers import ProviderCandidate, ProviderError, QARunProviders, get_qa_run_providers
 from app.services.permission_service import build_chunk_access_filter_context, has_kb_permission
@@ -1843,12 +1844,12 @@ def _execute_provider_qa_run(
         re_retrieved: list[ProviderCandidate] = []
         try:
             re_embedding = provider_set.embedding.embed_query(corrective_query)
-            re_dense = provider_set.dense.retrieve(corrective_query, re_embedding, kb_id=kb_id, limit=20)
+            re_dense = provider_set.dense.retrieve(kb_id, corrective_query, re_embedding, 20, access_filter)
             re_retrieved.extend(re_dense)
         except ProviderError:
             pass
         try:
-            re_sparse = provider_set.sparse.retrieve(corrective_query, kb_id=kb_id, limit=20)
+            re_sparse = provider_set.sparse.retrieve(kb_id, corrective_query, 20, access_filter)
             re_retrieved.extend(re_sparse)
         except ProviderError:
             pass
@@ -2616,7 +2617,11 @@ def list_qa_runs(
 
     total = session.execute(select(func.count()).select_from(qa_runs).where(condition)).scalar_one()
     rows = session.execute(
-        select(qa_runs)
+        select(
+            qa_runs,
+            users.c.display_name.label("created_by_name"),
+        )
+        .outerjoin(users, qa_runs.c.created_by == users.c.user_id)
         .where(condition)
         .order_by(qa_runs.c.created_at.desc())
         .offset((page_no - 1) * page_size)
@@ -2638,6 +2643,7 @@ def list_qa_runs(
                 feedbackNote=row["feedback_note"],
                 failureType=_failure_type(row),
                 createdBy=str(row["created_by"]) if row["created_by"] else None,
+                createdByName=row["created_by_name"],
                 createdAt=row["created_at"].isoformat(),
                 latencyMs=row["metrics"].get("latencyMs"),
             )

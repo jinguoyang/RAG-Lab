@@ -111,6 +111,7 @@ export interface QARunListItemDTO {
   feedbackNote: string | null;
   failureType: string | null;
   createdBy: string | null;
+  createdByName: string | null;
   createdAt: string;
   latencyMs: number | null;
 }

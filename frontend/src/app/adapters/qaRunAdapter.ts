@@ -56,6 +56,7 @@ export interface QAHistoryRecordViewModel {
   query: string;
   status: "success" | "partial" | "failed";
   user: string;
+  userName: string;
   time: string;
   rev: string;
   rating: "up" | "down" | "none";
@@ -338,6 +339,7 @@ export function toQAHistoryRecord(run: QARunListItemDTO): QAHistoryRecordViewMod
     query: run.query,
     status: statusToViewStatus(run.status),
     user: run.createdBy || "dev-user",
+    userName: run.createdByName || run.createdBy || "未知用户",
     time: formatDateTime(run.createdAt),
     rev: `rev ${run.configRevisionId.slice(0, 8)}`,
     rating: feedbackToRating(run.feedbackStatus),

@@ -146,6 +146,7 @@ class QARunListItemDTO(BaseModel):
     feedbackNote: str | None = None
     failureType: str | None = None
     createdBy: str | None
+    createdByName: str | None = None
     createdAt: str
     latencyMs: int | None = None
 

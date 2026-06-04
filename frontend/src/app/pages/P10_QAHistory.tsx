@@ -469,7 +469,6 @@ export function QAHistory() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>运行 ID</TableHead>
                   <TableHead className="w-1/3">问题</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>用户</TableHead>
@@ -482,12 +481,11 @@ export function QAHistory() {
               <TableBody>
                 {history.map((run) => (
                   <TableRow key={run.id}>
-                    <TableCell mono>{run.id}</TableCell>
                     <TableCell className="font-medium text-near-black max-w-[260px] truncate" title={run.query}>
                       {run.query}
                     </TableCell>
                     <TableCell><StatusBadge status={run.status} /></TableCell>
-                    <TableCell>{run.user}</TableCell>
+                    <TableCell>{run.userName}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Badge variant="default">{run.rev}</Badge>
