@@ -21,6 +21,7 @@ from app.schemas.library import (
     LibraryDocumentDetailDTO,
     LibraryDocumentUploadResponse,
     LibraryParseRevisionDTO,
+    LibraryParseRevisionActivateResponse,
     LibraryDocumentVersionDTO,
     LibraryFullTextResponse,
     LibraryParseJobDTO,
@@ -123,11 +124,13 @@ def _to_document_dto(
     active_version_file_name: str | None = None,
     latest_parse_status: str | None = None,
     latest_parse_revision_id: UUID | None = None,
+    library_name: str | None = None,
 ) -> LibraryDocumentDTO:
     return LibraryDocumentDTO(
         documentId=str(row["document_id"]),
         ownerId=str(row["owner_id"]),
         libraryId=str(row["library_id"]) if row.get("library_id") else None,
+        libraryName=library_name,
         name=row["name"],
         sourceType=row["source_type"],
         status=row["status"],
@@ -157,8 +160,8 @@ def _to_version_dto(
         fileChecksum=file_checksum,
         status=row["status"],
         parseStatus=row["parse_status"],
-        chunkCount=row["chunk_count"],
         tokenCount=row["token_count"],
+        activeParseRevisionId=str(row["active_parse_revision_id"]) if row.get("active_parse_revision_id") else None,
         createdAt=row["created_at"].isoformat(),
         updatedAt=row["updated_at"].isoformat(),
     )
@@ -195,7 +198,7 @@ def _parse_revision_error_fields(row: RowMapping) -> tuple[str | None, str | Non
     return options.get("errorCode"), options.get("errorMessage")
 
 
-def _to_parse_revision_dto(row: RowMapping) -> LibraryParseRevisionDTO:
+def _to_parse_revision_dto(row: RowMapping, is_active: bool = False) -> LibraryParseRevisionDTO:
     error_code, error_message = _parse_revision_error_fields(row)
     content_text = row["content_text"] or ""
     return LibraryParseRevisionDTO(
@@ -210,6 +213,7 @@ def _to_parse_revision_dto(row: RowMapping) -> LibraryParseRevisionDTO:
         parseOptions=row["parse_options"] or {},
         errorCode=error_code,
         errorMessage=error_message,
+        isActive=is_active,
         createdAt=row["created_at"].isoformat(),
         createdBy=str(row["created_by"]) if row["created_by"] else None,
     )
@@ -417,7 +421,6 @@ def create_library_upload(
             sparse_index_status="not_required",
             graph_index_status="not_required",
             retrieval_ready=False,
-            chunk_count=0,
             metadata={},
             created_by=actor_id,
             updated_by=actor_id,
@@ -519,8 +522,18 @@ def list_library_documents(
         select(func.count()).select_from(documents).where(*where_clauses)
     ).scalar_one()
 
+    # 查询文档时 join document_libraries 获取 library_name
     rows = session.execute(
-        select(documents)
+        select(
+            documents,
+            document_libraries.c.name.label("library_name"),
+        )
+        .select_from(
+            documents.outerjoin(
+                document_libraries,
+                documents.c.library_id == document_libraries.c.library_id,
+            )
+        )
         .where(*where_clauses)
         .order_by(documents.c.updated_at.desc())
         .offset((page_no - 1) * page_size)
@@ -567,6 +580,7 @@ def list_library_documents(
                 active_version_file_name=active_version_file_name,
                 latest_parse_status=latest_parse_status,
                 latest_parse_revision_id=latest_parse_revision_id,
+                library_name=row.get("library_name"),
             )
         )
 
@@ -1031,12 +1045,12 @@ def run_library_parse_job_by_id(job_id: UUID) -> dict:
         )
 
         # 更新 version 的 metadata，保存解析 blocks（不做 chunking），完整正文以 ParseRevision 为准。
+        # 文档库源版本不写 chunk_count；真实 Chunk 数只属于知识库入库版本或 ChunkRevision。
         session.execute(
             update(document_versions)
             .where(document_versions.c.version_id == version_id)
             .values(
                 parse_status="success",
-                chunk_count=len(parsed.blocks),
                 token_count=token_count,
                 status="active" if should_activate else "inactive",
                 metadata={
@@ -1063,7 +1077,7 @@ def run_library_parse_job_by_id(job_id: UUID) -> dict:
         return {
             "job_id": str(job_id),
             "status": "success",
-            "chunk_count": len(parsed.blocks),
+            "block_count": len(parsed.blocks),
             "token_count": token_count,
         }
 
@@ -1123,6 +1137,8 @@ def list_library_parse_revisions(
     if version_row is None:
         raise LibraryDocumentNotFoundError
 
+    active_parse_revision_id = version_row.get("active_parse_revision_id")
+
     rows = session.execute(
         select(parse_revisions)
         .where(
@@ -1131,7 +1147,7 @@ def list_library_parse_revisions(
         )
         .order_by(parse_revisions.c.created_at.desc())
     ).mappings().all()
-    return [_to_parse_revision_dto(row) for row in rows]
+    return [_to_parse_revision_dto(row, is_active=(str(row["parse_revision_id"]) == str(active_parse_revision_id) if active_parse_revision_id else False)) for row in rows]
 
 
 def create_library_parse_revision_job(
@@ -1577,7 +1593,6 @@ def upload_library_version(
             sparse_index_status="not_required",
             graph_index_status="not_required",
             retrieval_ready=False,
-            chunk_count=0,
             metadata={},
             created_by=actor_id,
             updated_by=actor_id,
@@ -1630,7 +1645,6 @@ def upload_library_version(
         fileChecksum=checksum,
         status="processing",
         parseStatus="pending",
-        chunkCount=0,
         tokenCount=None,
         createdAt=now_iso,
         updatedAt=now_iso,
@@ -1906,4 +1920,60 @@ def _mark_job_success(session: Session, job_id: UUID) -> None:
         update(library_parse_jobs)
         .where(library_parse_jobs.c.job_id == job_id)
         .values(status="success", progress=100, finished_at=sa.func.now())
+    )
+
+
+def activate_library_parse_revision(
+    session: Session,
+    current_user: CurrentUserResponse,
+    document_id: UUID,
+    version_id: UUID,
+    parse_revision_id: UUID,
+) -> LibraryParseRevisionActivateResponse:
+    """切换文档版本的活动解析修订。"""
+    _ensure_owner(session, current_user, document_id, "library.document.update")
+
+    # 校验版本存在
+    ver_row = session.execute(
+        select(document_versions).where(
+            document_versions.c.version_id == version_id,
+            document_versions.c.document_id == document_id,
+            document_versions.c.deleted_at.is_(None),
+        ).limit(1)
+    ).mappings().first()
+    if ver_row is None:
+        raise LibraryVersionNotFoundError
+
+    # 获取当前活动解析修订
+    previous_active_id = str(ver_row["active_parse_revision_id"]) if ver_row.get("active_parse_revision_id") else None
+
+    # 校验目标解析修订存在且属于该版本
+    pr_row = session.execute(
+        select(parse_revisions).where(
+            parse_revisions.c.parse_revision_id == parse_revision_id,
+            parse_revisions.c.document_version_id == version_id,
+            parse_revisions.c.deleted_at.is_(None),
+        ).limit(1)
+    ).mappings().first()
+    if pr_row is None:
+        raise LibraryDocumentNotFoundError("Parse revision not found")
+
+    # 校验解析修订状态
+    if pr_row["status"] not in ("success", "completed"):
+        raise LibraryPermissionError("PARSE_REVISION_NOT_READY: Parse revision must be successfully completed before activation.")
+
+    # 更新活动解析修订
+    session.execute(
+        update(document_versions)
+        .where(document_versions.c.version_id == version_id)
+        .values(active_parse_revision_id=parse_revision_id, updated_at=func.now())
+    )
+
+    session.commit()
+
+    return LibraryParseRevisionActivateResponse(
+        documentId=str(document_id),
+        versionId=str(version_id),
+        activeParseRevisionId=str(parse_revision_id),
+        previousActiveParseRevisionId=previous_active_id,
     )

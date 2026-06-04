@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "../components/rag/Card
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
 import { Button } from "../components/rag/Button";
 import { StatusBadge } from "../components/rag/Badge";
-import { AlertTriangle, FileWarning, PlayCircle, ShieldCheck, Upload, Settings } from "lucide-react";
+import { AlertTriangle, FileWarning, PlayCircle, ShieldCheck, Settings } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
 import { fetchKnowledgeBase } from "../services/knowledgeBaseService";
 import type { KnowledgeBase } from "../types/knowledgeBase";
@@ -174,14 +174,9 @@ export function KBOverview() {
         title={knowledgeBase?.name || "知识库概览"}
         description={knowledgeBase?.description || "查看该知识库的核心指标和最近活动。"}
         actions={
-          <>
-            <Button variant="outline" onClick={() => navigate(`/kb/${kbId}/config`)}>
-              <Settings className="w-4 h-4 mr-2" /> 配置
-            </Button>
-            <Button variant="primary" onClick={() => navigate(`/kb/${kbId}/docs`)}>
-              <Upload className="w-4 h-4 mr-2" /> 上传文档
-            </Button>
-          </>
+          <Button variant="outline" onClick={() => navigate(`/kb/${kbId}/config`)}>
+            <Settings className="w-4 h-4 mr-2" /> 配置
+          </Button>
         }
       />
 

@@ -14,6 +14,7 @@ export interface LibraryDocumentDTO {
   documentId: string;
   ownerId: string;
   libraryId: string | null;
+  libraryName: string | null;
   name: string;
   sourceType: string;
   status: LibraryDocumentStatus;
@@ -66,6 +67,7 @@ export interface ParseRevisionDTO {
   parseOptions?: Record<string, unknown>;
   errorCode?: string | null;
   errorMessage?: string | null;
+  isActive?: boolean;
   createdAt: string;
   createdBy?: string | null;
 }
@@ -80,8 +82,8 @@ export interface LibraryDocumentVersionDTO {
   fileChecksum?: string | null;
   status: string;
   parseStatus: "pending" | "running" | "success" | "failed";
-  chunkCount: number;
   tokenCount: number | null;
+  activeParseRevisionId?: string | null;
   createdAt: string;
   updatedAt: string;
   parseRevisions?: ParseRevisionDTO[];
@@ -203,6 +205,13 @@ export interface LibraryVersionActivateResponse {
   documentId: string;
   activeVersionId: string;
   previousActiveVersionId: string | null;
+}
+
+export interface LibraryParseRevisionActivateResponse {
+  documentId: string;
+  versionId: string;
+  activeParseRevisionId: string | null;
+  previousActiveParseRevisionId: string | null;
 }
 
 export interface LibraryReparseRequest {

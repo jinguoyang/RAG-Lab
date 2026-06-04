@@ -8,6 +8,7 @@ class LibraryDocumentDTO(BaseModel):
     documentId: str
     ownerId: str
     libraryId: str | None = None
+    libraryName: str | None = None
     name: str
     sourceType: str
     status: str
@@ -32,8 +33,8 @@ class LibraryDocumentVersionDTO(BaseModel):
     fileChecksum: str | None = None
     status: str
     parseStatus: str
-    chunkCount: int
     tokenCount: int | None
+    activeParseRevisionId: str | None = None
     createdAt: str
     updatedAt: str
 
@@ -77,6 +78,7 @@ class LibraryParseRevisionDTO(BaseModel):
     parseOptions: dict
     errorCode: str | None = None
     errorMessage: str | None = None
+    isActive: bool = False
     createdAt: str
     createdBy: str | None = None
 
@@ -224,3 +226,16 @@ class LibraryVersionActivateResponse(BaseModel):
     documentId: str
     activeVersionId: str
     previousActiveVersionId: str | None
+
+
+class LibraryParseRevisionActivateRequest(BaseModel):
+    """切换活动解析修订请求。"""
+    parseRevisionId: str
+
+
+class LibraryParseRevisionActivateResponse(BaseModel):
+    """切换活动解析修订响应。"""
+    documentId: str
+    versionId: str
+    activeParseRevisionId: str | None
+    previousActiveParseRevisionId: str | None

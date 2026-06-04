@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Download, FileWarning, Eye, RefreshCw, Trash2, FolderOpen } from "lucide-react";
+import { Download, FileWarning, Eye, RefreshCw, Trash2, FolderOpen, ChevronRight, ArrowLeft, Search } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
@@ -16,9 +16,9 @@ import {
   downloadDocumentSource,
   runBulkDocumentGovernance,
 } from "../services/documentService";
-import { fetchLibraryDocuments, fetchLibraryVersions, bindDocumentsToKB } from "../services/libraryService";
+import { fetchLibraryDocuments, fetchLibraryVersions, fetchLibraries, bindDocumentsToKB } from "../services/libraryService";
 import type { DocumentDTO, JobStatus } from "../types/document";
-import type { LibraryDocumentDTO, LibraryDocumentVersionDTO } from "../types/library";
+import type { LibraryDocumentDTO, LibraryDocumentVersionDTO, LibraryDTO } from "../types/library";
 
 const DOCUMENT_PAGE_SIZE = 10;
 
@@ -43,11 +43,25 @@ export function DocumentCenter() {
     title: string;
     message: string;
   } | null>(null);
+  const LIBRARY_PICKER_PAGE_SIZE = 10;
+  const SEARCH_DEBOUNCE_MS = 300;
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showLibraryPicker, setShowLibraryPicker] = useState(false);
-  const [libraryDocs, setLibraryDocs] = useState<LibraryDocumentDTO[]>([]);
-  const [libraryTotal, setLibraryTotal] = useState(0);
-  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
+  const [libraries, setLibraries] = useState<LibraryDTO[]>([]);
+  const [librariesTotal, setLibrariesTotal] = useState(0);
   const [libraryLoading, setLibraryLoading] = useState(false);
+  const [libraryPageNo, setLibraryPageNo] = useState(1);
+  const [selectedLibrary, setSelectedLibrary] = useState<LibraryDTO | null>(null);
+  const [libraryDocs, setLibraryDocs] = useState<LibraryDocumentDTO[]>([]);
+  const [libraryDocsTotal, setLibraryDocsTotal] = useState(0);
+  const [libraryDocsLoading, setLibraryDocsLoading] = useState(false);
+  const [libraryDocsPageNo, setLibraryDocsPageNo] = useState(1);
+  const [librarySearchKeyword, setLibrarySearchKeyword] = useState("");
+  const [searchResults, setSearchResults] = useState<LibraryDocumentDTO[]>([]);
+  const [searchTotal, setSearchTotal] = useState(0);
+  const [searchPageNo, setSearchPageNo] = useState(1);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
   const [bindingLoading, setBindingLoading] = useState(false);
   const [versionPickerDoc, setVersionPickerDoc] = useState<LibraryDocumentDTO | null>(null);
   const [versionPickerVersions, setVersionPickerVersions] = useState<LibraryDocumentVersionDTO[]>([]);
@@ -246,12 +260,13 @@ export function DocumentCenter() {
     }
   }
 
-  async function loadLibraryDocs() {
+  async function loadLibraries(pageNo = 1) {
     setLibraryLoading(true);
     try {
-      const page = await fetchLibraryDocuments({ pageSize: 100 });
-      setLibraryDocs(page.items);
-      setLibraryTotal(page.total);
+      const page = await fetchLibraries({ pageNo, pageSize: LIBRARY_PICKER_PAGE_SIZE });
+      setLibraries(page.items);
+      setLibrariesTotal(page.total);
+      setLibraryPageNo(pageNo);
     } catch (error) {
       setFeedback({
         variant: "error",
@@ -263,10 +278,89 @@ export function DocumentCenter() {
     }
   }
 
+  async function loadLibraryDocs(libraryId: string, pageNo = 1) {
+    setLibraryDocsLoading(true);
+    try {
+      const page = await fetchLibraryDocuments({ libraryId, pageNo, pageSize: LIBRARY_PICKER_PAGE_SIZE });
+      setLibraryDocs(page.items);
+      setLibraryDocsTotal(page.total);
+      setLibraryDocsPageNo(pageNo);
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "文档加载失败",
+        message: error instanceof Error ? error.message : "请检查后端服务。",
+      });
+    } finally {
+      setLibraryDocsLoading(false);
+    }
+  }
+
+  async function searchDocuments(keyword: string, pageNo = 1) {
+    setSearchLoading(true);
+    try {
+      const page = await fetchLibraryDocuments({ keyword, pageNo, pageSize: LIBRARY_PICKER_PAGE_SIZE });
+      setSearchResults(page.items);
+      setSearchTotal(page.total);
+      setSearchPageNo(pageNo);
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: "搜索失败",
+        message: error instanceof Error ? error.message : "请检查后端服务。",
+      });
+    } finally {
+      setSearchLoading(false);
+    }
+  }
+
   function handleOpenLibraryPicker() {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
     setSelectedDocIds([]);
+    setSelectedLibrary(null);
+    setLibrarySearchKeyword("");
+    setSearchResults([]);
+    setSearchTotal(0);
     setShowLibraryPicker(true);
-    void loadLibraryDocs();
+    void loadLibraries(1);
+  }
+
+  function handleSelectLibrary(lib: LibraryDTO) {
+    setSelectedLibrary(lib);
+    setLibrarySearchKeyword("");
+    setSelectedDocIds([]);
+    void loadLibraryDocs(lib.libraryId, 1);
+  }
+
+  function handleBackToLibraries() {
+    setSelectedLibrary(null);
+    setLibrarySearchKeyword("");
+    setSearchResults([]);
+    setSearchTotal(0);
+    setSelectedDocIds([]);
+  }
+
+  function handleLibrarySearch(keyword: string) {
+    setLibrarySearchKeyword(keyword);
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+    if (keyword.trim()) {
+      setSearchLoading(true);
+      searchDebounceRef.current = setTimeout(() => {
+        setSelectedLibrary(null);
+        void searchDocuments(keyword, 1);
+      }, SEARCH_DEBOUNCE_MS);
+    } else {
+      setSearchResults([]);
+      setSearchTotal(0);
+      setSearchLoading(false);
+      if (!selectedLibrary) {
+        void loadLibraries(1);
+      }
+    }
   }
 
   async function handleBind() {
@@ -516,52 +610,207 @@ export function DocumentCenter() {
           <div className="absolute inset-0 bg-black/30" onClick={() => setShowLibraryPicker(false)} />
           <div className="relative bg-ivory border border-border-cream rounded-xl shadow-lg w-full max-w-2xl max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between px-6 py-4 border-b border-border-cream">
-              <h2 className="font-serif text-lg text-near-black">从文档库添加</h2>
+              <div className="flex items-center gap-2">
+                {selectedLibrary && !librarySearchKeyword && (
+                  <Button variant="ghost" size="sm" onClick={handleBackToLibraries}>
+                    <ArrowLeft className="w-4 h-4" />
+                  </Button>
+                )}
+                <h2 className="font-serif text-lg text-near-black">
+                  {librarySearchKeyword ? "搜索结果" : selectedLibrary ? selectedLibrary.name : "从文档库添加"}
+                </h2>
+              </div>
               <Button variant="ghost" size="sm" onClick={() => setShowLibraryPicker(false)}>
                 <span className="text-stone-gray text-lg">&times;</span>
               </Button>
             </div>
+
+            {/* 搜索栏 */}
+            <div className="px-4 pt-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-gray" />
+                <input
+                  type="text"
+                  placeholder="搜索文档..."
+                  value={librarySearchKeyword}
+                  onChange={(e) => handleLibrarySearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 text-sm border border-border-cream rounded-lg bg-parchment focus:outline-none focus:ring-2 focus:ring-ochre/30"
+                />
+              </div>
+            </div>
+
             <div className="flex-1 min-h-0 overflow-auto p-4">
-              {libraryLoading ? (
-                <p className="text-center text-stone-gray py-8">加载中...</p>
-              ) : libraryDocs.length === 0 ? (
-                <p className="text-center text-stone-gray py-8">文档库暂无文档</p>
-              ) : (
-                <div className="space-y-2">
-                  <p className="text-sm text-stone-gray mb-3">共 {libraryTotal} 个文档库文档，已选 {selectedDocIds.length} 个</p>
-                  {libraryDocs.map((doc) => (
-                    <label
-                      key={doc.documentId}
-                      className="flex items-center gap-3 p-3 rounded-lg border border-border-cream bg-parchment cursor-pointer hover:bg-border-cream/30"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedDocIds.includes(doc.documentId)}
-                        onChange={(event) => {
-                          setSelectedDocIds((current) =>
-                            event.target.checked
-                              ? [...current, doc.documentId]
-                              : current.filter((id) => id !== doc.documentId)
-                          );
-                        }}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium text-near-black truncate">{doc.name}</p>
-                        <p className="text-xs text-stone-gray">{doc.sourceType}</p>
+              {librarySearchKeyword ? (
+                // 搜索结果
+                searchLoading ? (
+                  <p className="text-center text-stone-gray py-8">搜索中...</p>
+                ) : searchResults.length === 0 ? (
+                  <p className="text-center text-stone-gray py-8">未找到匹配的文档</p>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-sm text-stone-gray mb-3">共 {searchTotal} 个结果，已选 {selectedDocIds.length} 个</p>
+                    {searchResults.map((doc) => (
+                      <label
+                        key={doc.documentId}
+                        className="flex items-center gap-3 p-3 rounded-lg border border-border-cream bg-parchment cursor-pointer hover:bg-border-cream/30"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedDocIds.includes(doc.documentId)}
+                          onChange={(event) => {
+                            setSelectedDocIds((current) =>
+                              event.target.checked
+                                ? [...current, doc.documentId]
+                                : current.filter((id) => id !== doc.documentId)
+                            );
+                          }}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-near-black truncate">{doc.name}</p>
+                          <p className="text-xs text-stone-gray">{doc.libraryName ?? "未分类"}</p>
+                        </div>
+                      </label>
+                    ))}
+                    {searchTotal > LIBRARY_PICKER_PAGE_SIZE && (
+                      <div className="flex items-center justify-center gap-2 pt-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={searchPageNo <= 1}
+                          onClick={() => void searchDocuments(librarySearchKeyword, searchPageNo - 1)}
+                        >
+                          上一页
+                        </Button>
+                        <span className="text-sm text-stone-gray">
+                          {searchPageNo} / {Math.ceil(searchTotal / LIBRARY_PICKER_PAGE_SIZE)}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={searchPageNo >= Math.ceil(searchTotal / LIBRARY_PICKER_PAGE_SIZE)}
+                          onClick={() => void searchDocuments(librarySearchKeyword, searchPageNo + 1)}
+                        >
+                          下一页
+                        </Button>
                       </div>
-                    </label>
-                  ))}
-                </div>
+                    )}
+                  </div>
+                )
+              ) : !selectedLibrary ? (
+                // 文档库列表
+                libraryLoading ? (
+                  <p className="text-center text-stone-gray py-8">加载中...</p>
+                ) : libraries.length === 0 ? (
+                  <p className="text-center text-stone-gray py-8">暂无文档库</p>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-sm text-stone-gray mb-3">共 {librariesTotal} 个文档库</p>
+                    {libraries.map((lib) => (
+                      <button
+                        key={lib.libraryId}
+                        className="w-full flex items-center gap-3 p-3 rounded-lg border border-border-cream bg-parchment cursor-pointer hover:bg-border-cream/30 text-left"
+                        onClick={() => handleSelectLibrary(lib)}
+                      >
+                        <FolderOpen className="w-5 h-5 text-ochre flex-shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-near-black truncate">{lib.name}</p>
+                          <p className="text-xs text-stone-gray">{lib.documentCount} 个文档</p>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-stone-gray flex-shrink-0" />
+                      </button>
+                    ))}
+                    {librariesTotal > LIBRARY_PICKER_PAGE_SIZE && (
+                      <div className="flex items-center justify-center gap-2 pt-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={libraryPageNo <= 1}
+                          onClick={() => void loadLibraries(libraryPageNo - 1)}
+                        >
+                          上一页
+                        </Button>
+                        <span className="text-sm text-stone-gray">
+                          {libraryPageNo} / {Math.ceil(librariesTotal / LIBRARY_PICKER_PAGE_SIZE)}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={libraryPageNo >= Math.ceil(librariesTotal / LIBRARY_PICKER_PAGE_SIZE)}
+                          onClick={() => void loadLibraries(libraryPageNo + 1)}
+                        >
+                          下一页
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )
+              ) : (
+                // 文档库内的文档列表
+                libraryDocsLoading ? (
+                  <p className="text-center text-stone-gray py-8">加载中...</p>
+                ) : libraryDocs.length === 0 ? (
+                  <p className="text-center text-stone-gray py-8">该文档库暂无文档</p>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-sm text-stone-gray mb-3">共 {libraryDocsTotal} 个文档，已选 {selectedDocIds.length} 个</p>
+                    {libraryDocs.map((doc) => (
+                      <label
+                        key={doc.documentId}
+                        className="flex items-center gap-3 p-3 rounded-lg border border-border-cream bg-parchment cursor-pointer hover:bg-border-cream/30"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedDocIds.includes(doc.documentId)}
+                          onChange={(event) => {
+                            setSelectedDocIds((current) =>
+                              event.target.checked
+                                ? [...current, doc.documentId]
+                                : current.filter((id) => id !== doc.documentId)
+                            );
+                          }}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-near-black truncate">{doc.name}</p>
+                        </div>
+                      </label>
+                    ))}
+                    {libraryDocsTotal > LIBRARY_PICKER_PAGE_SIZE && (
+                      <div className="flex items-center justify-center gap-2 pt-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={libraryDocsPageNo <= 1}
+                          onClick={() => void loadLibraryDocs(selectedLibrary.libraryId, libraryDocsPageNo - 1)}
+                        >
+                          上一页
+                        </Button>
+                        <span className="text-sm text-stone-gray">
+                          {libraryDocsPageNo} / {Math.ceil(libraryDocsTotal / LIBRARY_PICKER_PAGE_SIZE)}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={libraryDocsPageNo >= Math.ceil(libraryDocsTotal / LIBRARY_PICKER_PAGE_SIZE)}
+                          onClick={() => void loadLibraryDocs(selectedLibrary.libraryId, libraryDocsPageNo + 1)}
+                        >
+                          下一页
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )
               )}
             </div>
-            <div className="flex justify-end gap-2 px-6 py-4 border-t border-border-cream">
-              <Button variant="ghost" onClick={() => setShowLibraryPicker(false)}>
-                取消
-              </Button>
-              <Button variant="primary" disabled={bindingLoading || selectedDocIds.length === 0} onClick={() => void handleBind()}>
-                {bindingLoading ? "绑定中..." : `绑定选中文档 (${selectedDocIds.length})`}
-              </Button>
-            </div>
+            {(selectedLibrary || librarySearchKeyword) && (
+              <div className="flex justify-end gap-2 px-6 py-4 border-t border-border-cream">
+                <Button variant="ghost" onClick={() => setShowLibraryPicker(false)}>
+                  取消
+                </Button>
+                <Button variant="primary" disabled={bindingLoading || selectedDocIds.length === 0} onClick={() => void handleBind()}>
+                  {bindingLoading ? "绑定中..." : `绑定选中文档 (${selectedDocIds.length})`}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -591,7 +840,6 @@ export function DocumentCenter() {
                     <p className="font-medium text-near-black">v{v.versionNo}</p>
                     <p className="text-xs text-stone-gray">{v.fileName ?? "—"}</p>
                     <div className="mt-1 flex flex-wrap gap-2 text-xs text-stone-gray">
-                      <span>Chunks: {v.chunkCount}</span>
                       {v.tokenCount != null && <span>Tokens: {v.tokenCount}</span>}
                       <span>创建时间: {new Date(v.createdAt).toLocaleString()}</span>
                     </div>
