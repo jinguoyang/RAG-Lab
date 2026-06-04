@@ -114,6 +114,8 @@ AI 可以建议下一步，但程序必须判断是否允许流转。
 
 ## 5. 接口草案
 
+所有三方调用接口统一使用 `Authorization: Bearer <app_api_key>` 鉴权。平台根据 App API Key 解析所属 App、知识库和默认配置版本，请求体不得携带 `appId` 来切换调用对象；响应中仍返回 `appId` 作为确认和审计字段。
+
 - `POST /api/v1/training/plans/drafts`
 - `POST /api/v1/training/plans/{draftId}/review`
 - `POST /api/v1/training/questions/drafts`

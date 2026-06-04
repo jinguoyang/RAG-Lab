@@ -33,7 +33,7 @@
 
 ### 3.1 平台绑定页
 
-配置平台地址、App ID 和 API Key 引用。API Key 只用于服务端调用平台，不在浏览器端展示。
+配置平台地址和 App API Key 引用。App API Key 只用于服务端调用平台，不在浏览器端展示；外部应用请求体不携带 `appId`，平台根据 Key 反查所属 App。
 
 ### 3.2 学习计划审核页
 
@@ -93,7 +93,6 @@
 
 - `id`
 - `platform_base_url`
-- `platform_app_id`
 - `platform_api_key_ref`
 - `status`
 - `created_at`
