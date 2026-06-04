@@ -240,7 +240,7 @@ def create_question_drafts(session: Session, credential: str, request: Any) -> l
 
     优先使用 LLM 辅助出题，LLM 失败时静默回退到模板生成。
     """
-    context = resolve_training_context(session, credential, request.appId)
+    context = resolve_training_context(session, credential)
     now = datetime.now(UTC)
     query = " ".join([request.jobTitle or "", *getattr(request, "abilityGroups", [])]).strip()
     rows = read_training_evidence(

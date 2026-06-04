@@ -109,7 +109,7 @@ def create_classroom_session(session: Session, credential: str, request: Any) ->
     """创建平台侧课堂会话，后续上下文和状态以此为准。"""
     from app.services.agent_runtime.runtime_facade import resolve_runtime_version
 
-    context = resolve_training_context(session, credential, request.appId)
+    context = resolve_training_context(session, credential)
     now = datetime.now(UTC)
     session_id = new_id()
     runtime_version = resolve_runtime_version(getattr(request, "runtimeVersion", None))

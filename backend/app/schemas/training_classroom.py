@@ -3,13 +3,14 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ClassroomSessionCreateRequest(BaseModel):
     """创建课堂会话请求。"""
 
-    appId: str = Field(min_length=1, max_length=36)
+    model_config = ConfigDict(extra="forbid")
+
     planId: str | None = Field(default=None, max_length=36)
     endUserId: str = Field(min_length=1, max_length=128)
     inputs: dict[str, Any] | None = None

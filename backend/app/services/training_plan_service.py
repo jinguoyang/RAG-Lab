@@ -278,7 +278,7 @@ def create_plan_draft(session: Session, credential: str, request: Any) -> PlanDr
 
     优先使用 LLM 生成，失败时静默回退到规则化逻辑。
     """
-    context = resolve_training_context(session, credential, request.appId)
+    context = resolve_training_context(session, credential)
     now = datetime.now(UTC)
     query = f"{request.jobTitle} {request.jobDescription or ''}".strip()
     rows = read_training_evidence(session, context.kb_row["kb_id"], query, limit=8)

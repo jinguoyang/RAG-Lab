@@ -1,13 +1,14 @@
 """员工培训学习计划平台侧 DTO。"""
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class PlanDraftRequest(BaseModel):
     """学习计划草稿生成请求。"""
 
-    appId: str = Field(min_length=1, max_length=36)
+    model_config = ConfigDict(extra="forbid")
+
     jobTitle: str = Field(min_length=1, max_length=256)
     jobDescription: str = Field(default="", max_length=4000)
 

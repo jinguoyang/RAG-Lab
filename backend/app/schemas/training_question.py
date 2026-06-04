@@ -3,14 +3,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class QuestionDraftRequest(BaseModel):
     """题库草稿生成请求。"""
 
+    model_config = ConfigDict(extra="forbid")
+
     planId: str = Field(min_length=1, max_length=36)
-    appId: str = Field(min_length=1, max_length=36)
     jobTitle: str = Field(default="", max_length=256)
     abilityGroups: list[str] = Field(default_factory=list)
     count: int = Field(default=3, ge=1, le=10)
