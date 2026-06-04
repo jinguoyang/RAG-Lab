@@ -15,6 +15,7 @@ import { ParseOptionsForm } from "../components/rag/ParseOptionsForm";
 import { useConfirmDialog } from "../components/rag/ConfirmDialog";
 import {
   activateLibraryVersion,
+  activateLibraryParseRevision,
   createLibraryParseRevision,
   deleteLibraryVersion,
   downloadLibraryDocument,
@@ -234,6 +235,17 @@ export function LibraryDetail() {
       await activateLibraryVersion(docId, versionId);
       setFeedback({ variant: "success", title: "切换成功", message: `已切换到 v${versionNo}。` });
       await loadData();
+    } catch (error) {
+      setFeedback({ variant: "error", title: "切换失败", message: error instanceof Error ? error.message : "请稍后重试。" });
+    }
+  }
+
+  async function handleActivateParseRevision(parseRevisionId: string) {
+    if (!selectedVersion) return;
+    try {
+      await activateLibraryParseRevision(docId, selectedVersion.versionId, parseRevisionId);
+      setFeedback({ variant: "success", title: "切换成功", message: "已成功切换活动解析版本。" });
+      await loadParseRevisions(selectedVersion.versionId);
     } catch (error) {
       setFeedback({ variant: "error", title: "切换失败", message: error instanceof Error ? error.message : "请稍后重试。" });
     }
@@ -469,6 +481,18 @@ export function LibraryDetail() {
                     <TableCell className="max-w-[180px] truncate text-xs text-red-600" title={revision.errorMessage ?? undefined}>{revision.errorMessage ?? "-"}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
+                        {revision.isActive ? (
+                          <Badge variant="success">当前活动</Badge>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title="设为活动"
+                            onClick={() => void handleActivateParseRevision(revision.parseRevisionId)}
+                          >
+                            设为活动
+                          </Button>
+                        )}
                         <Button variant="ghost" size="sm" title="查看正文" onClick={() => setPreviewParseRevision(revision.parseRevisionId)}>
                           <Eye className="h-4 w-4" />
                         </Button>

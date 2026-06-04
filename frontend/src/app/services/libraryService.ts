@@ -1,4 +1,4 @@
-import { apiDelete, apiDownload, apiGet, apiPatchJson, apiPostJson } from "./apiClient";
+import { apiDelete, apiDownload, apiGet, apiPatchJson, apiPostJson, apiPutJson } from "./apiClient";
 import { API_BASE_URL } from "./apiClient";
 import type { ApiDownload } from "./apiClient";
 import type {
@@ -17,6 +17,7 @@ import type {
   LibraryPageResponse,
   LibraryParseJobDTO,
   LibraryParseRevisionCreateResponse,
+  LibraryParseRevisionActivateResponse,
   LibraryParsedChunksResponse,
   LibraryReparseRequest,
   LibraryUploadParseOptions,
@@ -268,6 +269,17 @@ export async function createLibraryParseRevision(
   return apiPostJson<LibraryParseRevisionCreateResponse>(
     `/library/documents/${documentId}/versions/${versionId}/parse-revisions`,
     body,
+  );
+}
+
+export async function activateLibraryParseRevision(
+  documentId: string,
+  versionId: string,
+  parseRevisionId: string,
+): Promise<LibraryParseRevisionActivateResponse> {
+  return apiPutJson<LibraryParseRevisionActivateResponse>(
+    `/library/documents/${documentId}/versions/${versionId}/active-parse-revision`,
+    { parseRevisionId },
   );
 }
 

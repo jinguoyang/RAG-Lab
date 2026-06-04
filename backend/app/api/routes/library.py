@@ -32,6 +32,8 @@ from app.schemas.library import (
     LibraryParseJobDTO,
     LibraryParseRevisionCreateResponse,
     LibraryParseRevisionDTO,
+    LibraryParseRevisionActivateRequest,
+    LibraryParseRevisionActivateResponse,
     LibraryParsedChunksResponse,
     LibraryReparseRequest,
     LibraryStatsResponse,
@@ -50,6 +52,7 @@ from app.services.library_service import (
     LibraryVersionInUseError,
     LibraryVersionNotFoundError,
     activate_library_version,
+    activate_library_parse_revision,
     analyze_document_deletion_impact,
     batch_action,
     create_library_upload,
@@ -475,6 +478,31 @@ def create_parse_revision(
             reason=body.reason,
         )
         return LibraryParseRevisionCreateResponse(**result)
+    except Exception as exc:
+        _raise_library_error(exc)
+        raise  # unreachable
+
+
+@router.put(
+    "/{document_id}/versions/{version_id}/active-parse-revision",
+    response_model=LibraryParseRevisionActivateResponse,
+)
+def activate_parse_revision(
+    document_id: UUID,
+    version_id: UUID,
+    body: LibraryParseRevisionActivateRequest,
+    current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db_session)],
+) -> LibraryParseRevisionActivateResponse:
+    """切换文档版本的活动解析修订。"""
+    try:
+        return activate_library_parse_revision(
+            db,
+            current_user,
+            document_id,
+            version_id,
+            UUID(body.parseRevisionId),
+        )
     except Exception as exc:
         _raise_library_error(exc)
         raise  # unreachable
