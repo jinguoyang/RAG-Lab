@@ -6,7 +6,7 @@
 
 | 功能 | 说明 |
 |------|------|
-| 平台绑定 | 配置平台地址、App ID 和 API Key |
+| 平台绑定 | 配置平台地址和 App API Key |
 | 学习计划审核 | 展示平台生成的学习计划草稿，支持通过/驳回操作 |
 | 题库审核 | 展示平台生成的题目草稿，支持审核 |
 | 员工课堂 | 多轮对话、课堂状态流转、A/B/C/D 结构化答题 |
@@ -99,8 +99,7 @@ npm run dev
 |------|--------|------|
 | `EXT_TRAINING_DATABASE_URL` | `postgresql://postgres:postgres@localhost:5432/external_training` | PostgreSQL 连接串 |
 | `EXT_TRAINING_PLATFORM_BASE_URL` | `http://localhost:8000/api/v1` | 平台 API 地址 |
-| `EXT_TRAINING_PLATFORM_APP_ID` | 空 | 平台 App ID |
-| `EXT_TRAINING_PLATFORM_API_KEY` | 空 | 平台 API Key |
+| `EXT_TRAINING_PLATFORM_API_KEY` | 空 | 平台 App API Key；平台根据 Key 反查所属 App |
 
 ### 验证
 
@@ -124,7 +123,7 @@ npm run build
 - 不自行决定课堂业务状态流转
 - 不实现完整 LMS、证书或组织学习档案
 
-所有智能功能通过平台 `/api/v1/training/` 接口调用。
+所有智能功能通过平台 `/api/v1/training/` 接口调用。外部应用只在服务端保存 App API Key，请求体不携带 `appId`。
 
 ## 页面路由
 

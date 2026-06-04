@@ -16,17 +16,16 @@ def create_binding(request: BindingCreateRequest, db: Session = Depends(get_db))
     binding_id = str(uuid4())
     db.execute(platform_app_bindings.insert().values(
         id=binding_id, platform_base_url=request.platformBaseUrl,
-        platform_app_id=request.platformAppId, platform_api_key_ref=request.platformApiKey,
+        platform_app_id="", platform_api_key_ref=request.platformApiKey,
         status="active", created_at=now,
     ))
     db.commit()
     return BindingResponse(id=binding_id, platformBaseUrl=request.platformBaseUrl,
-                          platformAppId=request.platformAppId, status="active", createdAt=now.isoformat())
+                          status="active", createdAt=now.isoformat())
 
 
 @router.get("", response_model=list[BindingResponse])
 def list_bindings(db: Session = Depends(get_db)):
     rows = db.execute(platform_app_bindings.select().where(platform_app_bindings.c.status == "active")).fetchall()
     return [BindingResponse(id=r.id, platformBaseUrl=r.platform_base_url,
-                           platformAppId=r.platform_app_id, status=r.status,
-                           createdAt=r.created_at.isoformat()) for r in rows]
+                           status=r.status, createdAt=r.created_at.isoformat()) for r in rows]

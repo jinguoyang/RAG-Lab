@@ -3,7 +3,6 @@ import type { ClassroomSession, ClassroomEventResponse } from "../types/classroo
 
 export function createSession(endUserId: string, planId?: string): Promise<ClassroomSession> {
   return apiPost("/classroom/sessions", {
-    appId: "demo-app",
     endUserId,
     ...(planId ? { planId } : {}),
   });

@@ -5,7 +5,6 @@ from typing import Any
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.core.database import new_id
 from app.tables import training_plans
 
 
@@ -15,6 +14,14 @@ class TrainingPlanNotFoundError(Exception):
 
 class TrainingPlanConflictError(ValueError):
     pass
+
+
+def _parse_platform_datetime(value: str) -> datetime:
+    """解析平台返回的 ISO 时间，保证本地镜像记录与平台时间一致。"""
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 
 def create_plan_draft(session: Session, user_id: str | None, request: Any) -> Any:
@@ -28,7 +35,6 @@ def create_plan_draft(session: Session, user_id: str | None, request: Any) -> An
     client = PlatformClient(settings.platform_base_url, settings.platform_api_key)
     try:
         plan_data = client.create_plan_draft(
-            app_id=request.appId,
             job_title=request.jobTitle,
             job_description=request.jobDescription,
         )
@@ -40,45 +46,45 @@ def create_plan_draft(session: Session, user_id: str | None, request: Any) -> An
     except httpx.ConnectError:
         raise TrainingPlanConflictError("无法连接平台服务，请检查配置")
 
-    now = datetime.now(timezone.utc)
-    plan_id = new_id()
+    created_at = _parse_platform_datetime(plan_data["createdAt"])
+    updated_at = _parse_platform_datetime(plan_data["updatedAt"])
 
     session.execute(
         training_plans.insert().values(
-            plan_id=plan_id,
-            app_id=request.appId,
-            job_title=request.jobTitle,
-            job_description=request.jobDescription,
-            status="draft",
+            plan_id=plan_data["planId"],
+            app_id=plan_data["appId"],
+            job_title=plan_data["jobTitle"],
+            job_description=plan_data["jobDescription"],
+            status=plan_data["status"],
             ability_groups=plan_data["abilityGroups"],
             documents=plan_data["documents"],
             evidence_chunk_ids=plan_data["evidenceChunkIds"],
             recommend_reason=plan_data["recommendReason"],
             reading_order=plan_data["readingOrder"],
-            version=1,
+            version=plan_data["version"],
             metadata={},
-            created_at=now,
+            created_at=created_at,
             created_by=user_id,
-            updated_at=now,
+            updated_at=updated_at,
             updated_by=user_id,
         )
     )
     session.commit()
 
     return TrainingPlanDTO(
-        planId=plan_id,
-        appId=request.appId,
-        jobTitle=request.jobTitle,
-        jobDescription=request.jobDescription,
-        status="draft",
+        planId=plan_data["planId"],
+        appId=plan_data["appId"],
+        jobTitle=plan_data["jobTitle"],
+        jobDescription=plan_data["jobDescription"],
+        status=plan_data["status"],
         abilityGroups=plan_data["abilityGroups"],
         documents=plan_data["documents"],
         evidenceChunkIds=plan_data["evidenceChunkIds"],
         recommendReason=plan_data["recommendReason"],
         readingOrder=plan_data["readingOrder"],
-        version=1,
-        createdAt=now.isoformat(),
-        updatedAt=now.isoformat(),
+        version=plan_data["version"],
+        createdAt=plan_data["createdAt"],
+        updatedAt=plan_data["updatedAt"],
     )
 
 

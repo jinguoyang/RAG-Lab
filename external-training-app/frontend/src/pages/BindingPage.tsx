@@ -4,7 +4,7 @@ import type { BindingResponse } from "../types/binding";
 
 export function BindingPage() {
   const [bindings, setBindings] = useState<BindingResponse[]>([]);
-  const [form, setForm] = useState({ platformBaseUrl: "", platformAppId: "", platformApiKey: "" });
+  const [form, setForm] = useState({ platformBaseUrl: "", platformApiKey: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -19,7 +19,7 @@ export function BindingPage() {
     try {
       const result = await createBinding(form);
       setBindings([result, ...bindings]);
-      setForm({ platformBaseUrl: "", platformAppId: "", platformApiKey: "" });
+      setForm({ platformBaseUrl: "", platformApiKey: "" });
     } catch (err) {
       setError(String(err));
     } finally {
@@ -36,12 +36,6 @@ export function BindingPage() {
           <input type="text" value={form.platformBaseUrl}
             onChange={(e) => setForm({ ...form, platformBaseUrl: e.target.value })}
             className="w-full border rounded px-3 py-2" placeholder="http://localhost:8000/api/v1" required />
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">App ID</label>
-          <input type="text" value={form.platformAppId}
-            onChange={(e) => setForm({ ...form, platformAppId: e.target.value })}
-            className="w-full border rounded px-3 py-2" required />
         </div>
         <div>
           <label className="block text-sm font-medium mb-1">API Key</label>
@@ -61,7 +55,7 @@ export function BindingPage() {
           {bindings.map((b) => (
             <div key={b.id} className="border rounded p-3">
               <p className="font-medium">{b.platformBaseUrl}</p>
-              <p className="text-sm text-gray-500">App: {b.platformAppId} | 状态: {b.status}</p>
+              <p className="text-sm text-gray-500">状态: {b.status}</p>
             </div>
           ))}
         </div>

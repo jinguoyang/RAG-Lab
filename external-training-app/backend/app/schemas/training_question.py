@@ -1,12 +1,13 @@
 """题库 schemas。"""
 from typing import Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TrainingQuestionDraftRequest(BaseModel):
     """生成题库草稿请求。"""
+    model_config = ConfigDict(extra="forbid")
+
     planId: str = Field(min_length=1, max_length=36)
-    appId: str = Field(min_length=1, max_length=36)
     jobTitle: str = ""
     abilityGroups: list[str] = Field(default_factory=list)
     count: int = Field(ge=1, le=50, default=5)

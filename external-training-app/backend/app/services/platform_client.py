@@ -13,13 +13,12 @@ class PlatformClient:
         self.base_url = base_url.rstrip("/")
         self.headers = {"Authorization": f"Bearer {api_key}"}
 
-    def create_plan_draft(self, app_id: str, job_title: str, job_description: str) -> dict:
+    def create_plan_draft(self, job_title: str, job_description: str) -> dict:
         """调用平台 /training/plans/drafts 生成学习计划。"""
         resp = httpx.post(
             f"{self.base_url}/training/plans/drafts",
             headers=self.headers,
             json={
-                "appId": app_id,
                 "jobTitle": job_title,
                 "jobDescription": job_description,
             },
@@ -29,7 +28,7 @@ class PlatformClient:
         return resp.json()
 
     def create_question_drafts(
-        self, plan_id: str, app_id: str, job_title: str, ability_groups: list[str], count: int
+        self, plan_id: str, job_title: str, ability_groups: list[str], count: int
     ) -> list[dict]:
         """调用平台 /training/questions/drafts 生成题目。"""
         resp = httpx.post(
@@ -37,7 +36,6 @@ class PlatformClient:
             headers=self.headers,
             json={
                 "planId": plan_id,
-                "appId": app_id,
                 "jobTitle": job_title,
                 "abilityGroups": ability_groups,
                 "count": count,

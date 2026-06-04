@@ -29,7 +29,6 @@ def create_question_drafts(session: Session, user_id: str | None, request: Any) 
     try:
         templates = client.create_question_drafts(
             plan_id=request.planId,
-            app_id=request.appId,
             job_title=request.jobTitle,
             ability_groups=request.abilityGroups,
             count=request.count,
@@ -53,12 +52,14 @@ def create_question_drafts(session: Session, user_id: str | None, request: Any) 
 
     results = []
     for tmpl in templates:
-        qid = new_id()
+        qid = tmpl.get("questionId") or new_id()
+        app_id = tmpl["appId"]
+        created_at_text = tmpl.get("createdAt") or now.isoformat()
         session.execute(
             training_questions.insert().values(
                 question_id=qid,
                 plan_id=request.planId,
-                app_id=request.appId,
+                app_id=app_id,
                 question_type=tmpl["questionType"],
                 category=tmpl["category"],
                 content=tmpl["content"],
@@ -67,7 +68,7 @@ def create_question_drafts(session: Session, user_id: str | None, request: Any) 
                 explanation=tmpl.get("explanation"),
                 rubric=tmpl.get("rubric"),
                 evidence_chunk_ids=tmpl.get("evidenceChunkIds", []),
-                status="draft",
+                status=tmpl.get("status", "draft"),
                 metadata={},
                 created_at=now,
                 created_by=user_id,
@@ -78,7 +79,7 @@ def create_question_drafts(session: Session, user_id: str | None, request: Any) 
         results.append(TrainingQuestionDTO(
             questionId=qid,
             planId=request.planId,
-            appId=request.appId,
+            appId=app_id,
             questionType=tmpl["questionType"],
             category=tmpl["category"],
             content=tmpl["content"],
@@ -87,8 +88,8 @@ def create_question_drafts(session: Session, user_id: str | None, request: Any) 
             explanation=tmpl.get("explanation"),
             rubric=tmpl.get("rubric"),
             evidenceChunkIds=tmpl.get("evidenceChunkIds", []),
-            status="draft",
-            createdAt=now.isoformat(),
+            status=tmpl.get("status", "draft"),
+            createdAt=created_at_text,
         ).model_dump())
 
     session.commit()

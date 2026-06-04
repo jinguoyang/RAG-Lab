@@ -18,18 +18,9 @@ def list_review_tasks(db: Session, review_type: str | None = None) -> list[dict]
 
 def generate_plan_draft(db: Session, job_title: str, job_description: str) -> dict:
     """调用本地 plan service 生成草稿，并记录审核任务。"""
-    from app.core.config import get_settings
     from app.schemas.training_plan import TrainingPlanDraftRequest
-    from app.services.training_plan_service import TrainingPlanConflictError
-
-    settings = get_settings()
-    if not settings.platform_app_id:
-        raise TrainingPlanConflictError(
-            "platform_app_id 未配置，请在 .env 中设置 EXT_TRAINING_PLATFORM_APP_ID"
-        )
 
     request = TrainingPlanDraftRequest(
-        appId=settings.platform_app_id,
         jobTitle=job_title,
         jobDescription=job_description,
     )

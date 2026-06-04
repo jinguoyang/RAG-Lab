@@ -20,7 +20,7 @@ class FakePlatformClassroomClient:
         session_id = "platform-session-001"
         data = {
             "sessionId": session_id,
-            "appId": payload["appId"],
+            "appId": "platform-app-001",
             "planId": payload.get("planId"),
             "endUserId": payload["endUserId"],
             "currentState": "INIT",
@@ -116,7 +116,6 @@ def test_create_and_read_session(client):
     resp = client.post(
         "/api/v1/classroom/sessions",
         json={
-            "appId": "test-app-001",
             "endUserId": "user-001",
         },
         headers={"Authorization": "Bearer dev-user"},
@@ -137,7 +136,7 @@ def test_submit_event_state_transition(client):
     """提交事件触发状态流转。"""
     resp = client.post(
         "/api/v1/classroom/sessions",
-        json={"appId": "test-app-001", "endUserId": "user-001"},
+        json={"endUserId": "user-001"},
         headers={"Authorization": "Bearer dev-user"},
     )
     session_id = resp.json()["sessionId"]
@@ -156,7 +155,7 @@ def test_invalid_transition_rejected(client):
     """非法状态流转返回 409。"""
     resp = client.post(
         "/api/v1/classroom/sessions",
-        json={"appId": "test-app-001", "endUserId": "user-001"},
+        json={"endUserId": "user-001"},
         headers={"Authorization": "Bearer dev-user"},
     )
     session_id = resp.json()["sessionId"]
@@ -173,7 +172,7 @@ def test_query_in_classroom(client):
     """课堂提问返回结构化响应。"""
     resp = client.post(
         "/api/v1/classroom/sessions",
-        json={"appId": "test-app-001", "endUserId": "user-001"},
+        json={"endUserId": "user-001"},
         headers={"Authorization": "Bearer dev-user"},
     )
     session_id = resp.json()["sessionId"]
