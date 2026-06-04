@@ -226,6 +226,15 @@ class Settings(BaseSettings):
         ge=2,
         validation_alias=AliasChoices("RAG_LAB_AGENT_RUNTIME_SUMMARY_KEEP_MESSAGES", "AGENT_RUNTIME_SUMMARY_KEEP_MESSAGES"),
     )
+    pdf_preview_cache_dir: str = Field(
+        default=".cache/pdf_preview",
+        validation_alias=AliasChoices("RAG_LAB_PDF_PREVIEW_CACHE_DIR", "PDF_PREVIEW_CACHE_DIR"),
+    )
+    pdf_preview_cache_max_bytes: int = Field(
+        default=500 * 1024 * 1024,
+        ge=1024 * 1024,
+        validation_alias=AliasChoices("RAG_LAB_PDF_PREVIEW_CACHE_MAX_BYTES", "PDF_PREVIEW_CACHE_MAX_BYTES"),
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
