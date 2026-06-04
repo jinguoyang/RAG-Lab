@@ -369,22 +369,45 @@ def convert_parsed_document_to_v2(
     provider_name: str | None = None,
     provider_version: str | None = None,
 ) -> ParsedDocumentV2:
-    """将旧版 ParsedDocument 转换为 ParsedDocumentV2。"""
-    blocks = []
-    for i, chunk in enumerate(parsed_doc.chunks):
-        block = DocumentBlock(
-            block_id=f"block_{i}",
-            block_type="paragraph",
-            text=chunk.content,
-            page_no=chunk.page_no,
-            char_start=None,
-            char_end=None,
-            section=chunk.section,
-            metadata=chunk.metadata if hasattr(chunk, "metadata") else {},
-        )
-        blocks.append(block)
+    """将 ParsedDocument 转换为 ParsedDocumentV2。
 
-    content = "\n".join(chunk.content for chunk in parsed_doc.chunks)
+    优先使用 parsed_doc.blocks（新版解析结果），如果为空则回退到 parsed_doc.chunks（兼容旧数据）。
+    """
+    blocks = []
+
+    # 优先使用 blocks（新版解析结果）
+    if hasattr(parsed_doc, "blocks") and parsed_doc.blocks:
+        for i, block in enumerate(parsed_doc.blocks):
+            doc_block = DocumentBlock(
+                block_id=f"block_{i}",
+                block_type="paragraph",
+                text=block.content,
+                page_no=block.page_no if hasattr(block, "page_no") else None,
+                char_start=None,
+                char_end=None,
+                section=block.section if hasattr(block, "section") else None,
+                metadata=block.metadata if hasattr(block, "metadata") else {},
+            )
+            blocks.append(doc_block)
+        content = "\n".join(block.content for block in parsed_doc.blocks)
+    # 回退到 chunks（兼容旧数据）
+    elif hasattr(parsed_doc, "chunks") and parsed_doc.chunks:
+        for i, chunk in enumerate(parsed_doc.chunks):
+            doc_block = DocumentBlock(
+                block_id=f"block_{i}",
+                block_type="paragraph",
+                text=chunk.content,
+                page_no=chunk.page_no,
+                char_start=None,
+                char_end=None,
+                section=chunk.section,
+                metadata=chunk.metadata if hasattr(chunk, "metadata") else {},
+            )
+            blocks.append(doc_block)
+        content = "\n".join(chunk.content for chunk in parsed_doc.chunks)
+    else:
+        content = ""
+
     return create_parsed_document_v2(
         source_file_name=parsed_doc.source_file_name,
         mime_type=parsed_doc.mime_type,

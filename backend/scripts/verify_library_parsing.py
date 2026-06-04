@@ -45,8 +45,8 @@ def main() -> None:
     for file_name, mime_type, content in test_cases:
         try:
             result = parse_document(file_name, mime_type, content)
-            if not result.chunks:
-                raise SystemExit(f"parse_document returned no chunks for {file_name}")
+            if not result.blocks:
+                raise SystemExit(f"parse_document returned no blocks for {file_name}")
         except DocumentParseError as exc:
             raise SystemExit(f"parse_document failed for {file_name}: {exc}") from exc
 

@@ -70,7 +70,7 @@ from app.services.library_service import (
     upload_library_version,
 )
 from app.services.object_storage import ObjectStorageError
-from app.tables import document_versions
+from app.tables import document_versions, documents
 
 router = APIRouter(prefix="/library/documents", tags=["library"])
 
@@ -284,6 +284,85 @@ def download_document(
             headers={
                 "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_name}",
                 "Content-Length": str(len(content)),
+            },
+        )
+    except Exception as exc:
+        _raise_library_error(exc)
+        raise  # unreachable
+
+
+@router.get("/{document_id}/preview")
+def preview_document(
+    document_id: UUID,
+    current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db_session)],
+    version_id: UUID | None = Query(default=None, alias="versionId"),
+) -> Response:
+    """将 docx 文档转换为 PDF 返回，用于高保真预览。"""
+    import os
+    import tempfile
+
+    from docx2pdf import convert as docx2pdf_convert
+
+    from app.services import pdf_preview_cache
+
+    try:
+        # 1. 先做权限检查 + 下载源文件（内部会校验权限）
+        file_name, _mime_type, content = get_library_document_source_download(
+            db, current_user, document_id, version_id,
+        )
+        if not file_name.lower().endswith(".docx"):
+            raise ValueError("仅支持 docx 文件预览")
+
+        # 2. 解析版本 id，用于缓存键
+        doc_row = db.execute(
+            select(documents).where(documents.c.document_id == document_id)
+        ).mappings().first()
+        resolved_version_id = version_id or (doc_row["active_version_id"] if doc_row else None)
+        if not resolved_version_id:
+            raise LibraryDocumentNotFoundError
+
+        # 3. 查缓存
+        cached = pdf_preview_cache.get(document_id, resolved_version_id)
+        if cached is not None:
+            encoded_name = quote(file_name.rsplit(".", 1)[0] + ".pdf")
+            return Response(
+                content=cached,
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f"inline; filename*=UTF-8''{encoded_name}",
+                    "Content-Length": str(len(cached)),
+                    "X-Cache": "HIT",
+                },
+            )
+
+        # 4. 缓存未命中，转换（COM 对象需在当前线程初始化）
+        import pythoncom
+
+        pythoncom.CoInitialize()
+        try:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                docx_path = os.path.join(tmp_dir, file_name)
+                pdf_path = os.path.join(tmp_dir, file_name.rsplit(".", 1)[0] + ".pdf")
+                with open(docx_path, "wb") as f:
+                    f.write(content)
+                docx2pdf_convert(docx_path, pdf_path)
+                with open(pdf_path, "rb") as f:
+                    pdf_bytes = f.read()
+        finally:
+            pythoncom.CoUninitialize()
+
+        # 5. 写入缓存
+        pdf_preview_cache.put(document_id, resolved_version_id, pdf_bytes)
+
+        encoded_name = quote(file_name.rsplit(".", 1)[0] + ".pdf")
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"inline; filename*=UTF-8''{encoded_name}",
+                "Content-Length": str(len(pdf_bytes)),
+                "X-Cache": "MISS",
             },
         )
     except Exception as exc:

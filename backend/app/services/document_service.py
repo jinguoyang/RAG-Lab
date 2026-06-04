@@ -53,7 +53,7 @@ from app.tables import (
 )
 from app.services.chunk_payload import build_chunk_index_payload, build_chunk_retrieval_text
 from app.services.dictionary_service import require_active_dict_item
-from app.services.document_parsing import DocumentParseError, ParsedDocument
+from app.services.document_parsing import DocumentParseError, ParsedBlock, ParsedDocument
 from app.services.contextual_chunking import generate_contextual_metadata_with_cache
 from app.services.multi_view_chunking import ChunkResult, execute_chunking
 from app.services.object_storage import ObjectStorageProvider, get_object_storage_provider
@@ -1093,6 +1093,56 @@ def _attach_parsed_document_v2_provenance_to_chunks(
     return chunks_with_provenance, parsed_v2
 
 
+def _blocks_to_chunks_from_dicts(
+    blocks: list[dict],
+    parser_name: str,
+    source_extension: str,
+    chunk_strategy: str,
+    chunk_params: dict,
+    document_id: str | UUID,
+) -> list[_DictAsObj]:
+    """从字典列表形式的 blocks 生成 chunks，根据 chunk 策略执行分块。"""
+    # 将字典转换为 ParsedBlock 对象
+    parsed_blocks = [
+        ParsedBlock(
+            content=str(b.get("content", "")).strip(),
+            section=b.get("section"),
+            page_no=b.get("page_no"),
+            metadata=b.get("metadata", {}),
+        )
+        for b in blocks
+        if str(b.get("content", "")).strip()
+    ]
+    if not parsed_blocks:
+        return []
+
+    # 构造临时 ParsedDocument 供分块使用
+    temp_parsed = ParsedDocument(
+        parser_name=parser_name,
+        parser_version="blocks_reuse",
+        source_file_name="",
+        mime_type=None,
+        blocks=parsed_blocks,
+    )
+    return _apply_chunk_strategy_to_parsed_document(
+        temp_parsed, chunk_strategy, chunk_params, document_id
+    )
+
+
+def _blocks_to_chunks_from_parsed_document(
+    parsed_document: ParsedDocument,
+    chunk_strategy: str,
+    chunk_params: dict,
+    document_id: str | UUID,
+) -> list[_DictAsObj]:
+    """从 ParsedDocument 的 blocks 生成 chunks，根据 chunk 策略执行分块。"""
+    if not parsed_document.blocks:
+        return []
+    return _apply_chunk_strategy_to_parsed_document(
+        parsed_document, chunk_strategy, chunk_params, document_id
+    )
+
+
 def _apply_chunk_strategy_to_parsed_document(
     parsed_document: ParsedDocument,
     strategy: str,
@@ -1300,8 +1350,8 @@ def run_ingest_job(
         parsed_document_v2_for_revision: ParsedDocumentV2 | None = None
         parse_task_record: ParseTaskRecord | None = None
 
-        # Check if we can reuse parsed chunks from library
-        parsed_chunks_from_library = None
+        # Check if we can reuse parsed blocks from library
+        parsed_blocks_from_library = None
         if document_row.get("source_type") == "library_bind":
             version_meta = version_row.get("metadata") or {}
             library_version_id_str = version_meta.get("library_version_id")
@@ -1333,24 +1383,46 @@ def run_ingest_job(
 
             if lib_version:
                 lib_meta = lib_version.get("metadata") or {}
-                if lib_meta.get("parsed_chunks"):
-                    parsed_chunks_from_library = lib_meta["parsed_chunks"]
+                if lib_meta.get("parsed_blocks"):
+                    parsed_blocks_from_library = lib_meta["parsed_blocks"]
+                elif lib_meta.get("parsed_chunks"):
+                    # 兼容旧数据：旧数据存的是 chunks，直接用作 blocks（内容相同）
+                    parsed_blocks_from_library = lib_meta["parsed_chunks"]
 
-        if parsed_chunks_from_library:
-            # Reuse library parsed chunks (convert dicts to objects with attribute access)
-            parsed_chunks = [_DictAsObj(d) for d in parsed_chunks_from_library]
+        if parsed_blocks_from_library:
+            # Reuse library parsed blocks (convert dicts to ParsedBlock objects)
+            parsed_blocks = [_DictAsObj(d) for d in parsed_blocks_from_library]
             parser_name = "library_reuse"
             parser_version = "library_reuse"
+            # 从 blocks 生成 chunks（根据知识库配置的 chunk 策略）
+            parsed_chunks = _blocks_to_chunks_from_dicts(
+                parsed_blocks_from_library,
+                parser_name=parser_name,
+                source_extension="",
+                chunk_strategy=normalized_chunk_strategy,
+                chunk_params=chunk_params,
+                document_id=document_row["document_id"],
+            )
         elif is_rechunk:
-            # Rechunk: try to reuse parsed_chunks, fall back to re-parsing
+            # Rechunk: try to reuse parsed_blocks, fall back to re-parsing
             version_meta = version_row.get("metadata") or {}
-            rechunk_parsed = version_meta.get("parsed_chunks")
-            if rechunk_parsed:
-                parsed_chunks = [_DictAsObj(d) for d in rechunk_parsed]
+            rechunk_blocks = version_meta.get("parsed_blocks")
+            if not rechunk_blocks and version_meta.get("parsed_chunks"):
+                # 兼容旧数据
+                rechunk_blocks = version_meta.get("parsed_chunks")
+            if rechunk_blocks:
+                parsed_chunks = _blocks_to_chunks_from_dicts(
+                    rechunk_blocks,
+                    parser_name=version_meta.get("parserName", "rechunk_reuse"),
+                    source_extension="",
+                    chunk_strategy=normalized_chunk_strategy,
+                    chunk_params=chunk_params,
+                    document_id=document_row["document_id"],
+                )
                 parser_name = version_meta.get("parserName", "rechunk_reuse")
                 parser_version = version_meta.get("parserVersion", "rechunk_reuse")
             else:
-                # No stored parsed_chunks: re-parse from source file
+                # No stored parsed_blocks: re-parse from source file
                 parsed_document, parse_task_record = _parse_document_for_ingest(
                     file_name=file_name,
                     mime_type=file_row["mime_type"] if file_row else None,
@@ -1358,15 +1430,12 @@ def run_ingest_job(
                     chunk_params=chunk_params,
                 )
                 parsed_document_for_context = parsed_document
-                if normalized_chunk_strategy == "fixed":
-                    parsed_chunks = parsed_document.chunks
-                else:
-                    parsed_chunks = _apply_chunk_strategy_to_parsed_document(
-                        parsed_document,
-                        normalized_chunk_strategy,
-                        chunk_params,
-                        document_row["document_id"],
-                    )
+                parsed_chunks = _blocks_to_chunks_from_parsed_document(
+                    parsed_document,
+                    chunk_strategy=normalized_chunk_strategy,
+                    chunk_params=chunk_params,
+                    document_id=document_row["document_id"],
+                )
                 parser_name = parsed_document.parser_name
                 parser_version = parsed_document.parser_version
         else:
@@ -1377,15 +1446,12 @@ def run_ingest_job(
                 chunk_params=chunk_params,
             )
             parsed_document_for_context = parsed_document
-            if normalized_chunk_strategy == "fixed":
-                parsed_chunks = parsed_document.chunks
-            else:
-                parsed_chunks = _apply_chunk_strategy_to_parsed_document(
-                    parsed_document,
-                    normalized_chunk_strategy,
-                    chunk_params,
-                    document_row["document_id"],
-                )
+            parsed_chunks = _blocks_to_chunks_from_parsed_document(
+                parsed_document,
+                chunk_strategy=normalized_chunk_strategy,
+                chunk_params=chunk_params,
+                document_id=document_row["document_id"],
+            )
             parser_name = parsed_document.parser_name
             parser_version = parsed_document.parser_version
         if parsed_document_for_context is not None:

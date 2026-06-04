@@ -74,6 +74,7 @@ def _fixed_chunking(
     current_block_ids: list[str] = []
     current_section: str | None = None
     current_page: int | None = None
+    current_metadata: dict[str, Any] = {}
     chunk_index = 0
 
     for block in blocks:
@@ -84,6 +85,9 @@ def _fixed_chunking(
                 current_section = block.section
             if block.page_no:
                 current_page = block.page_no
+            # 合并 block metadata（后面的 block 覆盖前面的）
+            if block.metadata:
+                current_metadata.update(block.metadata)
 
         while len(buffer) >= chunk_size:
             chunk_text = buffer[:chunk_size].strip()
@@ -96,6 +100,7 @@ def _fixed_chunking(
                     section=current_section,
                     page_no=current_page,
                     source_block_ids=list(current_block_ids),
+                    metadata=dict(current_metadata),
                 ))
                 chunk_index += 1
             buffer = buffer[chunk_size - chunk_overlap:]
@@ -111,6 +116,7 @@ def _fixed_chunking(
             section=current_section,
             page_no=current_page,
             source_block_ids=list(current_block_ids),
+            metadata=dict(current_metadata),
         ))
 
     return chunks

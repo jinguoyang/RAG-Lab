@@ -1,7 +1,8 @@
 from dataclasses import dataclass, field
 from io import BytesIO
-from pathlib import PurePath
+from pathlib import Path, PurePath
 import re
+from tempfile import NamedTemporaryFile
 from xml.etree import ElementTree
 from zipfile import BadZipFile, ZipFile
 
@@ -22,6 +23,16 @@ _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 
 
 @dataclass(frozen=True)
+class ParsedBlock:
+    """解析后的结构化文本块，不含 chunking 信息。"""
+
+    content: str
+    section: str | None
+    page_no: int | None
+    metadata: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class ParsedChunk:
     """解析后可直接写入 PostgreSQL Chunk 真值表的文本片段。"""
 
@@ -34,13 +45,14 @@ class ParsedChunk:
 
 @dataclass(frozen=True)
 class ParsedDocument:
-    """文档解析结果，保留解析器身份和所有 Chunk。"""
+    """文档解析结果，保留解析器身份和所有 Block。"""
 
     parser_name: str
     parser_version: str
     source_file_name: str
     mime_type: str | None
-    chunks: list[ParsedChunk]
+    blocks: list[ParsedBlock]
+    chunks: list[ParsedChunk] = field(default_factory=list)
 
 
 class DocumentParseError(RuntimeError):
@@ -59,7 +71,7 @@ def parse_document(
     chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
     parser_name: str | None = None,
 ) -> ParsedDocument:
-    """按文件类型解析 txt、md、pdf、docx，并返回结构化 Chunk。
+    """按文件类型解析 txt、md、pdf、docx，返回结构化 blocks（不做 chunking）。
 
     Args:
         parser_name: PDF 解析器选择，可选值：
@@ -67,6 +79,7 @@ def parse_document(
             - "pdf_pypdf": 强制使用 pypdf
             - "pdf_plumber": 强制使用 pdfplumber
             其他文件类型此参数被忽略。
+        chunk_size/chunk_overlap: 保留参数，仅供内部使用，不影响返回结果。
     """
     normalized_name = PurePath(file_name).name or "uploaded-document"
     extension = PurePath(normalized_name).suffix.lower()
@@ -79,28 +92,38 @@ def parse_document(
     elif extension == ".pdf":
         blocks, parser_name = _parse_pdf(file_bytes, parser_name or "auto")
     elif extension == ".docx":
-        blocks = _parse_docx(file_bytes)
-        parser_name = "docx_python_docx"
+        blocks = _parse_markitdown_office(normalized_name, file_bytes)
+        parser_name = "markitdown_docx"
+    elif extension == ".xlsx":
+        blocks = _parse_markitdown_office(normalized_name, file_bytes)
+        parser_name = "markitdown_xlsx"
     elif extension in _IMAGE_EXTENSIONS:
-        return _parse_image(file_bytes, normalized_name, mime_type, chunk_size, chunk_overlap)
+        return _parse_image(file_bytes, normalized_name, mime_type)
     else:
         raise DocumentParseError("UNSUPPORTED_FILE_TYPE", f"Unsupported file type: {extension or 'unknown'}")
 
-    chunks = _blocks_to_chunks(
-        blocks,
-        parser_name=parser_name,
-        source_extension=extension,
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-    )
-    if not chunks:
+    if not blocks:
         raise DocumentParseError("PARSE_EMPTY_CONTENT", "Parsed document has no extractable text.")
+
+    parsed_blocks = [
+        ParsedBlock(
+            content=str(block["content"]).strip(),
+            section=block.get("section"),
+            page_no=block.get("page_no"),
+            metadata=block.get("metadata", {}),
+        )
+        for block in blocks
+        if str(block["content"]).strip()
+    ]
+    if not parsed_blocks:
+        raise DocumentParseError("PARSE_EMPTY_CONTENT", "Parsed document has no extractable text.")
+
     return ParsedDocument(
         parser_name=parser_name,
         parser_version=PARSER_VERSION,
         source_file_name=normalized_name,
         mime_type=mime_type,
-        chunks=chunks,
+        blocks=parsed_blocks,
     )
 
 
@@ -124,6 +147,34 @@ def _parse_markdown(file_bytes: bytes) -> list[dict]:
     """解析 Markdown 标题层级，段落 metadata 继承最近标题。"""
     text = _normalize_text(_decode_text(file_bytes))
     return _parse_structured_text_blocks(text, "Markdown paragraph")
+
+
+def _parse_markitdown_office(file_name: str, file_bytes: bytes) -> list[dict]:
+    """Convert Office files to Markdown text through MarkItDown before chunking."""
+    suffix = PurePath(file_name).suffix.lower()
+    temp_path = None
+    try:
+        from markitdown import MarkItDown
+
+        temp_file = NamedTemporaryFile(suffix=suffix, delete=False)
+        try:
+            temp_file.write(file_bytes)
+        finally:
+            temp_file.close()
+        temp_path = Path(temp_file.name)
+        result = MarkItDown().convert(str(temp_path))
+        markdown_text = _normalize_text(result.text_content or "")
+    except DocumentParseError:
+        raise
+    except Exception as exc:
+        raise DocumentParseError("MARKITDOWN_PARSE_FAILED", "Office document conversion failed.") from exc
+    finally:
+        if temp_path and temp_path.exists():
+            temp_path.unlink()
+
+    if not markdown_text:
+        raise DocumentParseError("PARSE_EMPTY_CONTENT", "Parsed document has no extractable text.")
+    return _parse_structured_text_blocks(markdown_text, "Office paragraph")
 
 
 def _parse_structured_text_blocks(text: str, fallback_prefix: str) -> list[dict]:
@@ -406,10 +457,8 @@ def _parse_image(
     file_bytes: bytes,
     normalized_name: str,
     mime_type: str | None,
-    chunk_size: int,
-    chunk_overlap: int,
 ) -> ParsedDocument:
-    """调用 VisionTextProvider 解析图片，将结果渲染为 Markdown。"""
+    """调用 VisionTextProvider 解析图片，将结果渲染为 Markdown blocks（不做 chunking）。"""
     provider = get_vision_text_provider()
     try:
         result = provider.extract_text(
@@ -433,30 +482,35 @@ def _parse_image(
     if not blocks:
         raise DocumentParseError("PARSE_EMPTY_CONTENT", "Image parsing returned no content.")
 
-    chunks = _blocks_to_chunks(
-        blocks,
-        parser_name="vision_text",
-        source_extension="",
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        metadata_extra={
-            "sourceModality": "image",
-            "region": "full",
-            "visionConfidence": "unknown",
-            "visionProvider": result.metadata.get("provider"),
-            "visionModel": result.metadata.get("model"),
-            "sourceMimeType": result.metadata.get("mimeType") or mime_type,
-            "sourceFileSize": result.metadata.get("fileSize") or len(file_bytes),
-            "imageTokens": result.metadata.get("imageTokens"),
-            "maxImageSide": result.metadata.get("maxImageSide"),
-        },
-    )
+    vision_metadata = {
+        "sourceModality": "image",
+        "region": "full",
+        "visionConfidence": "unknown",
+        "visionProvider": result.metadata.get("provider"),
+        "visionModel": result.metadata.get("model"),
+        "sourceMimeType": result.metadata.get("mimeType") or mime_type,
+        "sourceFileSize": result.metadata.get("fileSize") or len(file_bytes),
+        "imageTokens": result.metadata.get("imageTokens"),
+        "maxImageSide": result.metadata.get("maxImageSide"),
+    }
+
+    parsed_blocks = [
+        ParsedBlock(
+            content=str(block["content"]).strip(),
+            section=block.get("section"),
+            page_no=block.get("page_no"),
+            metadata=vision_metadata,
+        )
+        for block in blocks
+        if str(block["content"]).strip()
+    ]
+
     return ParsedDocument(
         parser_name="vision_text",
         parser_version=PARSER_VERSION,
         source_file_name=normalized_name,
         mime_type=mime_type,
-        chunks=chunks,
+        blocks=parsed_blocks,
     )
 
 

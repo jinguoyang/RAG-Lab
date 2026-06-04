@@ -981,21 +981,19 @@ def run_library_parse_job_by_id(job_id: UUID) -> dict:
             })
             return {"error": "UNKNOWN"}
 
-        # 生成纯文本预览
-        full_text = "\n\n".join(chunk.content for chunk in parsed.chunks)
+        # 生成纯文本预览（从 blocks 而非 chunks）
+        full_text = "\n\n".join(block.content for block in parsed.blocks)
         preview_text = full_text[:2000] if len(full_text) > 2000 else full_text
-        token_count = sum(chunk.token_count for chunk in parsed.chunks)
+        token_count = sum(len(block.content) for block in parsed.blocks)
 
-        # Store structured chunk results for KB ingest reuse
-        structured_chunks = []
-        for chunk in parsed.chunks:
-            structured_chunks.append({
-                "content": chunk.content,
-                "token_count": chunk.token_count,
-                "section": getattr(chunk, "section", None),
-                "page_no": getattr(chunk, "page_no", None),
-                "start_offset": getattr(chunk, "start_offset", None),
-                "end_offset": getattr(chunk, "end_offset", None),
+        # Store structured block results for KB ingest reuse
+        structured_blocks = []
+        for block in parsed.blocks:
+            structured_blocks.append({
+                "content": block.content,
+                "section": getattr(block, "section", None),
+                "page_no": getattr(block, "page_no", None),
+                "metadata": getattr(block, "metadata", {}),
             })
 
         doc_active_version_id = session.execute(
@@ -1032,13 +1030,13 @@ def run_library_parse_job_by_id(job_id: UUID) -> dict:
             )
         )
 
-        # 更新 version 的 metadata，保存最新解析摘要，完整正文以 ParseRevision 为准。
+        # 更新 version 的 metadata，保存解析 blocks（不做 chunking），完整正文以 ParseRevision 为准。
         session.execute(
             update(document_versions)
             .where(document_versions.c.version_id == version_id)
             .values(
                 parse_status="success",
-                chunk_count=len(parsed.chunks),
+                chunk_count=len(parsed.blocks),
                 token_count=token_count,
                 status="active" if should_activate else "inactive",
                 metadata={
@@ -1046,7 +1044,7 @@ def run_library_parse_job_by_id(job_id: UUID) -> dict:
                     "parser_version": parsed.parser_version,
                     "preview_text": preview_text,
                     "full_text_length": len(full_text),
-                    "parsed_chunks": structured_chunks,
+                    "parsed_blocks": structured_blocks,
                 },
                 updated_by=None,
             )
@@ -1065,7 +1063,7 @@ def run_library_parse_job_by_id(job_id: UUID) -> dict:
         return {
             "job_id": str(job_id),
             "status": "success",
-            "chunk_count": len(parsed.chunks),
+            "chunk_count": len(parsed.blocks),
             "token_count": token_count,
         }
 
@@ -1403,25 +1401,28 @@ def get_document_text(
     metadata = ver_row["metadata"] or {}
     preview_text = metadata.get("preview_text", "")
     full_text_length = metadata.get("full_text_length", len(preview_text))
-    parsed_chunks_raw = metadata.get("parsed_chunks", [])
+    # 兼容新旧两种 key：parsed_blocks（新版）和 parsed_chunks（旧版）
+    parsed_blocks_raw = metadata.get("parsed_blocks", [])
+    if not parsed_blocks_raw:
+        parsed_blocks_raw = metadata.get("parsed_chunks", [])
 
     if mode == "chunks":
         chunks = [
             LibraryParsedChunkDTO(
-                content=chunk.get("content", ""),
-                tokenCount=chunk.get("token_count", 0),
-                section=chunk.get("section"),
-                pageNo=chunk.get("page_no"),
-                startOffset=chunk.get("start_offset"),
-                endOffset=chunk.get("end_offset"),
+                content=block.get("content", ""),
+                tokenCount=block.get("token_count", 0),
+                section=block.get("section"),
+                pageNo=block.get("page_no"),
+                startOffset=block.get("start_offset"),
+                endOffset=block.get("end_offset"),
             )
-            for chunk in parsed_chunks_raw
+            for block in parsed_blocks_raw
         ]
         return LibraryParsedChunksResponse(chunks=chunks)
 
     if mode == "full":
-        if parsed_chunks_raw:
-            text = "\n\n".join(chunk.get("content", "") for chunk in parsed_chunks_raw)
+        if parsed_blocks_raw:
+            text = "\n\n".join(block.get("content", "") for block in parsed_blocks_raw)
         else:
             text = preview_text
         return LibraryFullTextResponse(text=text)
