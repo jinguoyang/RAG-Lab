@@ -17,7 +17,7 @@ def upgrade() -> None:
     """Add active_parse_revision_id column to document_versions."""
     op.add_column(
         "document_versions",
-        sa.Column("active_parse_revision_id", sa.UUID(), nullable=True),
+        sa.Column("active_parse_revision_id", sa.String(36), nullable=True),
     )
     op.create_foreign_key(
         "fk_document_versions_active_parse_revision_id",
