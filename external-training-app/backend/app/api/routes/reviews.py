@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.schemas.review import ReviewSubmitRequest
 from app.services.review_service import list_review_tasks, generate_plan_draft, submit_review
+from app.services.training_plan_service import TrainingPlanConflictError
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
 
@@ -17,7 +18,10 @@ def list_reviews(reviewType: str | None = None, db: Session = Depends(get_db)):
 def create_plan_draft(jobTitle: str = "", jobDescription: str = "", db: Session = Depends(get_db)):
     if not jobTitle:
         raise HTTPException(400, "jobTitle 不能为空")
-    return generate_plan_draft(db, jobTitle, jobDescription)
+    try:
+        return generate_plan_draft(db, jobTitle, jobDescription)
+    except TrainingPlanConflictError as e:
+        raise HTTPException(409, str(e))
 
 
 @router.post("/{task_id}/submit")

@@ -6,6 +6,10 @@ class PlatformClient:
     """Reserved for future platform API calls (e.g., RAG queries)."""
 
     def __init__(self, base_url: str, api_key: str):
+        if not api_key:
+            raise ValueError(
+                "platform_api_key 未配置，请在 .env 中设置 EXT_TRAINING_PLATFORM_API_KEY"
+            )
         self.base_url = base_url.rstrip("/")
         self.headers = {"Authorization": f"Bearer {api_key}"}
 

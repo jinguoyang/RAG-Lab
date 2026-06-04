@@ -1,9 +1,12 @@
 """外部培训应用配置。"""
+import logging
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 _BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -17,6 +20,14 @@ class Settings(BaseSettings):
         "env_file": str(_BACKEND_ROOT / ".env"),
         "env_file_encoding": "utf-8",
     }
+
+    @model_validator(mode="after")
+    def _check_required_fields(self) -> "Settings":
+        if not self.platform_api_key:
+            logger.warning(
+                "EXT_TRAINING_PLATFORM_API_KEY 未设置，平台 API 相关功能将不可用"
+            )
+        return self
 
 
 def get_settings() -> Settings:

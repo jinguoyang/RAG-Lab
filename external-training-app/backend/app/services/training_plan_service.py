@@ -35,7 +35,8 @@ def create_plan_draft(session: Session, user_id: str | None, request: Any) -> An
     except httpx.TimeoutException:
         raise TrainingPlanConflictError("平台服务超时，请稍后重试")
     except httpx.HTTPStatusError as exc:
-        raise TrainingPlanConflictError(f"平台服务错误: {exc.response.status_code}")
+        detail = exc.response.text[:200] if exc.response.text else ""
+        raise TrainingPlanConflictError(f"平台服务错误 {exc.response.status_code}: {detail}")
     except httpx.ConnectError:
         raise TrainingPlanConflictError("无法连接平台服务，请检查配置")
 
