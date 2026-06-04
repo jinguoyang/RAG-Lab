@@ -301,33 +301,32 @@ def test_parse_png_returns_parsed_document():
 
     assert result.parser_name == "vision_text"
     assert result.source_file_name == "test.png"
-    assert len(result.chunks) >= 1
+    assert len(result.blocks) >= 1
 
 
-def test_parse_png_chunk_content_contains_caption_and_ocr():
-    """图片 chunk content 应包含图片描述和 OCR 文本。"""
+def test_parse_png_block_content_contains_caption_and_ocr():
+    """图片 block content 应包含图片描述和 OCR 文本。"""
     png_bytes = _make_tiny_png()
     with patch("app.services.document_parsing.get_vision_text_provider") as mock_factory:
         mock_factory.return_value = LocalVisionTextProvider()
         result = parse_document("test.png", "image/png", png_bytes)
 
-    all_content = " ".join(c.content for c in result.chunks)
+    all_content = " ".join(b.content for b in result.blocks)
     assert "本地 Vision Provider 测试 caption" in all_content
     assert "本地 Vision Provider 测试 OCR 文本" in all_content
 
 
-def test_parse_png_chunk_metadata_has_image_fields():
-    """图片 chunk metadata 应包含 sourceModality、region、visionConfidence。"""
+def test_parse_png_block_metadata_has_image_fields():
+    """图片 block metadata 应包含 sourceModality、region、visionConfidence。"""
     png_bytes = _make_tiny_png()
     with patch("app.services.document_parsing.get_vision_text_provider") as mock_factory:
         mock_factory.return_value = LocalVisionTextProvider()
         result = parse_document("test.png", "image/png", png_bytes)
 
-    first_chunk = result.chunks[0]
-    assert first_chunk.metadata["sourceModality"] == "image"
-    assert first_chunk.metadata["parserName"] == "vision_text"
-    assert first_chunk.metadata["region"] == "full"
-    assert first_chunk.metadata["visionConfidence"] == "unknown"
+    first_block = result.blocks[0]
+    assert first_block.metadata["sourceModality"] == "image"
+    assert first_block.metadata["region"] == "full"
+    assert first_block.metadata["visionConfidence"] == "unknown"
 
 
 def test_parse_image_empty_content_raises():
@@ -422,7 +421,7 @@ def test_parse_image_metadata_includes_provider_usage_summary():
         mock_factory.return_value = provider
         result = parse_document("crrc.jpg", "image/jpeg", png_bytes)
 
-    metadata = result.chunks[0].metadata
+    metadata = result.blocks[0].metadata
     assert metadata["visionProvider"] == "http"
     assert metadata["visionModel"] == "mimo-v2.5"
     assert metadata["sourceMimeType"] == "image/jpeg"
@@ -445,7 +444,7 @@ def test_examples_crrc_photo_parse_text_contains_retrieval_terms():
         mock_factory.return_value = provider
         result = parse_document(image_path.name, "image/jpeg", image_path.read_bytes())
 
-    content = "\n".join(chunk.content for chunk in result.chunks)
+    content = "\n".join(block.content for block in result.blocks)
     assert "中国中车" in content
     assert "CRRC" in content
     assert "乔迁" in content
@@ -466,7 +465,7 @@ def test_examples_cat_photo_parse_text_contains_retrieval_terms():
         mock_factory.return_value = provider
         result = parse_document(image_path.name, "image/jpeg", image_path.read_bytes())
 
-    content = "\n".join(chunk.content for chunk in result.chunks)
+    content = "\n".join(block.content for block in result.blocks)
     assert "猫" in content
     assert "动物" in content
     assert "炉火" in content or "灶火" in content
@@ -604,7 +603,7 @@ def _make_run_ingest_job_mocks():
     from unittest.mock import MagicMock, patch
     from uuid import uuid4
 
-    from app.services.document_parsing import ParsedDocument, ParsedChunk
+    from app.services.document_parsing import ParsedDocument, ParsedBlock
 
     kb_id = uuid4()
     doc_id = uuid4()
@@ -647,15 +646,13 @@ def _make_run_ingest_job_mocks():
         parser_version="1.0",
         source_file_name="test.png",
         mime_type="image/png",
-        chunks=[
-            ParsedChunk(
+        blocks=[
+            ParsedBlock(
                 content="image caption text",
-                token_count=10,
                 section=None,
                 page_no=None,
                 metadata={
                     "sourceModality": "image",
-                    "parserName": "vision_text",
                     "region": "full",
                     "visionConfidence": "unknown",
                 },

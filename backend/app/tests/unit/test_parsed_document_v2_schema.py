@@ -340,7 +340,7 @@ class TestConvertParsedDocumentToV2:
     """旧版 ParsedDocument 转换测试。"""
 
     def test_convert_parsed_document(self):
-        """应能转换旧版 ParsedDocument。"""
+        """应能转换旧版 ParsedDocument（兼容 chunks 格式）。"""
         from app.services.document_parsing import ParsedDocument, ParsedChunk
 
         old_doc = ParsedDocument(
@@ -348,6 +348,7 @@ class TestConvertParsedDocumentToV2:
             parser_version="1.0",
             source_file_name="test.txt",
             mime_type="text/plain",
+            blocks=[],  # 新格式为空，回退到 chunks
             chunks=[
                 ParsedChunk(
                     content="Chunk 1",

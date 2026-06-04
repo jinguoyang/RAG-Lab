@@ -92,7 +92,7 @@ def test_e2e_complete_learning_flow(db, app_with_questions):
         db,
         credential,
         ClassroomSessionCreateRequest(
-            appId=app_id, planId="plan-e2e-001", endUserId="e2e-employee-001", inputs={"jobTitle": "现场安全员"}
+            planId="plan-e2e-001", endUserId="e2e-employee-001", inputs={"jobTitle": "现场安全员"}
         ),
     )
     assert created.currentState == "INIT"
@@ -197,7 +197,7 @@ def test_e2e_quiz_retry_after_failure(db, app_with_questions):
         db,
         credential,
         ClassroomSessionCreateRequest(
-            appId=app_id, endUserId="e2e-employee-002", inputs={"jobTitle": "现场安全员"}
+            endUserId="e2e-employee-002", inputs={"jobTitle": "现场安全员"}
         ),
     )
     # 推进到 QUIZ
@@ -267,7 +267,7 @@ def test_e2e_progress_and_answer_records(db, app_with_questions):
         db,
         credential,
         ClassroomSessionCreateRequest(
-            appId=app_id, endUserId="e2e-employee-003", inputs={"jobTitle": "现场安全员"}
+            endUserId="e2e-employee-003", inputs={"jobTitle": "现场安全员"}
         ),
     )
     sid = created.sessionId
@@ -354,7 +354,7 @@ def test_e2e_training_report(db, app_with_questions):
         db,
         credential,
         ClassroomSessionCreateRequest(
-            appId=app_id, endUserId="e2e-employee-004", inputs={"jobTitle": "现场安全员"}
+            endUserId="e2e-employee-004", inputs={"jobTitle": "现场安全员"}
         ),
     )
     sid = created.sessionId
@@ -404,7 +404,7 @@ def test_e2e_session_resume_metadata(db, app_with_questions):
         db,
         credential,
         ClassroomSessionCreateRequest(
-            appId=app_id, endUserId="e2e-employee-005", inputs={"jobTitle": "现场安全员"}
+            endUserId="e2e-employee-005", inputs={"jobTitle": "现场安全员"}
         ),
     )
     sid = created.sessionId
@@ -463,7 +463,7 @@ def test_e2e_cross_app_session_isolation(db, app_with_questions):
         db,
         credential_a,
         ClassroomSessionCreateRequest(
-            appId=app_id_a, endUserId="e2e-employee-006", inputs={"jobTitle": "现场安全员"}
+            endUserId="e2e-employee-006", inputs={"jobTitle": "现场安全员"}
         ),
     )
 

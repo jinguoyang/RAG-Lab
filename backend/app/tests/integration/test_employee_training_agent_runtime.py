@@ -182,7 +182,7 @@ def test_plan_draft_uses_kb_evidence_and_persists_platform_plan(db):
     response = create_plan_draft(
         db,
         credential,
-        PlanDraftRequest(appId=app_id, jobTitle="现场安全员", jobDescription="负责入场检查和风险辨识"),
+        PlanDraftRequest(jobTitle="现场安全员", jobDescription="负责入场检查和风险辨识"),
     )
 
     assert response.planId
@@ -201,7 +201,7 @@ def test_question_drafts_include_choice_true_false_and_subjective(db):
     response = create_question_drafts(
         db,
         credential,
-        QuestionDraftRequest(planId=str(uuid4()), appId=app_id, jobTitle="现场安全员", count=3),
+        QuestionDraftRequest(planId=str(uuid4()), jobTitle="现场安全员", count=3),
     )
 
     assert {item.questionType for item in response} == {"single_choice", "true_false", "subjective"}
@@ -218,7 +218,7 @@ def test_classroom_event_returns_structured_actions_and_records_context(db):
     created = create_classroom_session(
         db,
         credential,
-        ClassroomSessionCreateRequest(appId=app_id, endUserId="employee-001", inputs={"jobTitle": "现场安全员"}),
+        ClassroomSessionCreateRequest(endUserId="employee-001", inputs={"jobTitle": "现场安全员"}),
     )
     plan_response = submit_classroom_event(
         db,
@@ -251,7 +251,7 @@ def test_classroom_continue_from_teach_enters_check_understand(db):
     created = create_classroom_session(
         db,
         credential,
-        ClassroomSessionCreateRequest(appId=app_id, endUserId="employee-001", inputs={"jobTitle": "现场安全员"}),
+        ClassroomSessionCreateRequest(endUserId="employee-001", inputs={"jobTitle": "现场安全员"}),
     )
     submit_classroom_event(db, credential, created.sessionId, ClassroomEventSubmitRequest(eventType="start", payload={}))
     submit_classroom_event(db, credential, created.sessionId, ClassroomEventSubmitRequest(eventType="continue", payload={}))
@@ -300,7 +300,7 @@ def test_classroom_scores_answer_from_server_question_not_client_payload(db):
     created = create_classroom_session(
         db,
         credential,
-        ClassroomSessionCreateRequest(appId=app_id, endUserId="employee-001", inputs={"jobTitle": "现场安全员"}),
+        ClassroomSessionCreateRequest(endUserId="employee-001", inputs={"jobTitle": "现场安全员"}),
     )
     db.execute(
         training_classroom_sessions.update()
@@ -332,7 +332,7 @@ def test_classroom_rejects_illegal_finish_command_during_teach(db):
     created = create_classroom_session(
         db,
         credential,
-        ClassroomSessionCreateRequest(appId=app_id, endUserId="employee-001", inputs={"jobTitle": "现场安全员"}),
+        ClassroomSessionCreateRequest(endUserId="employee-001", inputs={"jobTitle": "现场安全员"}),
     )
     db.execute(
         training_classroom_sessions.update()
@@ -362,7 +362,7 @@ def test_classroom_routes_unrelated_question_to_off_topic(db):
     created = create_classroom_session(
         db,
         credential,
-        ClassroomSessionCreateRequest(appId=app_id, endUserId="employee-001", inputs={"jobTitle": "现场安全员"}),
+        ClassroomSessionCreateRequest(endUserId="employee-001", inputs={"jobTitle": "现场安全员"}),
     )
     db.execute(
         training_classroom_sessions.update()

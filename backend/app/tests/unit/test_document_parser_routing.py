@@ -18,7 +18,7 @@ from app.services.document_parsing import DocumentParseError
 
 def test_ingest_parse_uses_parser_routing(monkeypatch):
     """入库解析应通过 Parser Routing，而不是直接调用旧 parse_document。"""
-    from app.services.document_parsing import ParsedChunk, ParsedDocument
+    from app.services.document_parsing import ParsedBlock, ParsedDocument
     from app.services.document_service import _parse_document_for_ingest
     from app.services.parser_routing import ParseTaskRecord
 
@@ -41,7 +41,7 @@ def test_ingest_parse_uses_parser_routing(monkeypatch):
                 parser_version="1.0",
                 source_file_name=file_name,
                 mime_type=mime_type,
-                chunks=[ParsedChunk("正文", 2, None, None)],
+                blocks=[ParsedBlock(content="正文", section=None, page_no=None)],
             ),
             ParseTaskRecord(
                 task_id="task-1",
@@ -125,7 +125,7 @@ class TestRouteAndParse:
             strategy=ParseStrategy.DEFAULT,
         )
         assert result is not None
-        assert len(result.chunks) > 0
+        assert len(result.blocks) > 0
         assert record.success is True
         assert record.parser_name == "basic"
 
@@ -139,7 +139,7 @@ class TestRouteAndParse:
             strategy=ParseStrategy.DEFAULT,
         )
         assert result is not None
-        assert len(result.chunks) > 0
+        assert len(result.blocks) > 0
         assert record.success is True
 
     def test_route_and_parse_with_strategy_string(self):

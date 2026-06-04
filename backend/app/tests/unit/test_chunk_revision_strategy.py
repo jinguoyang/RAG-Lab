@@ -14,7 +14,7 @@ from app.services.multi_view_chunking import (
     _semantic_chunking,
     _table_aware_chunking,
 )
-from app.services.document_parsing import ParsedChunk, ParsedDocument
+from app.services.document_parsing import ParsedBlock, ParsedChunk, ParsedDocument
 from app.services.parsed_document_v2 import (
     DocumentBlock,
     Page,
@@ -225,9 +225,9 @@ class TestDocumentServiceStrategyAdapter:
             parser_version="test",
             source_file_name="policy.md",
             mime_type="text/markdown",
-            chunks=[
-                ParsedChunk("## 第一章\n安全要求", 5, "第一章", 1, {"blockIndex": 1}),
-                ParsedChunk("## 第二章\n巡检要求", 5, "第二章", 1, {"blockIndex": 2}),
+            blocks=[
+                ParsedBlock("## 第一章\n安全要求", "第一章", 1, {"blockIndex": 1}),
+                ParsedBlock("## 第二章\n巡检要求", "第二章", 1, {"blockIndex": 2}),
             ],
         )
 
@@ -254,14 +254,19 @@ class TestDocumentServiceStrategyAdapter:
             parser_version="test",
             source_file_name="policy.md",
             mime_type="text/markdown",
-            chunks=[
-                ParsedChunk("## 第一章\n安全要求", 5, "第一章", 1, {"blockIndex": 1}),
+            blocks=[
+                ParsedBlock("## 第一章\n安全要求", "第一章", 1, {"blockIndex": 1}),
             ],
         )
 
+        # 先从 blocks 生成 chunks
+        chunks_input = [
+            ParsedChunk("## 第一章\n安全要求", 5, "第一章", 1, {"blockIndex": 1}),
+        ]
+
         chunks = _attach_contextual_metadata_to_chunks(
             parsed_doc,
-            parsed_doc.chunks,
+            chunks_input,
             chunk_revision_id="rev-contextual",
             document_id="doc-001",
         )
@@ -282,14 +287,19 @@ class TestDocumentServiceStrategyAdapter:
             parser_version="test",
             source_file_name="policy.md",
             mime_type="text/markdown",
-            chunks=[
-                ParsedChunk("## 第一章\n安全要求", 5, "第一章", 1, {}),
+            blocks=[
+                ParsedBlock("## 第一章\n安全要求", "第一章", 1, {}),
             ],
         )
 
+        # 先从 blocks 生成 chunks
+        chunks_input = [
+            ParsedChunk("## 第一章\n安全要求", 5, "第一章", 1, {}),
+        ]
+
         chunks, parsed_v2 = _attach_parsed_document_v2_provenance_to_chunks(
             parsed_doc,
-            parsed_doc.chunks,
+            chunks_input,
             document_id="doc-001",
         )
 
