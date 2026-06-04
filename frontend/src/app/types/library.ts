@@ -213,6 +213,12 @@ export interface LibraryReparseRequest {
   reason?: string | null;
 }
 
+export interface LibraryUploadParseOptions {
+  parserName?: string | null;
+  contentFormat?: "markdown" | "text";
+  parseOptions?: Record<string, unknown>;
+}
+
 export interface LibraryParseRevisionCreateResponse {
   jobId: string;
   parseRevisionId: string;

@@ -8,6 +8,7 @@ import { Input } from "../components/rag/Input";
 import { Alert } from "../components/rag/Alert";
 import { Badge, StatusBadge } from "../components/rag/Badge";
 import { DocumentListLayout } from "../components/rag/DocumentListLayout";
+import { ParseOptionsForm } from "../components/rag/ParseOptionsForm";
 import { useConfirmDialog } from "../components/rag/ConfirmDialog";
 import {
   fetchLibraryDocuments,
@@ -21,14 +22,9 @@ import {
 } from "../services/libraryService";
 import type { LibraryDocumentDTO, UploadProgress } from "../types/library";
 import type { LibraryDTO } from "../types/library";
+import { formatFileSize, parseStatusVariant } from "../utils/format";
 
 const PAGE_SIZE = 20;
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 function parseStatusLabel(status?: string | null) {
   if (status === "success") return "解析成功";
@@ -36,13 +32,6 @@ function parseStatusLabel(status?: string | null) {
   if (status === "running") return "解析中";
   if (status === "pending") return "待解析";
   return "未解析";
-}
-
-function parseStatusVariant(status?: string | null): "success" | "error" | "running" | "queued" {
-  if (status === "success") return "success";
-  if (status === "failed") return "error";
-  if (status === "running") return "running";
-  return "queued";
 }
 
 export function LibraryDocuments() {
@@ -62,6 +51,8 @@ export function LibraryDocuments() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
+  const [uploadParserName, setUploadParserName] = useState("auto");
+  const [uploadContentFormat, setUploadContentFormat] = useState<"markdown" | "text">("markdown");
   const [feedback, setFeedback] = useState<{
     variant: "success" | "info" | "warning" | "error";
     title: string;
@@ -73,11 +64,6 @@ export function LibraryDocuments() {
   const [reparseSubmitting, setReparseSubmitting] = useState(false);
   const [parserName, setParserName] = useState("auto");
   const [contentFormat, setContentFormat] = useState<"markdown" | "text">("markdown");
-  const [parseLanguage, setParseLanguage] = useState("zh-CN");
-  const [ocrEnabled, setOcrEnabled] = useState(false);
-  const [tableStrategy, setTableStrategy] = useState("preserve");
-  const [extractImageText, setExtractImageText] = useState(false);
-  const [preserveHeadings, setPreserveHeadings] = useState(true);
 
   // 加载文档库信息
   useEffect(() => {
@@ -137,7 +123,10 @@ export function LibraryDocuments() {
     setUploading(true);
     setUploadProgress(null);
     try {
-      const upload = uploadLibraryDocumentWithProgress(selectedFile, uploadName, libraryId);
+      const upload = uploadLibraryDocumentWithProgress(selectedFile, uploadName, libraryId, {
+        parserName: uploadParserName,
+        contentFormat: uploadContentFormat,
+      });
       upload.onProgress((progress) => setUploadProgress(progress));
       await upload.promise;
       setFeedback({ variant: "success", title: "上传成功", message: "文档已上传，文本提取任务已创建。" });
@@ -255,13 +244,6 @@ export function LibraryDocuments() {
             parserName,
             contentFormat,
             reason: "library_document_list_reparse",
-            parseOptions: {
-              language: parseLanguage,
-              ocrEnabled,
-              tableStrategy,
-              extractImageText,
-              preserveHeadings,
-            },
           }),
         ),
       );
@@ -579,6 +561,12 @@ export function LibraryDocuments() {
                   placeholder="留空则使用文件名"
                 />
               </div>
+              <ParseOptionsForm
+                parserName={uploadParserName}
+                onParserNameChange={setUploadParserName}
+                contentFormat={uploadContentFormat}
+                onContentFormatChange={setUploadContentFormat}
+              />
             </div>
             {uploading && uploadProgress && (
               <div className="px-6 pb-2 space-y-2">
@@ -620,46 +608,12 @@ export function LibraryDocuments() {
               </p>
             </div>
             <div className="flex-1 space-y-4 overflow-auto p-6">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-near-black">解析器</label>
-                <select className="w-full rounded-md border border-border-cream bg-white px-3 py-2 text-sm" value={parserName} onChange={(e) => setParserName(e.target.value)}>
-                  <option value="auto">自动识别</option>
-                  <option value="plain_text">纯文本</option>
-                  <option value="pdf_pypdf">PDF</option>
-                  <option value="docx_python_docx">DOCX</option>
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-near-black">产物格式</label>
-                <select className="w-full rounded-md border border-border-cream bg-white px-3 py-2 text-sm" value={contentFormat} onChange={(e) => setContentFormat(e.target.value as "markdown" | "text")}>
-                  <option value="markdown">Markdown</option>
-                  <option value="text">纯文本</option>
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-near-black">语言</label>
-                <Input value={parseLanguage} onChange={(e) => setParseLanguage(e.target.value)} placeholder="zh-CN" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-near-black">表格处理</label>
-                <select className="w-full rounded-md border border-border-cream bg-white px-3 py-2 text-sm" value={tableStrategy} onChange={(e) => setTableStrategy(e.target.value)}>
-                  <option value="preserve">保留表格结构</option>
-                  <option value="flatten">转为段落文本</option>
-                  <option value="ignore">忽略表格</option>
-                </select>
-              </div>
-              <label className="flex items-center justify-between rounded-lg border border-border-cream bg-parchment px-3 py-2 text-sm">
-                <span>启用 OCR</span>
-                <input type="checkbox" checked={ocrEnabled} onChange={(e) => setOcrEnabled(e.target.checked)} className="accent-terracotta" />
-              </label>
-              <label className="flex items-center justify-between rounded-lg border border-border-cream bg-parchment px-3 py-2 text-sm">
-                <span>抽取图片文字</span>
-                <input type="checkbox" checked={extractImageText} onChange={(e) => setExtractImageText(e.target.checked)} className="accent-terracotta" />
-              </label>
-              <label className="flex items-center justify-between rounded-lg border border-border-cream bg-parchment px-3 py-2 text-sm">
-                <span>保留标题结构</span>
-                <input type="checkbox" checked={preserveHeadings} onChange={(e) => setPreserveHeadings(e.target.checked)} className="accent-terracotta" />
-              </label>
+              <ParseOptionsForm
+                parserName={parserName}
+                onParserNameChange={setParserName}
+                contentFormat={contentFormat}
+                onContentFormatChange={setContentFormat}
+              />
               <Alert variant="info" title="不会影响知识库">
                 重解析只创建新的解析版本，不创建新的源文件版本，也不会自动切换已有知识库绑定。
               </Alert>

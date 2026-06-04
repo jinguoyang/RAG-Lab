@@ -16,21 +16,9 @@ import {
   batchAction,
 } from "../services/libraryService";
 import type { LibraryDocumentDTO, LibraryParseJobStatus, LibraryStatsResponse, UploadProgress } from "../types/library";
+import { formatFileSize, parseStatusVariant } from "../utils/format";
 
 const PAGE_SIZE = 20;
-
-function parseStatusVariant(status: string) {
-  if (status === "success") return "success";
-  if (status === "failed") return "error";
-  if (status === "running") return "running";
-  return "queued";
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 export function Library() {
   const navigate = useNavigate();

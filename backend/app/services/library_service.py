@@ -315,6 +315,7 @@ def create_library_upload(
     name: str | None,
     library_id: UUID | None = None,
     storage_provider: ObjectStorageProvider | None = None,
+    parse_options: "LibraryUploadParseOptions | None" = None,
 ) -> LibraryDocumentUploadResponse:
     """上传文档到个人文档库，创建文件、文档、版本和解析作业。"""
     settings = get_settings()
@@ -430,12 +431,13 @@ def create_library_upload(
         .values(active_version_id=version_id)
     )
 
+    parser_name = parse_options.parserName if parse_options else "auto"
     parse_revision_id = _create_pending_parse_revision(
         session,
         version_id,
         actor_id,
-        parser_name="auto",
-        content_format="markdown",
+        parser_name=parser_name,
+        content_format=parse_options.contentFormat if parse_options else "markdown",
         parse_options={"source": "initial_upload"},
     )
 
@@ -448,7 +450,10 @@ def create_library_upload(
             job_type="extract_text",
             status="queued",
             progress=0,
-            error_detail={"parseRevisionId": str(parse_revision_id)},
+            error_detail={
+                "parseRevisionId": str(parse_revision_id),
+                "parserName": parser_name,
+            },
             created_at=datetime.now(timezone.utc),
             created_by=actor_id,
         )
@@ -925,12 +930,19 @@ def run_library_parse_job_by_id(job_id: UUID) -> dict:
         parsed = None
         last_error = None
 
+        # 从 parse_options 中提取解析器选择
+        parse_options = job_row["error_detail"] or {}
+        pdf_parser_name = parse_options.get("parserName")
+        if pdf_parser_name == "auto":
+            pdf_parser_name = None
+
         for attempt in range(max_retries + 1):
             try:
                 parsed = parse_document(
                     file_name=file_row["file_name"],
                     mime_type=file_row["mime_type"],
                     file_bytes=file_bytes,
+                    parser_name=pdf_parser_name,
                 )
                 break  # 成功，退出重试循环
             except DocumentParseError as exc:
@@ -1154,11 +1166,12 @@ def create_library_parse_revision_job(
     normalized_options = dict(parse_options or {})
     if reason:
         normalized_options["reason"] = reason
+    effective_parser_name = parser_name or "auto"
     parse_revision_id = _create_pending_parse_revision(
         session,
         version_id,
         user_id,
-        parser_name=parser_name or "auto",
+        parser_name=effective_parser_name,
         parser_version=parser_version,
         content_format=content_format,
         parse_options=normalized_options,
@@ -1176,6 +1189,7 @@ def create_library_parse_revision_job(
             progress=0,
             error_detail={
                 "parseRevisionId": str(parse_revision_id),
+                "parserName": effective_parser_name,
                 "parseOptions": normalized_options,
             },
             created_at=now,
@@ -1501,6 +1515,7 @@ def upload_library_version(
     mime_type: str | None,
     file_bytes: bytes,
     storage_provider: ObjectStorageProvider | None = None,
+    parse_options: "LibraryUploadParseOptions | None" = None,
 ) -> LibraryVersionUploadResponse:
     """上传新版本文件到已有文档。"""
     doc_row = _ensure_owner(session, current_user, document_id, "library.version.create")
@@ -1568,12 +1583,13 @@ def upload_library_version(
         )
     )
 
+    parser_name = parse_options.parserName if parse_options else "auto"
     parse_revision_id = _create_pending_parse_revision(
         session,
         version_id,
         actor_id,
-        parser_name="auto",
-        content_format="markdown",
+        parser_name=parser_name,
+        content_format=parse_options.contentFormat if parse_options else "markdown",
         parse_options={"source": "upload_version"},
     )
 
@@ -1586,7 +1602,10 @@ def upload_library_version(
             job_type="upload_version",
             status="queued",
             progress=0,
-            error_detail={"parseRevisionId": str(parse_revision_id)},
+            error_detail={
+                "parseRevisionId": str(parse_revision_id),
+                "parserName": parser_name,
+            },
             created_at=datetime.now(timezone.utc),
             created_by=actor_id,
         )

@@ -91,6 +91,14 @@ class LibraryReparseRequest(BaseModel):
     reason: str | None = None
 
 
+class LibraryUploadParseOptions(BaseModel):
+    """上传文档/版本时的解析选项。"""
+
+    parserName: str | None = "auto"
+    contentFormat: Literal["markdown", "text"] = "markdown"
+    parseOptions: dict | None = None
+
+
 class LibraryParseRevisionCreateResponse(BaseModel):
     """创建解析版本后的排队响应。"""
 

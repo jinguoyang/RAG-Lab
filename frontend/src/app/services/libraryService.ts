@@ -19,6 +19,7 @@ import type {
   LibraryParseRevisionCreateResponse,
   LibraryParsedChunksResponse,
   LibraryReparseRequest,
+  LibraryUploadParseOptions,
   ParseRevisionDTO,
   LibraryStatsResponse,
   LibraryTextPreviewResponse,
@@ -61,6 +62,7 @@ export function uploadLibraryDocumentWithProgress(
   file: File,
   name: string,
   libraryId?: string,
+  parseOptions?: LibraryUploadParseOptions,
 ): UploadWithProgressResult {
   const body = new FormData();
   body.set("file", file);
@@ -69,6 +71,9 @@ export function uploadLibraryDocumentWithProgress(
   }
   if (libraryId) {
     body.set("libraryId", libraryId);
+  }
+  if (parseOptions) {
+    body.set("parseOptions", JSON.stringify(parseOptions));
   }
 
   const xhr = new XMLHttpRequest();
@@ -120,8 +125,9 @@ export async function uploadLibraryDocument(
   file: File,
   name: string,
   libraryId?: string,
+  parseOptions?: LibraryUploadParseOptions,
 ): Promise<LibraryDocumentUploadResponse> {
-  return uploadLibraryDocumentWithProgress(file, name, libraryId).promise;
+  return uploadLibraryDocumentWithProgress(file, name, libraryId, parseOptions).promise;
 }
 
 export async function fetchLibraryDocumentDetail(
@@ -262,9 +268,13 @@ export async function createLibraryParseRevision(
 export function uploadLibraryVersionWithProgress(
   documentId: string,
   file: File,
+  parseOptions?: LibraryUploadParseOptions,
 ): UploadWithProgressResult {
   const body = new FormData();
   body.set("file", file);
+  if (parseOptions) {
+    body.set("parseOptions", JSON.stringify(parseOptions));
+  }
 
   const xhr = new XMLHttpRequest();
   let progressCallback: ((progress: UploadProgress) => void) | null = null;

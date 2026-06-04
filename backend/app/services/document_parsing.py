@@ -9,7 +9,7 @@ from app.services.vision_text_provider import VisionTextRequest, get_vision_text
 from app.services.qa_providers import ProviderError
 
 
-PARSER_VERSION = "sprint19.2"
+PARSER_VERSION = "sprint19.3"
 DEFAULT_CHUNK_SIZE = 900
 DEFAULT_CHUNK_OVERLAP = 120
 
@@ -57,8 +57,17 @@ def parse_document(
     file_bytes: bytes,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
+    parser_name: str | None = None,
 ) -> ParsedDocument:
-    """按文件类型解析 txt、md、pdf、docx，并返回结构化 Chunk。"""
+    """按文件类型解析 txt、md、pdf、docx，并返回结构化 Chunk。
+
+    Args:
+        parser_name: PDF 解析器选择，可选值：
+            - "auto": 自动选择（默认，优先 pdfplumber 检测表格）
+            - "pdf_pypdf": 强制使用 pypdf
+            - "pdf_plumber": 强制使用 pdfplumber
+            其他文件类型此参数被忽略。
+    """
     normalized_name = PurePath(file_name).name or "uploaded-document"
     extension = PurePath(normalized_name).suffix.lower()
     if extension == ".txt":
@@ -68,8 +77,7 @@ def parse_document(
         blocks = _parse_markdown(file_bytes)
         parser_name = "markdown"
     elif extension == ".pdf":
-        blocks = _parse_pdf(file_bytes)
-        parser_name = "pdf_pypdf"
+        blocks, parser_name = _parse_pdf(file_bytes, parser_name or "auto")
     elif extension == ".docx":
         blocks = _parse_docx(file_bytes)
         parser_name = "docx_python_docx"
@@ -225,13 +233,138 @@ def _current_section(heading_stack: dict[int, str]) -> str | None:
     return " > ".join(heading_stack[level] for level in levels)
 
 
-def _parse_pdf(file_bytes: bytes) -> list[dict]:
-    """使用 pypdf 提取 PDF 页文本；复杂版面与 OCR 留到后续版本。"""
+def _escape_markdown_cell(value: str | None) -> str:
+    """转义单元格内容，确保生成的 Markdown 表格可稳定渲染。"""
+    return (value or "").replace("\n", "<br>").replace("|", r"\|").strip()
+
+
+def _is_table_page(page) -> bool:
+    """判断 pdfplumber 页面是否包含有效表格。"""
+    tables = page.extract_tables()
+    return any(
+        len([c for c in row if c and str(c).strip()]) >= 2
+        for table in (tables or [])
+        for row in (table or [])
+    )
+
+
+def _extract_tables_markdown(page) -> list[str]:
+    """提取页面所有表格并序列化为 Markdown 字符串列表。"""
+    results = []
+    for table in page.extract_tables():
+        if not table:
+            continue
+        rows = [[_escape_markdown_cell(cell) for cell in row] for row in table]
+        header = rows[0]
+        body = rows[1:]
+        lines = [
+            "| " + " | ".join(header) + " |",
+            "| " + " | ".join("---" for _ in header) + " |",
+        ]
+        lines.extend("| " + " | ".join(row) + " |" for row in body)
+        results.append("\n".join(lines))
+    return results
+
+
+def _extract_non_table_text(page) -> str:
+    """提取页面中表格区域以外的文本，避免与表格内容重复。"""
+    tables = page.find_tables()
+    if not tables:
+        return page.extract_text() or ""
+    table_bboxes = [t.bbox for t in tables]
+    filtered = page
+    for bbox in table_bboxes:
+        try:
+            filtered = filtered.filter(lambda obj, bb=bbox: not (
+                obj.get("x0", 0) >= bb[0]
+                and obj.get("top", 0) >= bb[1]
+                and obj.get("x1", 0) <= bb[2]
+                and obj.get("bottom", 0) <= bb[3]
+            ))
+        except Exception:
+            pass
+    return filtered.extract_text() or ""
+
+
+def _parse_pdf(file_bytes: bytes, parser_name: str = "auto") -> tuple[list[dict], str]:
+    """解析 PDF 文件，返回 (blocks, actual_parser_name)。
+
+    Args:
+        parser_name: 解析器选择
+            - "auto": 自动选择（优先 pdfplumber 检测表格，无表格时回退 pypdf）
+            - "pdf_pypdf": 强制使用 pypdf
+            - "pdf_plumber": 强制使用 pdfplumber
+    """
+    # ── 强制使用 pypdf ──
+    if parser_name == "pdf_pypdf":
+        return _parse_pdf_with_pypdf(file_bytes), "pdf_pypdf"
+
+    # ── 强制使用 pdfplumber ──
+    if parser_name == "pdf_plumber":
+        return _parse_pdf_with_pdfplumber(file_bytes, force=True), "pdf_plumber"
+
+    # ── auto 模式：优先 pdfplumber 检测表格 ──
+    try:
+        blocks = _parse_pdf_with_pdfplumber(file_bytes, force=False)
+        if blocks:
+            return blocks, "pdf_plumber"
+    except DocumentParseError:
+        raise
+    except Exception:
+        pass  # pdfplumber 失败时回退到 pypdf
+
+    # ── pypdf 回退 ──
+    return _parse_pdf_with_pypdf(file_bytes), "pdf_pypdf"
+
+
+def _parse_pdf_with_pdfplumber(file_bytes: bytes, force: bool = False) -> list[dict]:
+    """使用 pdfplumber 解析 PDF。
+
+    Args:
+        force: True 时提取所有页面文本；False 时仅在检测到表格时返回结果。
+    """
+    import pdfplumber
+
+    with pdfplumber.open(BytesIO(file_bytes)) as pdf:
+        blocks: list[dict] = []
+        has_table = False
+        for page_index, page in enumerate(pdf.pages, start=1):
+            if _is_table_page(page):
+                has_table = True
+                for table_md in _extract_tables_markdown(page):
+                    blocks.append({
+                        "content": table_md,
+                        "section": f"Page {page_index}",
+                        "page_no": page_index,
+                    })
+                non_table_text = _normalize_text(_extract_non_table_text(page))
+                for paragraph in _paragraphs(non_table_text):
+                    blocks.append({
+                        "content": paragraph,
+                        "section": f"Page {page_index}",
+                        "page_no": page_index,
+                    })
+            elif force:
+                # 强制模式下，无表格的页面也提取文本
+                page_text = _normalize_text(page.extract_text() or "")
+                for paragraph in _paragraphs(page_text):
+                    blocks.append({
+                        "content": paragraph,
+                        "section": f"Page {page_index}",
+                        "page_no": page_index,
+                    })
+        if has_table or force:
+            return blocks
+    return []
+
+
+def _parse_pdf_with_pypdf(file_bytes: bytes) -> list[dict]:
+    """使用 pypdf 提取 PDF 纯文本。"""
     try:
         from pypdf import PdfReader
 
         reader = PdfReader(BytesIO(file_bytes))
-        blocks: list[dict] = []
+        blocks = []
         for page_index, page in enumerate(reader.pages, start=1):
             page_text = _normalize_text(page.extract_text() or "")
             for paragraph in _paragraphs(page_text):

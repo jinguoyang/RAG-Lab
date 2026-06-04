@@ -11,7 +11,7 @@ import { TextPreview } from "../components/rag/TextPreview";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
 import { Drawer, DrawerSection } from "../components/rag/Drawer";
-import { Input } from "../components/rag/Input";
+import { ParseOptionsForm } from "../components/rag/ParseOptionsForm";
 import { useConfirmDialog } from "../components/rag/ConfirmDialog";
 import {
   activateLibraryVersion,
@@ -20,12 +20,14 @@ import {
   downloadLibraryDocument,
   fetchDocumentText,
   fetchDocumentUsage,
+  fetchLibraryDetail,
   fetchLibraryDocumentDetail,
   fetchLibraryParseRevisions,
   fetchLibraryVersions,
   getDeletionImpact,
   uploadLibraryVersionWithProgress,
 } from "../services/libraryService";
+import type { LibraryDTO } from "../types/library";
 import type {
   DeletionImpactAnalysis,
   LibraryDocumentDetailDTO,
@@ -34,6 +36,7 @@ import type {
   ParseRevisionDTO,
   UploadProgress,
 } from "../types/library";
+import { formatFileSize, parseStatusVariant } from "../utils/format";
 
 const DocxPreview = lazy(async () => ({
   default: (await import("../components/rag/DocxPreview")).DocxPreview,
@@ -46,20 +49,6 @@ function getPreviewType(fileName: string): "pdf" | "markdown" | "text" | "docx" 
   if (ext === "txt") return "text";
   if (ext === "docx") return "docx";
   return "unsupported";
-}
-
-function formatFileSize(bytes: number | null | undefined): string {
-  if (bytes == null) return "-";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function parseStatusVariant(status: string | null | undefined): "success" | "error" | "running" | "queued" {
-  if (status === "success" || status === "completed") return "success";
-  if (status === "failed") return "error";
-  if (status === "running") return "running";
-  return "queued";
 }
 
 function parseOptionsSummary(options?: Record<string, unknown>) {
@@ -77,6 +66,7 @@ export function LibraryDetail() {
   const { confirm } = useConfirmDialog();
 
   const [detail, setDetail] = useState<LibraryDocumentDetailDTO | null>(null);
+  const [library, setLibrary] = useState<LibraryDTO | null>(null);
   const [versions, setVersions] = useState<LibraryDocumentVersionDTO[]>([]);
   const [parseRevisions, setParseRevisions] = useState<ParseRevisionDTO[]>([]);
   const [usages, setUsages] = useState<LibraryDocumentUsageDTO[]>([]);
@@ -94,16 +84,13 @@ export function LibraryDetail() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadParserName, setUploadParserName] = useState("auto");
+  const [uploadContentFormat, setUploadContentFormat] = useState<"markdown" | "text">("markdown");
 
   const [showReparse, setShowReparse] = useState(false);
   const [reparseSubmitting, setReparseSubmitting] = useState(false);
   const [parserName, setParserName] = useState("auto");
   const [contentFormat, setContentFormat] = useState<"markdown" | "text">("markdown");
-  const [parseLanguage, setParseLanguage] = useState("zh-CN");
-  const [ocrEnabled, setOcrEnabled] = useState(false);
-  const [tableStrategy, setTableStrategy] = useState("preserve");
-  const [extractImageText, setExtractImageText] = useState(false);
-  const [preserveHeadings, setPreserveHeadings] = useState(true);
 
   const [deleteDrawer, setDeleteDrawer] = useState<{ versionId: string; versionNo: number } | null>(null);
   const [deleteImpact, setDeleteImpact] = useState<DeletionImpactAnalysis | null>(null);
@@ -133,7 +120,23 @@ export function LibraryDetail() {
       setDetail(detailData);
       setVersions(versionsData);
       setUsages(usageData.usages);
-      setSelectedVersionId((current) => current ?? detailData.activeVersion?.versionId ?? versionsData[0]?.versionId ?? null);
+      const resolvedVersionId = selectedVersionId ?? detailData.activeVersion?.versionId ?? versionsData[0]?.versionId ?? null;
+      setSelectedVersionId(resolvedVersionId);
+
+      // 刷新当前选中版本的解析版本列表
+      if (resolvedVersionId) {
+        void loadParseRevisions(resolvedVersionId);
+      }
+
+      // 获取文档库信息
+      if (libraryId) {
+        try {
+          const libraryData = await fetchLibraryDetail(libraryId);
+          setLibrary(libraryData);
+        } catch {
+          // 文档库信息加载失败时保留默认标题
+        }
+      }
     } catch (error) {
       setFeedback({
         variant: "error",
@@ -205,7 +208,10 @@ export function LibraryDetail() {
     setUploading(true);
     setUploadProgress(null);
     try {
-      const { promise, onProgress } = uploadLibraryVersionWithProgress(docId, uploadFile);
+      const { promise, onProgress } = uploadLibraryVersionWithProgress(docId, uploadFile, {
+        parserName: uploadParserName,
+        contentFormat: uploadContentFormat,
+      });
       onProgress(setUploadProgress);
       await promise;
       setFeedback({ variant: "success", title: "上传成功", message: "源文件新版本已上传，解析任务已创建。" });
@@ -244,13 +250,6 @@ export function LibraryDetail() {
         parserName,
         contentFormat,
         reason: "library_detail_reparse",
-        parseOptions: {
-          language: parseLanguage,
-          ocrEnabled,
-          tableStrategy,
-          extractImageText,
-          preserveHeadings,
-        },
       });
       setFeedback({ variant: "success", title: "重解析已提交", message: "新的解析版本已创建并排队。" });
       setShowReparse(false);
@@ -318,7 +317,7 @@ export function LibraryDetail() {
           title={doc.name}
           breadcrumbs={[
             { label: "文档库", href: "/library" },
-            { label: "文档列表", href: libraryId ? `/library/${libraryId}` : "/library" },
+            { label: library?.name ?? "文档库详情", href: libraryId ? `/library/${libraryId}` : "/library" },
             { label: doc.name },
           ]}
           actions={
@@ -470,7 +469,7 @@ export function LibraryDetail() {
                     <TableCell><Badge variant={parseStatusVariant(revision.status)}>{revision.status}</Badge></TableCell>
                     <TableCell>{revision.contentLength ?? 0}</TableCell>
                     <TableCell>{new Date(revision.createdAt).toLocaleString("zh-CN")}</TableCell>
-                    <TableCell className="max-w-[180px] truncate text-xs text-red-600">{revision.errorMessage ?? "-"}</TableCell>
+                    <TableCell className="max-w-[180px] truncate text-xs text-red-600" title={revision.errorMessage ?? undefined}>{revision.errorMessage ?? "-"}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
                         <Button variant="ghost" size="sm" title="查看正文" onClick={() => setPreviewParseRevision(revision.parseRevisionId)}>
@@ -533,48 +532,76 @@ export function LibraryDetail() {
         </UnderlineTabs>
 
         <Dialog open={!!previewParseRevision} onOpenChange={(open) => { if (!open) setPreviewParseRevision(null); }}>
-          <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
             <DialogHeader>
               <DialogTitle>解析正文</DialogTitle>
             </DialogHeader>
             <div className="flex-1 overflow-auto">
               {previewParseRevision && (
-                <TextPreview documentId={docId} parseRevisionId={previewParseRevision} />
+                <TextPreview
+                  documentId={docId}
+                  parseRevisionId={previewParseRevision}
+                  contentFormat={(parseRevisions.find((r) => r.parseRevisionId === previewParseRevision)?.contentFormat ?? "text") as "markdown" | "text"}
+                />
               )}
             </div>
           </DialogContent>
         </Dialog>
 
         {showUpload && (
-          <Drawer isOpen={showUpload} title="上传新源文件版本" onClose={() => { setShowUpload(false); setUploadFile(null); setUploadProgress(null); }}>
-            <DrawerSection>
-              <div className="space-y-4">
-                <input
-                  type="file"
-                  accept=".txt,.md,.pdf,.docx"
-                  onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)}
-                  className="block w-full text-sm text-stone-gray file:mr-4 file:rounded-lg file:border-0 file:bg-terracotta/10 file:px-4 file:py-2 file:text-sm file:font-medium file:text-terracotta hover:file:bg-terracotta/20"
-                />
-                {uploadProgress && (
-                  <div>
-                    <div className="mb-1 flex justify-between text-xs text-stone-gray">
-                      <span>上传进度</span>
-                      <span>{uploadProgress.percent}%</span>
-                    </div>
-                    <div className="h-2 w-full rounded-full bg-border-cream">
-                      <div className="h-2 rounded-full bg-terracotta transition-all" style={{ width: `${uploadProgress.percent}%` }} />
-                    </div>
-                  </div>
-                )}
-                <div className="flex justify-end gap-2">
-                  <Button variant="secondary" onClick={() => setShowUpload(false)}>取消</Button>
-                  <Button disabled={!uploadFile || uploading} onClick={() => void handleVersionUpload()}>
-                    {uploading ? "上传中..." : "上传"}
-                  </Button>
-                </div>
+          <div className="fixed inset-0 z-50 flex">
+            <div className="absolute inset-0 bg-black/30" onClick={() => { setShowUpload(false); setUploadFile(null); setUploadProgress(null); }} />
+            <div className="relative ml-auto w-[420px] bg-ivory border-l border-border-cream flex flex-col shadow-xl">
+              <div className="p-6 border-b border-border-cream">
+                <h2 className="text-lg font-serif text-near-black">上传新源文件版本</h2>
+                <p className="text-sm text-stone-gray mt-1">
+                  文件将保存为「{detail?.document.name ?? "文档"}」的新版本
+                </p>
               </div>
-            </DrawerSection>
-          </Drawer>
+              <div className="flex-1 p-6 space-y-4 overflow-auto">
+                <div>
+                  <label className="block text-sm font-medium text-near-black mb-1">选择文件</label>
+                  <input
+                    type="file"
+                    accept=".txt,.md,.pdf,.docx"
+                    onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)}
+                    className="block w-full text-sm text-stone-gray file:mr-4 file:rounded-lg file:border-0 file:bg-terracotta/10 file:px-4 file:py-2 file:text-sm file:font-medium file:text-terracotta hover:file:bg-terracotta/20"
+                  />
+                  {uploadFile && (
+                    <p className="text-xs text-stone-gray mt-1">{formatFileSize(uploadFile.size)}</p>
+                  )}
+                </div>
+                <ParseOptionsForm
+                  parserName={uploadParserName}
+                  onParserNameChange={setUploadParserName}
+                  contentFormat={uploadContentFormat}
+                  onContentFormatChange={setUploadContentFormat}
+                />
+              </div>
+              {uploading && uploadProgress && (
+                <div className="px-6 pb-2 space-y-2">
+                  <div className="flex justify-between text-sm text-stone-gray">
+                    <span>上传中: {uploadFile?.name}</span>
+                    <span>{uploadProgress.percent}% ({formatFileSize(uploadProgress.loaded)}/{formatFileSize(uploadProgress.total)})</span>
+                  </div>
+                  <div className="w-full bg-border-cream rounded-full h-2">
+                    <div
+                      className="bg-terracotta h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${uploadProgress.percent}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+              <div className="p-6 border-t border-border-cream flex items-center gap-3">
+                <Button variant="secondary" className="flex-1" onClick={() => { setShowUpload(false); setUploadFile(null); setUploadProgress(null); }}>
+                  取消
+                </Button>
+                <Button className="flex-1" disabled={!uploadFile || uploading} onClick={() => void handleVersionUpload()}>
+                  {uploading ? "上传中..." : "确认上传"}
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
 
         {showReparse && selectedVersion && (
@@ -590,46 +617,12 @@ export function LibraryDetail() {
                     {versions.map((version) => <option key={version.versionId} value={version.versionId}>v{version.versionNo} - {version.fileName ?? "-"}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-near-black">解析器</label>
-                  <select className="w-full rounded-md border border-border-cream bg-white px-3 py-2 text-sm" value={parserName} onChange={(event) => setParserName(event.target.value)}>
-                    <option value="auto">自动识别</option>
-                    <option value="plain_text">纯文本</option>
-                    <option value="pdf_pypdf">PDF</option>
-                    <option value="docx_python_docx">DOCX</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-near-black">产物格式</label>
-                  <select className="w-full rounded-md border border-border-cream bg-white px-3 py-2 text-sm" value={contentFormat} onChange={(event) => setContentFormat(event.target.value as "markdown" | "text")}>
-                    <option value="markdown">Markdown</option>
-                    <option value="text">纯文本</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-near-black">语言</label>
-                  <Input value={parseLanguage} onChange={(event) => setParseLanguage(event.target.value)} />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-near-black">表格处理</label>
-                  <select className="w-full rounded-md border border-border-cream bg-white px-3 py-2 text-sm" value={tableStrategy} onChange={(event) => setTableStrategy(event.target.value)}>
-                    <option value="preserve">保留表格结构</option>
-                    <option value="flatten">转为段落文本</option>
-                    <option value="ignore">忽略表格</option>
-                  </select>
-                </div>
-                <label className="flex items-center justify-between rounded-lg border border-border-cream bg-parchment px-3 py-2 text-sm">
-                  <span>启用 OCR</span>
-                  <input type="checkbox" checked={ocrEnabled} onChange={(event) => setOcrEnabled(event.target.checked)} className="accent-terracotta" />
-                </label>
-                <label className="flex items-center justify-between rounded-lg border border-border-cream bg-parchment px-3 py-2 text-sm">
-                  <span>抽取图片文字</span>
-                  <input type="checkbox" checked={extractImageText} onChange={(event) => setExtractImageText(event.target.checked)} className="accent-terracotta" />
-                </label>
-                <label className="flex items-center justify-between rounded-lg border border-border-cream bg-parchment px-3 py-2 text-sm">
-                  <span>保留标题结构</span>
-                  <input type="checkbox" checked={preserveHeadings} onChange={(event) => setPreserveHeadings(event.target.checked)} className="accent-terracotta" />
-                </label>
+                <ParseOptionsForm
+                  parserName={parserName}
+                  onParserNameChange={setParserName}
+                  contentFormat={contentFormat}
+                  onContentFormatChange={setContentFormat}
+                />
                 <div className="flex justify-end gap-2">
                   <Button variant="secondary" onClick={() => setShowReparse(false)}>取消</Button>
                   <Button disabled={reparseSubmitting} onClick={() => void handleSubmitReparse()}>

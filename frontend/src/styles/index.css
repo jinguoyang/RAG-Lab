@@ -1,3 +1,51 @@
 @import './fonts.css';
 @import './tailwind.css';
 @import './theme.css';
+
+/* Markdown 渲染样式 */
+.prose {
+  --tw-prose-body: theme('colors.near-black');
+  --tw-prose-headings: theme('colors.near-black');
+  --tw-prose-links: theme('colors.terracotta');
+  --tw-prose-bold: theme('colors.near-black');
+  --tw-prose-code: theme('colors.near-black');
+  --tw-prose-pre-bg: theme('colors.parchment');
+  --tw-prose-pre-code: theme('colors.near-black');
+}
+
+.prose pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.prose code {
+  background-color: theme('colors.parchment');
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+}
+
+.prose code::before,
+.prose code::after {
+  content: none;
+}
+
+.prose blockquote {
+  border-left-color: theme('colors.terracotta');
+}
+
+.prose table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.prose th,
+.prose td {
+  border: 1px solid theme('colors.border-cream');
+  padding: 0.5rem 0.75rem;
+}
+
+.prose th {
+  background-color: theme('colors.parchment');
+  font-weight: 600;
+}

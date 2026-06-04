@@ -1,5 +1,6 @@
 """文档库 API 路由。"""
 
+import json
 import logging
 from typing import Annotated, Literal
 from urllib.parse import quote
@@ -27,6 +28,7 @@ from app.schemas.library import (
     LibraryDocumentUploadResponse,
     LibraryDocumentVersionDTO,
     LibraryFullTextResponse,
+    LibraryUploadParseOptions,
     LibraryParseJobDTO,
     LibraryParseRevisionCreateResponse,
     LibraryParseRevisionDTO,
@@ -103,6 +105,18 @@ def _raise_library_error(exc: Exception) -> None:
     raise exc
 
 
+def _parse_upload_options(raw: str | None) -> LibraryUploadParseOptions | None:
+    """解析前端传来的 JSON 字符串 parseOptions。"""
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+        return LibraryUploadParseOptions(**data)
+    except Exception:
+        logger.warning("Failed to parse parseOptions: %s", raw, exc_info=True)
+        return None
+
+
 @router.get("", response_model=PageResponse[LibraryDocumentDTO])
 def list_documents(
     current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
@@ -128,6 +142,7 @@ def upload_document(
     file: UploadFile = File(...),
     name: str | None = Form(default=None),
     libraryId: UUID | None = Form(default=None),
+    parseOptions: str | None = Form(default=None),
 ) -> LibraryDocumentUploadResponse:
     """上传文档到个人文档库。"""
     file_bytes = file.file.read()
@@ -138,6 +153,7 @@ def upload_document(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"文件大小超过限制（最大 {MAX_UPLOAD_SIZE_BYTES // (1024*1024)}MB）",
         )
+    parsed_options = _parse_upload_options(parseOptions)
     try:
         return create_library_upload(
             session=db,
@@ -147,6 +163,7 @@ def upload_document(
             file_bytes=file_bytes,
             name=name,
             library_id=libraryId,
+            parse_options=parsed_options,
         )
     except Exception as exc:
         _raise_library_error(exc)
@@ -404,6 +421,7 @@ def upload_version(
     current_user: Annotated[CurrentUserResponse, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db_session)],
     file: UploadFile = File(...),
+    parseOptions: str | None = Form(default=None),
 ) -> LibraryVersionUploadResponse:
     """上传新版本文件。"""
     file_bytes = file.file.read()
@@ -414,6 +432,7 @@ def upload_version(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"文件大小超过限制（最大 {MAX_UPLOAD_SIZE_BYTES // (1024*1024)}MB）",
         )
+    parsed_options = _parse_upload_options(parseOptions)
     try:
         return upload_library_version(
             session=db,
@@ -422,6 +441,7 @@ def upload_version(
             file_name=file.filename or "uploaded-document",
             mime_type=file.content_type,
             file_bytes=file_bytes,
+            parse_options=parsed_options,
         )
     except Exception as exc:
         _raise_library_error(exc)
