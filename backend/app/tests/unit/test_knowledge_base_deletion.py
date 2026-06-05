@@ -1,4 +1,5 @@
 """知识库删除功能单元测试。"""
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, Mock, patch
 from uuid import uuid4
 
@@ -7,11 +8,15 @@ import pytest
 from app.services.knowledge_base_service import (
     KnowledgeBaseActiveRagAppsError,
     KnowledgeBaseConfirmNameMismatchError,
+    KnowledgeBaseIndexCapabilityLockedError,
     KnowledgeBaseNotFoundError,
     KnowledgeBaseRunningJobsError,
+    _ensure_index_capabilities_mutable,
     delete_knowledge_base,
     get_kb_delete_impact,
 )
+from app.schemas.knowledge_base import KnowledgeBaseUpdateRequest
+from app.tables import document_kb_bindings, document_libraries, document_versions, documents, knowledge_bases
 
 
 @pytest.fixture()
@@ -80,6 +85,168 @@ class TestGetKbDeleteImpact:
 
         assert len(result.blockers.activeRagApps) == 1
         assert result.blockers.activeRagApps[0]["name"] == "客服助手"
+
+    @patch("app.services.knowledge_base_service._read_visible_kb_row")
+    def test_counts_library_documents_from_bindings_when_document_has_no_kb_id(self, mock_read, db, admin_user):
+        """删除影响统计应以绑定表识别文档库来源文档，不能依赖 documents.kb_id。"""
+        now = datetime.now(timezone.utc)
+        kb_id = uuid4()
+        owner_id = uuid4()
+        library_id = uuid4()
+        document_id = uuid4()
+        version_id = uuid4()
+
+        mock_read.return_value = {"name": "绑定口径知识库"}
+        db.execute(
+            knowledge_bases.insert().values(
+                kb_id=kb_id,
+                name="绑定口径知识库",
+                description=None,
+                owner_id=owner_id,
+                sparse_index_enabled=False,
+                graph_index_enabled=False,
+                sparse_required_for_activation=False,
+                graph_required_for_activation=False,
+                status="active",
+                active_config_revision_id=None,
+                metadata={},
+                created_at=now,
+                created_by=owner_id,
+                updated_at=now,
+                updated_by=owner_id,
+            )
+        )
+        db.execute(
+            document_libraries.insert().values(
+                library_id=library_id,
+                owner_id=owner_id,
+                name="测试文档库",
+                description=None,
+                status="active",
+                created_at=now,
+                created_by=owner_id,
+                updated_at=now,
+                updated_by=owner_id,
+                deleted_at=None,
+                deleted_by=None,
+            )
+        )
+        db.execute(
+            documents.insert().values(
+                document_id=document_id,
+                kb_id=None,
+                owner_id=owner_id,
+                library_id=library_id,
+                name="绑定表归属源文档",
+                source_type="upload",
+                status="active",
+                active_version_id=version_id,
+                metadata={},
+                created_at=now,
+                created_by=owner_id,
+                updated_at=now,
+                updated_by=owner_id,
+            )
+        )
+        db.execute(
+            document_versions.insert().values(
+                version_id=version_id,
+                document_id=document_id,
+                version_no=1,
+                source_file_id=uuid4(),
+                status="active",
+                parse_status="success",
+                dense_index_status="not_required",
+                sparse_index_status="not_required",
+                graph_index_status="not_required",
+                retrieval_ready=False,
+                chunk_count=None,
+                token_count=None,
+                metadata={},
+                created_at=now,
+                created_by=owner_id,
+                updated_at=now,
+                updated_by=owner_id,
+            )
+        )
+        db.execute(
+            document_kb_bindings.insert().values(
+                binding_id=uuid4(),
+                document_id=document_id,
+                kb_id=kb_id,
+                version_id=version_id,
+                status="active",
+                chunk_count=0,
+                error_code=None,
+                error_message=None,
+                created_at=now,
+                created_by=owner_id,
+                updated_at=now,
+                updated_by=owner_id,
+                active_chunk_revision_id=None,
+            )
+        )
+
+        result = get_kb_delete_impact(db, admin_user, kb_id)
+
+        assert result.cascadeData.bindings == 1
+        assert result.cascadeData.kbDocuments == 0
+        assert result.unaffected.libraryDocuments == 1
+
+
+class TestIndexCapabilityLock:
+    """知识库索引能力锁定测试。"""
+
+    def test_bound_document_without_document_kb_id_locks_index_capability(self, db):
+        """已有绑定文档时应锁定索引能力，不能只检查 documents.kb_id。"""
+        now = datetime.now(timezone.utc)
+        kb_id = uuid4()
+        owner_id = uuid4()
+        document_id = uuid4()
+        version_id = uuid4()
+
+        db.execute(
+            documents.insert().values(
+                document_id=document_id,
+                kb_id=None,
+                owner_id=owner_id,
+                library_id=None,
+                name="绑定表归属文档",
+                source_type="upload",
+                status="active",
+                active_version_id=version_id,
+                metadata={},
+                created_at=now,
+                created_by=owner_id,
+                updated_at=now,
+                updated_by=owner_id,
+            )
+        )
+        db.execute(
+            document_kb_bindings.insert().values(
+                binding_id=uuid4(),
+                document_id=document_id,
+                kb_id=kb_id,
+                version_id=version_id,
+                status="active",
+                chunk_count=0,
+                error_code=None,
+                error_message=None,
+                created_at=now,
+                created_by=owner_id,
+                updated_at=now,
+                updated_by=owner_id,
+                active_chunk_revision_id=None,
+            )
+        )
+
+        with pytest.raises(KnowledgeBaseIndexCapabilityLockedError):
+            _ensure_index_capabilities_mutable(
+                db,
+                kb_id,
+                {"sparse_index_enabled": False, "graph_index_enabled": False},
+                KnowledgeBaseUpdateRequest(sparseIndexEnabled=True),
+            )
 
 
 class TestDeleteKnowledgeBase:

@@ -64,6 +64,8 @@ from app.services.knowledge_base_service import KnowledgeBaseDisabledError
 from app.services.permission_service import build_chunk_access_filter_context, has_kb_permission
 from app.services.qa_providers import ChunkGraphExtraction, ProviderError, QARunProviders, get_qa_run_providers
 
+KB_DOCUMENT_BINDING_STATUSES = ("pending", "processing", "active", "failed")
+
 
 @dataclass(frozen=True)
 class DocumentSourceDownload:
@@ -152,8 +154,7 @@ def check_file_hash_duplicate(
             .join(documents, document_versions.c.document_id == documents.c.document_id)
         )
         .where(
-            documents.c.kb_id == kb_id,
-            documents.c.deleted_at.is_(None),
+            _document_belongs_to_kb_condition(kb_id),
             stored_files.c.checksum == file_hash,
             stored_files.c.status == "active",
         )
@@ -423,9 +424,10 @@ def _ensure_permission(
 
 def _to_document_dto(row: RowMapping) -> DocumentDTO:
     """将 documents 行转换为文档 DTO。"""
+    effective_kb_id = row.get("effective_kb_id") or row["kb_id"]
     return DocumentDTO(
         documentId=str(row["document_id"]),
-        kbId=str(row["kb_id"]),
+        kbId=str(effective_kb_id),
         name=row["name"],
         sourceType=row["source_type"],
         status=row["status"],
@@ -433,6 +435,27 @@ def _to_document_dto(row: RowMapping) -> DocumentDTO:
         createdAt=row["created_at"].isoformat(),
         updatedAt=row["updated_at"].isoformat(),
     )
+
+
+def _document_belongs_to_kb_condition(kb_id: UUID) -> sa.ColumnElement[bool]:
+    """判断文档是否属于知识库；绑定表是新口径，documents.kb_id 仅作历史兼容。"""
+    binding_exists = sa.exists().where(
+        document_kb_bindings.c.document_id == documents.c.document_id,
+        document_kb_bindings.c.kb_id == kb_id,
+        document_kb_bindings.c.status.in_(KB_DOCUMENT_BINDING_STATUSES),
+    )
+    return (
+        documents.c.deleted_at.is_(None)
+        & or_(
+            documents.c.kb_id == kb_id,
+            binding_exists,
+        )
+    )
+
+
+def _select_kb_documents(kb_id: UUID) -> sa.Select:
+    """构造知识库文档查询，并为绑定表口径补充有效 kb_id。"""
+    return select(documents, sa.literal(str(kb_id)).label("effective_kb_id"))
 
 
 def _to_version_dto(row: RowMapping) -> DocumentVersionDTO:
@@ -2290,7 +2313,7 @@ def list_documents(
     if _read_visible_knowledge_base(session, current_user, kb_id) is None:
         return None
 
-    condition = (documents.c.kb_id == kb_id) & (documents.c.deleted_at.is_(None))
+    condition = _document_belongs_to_kb_condition(kb_id)
     if keyword:
         keyword_pattern = f"%{keyword.strip()}%"
         condition = condition & or_(
@@ -2300,7 +2323,7 @@ def list_documents(
 
     total = session.execute(select(func.count()).select_from(documents).where(condition)).scalar_one()
     rows = session.execute(
-        select(documents)
+        _select_kb_documents(kb_id)
         .where(condition)
         .order_by(documents.c.updated_at.desc(), documents.c.created_at.desc())
         .offset((page_no - 1) * page_size)
@@ -2325,11 +2348,10 @@ def get_document_detail(
         return None
 
     document_row = session.execute(
-        select(documents)
+        _select_kb_documents(kb_id)
         .where(
-            documents.c.kb_id == kb_id,
+            _document_belongs_to_kb_condition(kb_id),
             documents.c.document_id == document_id,
-            documents.c.deleted_at.is_(None),
         )
         .limit(1)
     ).mappings().first()
@@ -2363,11 +2385,10 @@ def download_document_source(
     _ensure_permission(session, current_user, kb_id, "kb.document.download")
 
     document_row = session.execute(
-        select(documents)
+        _select_kb_documents(kb_id)
         .where(
-            documents.c.kb_id == kb_id,
+            _document_belongs_to_kb_condition(kb_id),
             documents.c.document_id == document_id,
-            documents.c.deleted_at.is_(None),
         )
         .limit(1)
     ).mappings().first()
@@ -2423,11 +2444,10 @@ def delete_document(
         raise DocumentConflictError("confirmImpact must be true.")
 
     document_row = session.execute(
-        select(documents)
+        _select_kb_documents(kb_id)
         .where(
-            documents.c.kb_id == kb_id,
+            _document_belongs_to_kb_condition(kb_id),
             documents.c.document_id == document_id,
-            documents.c.deleted_at.is_(None),
         )
         .limit(1)
     ).mappings().first()
@@ -2565,7 +2585,7 @@ def get_document_quality_summary(
         return None
 
     document_count = session.execute(
-        select(func.count()).select_from(documents).where(documents.c.kb_id == kb_id, documents.c.deleted_at.is_(None))
+        select(func.count()).select_from(documents).where(_document_belongs_to_kb_condition(kb_id))
     ).scalar_one()
     active_chunk_count = session.execute(
         select(func.count()).select_from(chunks).where(chunks.c.kb_id == kb_id, chunks.c.status == "active")
@@ -2573,7 +2593,7 @@ def get_document_quality_summary(
     failed_versions = session.execute(
         select(document_versions.c.document_id, document_versions.c.version_id, document_versions.c.error_message)
         .select_from(document_versions.join(documents, document_versions.c.document_id == documents.c.document_id))
-        .where(documents.c.kb_id == kb_id, document_versions.c.parse_status == "failed")
+        .where(_document_belongs_to_kb_condition(kb_id), document_versions.c.parse_status == "failed")
     ).mappings().all()
     empty_chunks = session.execute(
         select(chunks.c.document_id, chunks.c.version_id, chunks.c.chunk_id)
@@ -2719,7 +2739,7 @@ def run_bulk_document_governance(
     if operation == "disable":
         result = session.execute(
             update(documents)
-            .where(documents.c.kb_id == kb_id, documents.c.document_id.in_(document_ids), documents.c.deleted_at.is_(None))
+            .where(_document_belongs_to_kb_condition(kb_id), documents.c.document_id.in_(document_ids))
             .values(status="disabled", updated_by=current_user.user.userId, updated_at=func.now())
             .returning(documents.c.document_id)
         )
@@ -3063,8 +3083,8 @@ def reparse_document(
     _ensure_permission(session, current_user, kb_id, "kb.document.upload")
 
     document_row = session.execute(
-        select(documents)
-        .where(documents.c.kb_id == kb_id, documents.c.document_id == document_id, documents.c.deleted_at.is_(None))
+        _select_kb_documents(kb_id)
+        .where(_document_belongs_to_kb_condition(kb_id), documents.c.document_id == document_id)
         .limit(1)
     ).mappings().first()
     if document_row is None:
@@ -3174,8 +3194,8 @@ def activate_document_version(
         raise DocumentConflictError("confirmImpact must be true.")
 
     document_row = session.execute(
-        select(documents)
-        .where(documents.c.kb_id == kb_id, documents.c.document_id == document_id, documents.c.deleted_at.is_(None))
+        _select_kb_documents(kb_id)
+        .where(_document_belongs_to_kb_condition(kb_id), documents.c.document_id == document_id)
         .limit(1)
     ).mappings().first()
     version_row = session.execute(
@@ -3360,7 +3380,7 @@ def list_index_sync_jobs(
     if document_id is not None:
         document_exists = session.execute(
             select(documents.c.document_id)
-            .where(documents.c.kb_id == kb_id, documents.c.document_id == document_id, documents.c.deleted_at.is_(None))
+            .where(_document_belongs_to_kb_condition(kb_id), documents.c.document_id == document_id)
             .limit(1)
         ).scalar_one_or_none()
         if document_exists is None:

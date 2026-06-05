@@ -7,7 +7,9 @@ from app.services.document_service import (
     _to_chunk_dto,
     check_file_hash_duplicate,
     create_parse_revision,
+    get_document_detail,
     list_chunks,
+    list_documents,
 )
 from app.tables import (
     chunk_revisions,
@@ -378,3 +380,186 @@ def test_list_chunks_filters_active_chunk_revision(db, admin_user):
     assert page is not None
     assert page.total == 1
     assert [item.chunkId for item in page.items] == [str(active_chunk_id)]
+
+
+def test_list_documents_uses_document_kb_binding_when_document_has_no_kb_id(db, admin_user):
+    """知识库文档列表应以绑定表识别归属，兼容源文档不再写 documents.kb_id 的场景。"""
+    now = datetime.now(timezone.utc)
+    kb_id = uuid4()
+    owner_id = uuid4()
+    document_id = uuid4()
+    version_id = uuid4()
+
+    db.execute(
+        knowledge_bases.insert().values(
+            kb_id=kb_id,
+            name="绑定口径知识库",
+            description=None,
+            owner_id=owner_id,
+            sparse_index_enabled=False,
+            graph_index_enabled=False,
+            sparse_required_for_activation=False,
+            graph_required_for_activation=False,
+            status="active",
+            active_config_revision_id=None,
+            metadata={},
+            created_at=now,
+            created_by=owner_id,
+            updated_at=now,
+            updated_by=owner_id,
+        )
+    )
+    db.execute(
+        documents.insert().values(
+            document_id=document_id,
+            kb_id=None,
+            library_id=None,
+            owner_id=owner_id,
+            name="绑定表归属文档",
+            source_type="upload",
+            status="active",
+            active_version_id=version_id,
+            metadata={},
+            created_at=now,
+            created_by=owner_id,
+            updated_at=now,
+            updated_by=owner_id,
+        )
+    )
+    db.execute(
+        document_versions.insert().values(
+            version_id=version_id,
+            document_id=document_id,
+            version_no=1,
+            source_file_id=uuid4(),
+            status="active",
+            parse_status="success",
+            dense_index_status="not_required",
+            sparse_index_status="not_required",
+            graph_index_status="not_required",
+            retrieval_ready=False,
+            chunk_count=None,
+            token_count=None,
+            metadata={},
+            created_at=now,
+            created_by=owner_id,
+            updated_at=now,
+            updated_by=owner_id,
+        )
+    )
+    db.execute(
+        document_kb_bindings.insert().values(
+            binding_id=uuid4(),
+            document_id=document_id,
+            kb_id=kb_id,
+            version_id=version_id,
+            status="active",
+            chunk_count=0,
+            error_code=None,
+            error_message=None,
+            created_at=now,
+            created_by=owner_id,
+            updated_at=now,
+            updated_by=owner_id,
+            active_chunk_revision_id=None,
+        )
+    )
+
+    with patch("app.services.document_service.has_kb_permission", return_value=True):
+        page = list_documents(db, admin_user, kb_id, 1, 10, None)
+
+    assert page is not None
+    assert page.total == 1
+    assert page.items[0].documentId == str(document_id)
+    assert page.items[0].kbId == str(kb_id)
+
+
+def test_get_document_detail_allows_nullable_library_version_chunk_count(db, admin_user):
+    """文档库源文件版本不维护 chunk_count，详情 DTO 应允许该值为空。"""
+    now = datetime.now(timezone.utc)
+    kb_id = uuid4()
+    owner_id = uuid4()
+    document_id = uuid4()
+    version_id = uuid4()
+
+    db.execute(
+        knowledge_bases.insert().values(
+            kb_id=kb_id,
+            name="绑定口径知识库",
+            description=None,
+            owner_id=owner_id,
+            sparse_index_enabled=False,
+            graph_index_enabled=False,
+            sparse_required_for_activation=False,
+            graph_required_for_activation=False,
+            status="active",
+            active_config_revision_id=None,
+            metadata={},
+            created_at=now,
+            created_by=owner_id,
+            updated_at=now,
+            updated_by=owner_id,
+        )
+    )
+    db.execute(
+        documents.insert().values(
+            document_id=document_id,
+            kb_id=None,
+            library_id=None,
+            owner_id=owner_id,
+            name="源文件版本文档",
+            source_type="upload",
+            status="active",
+            active_version_id=version_id,
+            metadata={},
+            created_at=now,
+            created_by=owner_id,
+            updated_at=now,
+            updated_by=owner_id,
+        )
+    )
+    db.execute(
+        document_versions.insert().values(
+            version_id=version_id,
+            document_id=document_id,
+            version_no=1,
+            source_file_id=uuid4(),
+            status="active",
+            parse_status="success",
+            dense_index_status="not_required",
+            sparse_index_status="not_required",
+            graph_index_status="not_required",
+            retrieval_ready=False,
+            chunk_count=None,
+            token_count=None,
+            metadata={},
+            created_at=now,
+            created_by=owner_id,
+            updated_at=now,
+            updated_by=owner_id,
+        )
+    )
+    db.execute(
+        document_kb_bindings.insert().values(
+            binding_id=uuid4(),
+            document_id=document_id,
+            kb_id=kb_id,
+            version_id=version_id,
+            status="active",
+            chunk_count=0,
+            error_code=None,
+            error_message=None,
+            created_at=now,
+            created_by=owner_id,
+            updated_at=now,
+            updated_by=owner_id,
+            active_chunk_revision_id=None,
+        )
+    )
+
+    with patch("app.services.document_service.has_kb_permission", return_value=True):
+        detail = get_document_detail(db, admin_user, kb_id, document_id)
+
+    assert detail is not None
+    assert detail.activeVersion is not None
+    assert detail.activeVersion.chunkCount is None

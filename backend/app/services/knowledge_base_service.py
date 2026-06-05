@@ -31,6 +31,8 @@ from app.services.default_pipeline import build_default_pipeline_definition
 from app.services.permission_service import has_kb_permission, kb_visibility_condition
 from app.tables import chunks, config_revisions, document_kb_bindings, documents, ingest_jobs, kb_member_bindings, knowledge_bases, rag_apps, user_groups, users
 
+KB_DOCUMENT_BINDING_STATUSES = ("active", "processing", "pending", "failed")
+
 
 class KnowledgeBasePermissionError(Exception):
     """当前用户缺少执行知识库成员管理动作的权限。"""
@@ -188,7 +190,23 @@ def _ensure_index_capabilities_mutable(
 
     has_documents = session.execute(
         select(documents.c.document_id)
-        .where(documents.c.kb_id == kb_id, documents.c.deleted_at.is_(None))
+        .select_from(
+            documents.outerjoin(
+                document_kb_bindings,
+                and_(
+                    document_kb_bindings.c.document_id == documents.c.document_id,
+                    document_kb_bindings.c.kb_id == kb_id,
+                    document_kb_bindings.c.status.in_(KB_DOCUMENT_BINDING_STATUSES),
+                ),
+            )
+        )
+        .where(
+            or_(
+                documents.c.kb_id == kb_id,
+                document_kb_bindings.c.binding_id.is_not(None),
+            ),
+            documents.c.deleted_at.is_(None),
+        )
         .limit(1)
     ).scalar_one_or_none()
     if has_documents is not None:
@@ -525,10 +543,22 @@ def get_kb_delete_impact(
 
     # 不受影响的数据
     library_doc_count = session.execute(
-        select(func.count())
-        .select_from(documents)
+        select(func.count(func.distinct(documents.c.document_id)))
+        .select_from(
+            documents.outerjoin(
+                document_kb_bindings,
+                and_(
+                    document_kb_bindings.c.document_id == documents.c.document_id,
+                    document_kb_bindings.c.kb_id == kb_id,
+                    document_kb_bindings.c.status.in_(KB_DOCUMENT_BINDING_STATUSES),
+                ),
+            )
+        )
         .where(
-            documents.c.kb_id == kb_id,
+            or_(
+                documents.c.kb_id == kb_id,
+                document_kb_bindings.c.binding_id.is_not(None),
+            ),
             documents.c.library_id.is_not(None),
             documents.c.deleted_at.is_(None),
         )

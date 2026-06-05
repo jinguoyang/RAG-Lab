@@ -38,7 +38,7 @@ class DocumentVersionDTO(BaseModel):
     sparseIndexStatus: str
     graphIndexStatus: str
     retrievalReady: bool
-    chunkCount: int
+    chunkCount: int | None
     tokenCount: int | None
     createdAt: str
     updatedAt: str
