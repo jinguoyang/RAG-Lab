@@ -2499,6 +2499,27 @@ def delete_document(
         )
         .returning(documents)
     ).mappings().one()
+
+    # 更新关联的 document_kb_bindings 状态为 disabled
+    # 通过 document_versions 找到关联的 binding
+    binding_version_ids = session.execute(
+        select(document_versions.c.version_id)
+        .where(document_versions.c.document_id == document_id)
+    ).scalars().all()
+    if binding_version_ids:
+        session.execute(
+            update(document_kb_bindings)
+            .where(
+                document_kb_bindings.c.version_id.in_(binding_version_ids),
+                document_kb_bindings.c.status.in_(["active", "processing", "pending", "failed"]),
+            )
+            .values(
+                status="disabled",
+                updated_by=actor_id,
+                updated_at=func.now(),
+            )
+        )
+
     if chunk_ids:
         session.execute(
             update(chunks)

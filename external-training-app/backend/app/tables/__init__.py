@@ -137,3 +137,37 @@ training_questions = sa.Table(
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column("updated_by", sa.String(length=36), nullable=True),
 )
+
+training_question_appeals = sa.Table(
+    "training_question_appeals", metadata,
+    sa.Column("appeal_id", sa.String(length=36), primary_key=True),
+    sa.Column("question_id", sa.String(length=36), nullable=False),
+    sa.Column("end_user_id", sa.String(length=128), nullable=False),
+    sa.Column("reason", sa.Text(), nullable=False),
+    sa.Column("answer_record_id", sa.String(length=36), nullable=True),
+    sa.Column("status", sa.String(length=16), nullable=False, server_default="open"),
+    sa.Column("resolution", sa.Text(), nullable=True),
+    sa.Column("resolved_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("resolved_by", sa.String(length=36), nullable=True),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+)
+
+training_post_quizzes = sa.Table(
+    "training_post_quizzes", metadata,
+    sa.Column("quiz_id", sa.String(length=36), primary_key=True),
+    sa.Column("session_id", sa.String(length=36), nullable=False),
+    sa.Column("plan_id", sa.String(length=36), nullable=True),
+    sa.Column("app_id", sa.String(length=36), nullable=False),
+    sa.Column("end_user_id", sa.String(length=128), nullable=False),
+    sa.Column("document_id", sa.String(length=128), nullable=False),
+    sa.Column("questions", sa.JSON(), nullable=False, server_default="[]"),
+    sa.Column("answers", sa.JSON(), nullable=False, server_default="[]"),
+    sa.Column("results", sa.JSON(), nullable=False, server_default="[]"),
+    sa.Column("score", sa.Numeric(10, 2), nullable=True),
+    sa.Column("passed", sa.Boolean(), nullable=True),
+    sa.Column("status", sa.String(length=16), nullable=False, server_default="started"),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("submitted_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+)

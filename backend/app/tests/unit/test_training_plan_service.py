@@ -17,11 +17,18 @@ from app.services.training_plan_service import (
 # fixtures
 # ---------------------------------------------------------------------------
 
-def _make_row(chunk_id: str, document_id: str, content: str = "test content", heading: str = "H1") -> dict:
+def _make_row(
+    chunk_id: str,
+    document_id: str,
+    content: str = "test content",
+    heading: str = "H1",
+    document_name: str | None = None,
+) -> dict:
     """构建模拟的 evidence row。"""
     return {
         "chunk_id": chunk_id,
         "document_id": document_id,
+        "document_name": document_name,
         "chunk_index": 0,
         "section": "S1",
         "heading": heading,
@@ -127,6 +134,35 @@ class TestGeneratePlanWithLlmSuccess:
         assert result is not None
         _, _, _, _, chunk_ids = result
         assert chunk_ids == ["c1", "c2", "c3", "c4"]
+
+    @patch("app.services.training_plan_service.call_llm")
+    @patch("app.services.training_plan_service.record_training_skill_call")
+    def test_llm_title_uses_document_name_not_page_heading(self, mock_audit, mock_llm):
+        """LLM 返回页标题时，计划文档标题应以知识库文档名为准。"""
+        rows = [
+            _make_row(
+                "c1",
+                "d1",
+                content="生产环境温湿度控制要求",
+                heading="Page 1",
+                document_name="生产环境安全操作规范.pdf",
+            )
+        ]
+        mock_llm.return_value = """{
+            "abilityGroups": [{"name": "生产环境管理", "description": "desc"}],
+            "documents": [
+                {"documentId": "d1", "title": "Page 1", "relevance": 0.9, "abilityGroup": "生产环境管理", "difficulty": "basic"}
+            ],
+            "readingOrder": ["d1"],
+            "recommendReason": "test"
+        }"""
+        session = MagicMock()
+
+        result = _generate_plan_with_llm(session, "安全员", "", rows, "app-1")
+
+        assert result is not None
+        _, documents, _, _, _ = result
+        assert documents[0].title == "生产环境安全操作规范.pdf"
 
 
 # ---------------------------------------------------------------------------

@@ -1,8 +1,7 @@
 """学习计划路由。"""
 from typing import Annotated
-from types import SimpleNamespace
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -10,14 +9,22 @@ from app.schemas.training_plan import (
     TrainingPlanDraftRequest,
     TrainingPlanReviewRequest,
     TrainingPlanDTO,
+    TrainingDocumentDTO,
+    TrainingPlanSaveRequest,
+    TrainingPlanUpdateRequest,
 )
 from app.services.training_plan_service import (
     TrainingPlanNotFoundError,
     TrainingPlanConflictError,
     create_plan_draft,
+    list_training_documents,
     list_plans,
     review_plan,
     get_plan,
+    save_plan,
+    update_plan,
+    delete_plan,
+    generate_questions_for_plan,
 )
 
 router = APIRouter(prefix="/training/plans", tags=["training-plans"])
@@ -59,6 +66,19 @@ def read_plans(
     return list_plans(session, appId)
 
 
+@router.get("/documents", response_model=list[TrainingDocumentDTO])
+def read_training_documents(
+    query: str = "",
+    category: str | None = None,
+    difficulty: str | None = None,
+):
+    try:
+        return list_training_documents(query=query, category=category, difficulty=difficulty)
+    except Exception as exc:
+        _raise_error(exc)
+        raise
+
+
 @router.get("/{plan_id}", response_model=TrainingPlanDTO)
 def read_plan(plan_id: str, session: Session = Depends(get_db)):
     try:
@@ -78,6 +98,53 @@ def review_plan_endpoint(
     try:
         user_id = _extract_user_id(authorization)
         return review_plan(session, user_id, plan_id, request.decision, request.notes)
+    except Exception as exc:
+        _raise_error(exc)
+        raise
+
+
+@router.post("/{plan_id}/save")
+def save_plan_endpoint(
+    plan_id: str,
+    request: TrainingPlanSaveRequest,
+    background_tasks: BackgroundTasks,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+    session: Session = Depends(get_db),
+):
+    try:
+        user_id = _extract_user_id(authorization)
+        result = save_plan(session, user_id, plan_id, request)
+        background_tasks.add_task(generate_questions_for_plan, plan_id)
+        return {**result, "message": "计划已保存，题目正在后台生成"}
+    except Exception as exc:
+        _raise_error(exc)
+        raise
+
+
+@router.patch("/{plan_id}")
+def update_plan_endpoint(
+    plan_id: str,
+    request: TrainingPlanUpdateRequest,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+    session: Session = Depends(get_db),
+):
+    try:
+        user_id = _extract_user_id(authorization)
+        return update_plan(session, user_id, plan_id, request)
+    except Exception as exc:
+        _raise_error(exc)
+        raise
+
+
+@router.delete("/{plan_id}")
+def delete_plan_endpoint(
+    plan_id: str,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+    session: Session = Depends(get_db),
+):
+    try:
+        user_id = _extract_user_id(authorization)
+        return delete_plan(session, user_id, plan_id)
     except Exception as exc:
         _raise_error(exc)
         raise

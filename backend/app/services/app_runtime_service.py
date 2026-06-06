@@ -31,6 +31,7 @@ from app.schemas.app_runtime import (
 )
 from app.schemas.auth import CurrentUserResponse, UserDTO
 from app.schemas.qa_run import QARunCreateRequest
+from app.services.app_llm_audit_service import begin_app_llm_invocation, finish_app_llm_invocation
 from app.services.dictionary_service import require_active_dict_item
 from app.services.permission_service import build_chunk_access_filter_context
 from app.services.qa_run_service import QARunCreateConflict, create_qa_run, get_qa_run_detail
@@ -1390,7 +1391,7 @@ def create_app_runtime_structured_run(
         ),
         now,
     )
-    _insert_message(
+    user_message_row = _insert_message(
         session,
         conversation_row["conversation_id"],
         "user",
@@ -1399,67 +1400,103 @@ def create_app_runtime_structured_run(
         now,
         metadata={"structuredAction": request.action, "hasInputs": bool(request.inputs)},
     )
-    qa_response = create_qa_run(
+    audit = begin_app_llm_invocation(
         session,
-        context.actor,
-        context.kb_row["kb_id"],
-        QARunCreateRequest(
-            query=f"{request.topic} 培训{('测验生成' if request.action == 'training_quiz_generate' else '讲解')}",
-            configRevisionId=context.revision_id,
-            overrideParams={
-                "appRuntime": {
-                    "appId": str(context.app_row["app_id"]),
-                    "conversationId": str(conversation_row["conversation_id"]),
-                    "scenarioType": "employee_training",
-                    "structuredAction": request.action,
+        context,
+        endpoint="/api/v1/app-runtime/structured-runs",
+        operation=request.action,
+        skill_name=request.action,
+        input_summary={
+            "topic": request.topic,
+            "action": request.action,
+            "hasConversationId": request.conversationId is not None,
+            "hasInputs": bool(request.inputs),
+        },
+        user_content={
+            "topic": request.topic,
+            "action": request.action,
+            "difficulty": request.difficulty,
+            "questionCount": request.questionCount,
+        },
+        conversation_id=conversation_row["conversation_id"],
+        user_message_id=user_message_row["message_id"],
+    )
+    try:
+        qa_response = create_qa_run(
+            session,
+            context.actor,
+            context.kb_row["kb_id"],
+            QARunCreateRequest(
+                query=f"{request.topic} 培训{('测验生成' if request.action == 'training_quiz_generate' else '讲解')}",
+                configRevisionId=context.revision_id,
+                overrideParams={
+                    "appRuntime": {
+                        "appId": str(context.app_row["app_id"]),
+                        "conversationId": str(conversation_row["conversation_id"]),
+                        "scenarioType": "employee_training",
+                        "structuredAction": request.action,
+                    }
+                },
+            ),
+        )
+        if qa_response is None:
+            raise AppRuntimeConflictError("RAG_APP_KB_NOT_FOUND")
+        detail = get_qa_run_detail(session, context.actor, context.kb_row["kb_id"], UUID(qa_response.runId), include_trace=False, include_candidates=False)
+        if detail is None:
+            raise AppRuntimeConflictError("QA_RUN_NOT_FOUND")
+
+        output = _build_structured_output(request, scenario, detail.answer or "")
+        message_row = _insert_message(
+            session,
+            conversation_row["conversation_id"],
+            "assistant",
+            json.dumps(output, ensure_ascii=False),
+            "success" if detail.status in {"success", "partial"} else "failed",
+            datetime.now(UTC),
+            qa_run_id=UUID(detail.runId),
+            metadata={
+                "trainingStructuredRun": {
+                    "action": request.action,
+                    "topic": request.topic,
+                    "runStatus": detail.status,
+                    **output,
                 }
             },
-        ),
-    )
-    if qa_response is None:
-        raise AppRuntimeConflictError("RAG_APP_KB_NOT_FOUND")
-    detail = get_qa_run_detail(session, context.actor, context.kb_row["kb_id"], UUID(qa_response.runId), include_trace=False, include_candidates=False)
-    if detail is None:
-        raise AppRuntimeConflictError("QA_RUN_NOT_FOUND")
-
-    output = _build_structured_output(request, scenario, detail.answer or "")
-    message_row = _insert_message(
-        session,
-        conversation_row["conversation_id"],
-        "assistant",
-        json.dumps(output, ensure_ascii=False),
-        "success" if detail.status in {"success", "partial"} else "failed",
-        datetime.now(UTC),
-        qa_run_id=UUID(detail.runId),
-        metadata={
-            "trainingStructuredRun": {
+        )
+        finish_app_llm_invocation(
+            session,
+            audit,
+            status="success" if detail.status in {"success", "partial"} else "failed",
+            assistant_content=output,
+            response_summary={
                 "action": request.action,
-                "topic": request.topic,
+                "runId": detail.runId,
                 "runStatus": detail.status,
-                **output,
-            }
-        },
-    )
-    session.execute(
-        update(app_conversations)
-        .where(app_conversations.c.conversation_id == conversation_row["conversation_id"])
-        .values(updated_at=datetime.now(UTC))
-    )
-    session.execute(
-        update(rag_app_api_keys)
-        .where(rag_app_api_keys.c.api_key_id == context.key_row["api_key_id"])
-        .values(last_used_at=now)
-    )
-    session.commit()
-    return AppRuntimeStructuredRunResponse(
-        appId=str(context.app_row["app_id"]),
-        conversationId=str(conversation_row["conversation_id"]),
-        messageId=str(message_row["message_id"]),
-        runId=detail.runId,
-        action=request.action,
-        output=output,
-        metadata={"kbId": str(context.kb_row["kb_id"]), "configRevisionId": str(context.revision_id)},
-    )
+                "outputKeys": list(output.keys()),
+            },
+            error_code=None if detail.status in {"success", "partial"} else "QA_RUN_FAILED",
+            assistant_message_id=message_row["message_id"],
+        )
+        return AppRuntimeStructuredRunResponse(
+            appId=str(context.app_row["app_id"]),
+            conversationId=str(conversation_row["conversation_id"]),
+            messageId=str(message_row["message_id"]),
+            runId=detail.runId,
+            action=request.action,
+            output=output,
+            metadata={"kbId": str(context.kb_row["kb_id"]), "configRevisionId": str(context.revision_id)},
+        )
+    except Exception as exc:
+        session.rollback()
+        finish_app_llm_invocation(
+            session,
+            audit,
+            status="failed",
+            assistant_content={"error": str(exc)[:200]},
+            response_summary={"error": str(exc)[:200], "action": request.action},
+            error_code=exc.__class__.__name__,
+        )
+        raise
 
 
 def _read_training_quiz_message(session: Session, context: _RuntimeContext, request: AppRuntimeTrainingQuizSubmissionRequest) -> RowMapping:

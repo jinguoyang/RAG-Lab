@@ -7,9 +7,10 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.routes.training_plans import publish_training_plan
-from app.api.routes.training_questions import publish_training_question
+from app.api.routes.training_questions import publish_training_question, update_training_question
 from app.api.routes.training_reports import get_training_report_summary
 from app.schemas.auth import CurrentUserResponse, UserDTO
+from app.schemas.training_question import QuestionUpdateRequest
 
 
 def _current_user(platform_role: str = "platform_user") -> CurrentUserResponse:
@@ -41,6 +42,19 @@ def test_non_admin_cannot_publish_training_question():
     """普通用户不能发布题目。"""
     with pytest.raises(HTTPException) as exc_info:
         publish_training_question("question-001", _current_user(), MagicMock())
+
+    assert exc_info.value.status_code == 403
+
+
+def test_non_admin_cannot_update_training_question():
+    """普通用户不能修改题目。"""
+    with pytest.raises(HTTPException) as exc_info:
+        update_training_question(
+            "question-001",
+            QuestionUpdateRequest(content="新题干"),
+            _current_user(),
+            MagicMock(),
+        )
 
     assert exc_info.value.status_code == 403
 

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db_types import new_id
 from app.schemas.training_plan import AbilityGroupDTO, DocumentDTO, PlanDraftDTO
+from app.services.app_llm_audit_service import begin_app_llm_invocation, finish_app_llm_invocation
 from app.services.training_agent_service import (
     TrainingAgentConflictError,
     TrainingAgentNotFoundError,
@@ -170,7 +171,7 @@ def _generate_plan_with_llm(
         documents.append(
             DocumentDTO(
                 documentId=doc_id,
-                title=str(d.get("title", "")) or _find_evidence_title(rows, doc_id),
+                title=_find_evidence_title(rows, doc_id),
                 relevance=_clamp(float(d.get("relevance", 0.5)), 0.0, 1.0),
                 abilityGroup=group_name,
                 difficulty=_validate_difficulty(str(d.get("difficulty", "normal"))),
@@ -279,68 +280,115 @@ def create_plan_draft(session: Session, credential: str, request: Any) -> PlanDr
     优先使用 LLM 生成，失败时静默回退到规则化逻辑。
     """
     context = resolve_training_context(session, credential)
-    now = datetime.now(UTC)
-    query = f"{request.jobTitle} {request.jobDescription or ''}".strip()
-    rows = read_training_evidence(session, context.kb_row["kb_id"], query, limit=8)
-
-    # 尝试 LLM 生成
-    llm_result = _generate_plan_with_llm(
+    audit = begin_app_llm_invocation(
         session,
-        request.jobTitle,
-        request.jobDescription or "",
-        rows,
-        str(context.app_row["app_id"]),
+        context,
+        endpoint="/api/v1/training/plans/drafts",
+        operation="buildLearningPlanDraft",
+        skill_name="buildLearningPlanDraft",
+        input_summary={
+            "jobTitle": request.jobTitle,
+            "jobDescriptionLength": len(request.jobDescription or ""),
+        },
+        user_content={
+            "jobTitle": request.jobTitle,
+            "jobDescription": request.jobDescription or "",
+        },
     )
+    try:
+        now = datetime.now(UTC)
+        query = f"{request.jobTitle} {request.jobDescription or ''}".strip()
+        rows = read_training_evidence(session, context.kb_row["kb_id"], query, limit=8)
 
-    if llm_result is not None:
-        groups, documents, reading_order, recommend_reason, evidence_chunk_ids = llm_result
-    else:
-        # 回退到规则化逻辑
-        groups, documents, reading_order, recommend_reason, evidence_chunk_ids = _rule_based_plan(
-            request.jobTitle, rows,
+        # 尝试 LLM 生成
+        llm_result = _generate_plan_with_llm(
+            session,
+            request.jobTitle,
+            request.jobDescription or "",
+            rows,
+            str(context.app_row["app_id"]),
         )
 
-    plan_id = new_id()
+        fallback = llm_result is None
+        if llm_result is not None:
+            groups, documents, reading_order, recommend_reason, evidence_chunk_ids = llm_result
+        else:
+            # 回退到规则化逻辑
+            groups, documents, reading_order, recommend_reason, evidence_chunk_ids = _rule_based_plan(
+                request.jobTitle, rows,
+            )
 
-    session.execute(
-        insert(training_plans).values(
-            plan_id=plan_id,
-            app_id=context.app_row["app_id"],
-            job_title=request.jobTitle,
-            job_description=request.jobDescription,
+        plan_id = new_id()
+
+        session.execute(
+            insert(training_plans).values(
+                plan_id=plan_id,
+                app_id=context.app_row["app_id"],
+                job_title=request.jobTitle,
+                job_description=request.jobDescription,
+                status="draft",
+                ability_groups=[item.model_dump() for item in groups],
+                documents=[item.model_dump() for item in documents],
+                evidence_chunk_ids=evidence_chunk_ids,
+                recommend_reason=recommend_reason,
+                reading_order=reading_order,
+                version=1,
+                metadata={"source": "employee_training_agent", "retrievalQuery": query},
+                created_at=now,
+                created_by=context.actor.user.userId,
+                updated_at=now,
+                updated_by=context.actor.user.userId,
+                deleted_at=None,
+                deleted_by=None,
+            )
+        )
+        session.commit()
+
+        response = PlanDraftDTO(
+            planId=str(plan_id),
+            appId=str(context.app_row["app_id"]),
+            jobTitle=request.jobTitle,
+            jobDescription=request.jobDescription,
             status="draft",
-            ability_groups=[item.model_dump() for item in groups],
-            documents=[item.model_dump() for item in documents],
-            evidence_chunk_ids=evidence_chunk_ids,
-            recommend_reason=recommend_reason,
-            reading_order=reading_order,
+            abilityGroups=groups,
+            documents=documents,
+            evidenceChunkIds=evidence_chunk_ids,
+            recommendReason=recommend_reason,
+            readingOrder=reading_order,
             version=1,
-            metadata={"source": "employee_training_agent", "retrievalQuery": query},
-            created_at=now,
-            created_by=context.actor.user.userId,
-            updated_at=now,
-            updated_by=context.actor.user.userId,
-            deleted_at=None,
-            deleted_by=None,
+            createdAt=now.isoformat(),
+            updatedAt=now.isoformat(),
         )
-    )
-    session.commit()
-
-    return PlanDraftDTO(
-        planId=str(plan_id),
-        appId=str(context.app_row["app_id"]),
-        jobTitle=request.jobTitle,
-        jobDescription=request.jobDescription,
-        status="draft",
-        abilityGroups=groups,
-        documents=documents,
-        evidenceChunkIds=evidence_chunk_ids,
-        recommendReason=recommend_reason,
-        readingOrder=reading_order,
-        version=1,
-        createdAt=now.isoformat(),
-        updatedAt=now.isoformat(),
-    )
+        finish_app_llm_invocation(
+            session,
+            audit,
+            status="success",
+            assistant_content={
+                "planId": response.planId,
+                "abilityGroupCount": len(response.abilityGroups),
+                "documentCount": len(response.documents),
+                "fallback": fallback,
+            },
+            response_summary={
+                "planId": response.planId,
+                "abilityGroupCount": len(response.abilityGroups),
+                "documentCount": len(response.documents),
+                "fallback": fallback,
+                "llmErrorCode": "LLM_FALLBACK" if fallback else None,
+            },
+        )
+        return response
+    except Exception as exc:
+        session.rollback()
+        finish_app_llm_invocation(
+            session,
+            audit,
+            status="failed",
+            assistant_content={"error": str(exc)[:200]},
+            response_summary={"error": str(exc)[:200]},
+            error_code=exc.__class__.__name__,
+        )
+        raise
 
 
 def _review_plan(session: Session, plan_id: str, user_id: str, new_status: str) -> PlanDraftDTO:

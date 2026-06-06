@@ -23,6 +23,8 @@ from app.api.routes.training_plans import router as training_plans_router
 from app.api.routes.training_questions import router as training_questions_router
 from app.api.routes.training_classroom import router as training_classroom_router
 from app.api.routes.training_reports import router as training_reports_router
+from app.api.routes.training_documents import router as training_documents_router
+from app.api.routes.training_post_quizzes import router as training_post_quizzes_router
 from app.api.routes.users_groups import groups_router, users_router
 
 api_router = APIRouter()
@@ -53,7 +55,9 @@ api_router.include_router(library_router)
 api_router.include_router(library_management_router)
 api_router.include_router(bindings_router)
 api_router.include_router(training_plans_router)
+api_router.include_router(training_documents_router)
 api_router.include_router(training_questions_router)
+api_router.include_router(training_post_quizzes_router)
 api_router.include_router(training_classroom_router)
 api_router.include_router(training_reports_router)
 

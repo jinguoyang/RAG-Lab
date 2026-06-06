@@ -16,7 +16,10 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     }
     throw new Error(detail);
   }
-  return resp.json();
+  // 处理空响应（如 DELETE 返回 204 或空 body）
+  const text = await resp.text();
+  if (!text) return undefined as T;
+  return JSON.parse(text);
 }
 
 export function apiGet<T>(path: string): Promise<T> {
@@ -25,4 +28,12 @@ export function apiGet<T>(path: string): Promise<T> {
 
 export function apiPost<T>(path: string, data: unknown): Promise<T> {
   return request<T>(path, { method: "POST", body: JSON.stringify(data) });
+}
+
+export function apiPatch<T>(path: string, data: unknown): Promise<T> {
+  return request<T>(path, { method: "PATCH", body: JSON.stringify(data) });
+}
+
+export function apiDelete<T>(path: string): Promise<T> {
+  return request<T>(path, { method: "DELETE" });
 }

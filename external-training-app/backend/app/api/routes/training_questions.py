@@ -1,6 +1,5 @@
 """题库路由。"""
 from typing import Annotated
-from types import SimpleNamespace
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
@@ -10,13 +9,23 @@ from app.schemas.training_question import (
     TrainingQuestionDraftRequest,
     TrainingQuestionReviewRequest,
     TrainingQuestionDTO,
+    TrainingQuestionAppealRequest,
+    TrainingQuestionAppealResolveRequest,
+    TrainingQuestionUpdateRequest,
+    TrainingQuestionCreateRequest,
 )
 from app.services.training_question_service import (
     TrainingQuestionNotFoundError,
     TrainingQuestionConflictError,
     create_question_drafts,
+    create_question_appeal,
     list_questions,
     review_question,
+    resolve_question_appeal,
+    update_question,
+    create_question,
+    publish_question,
+    count_questions_by_document,
 )
 
 router = APIRouter(prefix="/training/questions", tags=["training-questions"])
@@ -71,3 +80,84 @@ def review_question_endpoint(
     except Exception as exc:
         _raise_error(exc)
         raise
+
+
+@router.patch("/{question_id}")
+def update_question_endpoint(
+    question_id: str,
+    request: TrainingQuestionUpdateRequest,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+    session: Session = Depends(get_db),
+):
+    try:
+        user_id = _extract_user_id(authorization)
+        return update_question(session, user_id, question_id, request)
+    except Exception as exc:
+        _raise_error(exc)
+        raise
+
+
+@router.post("/{question_id}/appeals")
+def create_question_appeal_endpoint(
+    question_id: str,
+    request: TrainingQuestionAppealRequest,
+    session: Session = Depends(get_db),
+):
+    try:
+        return create_question_appeal(session, question_id, request)
+    except Exception as exc:
+        _raise_error(exc)
+        raise
+
+
+@router.post("/appeals/{appeal_id}/resolve")
+def resolve_question_appeal_endpoint(
+    appeal_id: str,
+    request: TrainingQuestionAppealResolveRequest,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+    session: Session = Depends(get_db),
+):
+    try:
+        user_id = _extract_user_id(authorization)
+        return resolve_question_appeal(session, user_id, appeal_id, request)
+    except Exception as exc:
+        _raise_error(exc)
+        raise
+
+
+@router.post("", response_model=TrainingQuestionDTO, status_code=status.HTTP_201_CREATED)
+def create_question_endpoint(
+    request: TrainingQuestionCreateRequest,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+    session: Session = Depends(get_db),
+):
+    try:
+        user_id = _extract_user_id(authorization)
+        return create_question(session, user_id, request)
+    except Exception as exc:
+        _raise_error(exc)
+        raise
+
+
+@router.post("/{question_id}/publish")
+def publish_question_endpoint(
+    question_id: str,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+    session: Session = Depends(get_db),
+):
+    try:
+        user_id = _extract_user_id(authorization)
+        return publish_question(session, user_id, question_id)
+    except Exception as exc:
+        _raise_error(exc)
+        raise
+
+
+@router.get("/count-by-document")
+def count_by_document_endpoint(
+    planId: str = "",
+    session: Session = Depends(get_db),
+):
+    if not planId:
+        raise HTTPException(status_code=400, detail="planId 参数必填")
+    return count_questions_by_document(session, planId)

@@ -1,0 +1,636 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  CheckCircle2,
+  CircleAlert,
+  FileQuestion,
+  Pencil,
+  Plus,
+  Upload,
+  RefreshCw,
+  X,
+  XCircle,
+} from "lucide-react";
+import {
+  createQuestion,
+  generateQuestionDrafts,
+  listQuestions,
+  publishQuestion,
+  reviewQuestion,
+  updateQuestion,
+} from "../services/questionService";
+import { listPlans, type TrainingPlan } from "../services/planService";
+import type { QuestionOption, TrainingQuestion } from "../types/question";
+
+function formatQuestionType(type: string) {
+  const labels: Record<string, string> = {
+    single_choice: "单选题",
+    true_false: "判断题",
+    subjective: "主观题",
+    certification: "认证题",
+  };
+  return labels[type] || type;
+}
+
+function getStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    draft: "草稿",
+    approved: "已审核",
+    published: "已发布",
+    rejected: "已驳回",
+  };
+  return labels[status] || status;
+}
+
+function renderOption(option: QuestionOption, index: number) {
+  const label = option.label || option.value || String.fromCharCode(65 + index);
+  const text = option.text || option.value || JSON.stringify(option);
+  return (
+    <li key={`${label}-${index}`}>
+      <strong>{label}.</strong>
+      <span>{text}</span>
+    </li>
+  );
+}
+
+// ── 内联编辑组件 ──
+
+function QuestionEditor({
+  question,
+  onSave,
+  onCancel,
+  loading,
+}: {
+  question: TrainingQuestion;
+  onSave: (data: { content: string; options?: QuestionOption[]; correctAnswer: string; explanation: string }) => void;
+  onCancel: () => void;
+  loading: boolean;
+}) {
+  const [content, setContent] = useState(question.content);
+  const [correctAnswer, setCorrectAnswer] = useState(question.correctAnswer || "");
+  const [explanation, setExplanation] = useState(question.explanation || "");
+  const [options, setOptions] = useState<QuestionOption[]>(question.options || []);
+
+  function updateOption(index: number, field: "label" | "text", value: string) {
+    setOptions((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  }
+
+  function addOption() {
+    setOptions((prev) => [...prev, { label: String.fromCharCode(65 + prev.length), text: "" }]);
+  }
+
+  function removeOption(index: number) {
+    setOptions((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  return (
+    <div className="question-editor">
+      <label>
+        <span>题干</span>
+        <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={3} />
+      </label>
+
+      {question.questionType !== "subjective" && (
+        <div className="editor-options">
+          <span>选项</span>
+          {options.map((opt, i) => (
+            <div key={i} className="editor-option-row">
+              <input
+                value={opt.label || ""}
+                onChange={(e) => updateOption(i, "label", e.target.value)}
+                placeholder="标签"
+                style={{ width: 48 }}
+              />
+              <input
+                value={opt.text || ""}
+                onChange={(e) => updateOption(i, "text", e.target.value)}
+                placeholder="选项内容"
+              />
+              <button type="button" className="icon-button" onClick={() => removeOption(i)}>
+                <X size={14} />
+              </button>
+            </div>
+          ))}
+          <button type="button" className="button secondary compact" onClick={addOption}>
+            <Plus size={14} /> 添加选项
+          </button>
+        </div>
+      )}
+
+      <label>
+        <span>标准答案</span>
+        <input value={correctAnswer} onChange={(e) => setCorrectAnswer(e.target.value)} />
+      </label>
+      <label>
+        <span>解析</span>
+        <textarea value={explanation} onChange={(e) => setExplanation(e.target.value)} rows={2} />
+      </label>
+
+      <div className="editor-actions">
+        <button
+          className="button primary"
+          onClick={() => onSave({ content, options: options.length > 0 ? options : undefined, correctAnswer, explanation })}
+          disabled={loading}
+        >
+          保存
+        </button>
+        <button className="button ghost" onClick={onCancel}>取消</button>
+      </div>
+    </div>
+  );
+}
+
+// ── 手动录入表单 ──
+
+function ManualQuestionForm({
+  planId,
+  documentId,
+  onCreated,
+}: {
+  planId: string;
+  documentId?: string;
+  onCreated: () => void;
+}) {
+  const [questionType, setQuestionType] = useState("single_choice");
+  const [content, setContent] = useState("");
+  const [options, setOptions] = useState<{ label: string; text: string }[]>([
+    { label: "A", text: "" },
+    { label: "B", text: "" },
+  ]);
+  const [correctAnswer, setCorrectAnswer] = useState("");
+  const [explanation, setExplanation] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  function updateOption(index: number, field: "label" | "text", value: string) {
+    setOptions((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  }
+
+  function addOption() {
+    setOptions((prev) => [...prev, { label: String.fromCharCode(65 + prev.length), text: "" }]);
+  }
+
+  function removeOption(index: number) {
+    setOptions((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!content.trim() || !planId) return;
+    setLoading(true);
+    setError("");
+    try {
+      await createQuestion({
+        planId,
+        documentId: documentId || undefined,
+        questionType,
+        content,
+        options: questionType !== "subjective" ? options.filter((o) => o.text.trim()) : undefined,
+        correctAnswer: correctAnswer || undefined,
+        explanation: explanation || undefined,
+      });
+      setContent("");
+      setOptions([
+        { label: "A", text: "" },
+        { label: "B", text: "" },
+      ]);
+      setCorrectAnswer("");
+      setExplanation("");
+      onCreated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="manual-question-form">
+      <div className="section-title">
+        <Plus size={20} aria-hidden="true" />
+        <h3>手动录入题目</h3>
+      </div>
+
+      {error && (
+        <div className="notice danger compact">
+          <CircleAlert size={16} />
+          <span>{error}</span>
+        </div>
+      )}
+
+      <div className="form-row">
+        <label>
+          <span>题型</span>
+          <select value={questionType} onChange={(e) => setQuestionType(e.target.value)}>
+            <option value="single_choice">单选题</option>
+            <option value="true_false">判断题</option>
+            <option value="subjective">主观题</option>
+          </select>
+        </label>
+      </div>
+
+      <label>
+        <span>题干</span>
+        <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={2} required />
+      </label>
+
+      {questionType !== "subjective" && (
+        <div className="editor-options">
+          <span>选项</span>
+          {options.map((opt, i) => (
+            <div key={i} className="editor-option-row">
+              <input
+                value={opt.label}
+                onChange={(e) => updateOption(i, "label", e.target.value)}
+                style={{ width: 48 }}
+              />
+              <input
+                value={opt.text}
+                onChange={(e) => updateOption(i, "text", e.target.value)}
+                placeholder="选项内容"
+              />
+              <button type="button" className="icon-button" onClick={() => removeOption(i)}>
+                <X size={14} />
+              </button>
+            </div>
+          ))}
+          <button type="button" className="button secondary compact" onClick={addOption}>
+            <Plus size={14} /> 添加选项
+          </button>
+        </div>
+      )}
+
+      <label>
+        <span>标准答案</span>
+        <input value={correctAnswer} onChange={(e) => setCorrectAnswer(e.target.value)} />
+      </label>
+      <label>
+        <span>解析</span>
+        <textarea value={explanation} onChange={(e) => setExplanation(e.target.value)} rows={2} />
+      </label>
+
+      <button type="submit" className="button primary" disabled={loading || !content.trim()}>
+        <Plus size={17} aria-hidden="true" />
+        {loading ? "提交中..." : "录入题目"}
+      </button>
+    </form>
+  );
+}
+
+// ── 主页面 ──
+
+export function QuestionReviewPage() {
+  const [questions, setQuestions] = useState<TrainingQuestion[]>([]);
+  const [plans, setPlans] = useState<TrainingPlan[]>([]);
+  const [selectedPlanId, setSelectedPlanId] = useState("");
+  const [filterDocumentId, setFilterDocumentId] = useState("");
+  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
+  const [showManualForm, setShowManualForm] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(true);
+  const [error, setError] = useState("");
+
+  // 从当前计划中提取文档列表
+  const planDocuments = useMemo(() => {
+    const plan = plans.find((p) => p.planId === selectedPlanId);
+    return (plan?.documents || []) as { documentId: string; title: string }[];
+  }, [plans, selectedPlanId]);
+
+  // 按文档筛选题目
+  const filteredQuestions = useMemo(() => {
+    if (!filterDocumentId) return questions;
+    return questions.filter((q) => q.documentId === filterDocumentId);
+  }, [questions, filterDocumentId]);
+
+  const draftCount = useMemo(
+    () => filteredQuestions.filter((item) => item.status === "draft").length,
+    [filteredQuestions]
+  );
+  const approvedCount = useMemo(
+    () => filteredQuestions.filter((item) => item.status === "approved").length,
+    [filteredQuestions]
+  );
+
+  const selectedPlan = useMemo(
+    () => plans.find((p) => p.planId === selectedPlanId),
+    [plans, selectedPlanId]
+  );
+
+  async function loadQuestions(planId?: string) {
+    setRefreshing(true);
+    setError("");
+    try {
+      setQuestions(await listQuestions(planId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  useEffect(() => {
+    let mounted = true;
+    async function init() {
+      try {
+        const [planData, questionData] = await Promise.all([listPlans(), listQuestions()]);
+        if (!mounted) return;
+        setPlans(planData);
+        setQuestions(questionData);
+      } catch (err) {
+        if (mounted) setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (mounted) setRefreshing(false);
+      }
+    }
+    init();
+    return () => { mounted = false; };
+  }, []);
+
+  // 选择计划后重新加载题目（跳过首次渲染）
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    loadQuestions(selectedPlanId || undefined);
+  }, [selectedPlanId]);
+
+  async function handleGenerateForDocument() {
+    if (!selectedPlan || !filterDocumentId) return;
+    setLoading(true);
+    setError("");
+    try {
+      const abilityGroups = (selectedPlan.abilityGroups || []).map((group) => {
+        if (typeof group === "string") return group;
+        if (group && typeof group === "object" && "name" in group) {
+          return String((group as { name?: unknown }).name || "");
+        }
+        return "";
+      }).filter(Boolean);
+      await generateQuestionDrafts({
+        planId: selectedPlan.planId,
+        jobTitle: selectedPlan.jobTitle,
+        abilityGroups,
+        count: 10,
+        documentIds: [filterDocumentId],
+      });
+      await loadQuestions(selectedPlanId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleReview(questionId: string, decision: "approved" | "rejected") {
+    setError("");
+    try {
+      await reviewQuestion(questionId, { decision, notes: "" });
+      setQuestions((prev) =>
+        prev.map((item) =>
+          item.questionId === questionId
+            ? { ...item, status: decision === "approved" ? "approved" : "rejected" }
+            : item
+        )
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function handlePublish(questionId: string) {
+    setError("");
+    try {
+      await publishQuestion(questionId);
+      setQuestions((prev) =>
+        prev.map((item) =>
+          item.questionId === questionId ? { ...item, status: "published" } : item
+        )
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function handleEditSave(questionId: string, data: { content: string; options?: QuestionOption[]; correctAnswer: string; explanation: string }) {
+    setLoading(true);
+    setError("");
+    try {
+      await updateQuestion(questionId, data);
+      setQuestions((prev) =>
+        prev.map((item) =>
+          item.questionId === questionId
+            ? { ...item, ...data }
+            : item
+        )
+      );
+      setEditingQuestionId(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section className="page-stack">
+      <header className="page-header">
+        <div>
+          <p className="eyebrow">Question Review</p>
+          <h2>题库管理</h2>
+          <p>审核、编辑和发布题目。支持手动录入和自动生成。</p>
+        </div>
+        <div className="flex gap-2">
+          <button className="button secondary" onClick={() => setShowManualForm(!showManualForm)}>
+            <Plus size={17} aria-hidden="true" />
+            手动录入
+          </button>
+          <button className="button ghost" onClick={() => loadQuestions(selectedPlanId || undefined)}>
+            <RefreshCw size={17} aria-hidden="true" />
+            刷新
+          </button>
+        </div>
+      </header>
+
+      <section className="work-surface two-column">
+        <div className="form-panel">
+          <div className="section-title">
+            <FileQuestion size={20} aria-hidden="true" />
+            <h3>筛选</h3>
+          </div>
+          <label>
+            <span>学习计划</span>
+            <select
+              value={selectedPlanId}
+              onChange={(e) => {
+                setSelectedPlanId(e.target.value);
+                setFilterDocumentId("");
+              }}
+            >
+              <option value="">全部计划</option>
+              {plans.map((p) => (
+                <option key={p.planId} value={p.planId}>
+                  {p.planName || p.jobTitle}
+                </option>
+              ))}
+            </select>
+          </label>
+          {planDocuments.length > 0 && (
+            <label>
+              <span>文档筛选</span>
+              <select value={filterDocumentId} onChange={(e) => setFilterDocumentId(e.target.value)}>
+                <option value="">全部文档</option>
+                {planDocuments.map((d) => (
+                  <option key={d.documentId} value={d.documentId}>
+                    {d.title || d.documentId}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <button
+            className="button secondary"
+            onClick={handleGenerateForDocument}
+            disabled={loading || !selectedPlanId || !filterDocumentId}
+          >
+            <RefreshCw size={17} aria-hidden="true" />
+            为当前文档生成题目
+          </button>
+        </div>
+
+        <div className="summary-panel">
+          <p className="eyebrow">Review Queue</p>
+          <strong>{refreshing ? "..." : filteredQuestions.length}</strong>
+          <span>题目总数</span>
+          <div className="summary-row">
+            <span>待审核</span>
+            <b>{draftCount}</b>
+          </div>
+          <div className="summary-row">
+            <span>已审核待发布</span>
+            <b>{approvedCount}</b>
+          </div>
+          <div className="summary-row">
+            <span>已发布</span>
+            <b>{filteredQuestions.length - draftCount - approvedCount}</b>
+          </div>
+        </div>
+      </section>
+
+      {error && (
+        <div className="notice danger">
+          <CircleAlert size={18} aria-hidden="true" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {showManualForm && selectedPlanId && (
+        <ManualQuestionForm
+          planId={selectedPlanId}
+          onCreated={() => {
+            loadQuestions(selectedPlanId);
+            setShowManualForm(false);
+          }}
+        />
+      )}
+
+      <section className="list-section">
+        {filteredQuestions.length === 0 ? (
+          <div className="empty-state">
+            <FileQuestion size={28} aria-hidden="true" />
+            <h3>暂无题目</h3>
+            <p>选择计划后保存即可自动生成题目，或使用手动录入。</p>
+          </div>
+        ) : (
+          filteredQuestions.map((question) => (
+            <article key={question.questionId} className="question-item">
+              <div className="item-top">
+                <div>
+                  <span className="tag">{formatQuestionType(question.questionType)}</span>
+                  <span className={`status ${question.status}`}>{getStatusLabel(question.status)}</span>
+                </div>
+                <time>{new Date(question.createdAt).toLocaleString()}</time>
+              </div>
+
+              {editingQuestionId === question.questionId ? (
+                <QuestionEditor
+                  question={question}
+                  onSave={(data) => handleEditSave(question.questionId, data)}
+                  onCancel={() => setEditingQuestionId(null)}
+                  loading={loading}
+                />
+              ) : (
+                <>
+                  <h3>{question.content}</h3>
+                  {question.options && question.options.length > 0 && (
+                    <ol className="option-list">{question.options.map(renderOption)}</ol>
+                  )}
+                  <div className="answer-grid">
+                    <div>
+                      <span>标准答案</span>
+                      <strong>{question.correctAnswer || "未返回"}</strong>
+                    </div>
+                    <div>
+                      <span>分类</span>
+                      <strong>{question.category || "未分类"}</strong>
+                    </div>
+                    <div>
+                      <span>文档</span>
+                      <strong>{question.documentId || "未绑定"}</strong>
+                    </div>
+                    <div>
+                      <span>证据</span>
+                      <strong>{question.evidenceChunkIds.length} 条</strong>
+                    </div>
+                  </div>
+                  {question.explanation && <p className="explanation">{question.explanation}</p>}
+                  {question.rubric && (
+                    <details className="raw-detail">
+                      <summary>查看 rubric</summary>
+                      <pre>{JSON.stringify(question.rubric, null, 2)}</pre>
+                    </details>
+                  )}
+                </>
+              )}
+
+              <div className="item-actions">
+                {editingQuestionId !== question.questionId && (
+                  <button className="button secondary" onClick={() => setEditingQuestionId(question.questionId)}>
+                    <Pencil size={16} aria-hidden="true" />
+                    修改
+                  </button>
+                )}
+                {question.status === "draft" && (
+                  <>
+                    <button className="button approve" onClick={() => handleReview(question.questionId, "approved")}>
+                      <CheckCircle2 size={17} aria-hidden="true" />
+                      审核通过
+                    </button>
+                    <button className="button reject" onClick={() => handleReview(question.questionId, "rejected")}>
+                      <XCircle size={17} aria-hidden="true" />
+                      驳回
+                    </button>
+                  </>
+                )}
+                {question.status === "approved" && (
+                  <button className="button primary" onClick={() => handlePublish(question.questionId)}>
+                    <Upload size={17} aria-hidden="true" />
+                    发布入题库
+                  </button>
+                )}
+              </div>
+            </article>
+          ))
+        )}
+      </section>
+    </section>
+  );
+}

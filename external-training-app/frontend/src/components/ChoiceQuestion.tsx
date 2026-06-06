@@ -22,21 +22,21 @@ export function ChoiceQuestion({ question, options, onAnswer, disabled }: Choice
   }
 
   return (
-    <div className="border rounded-lg p-4 bg-blue-50">
-      <p className="font-medium mb-3">{question}</p>
-      <div className="grid grid-cols-2 gap-2">
+    <div className="choice-question">
+      <p>{question}</p>
+      <div className="choice-grid">
         {options.map((opt) => (
           <button
             key={opt.label}
             onClick={() => handleSelect(opt.label)}
             disabled={disabled}
-            className={`p-3 rounded border text-left transition-colors ${
+            className={`choice-option ${
               selected === opt.label
-                ? "bg-blue-600 text-white border-blue-600"
-                : "bg-white hover:bg-blue-100 border-gray-300"
-            } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                ? "selected"
+                : ""
+            } ${disabled ? "disabled" : ""}`}
           >
-            <span className="font-bold mr-2">{opt.label}.</span>
+            <span>{opt.label}.</span>
             {opt.text}
           </button>
         ))}

@@ -96,6 +96,38 @@ def grade_subjective_answer(
     return result
 
 
+def grade_subjective_answer_payload(
+    session: Session,
+    app_id: str,
+    content: str,
+    answer: str,
+    rubric: dict[str, Any] | None,
+    evidence_chunk_ids: list[str],
+) -> SubjectiveGradeResult:
+    """按 ex-app 传入的题目内容评分，不依赖平台题库 questionId。"""
+    started_ms = perf_counter() * 1000
+    normalized_rubric = rubric if isinstance(rubric, dict) and rubric.get("criteria") else DEFAULT_RUBRIC
+    result: SubjectiveGradeResult | None = None
+    llm_error: str | None = None
+
+    try:
+        result = _llm_grade(session, app_id, content, normalized_rubric, answer, evidence_chunk_ids)
+    except Exception as exc:
+        llm_error = str(exc)
+        logger.warning("LLM 主观题评分失败，回退到规则评分: %s", exc)
+
+    if result is None:
+        result = _fallback_grade(answer, normalized_rubric)
+        result.needsManualReview = True
+
+    if result.score < 60:
+        result.needsManualReview = True
+
+    latency_ms = int(perf_counter() * 1000 - started_ms)
+    _record_audit(session, app_id, "external-question-payload", result, llm_error, latency_ms)
+    return result
+
+
 def _llm_grade(
     session: Session,
     app_id: str,

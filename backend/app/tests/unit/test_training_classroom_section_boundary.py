@@ -10,7 +10,9 @@ import pytest
 from app.services.training_classroom_service import (
     ClassroomTransitionError,
     _count_sections,
+    _current_evidence,
     _get_passing_score,
+    _plan_content,
     validate_classroom_transition,
 )
 
@@ -133,6 +135,39 @@ def _make_request(event_type: str, payload: dict | None = None, query: str | Non
     req.payload = payload or {}
     req.query = query
     return req
+
+
+class _FakeScalarResult:
+    """模拟 SQLAlchemy 标量结果，用于不触库测试。"""
+
+    def __init__(self, value):
+        self.value = value
+
+    def scalar(self):
+        return self.value
+
+
+class _FakeMappingResult:
+    """模拟 SQLAlchemy mappings().first() 链式结果。"""
+
+    def __init__(self, value):
+        self.value = value
+
+    def mappings(self):
+        return self
+
+    def first(self):
+        return self.value
+
+
+class _PlanSession:
+    """按调用顺序返回计划行和 metadata，避免单元测试依赖真实数据库。"""
+
+    def __init__(self, plan_row: dict):
+        self.plan_row = plan_row
+
+    def execute(self, *_args, **_kwargs):
+        return _FakeMappingResult(self.plan_row)
 
 
 # Patch targets
@@ -502,3 +537,62 @@ class TestReviewContainsCitation:
         assert resp.resultState == "REVIEW"
         assert len(resp.citations) > 0
         assert resp.citations[0].documentId == "doc-1"
+
+
+class TestClassroomUsesLearningPlan:
+    """课堂内容应优先绑定已生成的学习计划。"""
+
+    @patch(_PATCH_EVIDENCE, return_value=[
+        {"chunk_id": "c-page-1", "document_id": "doc-page-1", "heading": "Page 1", "content": "分页片段", "metadata": {}},
+        {"chunk_id": "c-page-3", "document_id": "doc-page-3", "heading": "Page 3", "content": "分页片段", "metadata": {}},
+    ])
+    def test_plan_content_uses_saved_learning_plan_summary(self, _mock_evidence):
+        """PLAN 阶段展示已生成学习计划，而不是原始 Page 召回列表。"""
+        state_row = _make_state_row("INIT")
+        state_row["plan_id"] = "plan-001"
+        plan_row = {
+            "plan_id": "plan-001",
+            "status": "published",
+            "documents": [
+                {"documentId": "doc-a", "title": "安全操作总览", "relevance": 0.95, "abilityGroup": "基础认知", "difficulty": "basic"},
+                {"documentId": "doc-b", "title": "设备维护流程", "relevance": 0.82, "abilityGroup": "作业流程", "difficulty": "normal"},
+            ],
+            "reading_order": ["doc-a", "doc-b"],
+            "recommend_reason": "先建立安全操作全局认知，再学习设备维护流程。",
+            "evidence_chunk_ids": ["chunk-a", "chunk-b"],
+        }
+
+        content, _citations = _plan_content(_PlanSession(plan_row), "kb-1", state_row)
+
+        assert "先建立安全操作全局认知" in content
+        assert "安全操作总览" in content
+        assert "设备维护流程" in content
+        assert "Page 1" not in content
+        assert "Page 3" not in content
+
+    @patch(_PATCH_EVIDENCE)
+    def test_current_evidence_follows_learning_plan_reading_order(self, mock_evidence):
+        """TEACH 阶段按学习计划 readingOrder 选择当前章节材料。"""
+        mock_evidence.return_value = [
+            {"chunk_id": "chunk-b", "document_id": "doc-b", "heading": "Page 3", "content": "第二章正文", "metadata": {}},
+            {"chunk_id": "chunk-a", "document_id": "doc-a", "heading": "Page 1", "content": "第一章正文", "metadata": {}},
+        ]
+        state_row = _make_state_row("TEACH", section_index=1)
+        state_row["plan_id"] = "plan-001"
+        plan_row = {
+            "plan_id": "plan-001",
+            "status": "published",
+            "documents": [
+                {"documentId": "doc-a", "title": "安全操作总览", "relevance": 0.95, "abilityGroup": "基础认知", "difficulty": "basic"},
+                {"documentId": "doc-b", "title": "设备维护流程", "relevance": 0.82, "abilityGroup": "作业流程", "difficulty": "normal"},
+            ],
+            "reading_order": ["doc-a", "doc-b"],
+            "recommend_reason": "先建立安全操作全局认知，再学习设备维护流程。",
+            "evidence_chunk_ids": ["chunk-a", "chunk-b"],
+        }
+
+        content, citations = _current_evidence(_PlanSession(plan_row), "app-1", "kb-1", state_row)
+
+        assert "设备维护流程" in content
+        assert "第二章正文" in content
+        assert citations[0].documentId == "doc-b"

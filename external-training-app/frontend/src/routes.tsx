@@ -1,11 +1,21 @@
 import { createBrowserRouter } from "react-router";
-import { BindingPage } from "./pages/BindingPage";
+import { AppLayout } from "./components/AppLayout";
 import { ReviewPage } from "./pages/ReviewPage";
 import { ClassroomPage } from "./pages/ClassroomPage";
+import { HomePage } from "./pages/HomePage";
+import { QuestionReviewPage } from "./pages/QuestionReviewPage";
+import { PlanDetailPage } from "./pages/PlanDetailPage";
 
 export const router = createBrowserRouter([
-  { path: "/", element: <ReviewPage /> },
-  { path: "/bindings", element: <BindingPage /> },
-  { path: "/reviews", element: <ReviewPage /> },
-  { path: "/classroom", element: <ClassroomPage /> },
+  {
+    path: "/",
+    element: <AppLayout />,
+    children: [
+      { index: true, element: <HomePage /> },
+      { path: "reviews", element: <ReviewPage /> },
+      { path: "plans/:planId", element: <PlanDetailPage /> },
+      { path: "plans/:planId/classroom", element: <ClassroomPage /> },
+      { path: "questions", element: <QuestionReviewPage /> },
+    ],
+  },
 ]);

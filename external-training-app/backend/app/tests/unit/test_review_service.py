@@ -56,7 +56,7 @@ def test_generate_plan_draft_uses_platform_response_app_id(monkeypatch):
         from app.services.review_service import generate_plan_draft
 
         result = generate_plan_draft(session, "安全员", "负责现场风险识别")
-        mirrored_plan = session.execute(training_plans.select()).mappings().one()
+        mirrored_plans = session.execute(training_plans.select()).mappings().all()
     finally:
         session.close()
         metadata.drop_all(engine)
@@ -66,4 +66,4 @@ def test_generate_plan_draft_uses_platform_response_app_id(monkeypatch):
     assert result["draft"]["appId"] == expected_app_id
     assert result["draft"]["planId"] == platform_plan_id
     assert result["draft"]["createdAt"] == platform_created_at
-    assert mirrored_plan["plan_id"] == platform_plan_id
+    assert mirrored_plans == []

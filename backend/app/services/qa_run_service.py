@@ -3685,7 +3685,7 @@ def export_evaluation_run(
     if export_format == "csv":
         header = "sampleId,status,sourceRunId,actualRunId,failureReason,query\n"
         rows = [
-            f"{item.sampleId},{item.status},{item.sourceRunId or ''},{item.actualRunId or ''},{item.failureReason or ''},\"{item.query.replace('\"', '\"\"')}\""
+            f"{item.sampleId},{item.status},{item.sourceRunId or ''},{item.actualRunId or ''},{item.failureReason or ''},\"{item.query.replace('"', '""')}\""
             for item in detail.results
         ]
         content = header + "\n".join(rows)

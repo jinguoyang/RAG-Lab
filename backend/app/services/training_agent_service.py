@@ -7,12 +7,7 @@ from typing import Any
 from sqlalchemy import RowMapping, select
 from sqlalchemy.orm import Session
 
-from app.services.app_runtime_service import (
-    AppRuntimeConflictError,
-    _require_employee_training_app,
-    _resolve_runtime_context_without_quota,
-)
-from app.tables import chunks
+from app.tables import chunks, documents
 
 
 class TrainingAgentConflictError(ValueError):
@@ -25,6 +20,12 @@ class TrainingAgentNotFoundError(Exception):
 
 def resolve_training_context(session: Session, credential: str, app_id: str | None = None):
     """解析 App API Key，并限制调用对象必须是员工培训场景。"""
+    from app.services.app_runtime_service import (
+        AppRuntimeConflictError,
+        _require_employee_training_app,
+        _resolve_runtime_context_without_quota,
+    )
+
     try:
         context = _resolve_runtime_context_without_quota(session, credential, datetime.now(UTC))
         _require_employee_training_app(context)
@@ -43,15 +44,20 @@ def read_training_evidence(
     document_ids: list[str] | None = None,
 ) -> list[RowMapping]:
     """从当前 App 知识库读取培训证据，优先关键词命中，缺省回退到前几个有效 Chunk。"""
-    stmt = select(
-        chunks.c.chunk_id,
-        chunks.c.document_id,
-        chunks.c.chunk_index,
-        chunks.c.section,
-        chunks.c.heading,
-        chunks.c.content,
-        chunks.c.metadata,
-    ).where(chunks.c.kb_id == kb_id, chunks.c.status == "active")
+    stmt = (
+        select(
+            chunks.c.chunk_id,
+            chunks.c.document_id,
+            documents.c.name.label("document_name"),
+            chunks.c.chunk_index,
+            chunks.c.section,
+            chunks.c.heading,
+            chunks.c.content,
+            chunks.c.metadata,
+        )
+        .select_from(chunks.outerjoin(documents, chunks.c.document_id == documents.c.document_id))
+        .where(chunks.c.kb_id == kb_id, chunks.c.status == "active")
+    )
     if document_ids:
         stmt = stmt.where(chunks.c.document_id.in_(document_ids))
 
@@ -70,6 +76,9 @@ def read_training_evidence(
 
 def evidence_title(row: RowMapping) -> str:
     """从 Chunk 元数据中提取对应用端友好的文档标题。"""
+    document_name = row.get("document_name")
+    if document_name:
+        return str(document_name)
     metadata = row["metadata"] or {}
     if isinstance(metadata, dict):
         for key in ("documentName", "title", "sourceName"):

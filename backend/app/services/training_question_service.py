@@ -5,14 +5,23 @@ import json
 import logging
 import time
 from datetime import UTC, datetime
-from itertools import cycle, islice
 from typing import Any
 
 from sqlalchemy import insert, select, update
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.db_types import new_id
-from app.schemas.training_question import QuestionDraftDTO, QuestionOptionDTO
+from app.schemas.training_question import (
+    QuestionAppealDTO,
+    QuestionAppealRequest,
+    QuestionAppealResolveRequest,
+    QuestionDraftDTO,
+    QuestionOptionDTO,
+    QuestionReviewRequest,
+    QuestionUpdateRequest,
+)
+from app.services.app_llm_audit_service import begin_app_llm_invocation, finish_app_llm_invocation
 from app.services.training_agent_service import (
     TrainingAgentConflictError,
     TrainingAgentNotFoundError,
@@ -23,11 +32,75 @@ from app.services.training_agent_service import (
 from app.services.training_llm_client import LLMCallError, call_llm
 from app.services.training_llm_json_service import TrainingLLMOutputError, parse_training_json
 from app.services.training_skill_registry_service import record_training_skill_call
-from app.tables import training_questions
+from app.tables import training_question_appeals, training_questions
 
 logger = logging.getLogger(__name__)
 
 QUESTION_TYPES = ("single_choice", "true_false", "subjective")
+QUESTION_TYPE_RATIO = {
+    "single_choice": 4,
+    "true_false": 4,
+    "subjective": 2,
+}
+
+
+def _question_count_from_request(request: Any) -> int:
+    """读取本次每个文档的出题数量；请求未传时使用启动环境变量。"""
+    if request.count is not None:
+        return request.count
+    return get_settings().training_questions_per_document
+
+
+def _question_type_sequence(count: int) -> list[str]:
+    """按 4:4:2 生成题型序列，10 题时为选择 4、判断 4、主观 2。"""
+    if count <= 0:
+        return []
+    total_weight = sum(QUESTION_TYPE_RATIO.values())
+    quotas = {
+        question_type: count * weight / total_weight
+        for question_type, weight in QUESTION_TYPE_RATIO.items()
+    }
+    distribution = {question_type: int(quota) for question_type, quota in quotas.items()}
+    remaining = count - sum(distribution.values())
+    order = sorted(
+        QUESTION_TYPE_RATIO,
+        key=lambda question_type: quotas[question_type] - distribution[question_type],
+        reverse=True,
+    )
+    for question_type in order[:remaining]:
+        distribution[question_type] += 1
+
+    sequence: list[str] = []
+    for question_type in QUESTION_TYPES:
+        sequence.extend([question_type] * distribution[question_type])
+    return sequence
+
+
+def _align_llm_questions_to_ratio(
+    llm_questions: list[dict[str, Any]] | None,
+    question_types: list[str],
+) -> list[dict[str, Any] | None]:
+    """按目标题型序列消费 LLM 题目，比例不匹配的缺口交给模板回退。"""
+    if not llm_questions:
+        return [None for _ in question_types]
+
+    used_indexes: set[int] = set()
+    aligned: list[dict[str, Any] | None] = []
+    for question_type in question_types:
+        match_index = next(
+            (
+                index
+                for index, question in enumerate(llm_questions)
+                if index not in used_indexes and question.get("questionType") == question_type
+            ),
+            None,
+        )
+        if match_index is None:
+            aligned.append(None)
+            continue
+        used_indexes.add(match_index)
+        aligned.append(llm_questions[match_index])
+    return aligned
 
 
 def _build_question_payload(question_type: str, job_title: str, evidence: str) -> dict[str, Any]:
@@ -63,11 +136,11 @@ def _build_question_payload(question_type: str, job_title: str, evidence: str) -
         "correctAnswer": None,
         "explanation": "主观题按要点覆盖度评分。",
         "rubric": {
-            "totalScore": 100,
+            "totalScore": 5,
             "criteria": [
-                {"name": "依据准确", "score": 40, "description": "回答能引用或复述知识库关键要求。"},
-                {"name": "流程完整", "score": 40, "description": "覆盖准备、执行、异常处理或复盘等步骤。"},
-                {"name": "表达清晰", "score": 20, "description": "表述具体、可执行。"},
+                {"name": "依据准确", "score": 2, "description": "回答能引用或复述知识库关键要求。"},
+                {"name": "流程完整", "score": 2, "description": "覆盖准备、执行、异常处理或复盘等步骤。"},
+                {"name": "表达清晰", "score": 1, "description": "表述具体、可执行。"},
             ],
         },
     }
@@ -78,11 +151,11 @@ def _build_question_payload(question_type: str, job_title: str, evidence: str) -
 # ---------------------------------------------------------------------------
 
 _DEFAULT_SUBJECTIVE_RUBRIC: dict[str, Any] = {
-    "totalScore": 100,
+    "totalScore": 5,
     "criteria": [
-        {"name": "依据准确", "score": 40, "description": "回答能引用或复述知识库关键要求。"},
-        {"name": "流程完整", "score": 40, "description": "覆盖准备、执行、异常处理或复盘等步骤。"},
-        {"name": "表达清晰", "score": 20, "description": "表述具体、可执行。"},
+        {"name": "依据准确", "score": 2, "description": "能引用或复述关键要求。"},
+        {"name": "流程完整", "score": 2, "description": "覆盖主要处理步骤。"},
+        {"name": "表达清晰", "score": 1, "description": "表述具体、可执行。"},
     ],
 }
 
@@ -93,12 +166,14 @@ def _build_llm_prompt(job_title: str, count: int, evidence_summaries: list[str])
     system_msg = (
         "你是一位企业培训出题专家。根据提供的知识库证据，为指定岗位生成培训考核题目。\n"
         "要求：\n"
-        f"1. 共生成 {count} 道题，题型在 single_choice、true_false、subjective 中均匀分配。\n"
-        "2. single_choice 题目必须有 4 个选项（label: A/B/C/D），correctAnswer 为正确选项 label。\n"
-        "3. true_false 题目必须有 2 个选项（label: true/false），correctAnswer 为 true 或 false。\n"
-        "4. subjective 题目 options 为空列表，correctAnswer 为 null，必须包含 rubric（totalScore: 100，criteria 数组每项含 name/score/description）。\n"
-        "5. 每道题必须包含 explanation 字段。\n"
-        "6. 输出严格 JSON 数组，不要包含任何额外文字。每项字段：questionType, content, options, correctAnswer, explanation, rubric。\n"
+        "1. 题型比例为 single_choice:true_false:subjective = 4:4:2。\n"
+        f"2. 共生成 {count} 道题。\n"
+        "3. single_choice 题目必须有 4 个选项（label: A/B/C/D），correctAnswer 为正确选项 label。\n"
+        "4. true_false 题目必须有 2 个选项（label: true/false），correctAnswer 为 true 或 false。\n"
+        "5. subjective 题目 options 为空列表，correctAnswer 为 null，rubric.totalScore 必须为 5。\n"
+        "6. subjective rubric.criteria 不超过 5 个，每个 name 尽量不超过 10 个汉字，并注明每个考点给分。\n"
+        "7. 每道题必须包含 explanation 字段，作为答案解读和参考资料。\n"
+        "8. 输出严格 JSON 数组，不要包含任何额外文字。每项字段：questionType, content, options, correctAnswer, explanation, rubric。\n"
     )
     user_msg = (
         f"岗位名称：{job_title or '当前岗位'}\n\n"
@@ -137,6 +212,8 @@ def _validate_and_normalize_question(raw: dict[str, Any]) -> dict[str, Any] | No
     if question_type == "subjective":
         if not isinstance(rubric, dict) or not rubric.get("criteria"):
             rubric = _DEFAULT_SUBJECTIVE_RUBRIC
+        else:
+            rubric = _normalize_subjective_rubric(rubric)
     else:
         rubric = None
 
@@ -148,6 +225,43 @@ def _validate_and_normalize_question(raw: dict[str, Any]) -> dict[str, Any] | No
         "explanation": explanation,
         "rubric": rubric,
     }
+
+
+def _normalize_subjective_rubric(rubric: dict[str, Any]) -> dict[str, Any]:
+    """将主观题 rubric 规范为 5 分制，最多保留 5 个考点。"""
+    criteria = rubric.get("criteria")
+    if not isinstance(criteria, list) or not criteria:
+        return _DEFAULT_SUBJECTIVE_RUBRIC
+
+    total_score = 5
+    normalized: list[dict[str, Any]] = []
+    raw_total = rubric.get("totalScore") or sum(
+        item.get("score", 0) for item in criteria if isinstance(item, dict)
+    )
+    try:
+        raw_total_value = float(raw_total)
+    except (TypeError, ValueError):
+        raw_total_value = 0.0
+
+    for index, item in enumerate(criteria[:5]):
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or f"考点{index + 1}")[:10]
+        description = str(item.get("description") or "按该考点给分。")
+        try:
+            raw_score = float(item.get("score", 0))
+        except (TypeError, ValueError):
+            raw_score = 0.0
+        score = round(raw_score / raw_total_value * total_score, 2) if raw_total_value > 0 else 1
+        normalized.append({"name": name, "score": score, "description": description})
+
+    if not normalized:
+        return _DEFAULT_SUBJECTIVE_RUBRIC
+
+    score_sum = sum(float(item["score"]) for item in normalized)
+    if score_sum != total_score:
+        normalized[-1]["score"] = round(float(normalized[-1]["score"]) + total_score - score_sum, 2)
+    return {"totalScore": total_score, "criteria": normalized}
 
 
 def _generate_questions_with_llm(
@@ -241,95 +355,180 @@ def create_question_drafts(session: Session, credential: str, request: Any) -> l
     优先使用 LLM 辅助出题，LLM 失败时静默回退到模板生成。
     """
     context = resolve_training_context(session, credential)
-    now = datetime.now(UTC)
-    query = " ".join([request.jobTitle or "", *getattr(request, "abilityGroups", [])]).strip()
-    rows = read_training_evidence(
+    audit = begin_app_llm_invocation(
         session,
-        context.kb_row["kb_id"],
-        query,
-        limit=max(1, request.count),
-        document_ids=getattr(request, "documentIds", None) or None,
+        context,
+        endpoint="/api/v1/training/questions/drafts",
+        operation="generateQuestionDrafts",
+        skill_name="generateQuestionDrafts",
+        input_summary={
+            "planId": request.planId,
+            "jobTitle": request.jobTitle or "",
+            "questionCount": _question_count_from_request(request),
+            "abilityGroupCount": len(getattr(request, "abilityGroups", []) or []),
+        },
+        user_content={
+            "planId": request.planId,
+            "jobTitle": request.jobTitle or "",
+            "abilityGroups": getattr(request, "abilityGroups", []) or [],
+            "count": _question_count_from_request(request),
+        },
     )
-    if not rows:
-        rows = []
+    try:
+        now = datetime.now(UTC)
+        question_count = _question_count_from_request(request)
+        requested_document_ids = getattr(request, "documentIds", None) or []
+        query = " ".join([request.jobTitle or "", *getattr(request, "abilityGroups", [])]).strip()
 
-    evidence_summaries = [evidence_preview(row) for row in rows]
-    llm_questions = _generate_questions_with_llm(
-        session,
-        job_title=request.jobTitle or "",
-        count=request.count,
-        evidence_summaries=evidence_summaries,
-        app_id=str(context.app_row["app_id"]),
+        responses: list[QuestionDraftDTO] = []
+        fallback = False
+        document_batches = requested_document_ids or [None]
+        for document_id in document_batches:
+            rows = read_training_evidence(
+                session,
+                context.kb_row["kb_id"],
+                query,
+                limit=max(1, question_count),
+                document_ids=[document_id] if document_id else None,
+            )
+            if not rows:
+                rows = []
+
+            evidence_summaries = [evidence_preview(row) for row in rows]
+            llm_questions = _generate_questions_with_llm(
+                session,
+                job_title=request.jobTitle or "",
+                count=question_count,
+                evidence_summaries=evidence_summaries,
+                app_id=str(context.app_row["app_id"]),
+            )
+            fallback = fallback or not llm_questions
+            question_types = _question_type_sequence(question_count)
+            aligned_llm_questions = _align_llm_questions_to_ratio(llm_questions, question_types)
+
+            for index in range(question_count):
+                responses.append(
+                    _insert_question_draft(
+                        session,
+                        context,
+                        request,
+                        now,
+                        rows,
+                        aligned_llm_questions,
+                        question_types,
+                        index,
+                        document_id,
+                    )
+                )
+
+        session.commit()
+        question_ids = [item.questionId for item in responses]
+        finish_app_llm_invocation(
+            session,
+            audit,
+            status="success",
+            assistant_content={
+                "planId": request.planId,
+                "questionCount": len(responses),
+                "questionIds": question_ids,
+                "fallback": fallback,
+            },
+            response_summary={
+                "planId": request.planId,
+                "questionCount": len(responses),
+                "questionIds": question_ids,
+                "fallback": fallback,
+                "llmErrorCode": "LLM_FALLBACK" if fallback else None,
+            },
+        )
+        return responses
+    except Exception as exc:
+        session.rollback()
+        finish_app_llm_invocation(
+            session,
+            audit,
+            status="failed",
+            assistant_content={"error": str(exc)[:200]},
+            response_summary={"error": str(exc)[:200]},
+            error_code=exc.__class__.__name__,
+        )
+        raise
+
+
+def _insert_question_draft(
+    session: Session,
+    context: Any,
+    request: Any,
+    now: datetime,
+    rows: list,
+    aligned_llm_questions: list[dict[str, Any] | None],
+    question_types: list[str],
+    index: int,
+    requested_document_id: str | None,
+) -> QuestionDraftDTO:
+    """插入单道题目草稿，并保留所属文档 ID 以支持后续按文档抽题。"""
+    row = rows[index % len(rows)] if rows else None
+    evidence = evidence_preview(row) if row is not None else ""
+    evidence_chunk_ids = [str(row["chunk_id"])] if row is not None else []
+    document_id = str(row["document_id"]) if row is not None else requested_document_id
+
+    if index < len(aligned_llm_questions) and aligned_llm_questions[index] is not None:
+        q = aligned_llm_questions[index]
+        question_type = q["questionType"]
+        content = q["content"]
+        options = q["options"]
+        correct_answer = q["correctAnswer"]
+        explanation = q["explanation"]
+        rubric = q["rubric"]
+        source = "llm"
+    else:
+        question_type = question_types[index]
+        payload = _build_question_payload(question_type, request.jobTitle, evidence)
+        content = payload["content"]
+        options = payload["options"]
+        correct_answer = payload["correctAnswer"]
+        explanation = payload["explanation"]
+        rubric = payload["rubric"]
+        source = "template"
+
+    question_id = new_id()
+    session.execute(
+        insert(training_questions).values(
+            question_id=question_id,
+            plan_id=request.planId,
+            app_id=context.app_row["app_id"],
+            question_type=question_type,
+            category="practice",
+            content=content,
+            options=[option.model_dump() for option in options] if options else [],
+            correct_answer=correct_answer,
+            explanation=explanation,
+            rubric=rubric,
+            evidence_chunk_ids=evidence_chunk_ids,
+            status="draft",
+            metadata={"source": source, "evidence": evidence, "documentId": document_id},
+            created_at=now,
+            created_by=context.actor.user.userId,
+            updated_at=now,
+            updated_by=context.actor.user.userId,
+        )
     )
-
-    responses: list[QuestionDraftDTO] = []
-    for index in range(request.count):
-        row = rows[index % len(rows)] if rows else None
-        evidence = evidence_preview(row) if row is not None else ""
-        evidence_chunk_ids = [str(row["chunk_id"])] if row is not None else []
-
-        if llm_questions and index < len(llm_questions):
-            q = llm_questions[index]
-            question_type = q["questionType"]
-            content = q["content"]
-            options = q["options"]
-            correct_answer = q["correctAnswer"]
-            explanation = q["explanation"]
-            rubric = q["rubric"]
-            source = "llm"
-        else:
-            question_cycle = cycle(QUESTION_TYPES)
-            question_type = next(islice(question_cycle, index % len(QUESTION_TYPES), None))
-            payload = _build_question_payload(question_type, request.jobTitle, evidence)
-            content = payload["content"]
-            options = payload["options"]
-            correct_answer = payload["correctAnswer"]
-            explanation = payload["explanation"]
-            rubric = payload["rubric"]
-            source = "template"
-
-        question_id = new_id()
-        session.execute(
-            insert(training_questions).values(
-                question_id=question_id,
-                plan_id=request.planId,
-                app_id=context.app_row["app_id"],
-                question_type=question_type,
-                category="practice",
-                content=content,
-                options=[option.model_dump() for option in options] if options else [],
-                correct_answer=correct_answer,
-                explanation=explanation,
-                rubric=rubric,
-                evidence_chunk_ids=evidence_chunk_ids,
-                status="draft",
-                metadata={"source": source, "evidence": evidence},
-                created_at=now,
-                created_by=context.actor.user.userId,
-                updated_at=now,
-                updated_by=context.actor.user.userId,
-            )
-        )
-        responses.append(
-            QuestionDraftDTO(
-                questionId=str(question_id),
-                planId=request.planId,
-                appId=str(context.app_row["app_id"]),
-                questionType=question_type,
-                category="practice",
-                content=content,
-                options=options,
-                correctAnswer=correct_answer,
-                explanation=explanation,
-                rubric=rubric,
-                evidenceChunkIds=evidence_chunk_ids,
-                status="draft",
-                createdAt=now.isoformat(),
-            )
-        )
-
-    session.commit()
-    return responses
+    return QuestionDraftDTO(
+        questionId=str(question_id),
+        planId=request.planId,
+        appId=str(context.app_row["app_id"]),
+        documentId=document_id,
+        questionType=question_type,
+        category="practice",
+        content=content,
+        options=options,
+        correctAnswer=correct_answer,
+        explanation=explanation,
+        rubric=rubric,
+        evidenceChunkIds=evidence_chunk_ids,
+        status="draft",
+        createdAt=now.isoformat(),
+    )
 
 
 def _review_question(session: Session, question_id: str, user_id: str, new_status: str) -> QuestionDraftDTO:
@@ -366,6 +565,7 @@ def _review_question(session: Session, question_id: str, user_id: str, new_statu
         questionId=str(row["question_id"]),
         planId=str(row["plan_id"]),
         appId=str(row["app_id"]),
+        documentId=(row["metadata"] or {}).get("documentId"),
         questionType=row["question_type"],
         category=row["category"],
         content=row["content"],
@@ -377,6 +577,193 @@ def _review_question(session: Session, question_id: str, user_id: str, new_statu
         status=new_status,
         createdAt=row["created_at"].isoformat(),
         updatedAt=now.isoformat(),
+    )
+
+
+def review_question_with_credential(
+    session: Session,
+    credential: str,
+    question_id: str,
+    request: QuestionReviewRequest,
+) -> QuestionDraftDTO:
+    """ex-app 通过 App API Key 审核题目，平台校验题目归属后发布或拒绝。"""
+    context = resolve_training_context(session, credential)
+    row = session.execute(
+        select(training_questions.c.app_id)
+        .where(training_questions.c.question_id == question_id)
+        .limit(1)
+    ).mappings().first()
+    if row is None:
+        raise TrainingAgentNotFoundError(f"Question {question_id} not found.")
+    if str(row["app_id"]) != str(context.app_row["app_id"]):
+        raise TrainingAgentConflictError("QUESTION_NOT_BELONG_TO_APP")
+    reviewer_id = context.actor.user.userId
+    if request.decision == "approved":
+        return _review_question(session, question_id, reviewer_id, "published")
+    return _review_question(session, question_id, reviewer_id, "rejected")
+
+
+def update_question(
+    session: Session,
+    question_id: str,
+    request: QuestionUpdateRequest,
+    user_id: str,
+) -> QuestionDraftDTO:
+    """管理员修改题目内容、答案、解析、rubric 和证据引用。"""
+    row = session.execute(
+        select(training_questions).where(training_questions.c.question_id == question_id)
+    ).mappings().first()
+    if row is None:
+        raise TrainingAgentNotFoundError(f"Question {question_id} not found.")
+    if row["status"] not in {"draft", "published"}:
+        raise TrainingAgentConflictError(f"Question {question_id} is '{row['status']}', cannot be updated.")
+
+    values = _question_update_values(row, request)
+    if not values:
+        return _question_row_to_dto(row)
+
+    now = datetime.now(UTC)
+    values.update(updated_at=now, updated_by=user_id)
+    session.execute(
+        update(training_questions)
+        .where(training_questions.c.question_id == question_id)
+        .values(**values)
+    )
+    session.commit()
+    updated_row = dict(row)
+    updated_row.update(values)
+    return _question_row_to_dto(updated_row)
+
+
+def create_question_appeal(
+    session: Session,
+    credential: str,
+    question_id: str,
+    request: QuestionAppealRequest,
+) -> QuestionAppealDTO:
+    """学员上报题目异议，供管理员后续处理。"""
+    context = resolve_training_context(session, credential)
+    app_id = str(context.app_row["app_id"])
+    question = session.execute(
+        select(training_questions.c.question_id)
+        .where(training_questions.c.question_id == question_id)
+        .where(training_questions.c.app_id == app_id)
+        .limit(1)
+    ).scalar()
+    if question is None:
+        raise TrainingAgentNotFoundError(f"Question {question_id} not found.")
+
+    now = datetime.now(UTC)
+    appeal_id = new_id()
+    metadata = {}
+    if request.answerRecordId:
+        metadata["answerRecordId"] = request.answerRecordId
+    session.execute(
+        training_question_appeals.insert().values(
+            appeal_id=appeal_id,
+            app_id=app_id,
+            question_id=question_id,
+            end_user_id=request.endUserId,
+            reason=request.reason,
+            status="open",
+            metadata=metadata,
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    session.commit()
+    return QuestionAppealDTO(
+        appealId=str(appeal_id),
+        questionId=question_id,
+        appId=app_id,
+        endUserId=request.endUserId,
+        reason=request.reason,
+        status="open",
+        createdAt=now.isoformat(),
+    )
+
+
+def resolve_question_appeal(
+    session: Session,
+    appeal_id: str,
+    request: QuestionAppealResolveRequest,
+    user_id: str,
+) -> QuestionAppealDTO:
+    """管理员处理题目异议。"""
+    row = session.execute(
+        select(training_question_appeals)
+        .where(training_question_appeals.c.appeal_id == appeal_id)
+        .limit(1)
+    ).mappings().first()
+    if row is None:
+        raise TrainingAgentNotFoundError(f"Question appeal {appeal_id} not found.")
+    if row["status"] != "open":
+        raise TrainingAgentConflictError("QUESTION_APPEAL_ALREADY_PROCESSED")
+
+    now = datetime.now(UTC)
+    metadata = dict(row["metadata"] or {})
+    metadata.update({"processedBy": user_id, "processedAt": now.isoformat(), "notes": request.notes})
+    session.execute(
+        update(training_question_appeals)
+        .where(training_question_appeals.c.appeal_id == appeal_id)
+        .values(status=request.status, metadata=metadata, updated_at=now)
+    )
+    session.commit()
+    return QuestionAppealDTO(
+        appealId=str(row["appeal_id"]),
+        questionId=str(row["question_id"]),
+        appId=str(row["app_id"]),
+        endUserId=row["end_user_id"],
+        reason=row["reason"],
+        status=request.status,
+        createdAt=row["created_at"].isoformat(),
+    )
+
+
+def _question_update_values(row: Any, request: QuestionUpdateRequest) -> dict[str, Any]:
+    """把 PATCH 请求转换成数据库更新字段。"""
+    values: dict[str, Any] = {}
+    if request.content is not None:
+        values["content"] = request.content
+    if request.options is not None:
+        values["options"] = [item.model_dump() for item in request.options]
+    if request.correctAnswer is not None:
+        values["correct_answer"] = request.correctAnswer
+    if request.explanation is not None:
+        values["explanation"] = request.explanation
+    if request.rubric is not None:
+        if row["question_type"] != "subjective":
+            raise TrainingAgentConflictError("ONLY_SUBJECTIVE_QUESTION_CAN_HAVE_RUBRIC")
+        values["rubric"] = _normalize_subjective_rubric(request.rubric)
+    if request.evidenceChunkIds is not None:
+        values["evidence_chunk_ids"] = request.evidenceChunkIds
+    if request.category is not None:
+        values["category"] = request.category
+    return values
+
+
+def _question_row_to_dto(row: Any) -> QuestionDraftDTO:
+    """将 training_questions 行转换为 DTO。"""
+    options = [QuestionOptionDTO(**o) for o in (row["options"] or [])]
+    updated_at = row.get("updated_at") if isinstance(row, dict) else row["updated_at"]
+    created_at = row.get("created_at") if isinstance(row, dict) else row["created_at"]
+    metadata = row.get("metadata") if isinstance(row, dict) else row["metadata"]
+    return QuestionDraftDTO(
+        questionId=str(row["question_id"]),
+        planId=str(row["plan_id"]),
+        appId=str(row["app_id"]),
+        documentId=(metadata or {}).get("documentId"),
+        questionType=row["question_type"],
+        category=row["category"],
+        content=row["content"],
+        options=options,
+        correctAnswer=row["correct_answer"],
+        explanation=row["explanation"],
+        rubric=row["rubric"],
+        evidenceChunkIds=row["evidence_chunk_ids"] or [],
+        status=row["status"],
+        createdAt=created_at.isoformat(),
+        updatedAt=updated_at.isoformat() if updated_at else None,
     )
 
 

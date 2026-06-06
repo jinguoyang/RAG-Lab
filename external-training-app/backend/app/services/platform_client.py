@@ -27,19 +27,65 @@ class PlatformClient:
         resp.raise_for_status()
         return resp.json()
 
+    def list_training_documents(
+        self,
+        query: str = "",
+        category: str | None = None,
+        difficulty: str | None = None,
+    ) -> list[dict]:
+        """调用平台 /training/documents 查询可选文档。"""
+        params = []
+        if query:
+            params.append(("query", query))
+        if category:
+            params.append(("category", category))
+        if difficulty:
+            params.append(("difficulty", difficulty))
+        query_string = ""
+        if params:
+            from urllib.parse import urlencode
+
+            query_string = f"?{urlencode(params)}"
+        resp = httpx.get(
+            f"{self.base_url}/training/documents{query_string}",
+            headers=self.headers,
+            timeout=60.0,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     def create_question_drafts(
-        self, plan_id: str, job_title: str, ability_groups: list[str], count: int
+        self,
+        plan_id: str,
+        job_title: str,
+        ability_groups: list[str],
+        count: int | None = None,
+        document_ids: list[str] | None = None,
     ) -> list[dict]:
         """调用平台 /training/questions/drafts 生成题目。"""
+        payload = {
+            "planId": plan_id,
+            "jobTitle": job_title,
+            "abilityGroups": ability_groups,
+            "documentIds": document_ids or [],
+        }
+        if count is not None:
+            payload["count"] = count
         resp = httpx.post(
             f"{self.base_url}/training/questions/drafts",
             headers=self.headers,
-            json={
-                "planId": plan_id,
-                "jobTitle": job_title,
-                "abilityGroups": ability_groups,
-                "count": count,
-            },
+            json=payload,
+            timeout=60.0,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def grade_subjective_answer(self, payload: dict) -> dict:
+        """调用平台主观题评分能力，不传平台题库 questionId。"""
+        resp = httpx.post(
+            f"{self.base_url}/training/post-quizzes/subjective-grading",
+            headers=self.headers,
+            json=payload,
             timeout=60.0,
         )
         resp.raise_for_status()

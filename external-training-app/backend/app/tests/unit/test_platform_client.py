@@ -78,7 +78,37 @@ def test_create_question_drafts_uses_api_key_without_app_id(monkeypatch):
         "安全员",
         ["基础认知"],
         3,
+        ["doc-001"],
     )
 
     assert "appId" not in captured["json"]
     assert captured["json"]["planId"] == "plan-001"
+    assert captured["json"]["documentIds"] == ["doc-001"]
+
+
+def test_grade_subjective_answer_does_not_send_question_id(monkeypatch):
+    """主观题评分只向平台发送评分材料，不发送题库 questionId。"""
+    from app.services.platform_client import PlatformClient
+
+    captured = {}
+
+    def fake_post(url, headers, json, timeout):
+        captured.update({"url": url, "headers": headers, "json": json, "timeout": timeout})
+        return httpx.Response(
+            status_code=200,
+            json={"score": 5, "passed": True, "reason": "ok", "matchedCriteria": []},
+            request=httpx.Request("POST", url),
+        )
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    PlatformClient("http://platform/api/v1", "key").grade_subjective_answer({
+        "content": "说明处理步骤",
+        "answer": "先识别风险，再记录上报。",
+        "rubric": {"totalScore": 5, "criteria": [{"name": "识别风险", "score": 2}]},
+        "evidenceChunkIds": ["chunk-001"],
+    })
+
+    assert captured["url"].endswith("/training/post-quizzes/subjective-grading")
+    assert captured["headers"]["Authorization"] == "Bearer key"
+    assert "questionId" not in captured["json"]

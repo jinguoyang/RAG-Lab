@@ -226,6 +226,18 @@ class Settings(BaseSettings):
         ge=2,
         validation_alias=AliasChoices("RAG_LAB_AGENT_RUNTIME_SUMMARY_KEEP_MESSAGES", "AGENT_RUNTIME_SUMMARY_KEEP_MESSAGES"),
     )
+    training_questions_per_document: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        validation_alias=AliasChoices("RAG_LAB_TRAINING_QUESTIONS_PER_DOCUMENT", "TRAINING_QUESTIONS_PER_DOCUMENT"),
+    )
+    training_post_quiz_question_count: int = Field(
+        default=5,
+        ge=1,
+        le=50,
+        validation_alias=AliasChoices("RAG_LAB_TRAINING_POST_QUIZ_QUESTION_COUNT", "TRAINING_POST_QUIZ_QUESTION_COUNT"),
+    )
     pdf_preview_cache_dir: str = Field(
         default=".cache/pdf_preview",
         validation_alias=AliasChoices("RAG_LAB_PDF_PREVIEW_CACHE_DIR", "PDF_PREVIEW_CACHE_DIR"),

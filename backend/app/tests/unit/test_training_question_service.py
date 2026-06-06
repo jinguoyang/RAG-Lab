@@ -9,10 +9,50 @@ import pytest
 from app.schemas.training_question import QuestionOptionDTO
 from app.services.training_question_service import (
     _DEFAULT_SUBJECTIVE_RUBRIC,
+    _align_llm_questions_to_ratio,
     _build_llm_prompt,
     _generate_questions_with_llm,
+    _question_type_sequence,
     _validate_and_normalize_question,
 )
+
+
+# ---------------------------------------------------------------------------
+# question distribution
+# ---------------------------------------------------------------------------
+
+
+class TestQuestionDistribution:
+    """题型比例测试集。"""
+
+    def test_ten_questions_follow_442_ratio(self):
+        sequence = _question_type_sequence(10)
+        assert sequence.count("single_choice") == 4
+        assert sequence.count("true_false") == 4
+        assert sequence.count("subjective") == 2
+
+    def test_five_questions_follow_post_quiz_ratio(self):
+        sequence = _question_type_sequence(5)
+        assert sequence.count("single_choice") == 2
+        assert sequence.count("true_false") == 2
+        assert sequence.count("subjective") == 1
+
+    def test_align_llm_questions_keeps_ratio_slots(self):
+        question_types = _question_type_sequence(5)
+        llm_questions = [
+            {"questionType": "subjective", "content": "主观1"},
+            {"questionType": "subjective", "content": "主观2"},
+            {"questionType": "single_choice", "content": "选择1"},
+        ]
+        aligned = _align_llm_questions_to_ratio(llm_questions, question_types)
+
+        assert [item["questionType"] if item else None for item in aligned] == [
+            "single_choice",
+            None,
+            None,
+            None,
+            "subjective",
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +136,7 @@ class TestValidateAndNormalizeQuestion:
         rubric = {
             "totalScore": 100,
             "criteria": [
-                {"name": "要点覆盖", "score": 60, "description": "覆盖关键要点"},
+                {"name": "要点覆盖能力特别长", "score": 60, "description": "覆盖关键要点"},
                 {"name": "表达清晰", "score": 40, "description": "表述准确"},
             ],
         }
@@ -111,7 +151,9 @@ class TestValidateAndNormalizeQuestion:
         result = _validate_and_normalize_question(raw)
         assert result is not None
         assert result["questionType"] == "subjective"
-        assert result["rubric"]["totalScore"] == 100
+        assert result["rubric"]["totalScore"] == 5
+        assert len(result["rubric"]["criteria"]) == 2
+        assert result["rubric"]["criteria"][0]["name"] == "要点覆盖能力特别长"[:10]
 
     def test_subjective_without_rubric_gets_default(self):
         """主观题没有 rubric 时应自动补充默认 rubric。"""
@@ -126,7 +168,7 @@ class TestValidateAndNormalizeQuestion:
         assert result is not None
         assert result["questionType"] == "subjective"
         assert result["rubric"] == _DEFAULT_SUBJECTIVE_RUBRIC
-        assert result["rubric"]["totalScore"] == 100
+        assert result["rubric"]["totalScore"] == 5
         assert len(result["rubric"]["criteria"]) > 0
 
     def test_subjective_with_empty_rubric_criteria_gets_default(self):

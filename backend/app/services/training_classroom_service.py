@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
@@ -21,7 +22,7 @@ from app.schemas.training_classroom import (
     ClassroomSessionResponse,
     ClassroomUiActionDTO,
 )
-from app.services.app_runtime_service import chat_with_app_runtime
+from app.services.app_llm_audit_service import begin_app_llm_invocation, finish_app_llm_invocation
 from app.services.training_agent_service import (
     TrainingAgentConflictError,
     TrainingAgentNotFoundError,
@@ -35,6 +36,7 @@ from app.tables import (
     training_classroom_events,
     training_classroom_messages,
     training_classroom_sessions,
+    training_plans,
     training_questions,
 )
 
@@ -438,16 +440,100 @@ def _button_group(*items: tuple[str, str, dict[str, Any]]) -> ClassroomUiActionD
     )
 
 
+def _mapping_get(row: Any, key: str, default: Any = None) -> Any:
+    """兼容 dict 和 SQLAlchemy RowMapping，避免测试 mock 被误判为真实行。"""
+    if isinstance(row, Mapping):
+        return row.get(key, default)
+    try:
+        return row[key]
+    except (KeyError, TypeError):
+        return default
+
+
+def _read_learning_plan(session: Session, state_row: Any) -> Mapping[str, Any] | None:
+    """读取课堂绑定的学习计划；未绑定或计划不可用时返回 None。"""
+    plan_id = _mapping_get(state_row, "plan_id")
+    app_id = _mapping_get(state_row, "app_id")
+    if not isinstance(plan_id, str) or not plan_id:
+        return None
+    stmt = (
+        select(training_plans)
+        .where(training_plans.c.plan_id == plan_id)
+        .where(training_plans.c.deleted_at.is_(None))
+    )
+    if isinstance(app_id, str) and app_id:
+        stmt = stmt.where(training_plans.c.app_id == app_id)
+    row = session.execute(stmt.limit(1)).mappings().first()
+    if not isinstance(row, Mapping) or row.get("status") == "rejected":
+        return None
+    return row
+
+
+def _ordered_plan_documents(plan_row: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    """按 reading_order 返回计划文档，作为课堂章节的稳定来源。"""
+    if plan_row is None:
+        return []
+    raw_documents = plan_row.get("documents") or []
+    if not isinstance(raw_documents, list):
+        return []
+    documents = [item for item in raw_documents if isinstance(item, dict) and item.get("documentId")]
+    by_id = {str(item["documentId"]): item for item in documents}
+    ordered: list[dict[str, Any]] = []
+    reading_order = plan_row.get("reading_order") or []
+    if isinstance(reading_order, list):
+        for document_id in reading_order:
+            doc = by_id.get(str(document_id))
+            if doc is not None and doc not in ordered:
+                ordered.append(doc)
+    for doc in documents:
+        if doc not in ordered:
+            ordered.append(doc)
+    return ordered
+
+
+def _plan_document_ids(plan_documents: list[dict[str, Any]]) -> list[str]:
+    """提取计划文档 ID，供证据读取限定在学习计划范围内。"""
+    return [str(item["documentId"]) for item in plan_documents if item.get("documentId")]
+
+
+def _find_evidence_for_document(rows: list[Any], document_id: str) -> Any | None:
+    """从召回证据中找到计划章节对应的文档片段。"""
+    for row in rows:
+        if str(_mapping_get(row, "document_id", "")) == document_id:
+            return row
+    return None
+
+
 def _current_evidence(session: Session, app_id: str, kb_id: Any, state_row: Any, query: str = "") -> tuple[str, list[ClassroomCitationDTO]]:
     """读取当前章节证据，生成教学正文和引用。"""
     metadata = state_row["metadata"] or {}
     inputs = metadata.get("inputs") if isinstance(metadata, dict) else {}
-    rows = read_training_evidence(session, kb_id, query or str(inputs.get("jobTitle", "")), limit=6)
+    plan_row = _read_learning_plan(session, state_row)
+    plan_documents = _ordered_plan_documents(plan_row)
+    document_ids = _plan_document_ids(plan_documents)
+    rows = read_training_evidence(
+        session,
+        kb_id,
+        query or str(inputs.get("jobTitle", "")),
+        limit=max(6, len(document_ids) * 3) if document_ids else 6,
+        document_ids=document_ids or None,
+    )
     if not rows:
+        if plan_documents:
+            index = min(state_row["current_section_index"], len(plan_documents) - 1)
+            title = str(plan_documents[index].get("title") or "当前章节")
+            return f"本节学习「{title}」。\n\n当前章节已来自学习计划，但知识库暂无可引用的正文片段，请联系管理员复核文档入库状态。", []
         return "当前知识库暂无可用于本课程的学习材料，请联系管理员补充文档。", []
-    index = min(state_row["current_section_index"], len(rows) - 1)
-    row = rows[index]
-    title = evidence_title(row)
+    if plan_documents:
+        index = min(state_row["current_section_index"], len(plan_documents) - 1)
+        plan_doc = plan_documents[index]
+        document_id = str(plan_doc["documentId"])
+        row = _find_evidence_for_document(rows, document_id) or rows[min(index, len(rows) - 1)]
+        title = str(plan_doc.get("title") or evidence_title(row))
+    else:
+        index = min(state_row["current_section_index"], len(rows) - 1)
+        row = rows[index]
+        title = evidence_title(row)
     preview = evidence_preview(row, 360)
     content = f"本节学习「{title}」。\n\n{preview}\n\n请先理解关键要求，随后可以继续进入测验，或直接追问不清楚的地方。"
     citations = [
@@ -466,16 +552,45 @@ def _plan_content(session: Session, kb_id: Any, state_row: Any) -> tuple[str, li
     _meta = state_row["metadata"] or {}
     _inputs = _meta.get("inputs") if isinstance(_meta, dict) else {}
     _query = _inputs.get("jobTitle", "") if isinstance(_inputs, dict) else ""
-    rows = read_training_evidence(session, kb_id, _query, limit=6)
-    titles = [evidence_title(row) for row in rows]
+    plan_row = _read_learning_plan(session, state_row)
+    plan_documents = _ordered_plan_documents(plan_row)
+    rows = read_training_evidence(
+        session,
+        kb_id,
+        _query,
+        limit=max(6, len(plan_documents) * 3) if plan_documents else 6,
+        document_ids=_plan_document_ids(plan_documents) or None,
+    )
+    if plan_documents:
+        titles = [str(item.get("title") or item["documentId"]) for item in plan_documents]
+        reason = str(plan_row.get("recommend_reason") or "").strip() if plan_row is not None else ""
+        if not reason:
+            reason = "已根据岗位目标和知识库材料生成学习计划。"
+        lines = [f"{index}. {title}" for index, title in enumerate(titles, start=1)]
+        content = f"本课程已关联学习计划。\n课程摘要：{reason}\n\n学习章节：\n" + "\n".join(lines)
+        citations = []
+        for doc in plan_documents[:3]:
+            row = _find_evidence_for_document(rows, str(doc["documentId"]))
+            citations.append(
+                ClassroomCitationDTO(
+                    documentId=str(doc["documentId"]),
+                    chunkId=str(row["chunk_id"]) if row is not None else None,
+                    content=evidence_preview(row, 120) if row is not None else str(doc.get("title") or ""),
+                    score=1.0,
+                )
+            )
+    else:
+        titles = [evidence_title(row) for row in rows]
+        if not titles:
+            return "已初始化课程，但当前知识库没有可展示的学习材料。", []
+        lines = [f"{index}. {title}" for index, title in enumerate(titles, start=1)]
+        content = "本课程将按以下材料展开：\n" + "\n".join(lines)
+        citations = [
+            ClassroomCitationDTO(documentId=str(row["document_id"]), chunkId=str(row["chunk_id"]), content=evidence_preview(row, 120), score=1.0)
+            for row in rows[:3]
+        ]
     if not titles:
         return "已初始化课程，但当前知识库没有可展示的学习材料。", []
-    lines = [f"{index}. {title}" for index, title in enumerate(titles, start=1)]
-    content = "本课程将按以下材料展开：\n" + "\n".join(lines)
-    citations = [
-        ClassroomCitationDTO(documentId=str(row["document_id"]), chunkId=str(row["chunk_id"]), content=evidence_preview(row, 120), score=1.0)
-        for row in rows[:3]
-    ]
     if HAS_SKILL_REGISTRY:
         try:
             record_training_skill_call(
@@ -540,15 +655,20 @@ def _count_sections(session: Session, kb_id: Any, query: str, session_id: str | 
     """读取当前知识库证据总数，作为课程章节数。结果缓存到会话 metadata 中。"""
     # 尝试从缓存读取
     if session_id:
-        row = session.execute(
-            select(training_classroom_sessions.c.metadata)
+        session_row = session.execute(
+            select(training_classroom_sessions)
             .where(training_classroom_sessions.c.session_id == session_id)
             .limit(1)
-        ).scalar()
-        meta = row if isinstance(row, dict) else {}
+        ).mappings().first()
+        meta = session_row.get("metadata") if isinstance(session_row, Mapping) else {}
         cached = meta.get("_cached_section_count") if isinstance(meta, dict) else None
         if isinstance(cached, int) and cached > 0:
             return cached
+        plan_documents = _ordered_plan_documents(_read_learning_plan(session, session_row)) if isinstance(session_row, Mapping) else []
+        if plan_documents:
+            count = len(plan_documents)
+            _merge_session_metadata(session, session_id, {"_cached_section_count": count})
+            return count
 
     rows = read_training_evidence(session, kb_id, query, limit=50)
     count = len(rows)
@@ -571,7 +691,7 @@ def _grade_subjective_answer(answer: str, rubric: dict[str, Any] | None) -> tupl
     return base_score, "主观题已按服务端 rubric 初评分，管理员可继续复核。"
 
 
-def _grade_answer(session: Session, state_row: Any, payload: dict[str, Any]) -> tuple[int, str]:
+def _grade_answer(session: Session, state_row: Any, payload: dict[str, Any], context: Any | None = None) -> tuple[int, str]:
     """从平台题库或内置题读取正确答案，避免信任客户端传入的答案。"""
     answer = str(payload.get("answer", "")).strip()
     question_id = str(payload.get("questionId") or "")
@@ -590,6 +710,24 @@ def _grade_answer(session: Session, state_row: Any, payload: dict[str, Any]) -> 
         return 0, "题目不存在或不属于当前课堂应用。"
     if question["question_type"] == "subjective":
         if HAS_GRADING_SERVICE:
+            audit = None
+            if context is not None:
+                audit = begin_app_llm_invocation(
+                    session,
+                    context,
+                    endpoint="/api/v1/training/classroom/sessions/events",
+                    operation="gradeSubjectiveAnswer",
+                    skill_name="gradeSubjectiveAnswer",
+                    input_summary={
+                        "questionId": question_id,
+                        "answerLength": len(answer),
+                        "classroomSessionId": str(state_row["session_id"]),
+                    },
+                    user_content={
+                        "questionId": question_id,
+                        "answer": answer,
+                    },
+                )
             try:
                 result = grade_subjective_answer(
                     session,
@@ -597,8 +735,46 @@ def _grade_answer(session: Session, state_row: Any, payload: dict[str, Any]) -> 
                     answer,
                     str(state_row["app_id"]),
                 )
+                if audit is not None:
+                    finish_app_llm_invocation(
+                        session,
+                        audit,
+                        status="success",
+                        assistant_content={
+                            "questionId": question_id,
+                            "score": result.score,
+                            "needsManualReview": result.needsManualReview,
+                            "fallback": False,
+                        },
+                        response_summary={
+                            "questionId": question_id,
+                            "score": result.score,
+                            "needsManualReview": result.needsManualReview,
+                            "fallback": False,
+                        },
+                    )
                 return result.score, result.reason
             except Exception as exc:
+                if audit is not None:
+                    fallback_score, fallback_reason = _grade_subjective_answer(answer, question["rubric"])
+                    finish_app_llm_invocation(
+                        session,
+                        audit,
+                        status="success",
+                        assistant_content={
+                            "questionId": question_id,
+                            "score": fallback_score,
+                            "reason": fallback_reason,
+                            "fallback": True,
+                        },
+                        response_summary={
+                            "questionId": question_id,
+                            "score": fallback_score,
+                            "fallback": True,
+                            "llmErrorCode": exc.__class__.__name__,
+                        },
+                    )
+                    return fallback_score, fallback_reason
                 logger.debug("主观题 AI 批改失败，回退到规则评分: %s", exc)
         return _grade_subjective_answer(answer, question["rubric"])
 
@@ -655,6 +831,8 @@ def _answer_query_with_agent(
     query: str,
 ) -> tuple[str, list[ClassroomCitationDTO]]:
     """优先调用平台 App Runtime 生成追问回答，失败时回退到证据摘要。"""
+    from app.services.app_runtime_service import chat_with_app_runtime
+
     session_id = str(state_row["session_id"])
     history = _recent_context_messages(session, session_id)
     context_lines = "\n".join(f"{item['role']}: {item['content']}" for item in history[-4:])
@@ -882,7 +1060,7 @@ def apply_classroom_domain_event(
 
     # --- submit_answer/submit_quiz from QUIZ ---
     if event_type in {"submit_answer", "submit_quiz"} and current_state == "QUIZ":
-        score, explanation = _grade_answer(session, state_row, payload)
+        score, explanation = _grade_answer(session, state_row, payload, context)
         passing_score = _get_passing_score(state_row)
         passed = score >= passing_score
         _merge_session_metadata(session, session_id, {"lastScore": score, "lastPassed": passed, "lastPassingScore": passing_score})
