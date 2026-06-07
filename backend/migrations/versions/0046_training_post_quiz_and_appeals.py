@@ -1,14 +1,14 @@
 """create training post quiz and appeal tables
 
-Revision ID: 0041
-Revises: 0040
+Revision ID: 0046
+Revises: 0045
 Create Date: 2026-06-05
 """
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0041"
-down_revision = "0040"
+revision = "0046"
+down_revision = "0045"
 branch_labels = None
 depends_on = None
 
