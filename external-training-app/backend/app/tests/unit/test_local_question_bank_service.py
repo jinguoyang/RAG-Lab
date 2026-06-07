@@ -1,6 +1,7 @@
 """ex-app 本地题库、异议和课后测验服务测试。"""
 from datetime import datetime, timezone
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -15,6 +16,7 @@ from app.services.training_post_quiz_service import create_post_quiz, submit_pos
 from app.services.training_question_service import (
     count_questions_by_document,
     create_question_appeal,
+    delete_question,
     resolve_question_appeal,
     review_question,
 )
@@ -72,7 +74,7 @@ def test_review_and_appeal_are_local():
         session.commit()
 
         result = review_question(session, "admin", "q-001", TrainingQuestionReviewRequest(decision="approved").decision)
-        assert result == {"questionId": "q-001", "status": "approved"}
+        assert result == {"questionId": "q-001", "status": "published"}
 
         appeal = create_question_appeal(
             session,
@@ -89,6 +91,26 @@ def test_review_and_appeal_are_local():
         )
         assert resolved["status"] == "resolved"
         assert resolved["resolution"] == "已修正解析"
+    finally:
+        session.close()
+        metadata.drop_all(engine)
+        engine.dispose()
+
+
+def test_rejected_draft_and_bank_delete_are_physical():
+    """审核不通过和题库删除都应物理删除本地题目。"""
+    engine, session = _session()
+    try:
+        _insert_question(session, "q-draft", "single_choice", "A")
+        _insert_question(session, "q-published", "single_choice", "A", "published")
+        session.commit()
+
+        rejected = review_question(session, "admin", "q-draft", "rejected")
+        deleted = delete_question(session, "q-published")
+
+        assert rejected == {"questionId": "q-draft", "status": "deleted"}
+        assert deleted == {"questionId": "q-published", "status": "deleted"}
+        assert session.execute(training_questions.select()).fetchall() == []
     finally:
         session.close()
         metadata.drop_all(engine)
@@ -132,7 +154,7 @@ def test_post_quiz_reuses_published_document_questions_from_other_plan(monkeypat
 
 
 def test_post_quiz_uses_local_published_questions(monkeypatch):
-    """课后测验从 ex-app 本地 published 题库抽题，主观题才调用平台评分。"""
+    """课后测验达到 80% 即通过，主观题才调用平台评分。"""
     engine, session = _session()
     try:
         now = datetime.now(timezone.utc)
@@ -178,7 +200,7 @@ def test_post_quiz_uses_local_published_questions(monkeypatch):
                 endUserId="u1",
                 answers=[
                     {"questionId": "q-choice-1", "answer": "A"},
-                    {"questionId": "q-choice-2", "answer": "A"},
+                    {"questionId": "q-choice-2", "answer": "B"},
                     {"questionId": "q-tf-1", "answer": "true"},
                     {"questionId": "q-tf-2", "answer": "true"},
                     {"questionId": "q-sub-1", "answer": "按流程识别风险并上报。"},
@@ -186,9 +208,107 @@ def test_post_quiz_uses_local_published_questions(monkeypatch):
             ),
         )
         assert submission["passed"] is True
-        assert submission["score"] == 25
+        assert submission["score"] == 20
         session_row = session.execute(training_classroom_sessions.select()).mappings().one()
         assert session_row["metadata"]["completedDocumentIds"] == ["doc-001"]
+    finally:
+        session.close()
+        metadata.drop_all(engine)
+        engine.dispose()
+
+
+def test_post_quiz_retry_accepts_new_session_after_document_study_completed():
+    """课后测验未通过后，新建临时会话仍可复用已完成的文档学习记录重考。"""
+    engine, session = _session()
+    try:
+        now = datetime.now(timezone.utc)
+        session.execute(
+            training_classroom_sessions.insert(),
+            [
+                {
+                    "session_id": "completed-session",
+                    "app_id": "app-001",
+                    "plan_id": "plan-001",
+                    "end_user_id": "u1",
+                    "current_state": "COMPLETED",
+                    "current_section_index": 0,
+                    "metadata": {"documentId": "doc-001"},
+                    "status": "active",
+                    "created_at": now,
+                    "updated_at": now,
+                },
+                {
+                    "session_id": "retry-session",
+                    "app_id": "app-001",
+                    "plan_id": "plan-001",
+                    "end_user_id": "u1",
+                    "current_state": "INIT",
+                    "current_section_index": 0,
+                    "metadata": {},
+                    "status": "active",
+                    "created_at": now,
+                    "updated_at": now,
+                },
+            ],
+        )
+        _insert_question(session, "q-choice-1", "single_choice", "A", "published")
+        session.commit()
+
+        quiz = create_post_quiz(
+            session,
+            PostQuizStartRequest(sessionId="retry-session", endUserId="u1", documentId="doc-001", planId="plan-001", count=1),
+        )
+
+        assert quiz["sessionId"] == "retry-session"
+        assert quiz["questions"][0]["questionId"] == "q-choice-1"
+    finally:
+        session.close()
+        metadata.drop_all(engine)
+        engine.dispose()
+
+
+def test_post_quiz_rejects_document_without_completed_study():
+    """其他文档已学完时，仍不得开始当前未学完文档的课后测验。"""
+    engine, session = _session()
+    try:
+        now = datetime.now(timezone.utc)
+        session.execute(
+            training_classroom_sessions.insert(),
+            [
+                {
+                    "session_id": "completed-session",
+                    "app_id": "app-001",
+                    "plan_id": "plan-001",
+                    "end_user_id": "u1",
+                    "current_state": "COMPLETED",
+                    "current_section_index": 0,
+                    "metadata": {"documentId": "doc-001"},
+                    "status": "active",
+                    "created_at": now,
+                    "updated_at": now,
+                },
+                {
+                    "session_id": "quiz-session",
+                    "app_id": "app-001",
+                    "plan_id": "plan-001",
+                    "end_user_id": "u1",
+                    "current_state": "INIT",
+                    "current_section_index": 0,
+                    "metadata": {},
+                    "status": "active",
+                    "created_at": now,
+                    "updated_at": now,
+                },
+            ],
+        )
+        _insert_question(session, "q-choice-1", "single_choice", "A", "published")
+        session.commit()
+
+        with pytest.raises(ValueError, match="文档尚未完成学习"):
+            create_post_quiz(
+                session,
+                PostQuizStartRequest(sessionId="quiz-session", endUserId="u1", documentId="doc-002", planId="plan-001", count=1),
+            )
     finally:
         session.close()
         metadata.drop_all(engine)

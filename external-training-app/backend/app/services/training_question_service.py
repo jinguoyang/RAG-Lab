@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select, update as sa_update
+from sqlalchemy import delete as sa_delete, select, update as sa_update
 from sqlalchemy.orm import Session
 
 from app.core.database import new_id
@@ -18,18 +18,11 @@ class TrainingQuestionConflictError(ValueError):
 
 
 def create_question_drafts(session: Session, user_id: str | None, request: Any) -> list[dict]:
-    """生成题库草稿。
-
-    按文档全局去重：若文档在任一学习计划中已有题目，本次不再调用平台生成。
-    """
+    """手动生成题库草稿；每次请求都调用平台，不执行重复生成控制。"""
     import httpx
     from app.core.config import get_settings
     from app.schemas.training_question import TrainingQuestionDTO
     from app.services.platform_client import PlatformClient
-
-    document_ids = _filter_new_document_ids(session, request.documentIds)
-    if request.documentIds and not document_ids:
-        return []
 
     settings = get_settings()
     client = PlatformClient(settings.platform_base_url, settings.platform_api_key)
@@ -39,7 +32,7 @@ def create_question_drafts(session: Session, user_id: str | None, request: Any) 
             job_title=request.jobTitle,
             ability_groups=request.abilityGroups,
             count=request.count,
-            document_ids=document_ids,
+            document_ids=request.documentIds,
         )
     except httpx.TimeoutException:
         raise TrainingQuestionConflictError("平台服务超时，请稍后重试")
@@ -76,7 +69,7 @@ def create_question_drafts(session: Session, user_id: str | None, request: Any) 
                 explanation=tmpl.get("explanation"),
                 rubric=tmpl.get("rubric"),
                 evidence_chunk_ids=tmpl.get("evidenceChunkIds", []),
-                status=tmpl.get("status", "draft"),
+                status="draft",
                 metadata={
                     "documentId": tmpl.get("documentId"),
                     "platformDraftQuestionId": tmpl.get("questionId"),
@@ -100,7 +93,7 @@ def create_question_drafts(session: Session, user_id: str | None, request: Any) 
             explanation=tmpl.get("explanation"),
             rubric=tmpl.get("rubric"),
             evidenceChunkIds=tmpl.get("evidenceChunkIds", []),
-            status=tmpl.get("status", "draft"),
+            status="draft",
             createdAt=created_at_text,
             updatedAt=tmpl.get("updatedAt"),
         ).model_dump())
@@ -109,20 +102,7 @@ def create_question_drafts(session: Session, user_id: str | None, request: Any) 
     return results
 
 
-def _filter_new_document_ids(session: Session, document_ids: list[str]) -> list[str]:
-    """返回尚未在本地题库生成过题目的文档 ID。"""
-    if not document_ids:
-        return []
-    existing = session.execute(select(training_questions.c.metadata)).fetchall()
-    existing_doc_ids = {
-        (row[0] or {}).get("documentId")
-        for row in existing
-        if (row[0] or {}).get("documentId")
-    }
-    return [document_id for document_id in document_ids if document_id not in existing_doc_ids]
-
-
-def list_questions(session: Session, plan_id: str | None = None) -> list[dict]:
+def list_questions(session: Session, plan_id: str | None = None, question_status: str | None = None) -> list[dict]:
     """列出题目。
 
     指定计划时，返回当前计划题目以及该计划文档在其他计划中已生成的题目。
@@ -130,7 +110,10 @@ def list_questions(session: Session, plan_id: str | None = None) -> list[dict]:
     from app.schemas.training_question import TrainingQuestionDTO
     from app.tables import training_plans
 
-    rows = session.execute(select(training_questions).order_by(training_questions.c.created_at.desc())).mappings().all()
+    query = select(training_questions)
+    if question_status:
+        query = query.where(training_questions.c.status == question_status)
+    rows = session.execute(query.order_by(training_questions.c.created_at.desc())).mappings().all()
     if plan_id:
         plan_row = session.execute(
             select(training_plans.c.documents).where(training_plans.c.plan_id == plan_id)
@@ -168,7 +151,7 @@ def list_questions(session: Session, plan_id: str | None = None) -> list[dict]:
 
 
 def review_question(session: Session, user_id: str | None, question_id: str, decision: str) -> dict:
-    """在 ex-app 本地审核题目。审核通过后状态变为 approved，需进一步 publish。"""
+    """审核题目；通过后直接发布，未通过则物理删除草稿。"""
     row = session.execute(
         select(training_questions).where(training_questions.c.question_id == question_id)
     ).mappings().first()
@@ -179,30 +162,10 @@ def review_question(session: Session, user_id: str | None, question_id: str, dec
     if row["status"] != "draft":
         raise TrainingQuestionConflictError(f"题目状态为 {row['status']}，不能审核")
 
-    now = datetime.now(timezone.utc)
-    new_status = "approved" if decision == "approved" else "rejected"
-
-    session.execute(
-        sa_update(training_questions)
-        .where(training_questions.c.question_id == question_id)
-        .values(status=new_status, updated_at=now, updated_by=user_id)
-    )
-    session.commit()
-
-    return {"questionId": question_id, "status": new_status}
-
-
-def publish_question(session: Session, user_id: str | None, question_id: str) -> dict:
-    """发布已审核的题目。仅 approved 状态可发布。"""
-    row = session.execute(
-        select(training_questions).where(training_questions.c.question_id == question_id)
-    ).mappings().first()
-
-    if row is None:
-        raise TrainingQuestionNotFoundError(f"题目 {question_id} 不存在")
-
-    if row["status"] != "approved":
-        raise TrainingQuestionConflictError(f"题目状态为 {row['status']}，仅 approved 状态可发布")
+    if decision == "rejected":
+        session.execute(sa_delete(training_questions).where(training_questions.c.question_id == question_id))
+        session.commit()
+        return {"questionId": question_id, "status": "deleted"}
 
     now = datetime.now(timezone.utc)
     session.execute(
@@ -211,7 +174,6 @@ def publish_question(session: Session, user_id: str | None, question_id: str) ->
         .values(status="published", updated_at=now, updated_by=user_id)
     )
     session.commit()
-
     return {"questionId": question_id, "status": "published"}
 
 
@@ -242,6 +204,19 @@ def update_question(session: Session, user_id: str | None, question_id: str, req
     session.execute(sa_update(training_questions).where(training_questions.c.question_id == question_id).values(**values))
     session.commit()
     return {"questionId": question_id, "status": row["status"]}
+
+
+def delete_question(session: Session, question_id: str) -> dict:
+    """物理删除本地题目；用于题库维护和审核不通过场景。"""
+    row = session.execute(
+        select(training_questions.c.question_id).where(training_questions.c.question_id == question_id)
+    ).first()
+    if row is None:
+        raise TrainingQuestionNotFoundError(f"题目 {question_id} 不存在")
+
+    session.execute(sa_delete(training_questions).where(training_questions.c.question_id == question_id))
+    session.commit()
+    return {"questionId": question_id, "status": "deleted"}
 
 
 def create_question(session: Session, user_id: str | None, request: Any) -> dict:
@@ -313,7 +288,10 @@ def create_question(session: Session, user_id: str | None, request: Any) -> dict
 
 
 def count_questions_by_document(session: Session, plan_id: str) -> dict[str, int]:
-    """统计计划文档在本地题库中的题目数量。"""
+    """统计计划文档在本地题库中已发布的题目数量。
+
+    仅 status='published' 的题目计入统计。
+    """
     from app.tables import training_plans
 
     plan_row = session.execute(
@@ -324,7 +302,10 @@ def count_questions_by_document(session: Session, plan_id: str) -> dict[str, int
         for item in ((plan_row[0] if plan_row else []) or [])
         if isinstance(item, dict) and item.get("documentId")
     }
-    rows = session.execute(select(training_questions.c.metadata, training_questions.c.plan_id)).fetchall()
+    rows = session.execute(
+        select(training_questions.c.metadata, training_questions.c.plan_id)
+        .where(training_questions.c.status == "published")
+    ).fetchall()
 
     counts: dict[str, int] = {}
     for r in rows:

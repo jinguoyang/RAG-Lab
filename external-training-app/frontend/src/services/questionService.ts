@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, apiPost } from "./apiClient";
+import { apiDelete, apiGet, apiPatch, apiPost } from "./apiClient";
 import type {
   QuestionDraftRequest,
   QuestionReviewRequest,
@@ -6,8 +6,11 @@ import type {
   TrainingQuestion,
 } from "../types/question";
 
-export function listQuestions(planId?: string): Promise<TrainingQuestion[]> {
-  const query = planId ? `?planId=${encodeURIComponent(planId)}` : "";
+export function listQuestions(planId?: string, status?: string): Promise<TrainingQuestion[]> {
+  const params = new URLSearchParams();
+  if (planId) params.set("planId", planId);
+  if (status) params.set("status", status);
+  const query = params.size > 0 ? `?${params.toString()}` : "";
   return apiGet(`/training/questions${query}`);
 }
 
@@ -29,10 +32,10 @@ export function updateQuestion(
   return apiPatch(`/training/questions/${questionId}`, data);
 }
 
-export function publishQuestion(
+export function deleteQuestion(
   questionId: string
 ): Promise<{ questionId: string; status: string }> {
-  return apiPost(`/training/questions/${questionId}/publish`, {});
+  return apiDelete(`/training/questions/${questionId}`);
 }
 
 export function createQuestion(data: {

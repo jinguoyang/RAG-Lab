@@ -24,7 +24,7 @@ from app.services.training_question_service import (
     resolve_question_appeal,
     update_question,
     create_question,
-    publish_question,
+    delete_question,
     count_questions_by_document,
 )
 
@@ -62,9 +62,10 @@ def create_drafts(
 @router.get("", response_model=list[TrainingQuestionDTO])
 def read_questions(
     planId: str | None = None,
+    status: str | None = None,
     session: Session = Depends(get_db),
 ):
-    return list_questions(session, planId)
+    return list_questions(session, planId, status)
 
 
 @router.post("/{question_id}/review")
@@ -139,15 +140,13 @@ def create_question_endpoint(
         raise
 
 
-@router.post("/{question_id}/publish")
-def publish_question_endpoint(
+@router.delete("/{question_id}")
+def delete_question_endpoint(
     question_id: str,
-    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
     session: Session = Depends(get_db),
 ):
     try:
-        user_id = _extract_user_id(authorization)
-        return publish_question(session, user_id, question_id)
+        return delete_question(session, question_id)
     except Exception as exc:
         _raise_error(exc)
         raise
