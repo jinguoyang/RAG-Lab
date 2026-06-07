@@ -171,9 +171,13 @@ def _build_llm_prompt(job_title: str, count: int, evidence_summaries: list[str])
         "3. single_choice 题目必须有 4 个选项（label: A/B/C/D），correctAnswer 为正确选项 label。\n"
         "4. true_false 题目必须有 2 个选项（label: true/false），correctAnswer 为 true 或 false。\n"
         "5. subjective 题目 options 为空列表，correctAnswer 为 null，rubric.totalScore 必须为 5。\n"
-        "6. subjective rubric.criteria 不超过 5 个，每个 name 尽量不超过 10 个汉字，并注明每个考点给分。\n"
+        "6. subjective rubric.criteria 不超过 5 个，每个 name 尽量不超过 20 个汉字，description 简要说明评分标准。\n"
         "7. 每道题必须包含 explanation 字段，作为答案解读和参考资料。\n"
         "8. 输出严格 JSON 数组，不要包含任何额外文字。每项字段：questionType, content, options, correctAnswer, explanation, rubric。\n"
+        "9. 严格按以下格式输出（options 不可省略）：\n"
+        '   single_choice: {"questionType":"single_choice","content":"...","options":[{"label":"A","text":"..."},{"label":"B","text":"..."},{"label":"C","text":"..."},{"label":"D","text":"..."}],"correctAnswer":"A","explanation":"...","rubric":null}\n'
+        '   true_false: {"questionType":"true_false","content":"...","options":[{"label":"true","text":"正确"},{"label":"false","text":"错误"}],"correctAnswer":"true","explanation":"...","rubric":null}\n'
+        '   subjective: {"questionType":"subjective","content":"...","options":[],"correctAnswer":null,"explanation":"...","rubric":{"totalScore":5,"criteria":[{"name":"考点名称","score":1,"description":"评分说明"}]}}\n'
     )
     user_msg = (
         f"岗位名称：{job_title or '当前岗位'}\n\n"
@@ -200,6 +204,12 @@ def _validate_and_normalize_question(raw: dict[str, Any]) -> dict[str, Any] | No
     for opt in raw_options:
         if isinstance(opt, dict) and "label" in opt and "text" in opt:
             options.append(QuestionOptionDTO(label=str(opt["label"]), text=str(opt["text"])))
+
+    # 题型级别的 options 校验：选项数量不合规的题目直接丢弃，走模板兜底
+    if question_type == "single_choice" and len(options) != 4:
+        return None
+    if question_type == "true_false" and len(options) != 2:
+        return None
 
     correct_answer = raw.get("correctAnswer")
     if correct_answer is not None:
@@ -246,7 +256,7 @@ def _normalize_subjective_rubric(rubric: dict[str, Any]) -> dict[str, Any]:
     for index, item in enumerate(criteria[:5]):
         if not isinstance(item, dict):
             continue
-        name = str(item.get("name") or f"考点{index + 1}")[:10]
+        name = str(item.get("name") or f"考点{index + 1}")[:20]
         description = str(item.get("description") or "按该考点给分。")
         try:
             raw_score = float(item.get("score", 0))
