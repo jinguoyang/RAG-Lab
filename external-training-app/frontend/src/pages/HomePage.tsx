@@ -5,6 +5,7 @@ import {
   CircleAlert,
   ClipboardCheck,
   FileQuestion,
+  Library,
 } from "lucide-react";
 import { Link } from "react-router";
 import { listPlans } from "../services/planService";
@@ -13,12 +14,14 @@ import { listQuestions } from "../services/questionService";
 interface HomeStats {
   planCount: number;
   questionDraftCount: number;
+  publishedQuestionCount: number;
 }
 
 export function HomePage() {
   const [stats, setStats] = useState<HomeStats>({
     planCount: 0,
     questionDraftCount: 0,
+    publishedQuestionCount: 0,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -36,6 +39,7 @@ export function HomePage() {
         setStats({
           planCount: plans.filter((p) => p.status === "saved").length,
           questionDraftCount: questions.filter((item) => item.status === "draft").length,
+          publishedQuestionCount: questions.filter((item) => item.status === "published").length,
         });
       } catch (err) {
         if (mounted) setError(err instanceof Error ? err.message : String(err));
@@ -59,11 +63,18 @@ export function HomePage() {
       status: `${stats.planCount} 个计划`,
     },
     {
-      title: "题库管理",
-      desc: "审核题目草稿、手动录入题目、发布题目入题库。",
+      title: "题目审核",
+      desc: "审核题目草稿，通过后直接进入正式题库。",
       href: "/questions",
       icon: FileQuestion,
       status: `${stats.questionDraftCount} 道待审`,
+    },
+    {
+      title: "题库",
+      desc: "查看、修改和删除审核通过的正式题目。",
+      href: "/question-bank",
+      icon: Library,
+      status: `${stats.publishedQuestionCount} 道题目`,
     },
   ];
 
@@ -74,7 +85,7 @@ export function HomePage() {
           <p className="eyebrow">Training Operations Portal</p>
           <h2>学习计划与题库管理平台</h2>
           <p>
-            创建学习计划并管理文档，系统自动生成题目。审核、编辑和发布题目后，
+            创建学习计划并管理文档，系统自动生成题目。审核通过后，
             员工可通过计划详情页进入课堂学习和答题。
           </p>
           <div className="hero-actions">
@@ -82,9 +93,9 @@ export function HomePage() {
               <ClipboardCheck size={18} aria-hidden="true" />
               管理学习计划
             </Link>
-            <Link className="button secondary" to="/questions">
+            <Link className="button secondary" to="/question-bank">
               <FileQuestion size={18} aria-hidden="true" />
-              管理题库
+              查看题库
             </Link>
           </div>
         </div>
@@ -131,7 +142,7 @@ export function HomePage() {
           <p className="eyebrow">使用流程</p>
           <h3>从计划创建到员工学习的完整闭环</h3>
           <p>
-            管理员创建学习计划并选择文档 → 系统自动生成题目 → 审核并发布题目 →
+            管理员创建学习计划并选择文档 → 系统自动生成题目 → 审核通过进入题库 →
             员工从计划详情页进入课堂学习和答题。
           </p>
         </div>
@@ -142,7 +153,7 @@ export function HomePage() {
           </li>
           <li>
             <CheckCircle2 size={17} aria-hidden="true" />
-            题库管理：自动/手动录入，草稿→审核→发布三步流程。
+            题目审核：自动/手动生成草稿，审核通过后直接进入题库。
           </li>
           <li>
             <CheckCircle2 size={17} aria-hidden="true" />

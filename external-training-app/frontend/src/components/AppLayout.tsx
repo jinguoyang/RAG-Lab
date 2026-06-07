@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from "react-router";
 import {
   BookOpen,
+  Library,
   ClipboardCheck,
   FileQuestion,
   Home,
@@ -9,7 +10,8 @@ import {
 const navItems = [
   { to: "/", label: "首页", icon: Home, end: true },
   { to: "/reviews", label: "学习计划", icon: ClipboardCheck },
-  { to: "/questions", label: "题库审核", icon: FileQuestion },
+  { to: "/questions", label: "题目审核", icon: FileQuestion },
+  { to: "/question-bank", label: "题库", icon: Library },
 ];
 
 export function AppLayout() {

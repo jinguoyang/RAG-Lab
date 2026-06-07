@@ -451,6 +451,65 @@ textarea:focus {
   gap: 14px;
 }
 
+/* 文档分组 */
+.document-group {
+  border: 1px solid rgba(23, 33, 31, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  overflow: hidden;
+}
+
+.document-group-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  cursor: pointer;
+  font-weight: 800;
+  color: #17211f;
+  background: #eef7f2;
+  list-style: none;
+}
+
+.document-group-header::-webkit-details-marker {
+  display: none;
+}
+
+.document-group-header::before {
+  content: "▶";
+  font-size: 11px;
+  transition: transform 140ms ease;
+}
+
+.document-group[open] > .document-group-header::before {
+  transform: rotate(90deg);
+}
+
+.document-group-title {
+  flex: 1;
+}
+
+.document-group-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: #5d6b66;
+}
+
+.document-group-body {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.rubric-text {
+  margin: 4px 0 0;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  color: #17211f;
+}
+
 .workflow-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -609,6 +668,12 @@ textarea:focus {
 .tag {
   color: #17493d;
   background: #e0f4ed;
+}
+
+.passed-tag {
+  color: #1f6b49;
+  background: #e4f4ea;
+  border-color: #b9ddc7;
 }
 
 .status {

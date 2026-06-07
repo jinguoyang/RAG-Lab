@@ -4,7 +4,9 @@ import { ReviewPage } from "./pages/ReviewPage";
 import { ClassroomPage } from "./pages/ClassroomPage";
 import { HomePage } from "./pages/HomePage";
 import { QuestionReviewPage } from "./pages/QuestionReviewPage";
+import { QuestionBankPage } from "./pages/QuestionBankPage";
 import { PlanDetailPage } from "./pages/PlanDetailPage";
+import { QuizPage } from "./pages/QuizPage";
 
 export const router = createBrowserRouter([
   {
@@ -15,7 +17,9 @@ export const router = createBrowserRouter([
       { path: "reviews", element: <ReviewPage /> },
       { path: "plans/:planId", element: <PlanDetailPage /> },
       { path: "plans/:planId/classroom", element: <ClassroomPage /> },
+      { path: "plans/:planId/quiz", element: <QuizPage /> },
       { path: "questions", element: <QuestionReviewPage /> },
+      { path: "question-bank", element: <QuestionBankPage /> },
     ],
   },
 ]);
