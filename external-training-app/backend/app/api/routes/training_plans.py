@@ -125,12 +125,16 @@ def save_plan_endpoint(
 def update_plan_endpoint(
     plan_id: str,
     request: TrainingPlanUpdateRequest,
+    background_tasks: BackgroundTasks,
     authorization: Annotated[str | None, Header(alias="Authorization")] = None,
     session: Session = Depends(get_db),
 ):
     try:
         user_id = _extract_user_id(authorization)
-        return update_plan(session, user_id, plan_id, request)
+        result = update_plan(session, user_id, plan_id, request)
+        if request.documents is not None:
+            background_tasks.add_task(generate_questions_for_plan, plan_id)
+        return result
     except Exception as exc:
         _raise_error(exc)
         raise

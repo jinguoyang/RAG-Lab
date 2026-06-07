@@ -68,7 +68,7 @@ export function PlanDetailPage() {
   }
 
   function handleQuiz(doc: TrainingDocument) {
-    navigate(`/plans/${planId}/classroom?documentId=${encodeURIComponent(doc.documentId)}&action=quiz`);
+    navigate(`/plans/${planId}/quiz?documentId=${encodeURIComponent(doc.documentId)}`);
   }
 
   if (loading) {
@@ -129,6 +129,7 @@ export function PlanDetailPage() {
           <div className="plan-doc-list">
             {documents.map((doc, index) => {
               const qCount = questionCounts[doc.documentId] || 0;
+              const passed = plan.passedDocuments?.includes(doc.documentId) || false;
               return (
                 <article key={doc.documentId} className="plan-doc-item">
                   <div className="plan-doc-info">
@@ -141,6 +142,7 @@ export function PlanDetailPage() {
                         <span className="tag">
                           {qCount > 0 ? `${qCount} 道题目` : "暂无题目"}
                         </span>
+                        {passed && <span className="tag passed-tag">通过</span>}
                       </div>
                       {doc.summary && <p className="plan-doc-summary">{doc.summary}</p>}
                     </div>
@@ -148,12 +150,17 @@ export function PlanDetailPage() {
                   <div className="plan-doc-actions">
                     <button className="button primary" onClick={() => handleStudy(doc)}>
                       <GraduationCap size={16} aria-hidden="true" />
-                      学习
+                      {passed ? "复习" : "学习"}
                     </button>
                     {qCount > 0 && (
-                      <button className="button secondary" onClick={() => handleQuiz(doc)}>
+                      <button
+                        className="button secondary"
+                        onClick={() => handleQuiz(doc)}
+                        disabled={!plan.completedDocuments?.includes(doc.documentId)}
+                        title={!plan.completedDocuments?.includes(doc.documentId) ? "请先完成学习" : ""}
+                      >
                         <FileQuestion size={16} aria-hidden="true" />
-                        答题
+                        {passed ? "再次答题" : "答题"}
                       </button>
                     )}
                   </div>

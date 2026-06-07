@@ -281,9 +281,10 @@ def generate_questions_for_plan(plan_id: str) -> None:
         if not documents:
             return
 
-        # 按文档全局去重：同一文档在其他计划已有题目时不重复生成。
+        # 自动生成才执行全局去重；草稿和已发布题目都会阻止重复生成。
         existing = db.execute(
             select(training_questions.c.metadata)
+            .where(training_questions.c.status.in_(("draft", "published")))
         ).fetchall()
         existing_doc_ids = set()
         for r in existing:
@@ -333,6 +334,8 @@ def generate_questions_for_plan(plan_id: str) -> None:
                         )
                     )
                 db.commit()
+                if templates:
+                    existing_doc_ids.add(doc_id)
                 logger.info("为文档 %s 生成 %d 道题目", doc_id, len(templates))
             except Exception as exc:
                 logger.error("为文档 %s 生成题目失败: %s", doc_id, exc)
@@ -344,6 +347,7 @@ def generate_questions_for_plan(plan_id: str) -> None:
 def get_plan(session: Session, plan_id: str) -> dict:
     """获取单个学习计划。"""
     from app.schemas.training_plan import TrainingPlanDTO
+    from app.tables import training_classroom_sessions, training_post_quizzes
 
     row = session.execute(
         select(training_plans)
@@ -353,6 +357,26 @@ def get_plan(session: Session, plan_id: str) -> dict:
 
     if row is None:
         raise TrainingPlanNotFoundError(f"学习计划 {plan_id} 不存在")
+
+    # 查询已完成学习的文档列表
+    completed_docs = session.execute(
+        select(training_classroom_sessions.c.metadata)
+        .where(training_classroom_sessions.c.plan_id == plan_id)
+        .where(training_classroom_sessions.c.current_state == "COMPLETED")
+        .where(training_classroom_sessions.c.deleted_at.is_(None))
+    ).scalars().all()
+
+    completed_document_ids = []
+    for meta in completed_docs:
+        if meta and meta.get("documentId"):
+            completed_document_ids.append(meta["documentId"])
+
+    # 任意一次课后测验通过后，文档保持通过状态；后续复习或重考失败不影响。
+    passed_document_ids = session.execute(
+        select(training_post_quizzes.c.document_id)
+        .where(training_post_quizzes.c.plan_id == plan_id)
+        .where(training_post_quizzes.c.passed.is_(True))
+    ).scalars().all()
 
     return TrainingPlanDTO(
         planId=row["plan_id"],
@@ -367,6 +391,8 @@ def get_plan(session: Session, plan_id: str) -> dict:
         recommendReason=row["recommend_reason"],
         readingOrder=row["reading_order"] or [],
         employeeIds=(row["metadata"] or {}).get("employeeIds") or [],
+        completedDocuments=list(set(completed_document_ids)),
+        passedDocuments=list(set(passed_document_ids)),
         version=row["version"],
         createdAt=row["created_at"].isoformat(),
         updatedAt=row["updated_at"].isoformat(),

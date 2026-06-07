@@ -178,12 +178,27 @@ def create_classroom_session(session: Session, user_id: str | None, request: Any
     """创建课堂会话：调用平台 Agent，再保存本地镜像。"""
     import httpx
 
+    # 构造 inputs，传递语言和文档约束给平台 Agent
+    inputs = dict(request.inputs or {})
+    inputs["language"] = "zh-CN"
+    if request.documentId:
+        inputs["documentId"] = request.documentId
+
+    # 构造平台 API 请求
+    platform_payload = {
+        "planId": request.planId,
+        "endUserId": request.endUserId,
+        "inputs": inputs,
+    }
+
     try:
-        data = _platform_client().create_classroom_session(request.model_dump())
+        data = _platform_client().create_classroom_session(platform_payload)
     except httpx.HTTPError as exc:
         raise ClassroomSessionConflictError(f"平台课堂会话创建失败: {exc}") from exc
 
-    _upsert_session_mirror(session, data, user_id, request.inputs or {})
+    # 将 documentId 保存到本地 metadata
+    metadata = dict(inputs)
+    _upsert_session_mirror(session, data, user_id, metadata)
     session.commit()
     return _to_session_response(data)
 

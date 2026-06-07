@@ -14,6 +14,7 @@ class ClassroomSessionCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     planId: str | None = Field(default=None, max_length=36)
+    documentId: str | None = Field(default=None, max_length=128)
     endUserId: str = Field(min_length=1, max_length=128)
     inputs: dict[str, Any] | None = None
 

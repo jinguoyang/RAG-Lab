@@ -80,7 +80,7 @@ export function ClassroomPage() {
     setLoading(true);
     setError("");
     try {
-      const result = await createSession("demo-user", planId || undefined);
+      const result = await createSession("demo-user", planId || undefined, documentId || undefined);
       setSessionId(result.localSessionId || result.sessionId);
       setCurrentState(result.currentState);
       const planText = result.planId ? `已关联学习计划 ${result.planId}。` : "未选择学习计划，将使用平台检索兜底。";

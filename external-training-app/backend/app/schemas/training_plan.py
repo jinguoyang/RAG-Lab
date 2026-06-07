@@ -32,6 +32,8 @@ class TrainingPlanDTO(BaseModel):
     recommendReason: str | None = None
     readingOrder: list[Any] = Field(default_factory=list)
     employeeIds: list[str] = Field(default_factory=list)
+    completedDocuments: list[str] = Field(default_factory=list)
+    passedDocuments: list[str] = Field(default_factory=list)
     version: int = 1
     createdAt: str
     updatedAt: str

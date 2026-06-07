@@ -13,6 +13,8 @@ export interface TrainingPlan {
   readingOrder?: string[];
   employeeIds?: string[];
   recommendReason?: string;
+  completedDocuments?: string[];
+  passedDocuments?: string[];
   version?: number;
   createdAt: string;
   updatedAt?: string;

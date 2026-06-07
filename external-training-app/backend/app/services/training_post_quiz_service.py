@@ -28,8 +28,43 @@ def _platform_client():
     return PlatformClient(settings.platform_base_url, settings.platform_api_key)
 
 
+def _sync_session_state(session: Session, session_id: str) -> None:
+    """从平台拉取最新会话状态并更新本地镜像，忽略同步失败。"""
+    import logging
+
+    logger = logging.getLogger(__name__)
+    try:
+        data = _platform_client().get_classroom_session(session_id)
+    except Exception:
+        logger.debug("同步会话状态失败，使用本地镜像: %s", session_id)
+        return
+    from app.services.training_classroom_service import _upsert_session_mirror
+
+    _upsert_session_mirror(session, data, None, data.get("metadata") or {})
+    session.commit()
+
+
+def _has_completed_document_study(session: Session, session_row: Any, document_id: str) -> bool:
+    """校验同一学员在同一计划中是否已完成当前文档的课堂学习。"""
+    if session_row["current_state"] == "COMPLETED":
+        return str((session_row["metadata"] or {}).get("documentId") or document_id) == document_id
+
+    completed_sessions = session.execute(
+        select(training_classroom_sessions.c.metadata)
+        .where(training_classroom_sessions.c.app_id == session_row["app_id"])
+        .where(training_classroom_sessions.c.plan_id == session_row["plan_id"])
+        .where(training_classroom_sessions.c.end_user_id == session_row["end_user_id"])
+        .where(training_classroom_sessions.c.current_state == "COMPLETED")
+        .where(training_classroom_sessions.c.deleted_at.is_(None))
+    ).scalars().all()
+    return any(str((metadata or {}).get("documentId") or "") == document_id for metadata in completed_sessions)
+
+
 def create_post_quiz(session: Session, request: Any) -> dict:
     """从 ex-app 本地已发布题库创建课后测验。"""
+    # 先从平台同步最新会话状态，避免本地镜像过期
+    _sync_session_state(session, request.sessionId)
+
     session_row = session.execute(
         select(training_classroom_sessions).where(training_classroom_sessions.c.session_id == request.sessionId)
     ).mappings().first()
@@ -37,7 +72,7 @@ def create_post_quiz(session: Session, request: Any) -> dict:
         raise TrainingPostQuizConflictError(f"课堂会话 {request.sessionId} 不存在")
     if session_row["end_user_id"] != request.endUserId:
         raise TrainingPostQuizConflictError("课堂会话与学员不匹配")
-    if session_row["current_state"] != "COMPLETED":
+    if not _has_completed_document_study(session, session_row, request.documentId):
         raise TrainingPostQuizConflictError("文档尚未完成学习，不能开始课后测验")
 
     rows = session.execute(
@@ -132,9 +167,10 @@ def submit_post_quiz(session: Session, quiz_id: str, request: Any) -> dict:
             "explanation": explanation,
         })
 
-    passed_all = all(item["passed"] for item in results)
+    max_score = len(results) * 5
+    passed_quiz = max_score > 0 and total_score / max_score >= 0.8
     submitted_at = datetime.now(timezone.utc)
-    if passed_all:
+    if passed_quiz:
         _mark_document_completed(session, quiz, submitted_at)
     session.execute(
         sa_update(training_post_quizzes)
@@ -143,7 +179,7 @@ def submit_post_quiz(session: Session, quiz_id: str, request: Any) -> dict:
             answers=request.answers,
             results=results,
             score=total_score,
-            passed=passed_all,
+            passed=passed_quiz,
             status="submitted",
             submitted_at=submitted_at,
             updated_at=submitted_at,
@@ -153,7 +189,7 @@ def submit_post_quiz(session: Session, quiz_id: str, request: Any) -> dict:
     return {
         "quizId": quiz_id,
         "score": total_score,
-        "passed": passed_all,
+        "passed": passed_quiz,
         "results": results,
         "submittedAt": submitted_at.isoformat(),
     }
