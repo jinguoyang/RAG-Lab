@@ -1,7 +1,7 @@
 """add local post quizzes and question appeals
 
 Revision ID: 0003_add_local_quiz_and_appeals
-Revises: 0002_add_training_domain_tables
+Revises: 0002
 Create Date: 2026-06-05
 """
 from alembic import op
@@ -9,7 +9,7 @@ import sqlalchemy as sa
 
 
 revision = "0003_add_local_quiz_and_appeals"
-down_revision = "0002_add_training_domain_tables"
+down_revision = "0002"
 branch_labels = None
 depends_on = None
 
