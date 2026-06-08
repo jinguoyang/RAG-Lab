@@ -42,8 +42,9 @@ def read_training_evidence(
     query: str,
     limit: int = 6,
     document_ids: list[str] | None = None,
+    chunk_ids: list[str] | None = None,
 ) -> list[RowMapping]:
-    """从当前 App 知识库读取培训证据，优先关键词命中，缺省回退到前几个有效 Chunk。"""
+    """从当前 App 知识库读取培训证据，支持按文档和指定 Chunk 限定范围。"""
     stmt = (
         select(
             chunks.c.chunk_id,
@@ -60,6 +61,8 @@ def read_training_evidence(
     )
     if document_ids:
         stmt = stmt.where(chunks.c.document_id.in_(document_ids))
+    if chunk_ids:
+        stmt = stmt.where(chunks.c.chunk_id.in_(chunk_ids))
 
     terms = [term.strip() for term in query.replace("，", " ").replace(",", " ").split() if len(term.strip()) >= 2]
     matched_rows: list[RowMapping] = []

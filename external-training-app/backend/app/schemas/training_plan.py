@@ -18,6 +18,32 @@ class TrainingPlanReviewRequest(BaseModel):
     notes: str = ""
 
 
+class TeachingScriptDTO(BaseModel):
+    """章节级课堂讲稿。"""
+
+    opening: str
+    explanation: str
+    scenario: str
+    interactionQuestions: list[str] = Field(default_factory=list)
+    summary: str
+
+
+class TrainingSectionDTO(BaseModel):
+    """按学习目标组织的课程小节。"""
+
+    sectionId: str
+    title: str
+    learningObjective: str
+    sourceDocumentIds: list[str] = Field(default_factory=list)
+    evidenceChunkIds: list[str] = Field(default_factory=list)
+    keyPoints: list[str] = Field(default_factory=list)
+    checkpointCriteria: list[str] = Field(default_factory=list)
+    teachingScript: TeachingScriptDTO | None = None
+    teachingQualityScore: float = Field(default=0.0, ge=0.0, le=1.0)
+    estimatedMinutes: int = Field(default=8, ge=1, le=120)
+    required: bool = True
+
+
 class TrainingPlanDTO(BaseModel):
     """学习计划 DTO。"""
     planId: str
@@ -31,6 +57,7 @@ class TrainingPlanDTO(BaseModel):
     evidenceChunkIds: list[str] = Field(default_factory=list)
     recommendReason: str | None = None
     readingOrder: list[Any] = Field(default_factory=list)
+    sections: list[TrainingSectionDTO] = Field(default_factory=list)
     employeeIds: list[str] = Field(default_factory=list)
     completedDocuments: list[str] = Field(default_factory=list)
     passedDocuments: list[str] = Field(default_factory=list)
@@ -61,6 +88,7 @@ class TrainingPlanSaveRequest(BaseModel):
     evidenceChunkIds: list[str] = Field(default_factory=list)
     recommendReason: str | None = None
     readingOrder: list[str] = Field(default_factory=list)
+    sections: list[TrainingSectionDTO] = Field(default_factory=list)
     employeeIds: list[str] = Field(default_factory=list)
     version: int = 1
 
@@ -71,4 +99,5 @@ class TrainingPlanUpdateRequest(BaseModel):
     planName: str | None = Field(default=None, max_length=256)
     documents: list[Any] | None = None
     readingOrder: list[str] | None = None
+    sections: list[TrainingSectionDTO] | None = None
     employeeIds: list[str] | None = None

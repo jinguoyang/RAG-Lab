@@ -438,17 +438,30 @@ def _to_document_dto(row: RowMapping) -> DocumentDTO:
 
 
 def _document_belongs_to_kb_condition(kb_id: UUID) -> sa.ColumnElement[bool]:
-    """判断文档是否属于知识库；绑定表是新口径，documents.kb_id 仅作历史兼容。"""
-    binding_exists = sa.exists().where(
-        document_kb_bindings.c.document_id == documents.c.document_id,
-        document_kb_bindings.c.kb_id == kb_id,
-        document_kb_bindings.c.status.in_(KB_DOCUMENT_BINDING_STATUSES),
+    """判断文档是否属于知识库；绑定表是新口径，documents.kb_id 仅作历史兼容。
+
+    通过 version_id 关联到 document_versions 表，找到知识库侧的文档 ID。
+    绑定表中的 document_id 是文档库中的文档 ID，version_id 指向知识库侧的版本。
+    """
+    # 通过 version_id 关联到知识库侧的文档
+    kb_doc_ids = (
+        select(document_versions.c.document_id)
+        .select_from(
+            document_kb_bindings.join(
+                document_versions,
+                document_kb_bindings.c.version_id == document_versions.c.version_id,
+            )
+        )
+        .where(
+            document_kb_bindings.c.kb_id == kb_id,
+            document_kb_bindings.c.status.in_(KB_DOCUMENT_BINDING_STATUSES),
+        )
     )
     return (
         documents.c.deleted_at.is_(None)
         & or_(
             documents.c.kb_id == kb_id,
-            binding_exists,
+            documents.c.document_id.in_(kb_doc_ids),
         )
     )
 

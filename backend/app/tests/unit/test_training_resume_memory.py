@@ -64,18 +64,16 @@ class TestGetPendingActions:
     def test_review_not_passed(self):
         row = {"metadata": {"lastPassed": False}}
         result = _get_pending_actions("REVIEW", row)
-        assert len(result) == 3
+        assert len(result) == 2
         event_types = [a["eventType"] for a in result]
         assert "retry_teach" in event_types
         assert "retry_quiz" in event_types
-        assert "continue" in event_types
+        assert "continue" not in event_types
 
     def test_summary_not_last(self):
         row = {"metadata": None}
         result = _get_pending_actions("SUMMARY", row, is_last_section=False)
-        assert len(result) == 2
-        assert result[0]["eventType"] == "next_section"
-        assert result[1]["eventType"] == "complete"
+        assert result == [{"label": "下一节", "eventType": "next_section"}]
 
     def test_summary_last_section(self):
         row = {"metadata": None}

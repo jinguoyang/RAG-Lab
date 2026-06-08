@@ -16,6 +16,7 @@ from app.tables import (
     training_classroom_events,
     training_classroom_messages,
     training_classroom_sessions,
+    training_plans,
 )
 
 
@@ -183,6 +184,22 @@ def create_classroom_session(session: Session, user_id: str | None, request: Any
     inputs["language"] = "zh-CN"
     if request.documentId:
         inputs["documentId"] = request.documentId
+    if request.planId:
+        plan_row = session.execute(
+            select(training_plans)
+            .where(training_plans.c.plan_id == request.planId)
+            .where(training_plans.c.deleted_at.is_(None))
+            .limit(1)
+        ).mappings().first()
+        if plan_row is not None:
+            plan_metadata = plan_row["metadata"] or {}
+            inputs["courseSnapshot"] = {
+                "planId": str(plan_row["plan_id"]),
+                "version": plan_row["version"],
+                "documents": plan_row["documents"] or [],
+                "readingOrder": plan_row["reading_order"] or [],
+                "sections": plan_metadata.get("sections") or [],
+            }
 
     # 构造平台 API 请求
     platform_payload = {

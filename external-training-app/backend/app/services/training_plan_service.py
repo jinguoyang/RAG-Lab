@@ -16,6 +16,14 @@ class TrainingPlanConflictError(ValueError):
     pass
 
 
+def _serialize_sections(sections: list[Any] | None) -> list[dict[str, Any]]:
+    """将章节 DTO 转成可写入 JSON 列的普通字典。"""
+    return [
+        item.model_dump() if hasattr(item, "model_dump") else dict(item)
+        for item in (sections or [])
+    ]
+
+
 def create_plan_draft(session: Session, user_id: str | None, request: Any) -> Any:
     """生成学习计划草稿。
 
@@ -54,6 +62,7 @@ def create_plan_draft(session: Session, user_id: str | None, request: Any) -> An
         evidenceChunkIds=plan_data["evidenceChunkIds"],
         recommendReason=plan_data["recommendReason"],
         readingOrder=plan_data["readingOrder"],
+        sections=plan_data.get("sections") or [],
         employeeIds=[],
         version=plan_data["version"],
         createdAt=plan_data["createdAt"],
@@ -83,6 +92,7 @@ def list_plans(session: Session, app_id: str | None = None) -> list[dict]:
             evidenceChunkIds=r["evidence_chunk_ids"] or [],
             recommendReason=r["recommend_reason"],
             readingOrder=r["reading_order"] or [],
+            sections=(r["metadata"] or {}).get("sections") or [],
             employeeIds=(r["metadata"] or {}).get("employeeIds") or [],
             version=r["version"],
             createdAt=r["created_at"].isoformat(),
@@ -132,10 +142,12 @@ def save_plan(session: Session, user_id: str | None, plan_id: str, request: Any)
     ).mappings().first()
 
     now = datetime.now(timezone.utc)
+    serialized_sections = _serialize_sections(request.sections)
     if row is None:
         metadata = {
             "planName": request.planName,
             "employeeIds": request.employeeIds,
+            "sections": serialized_sections,
             "savedBy": user_id,
             "savedAt": now.isoformat(),
         }
@@ -165,6 +177,7 @@ def save_plan(session: Session, user_id: str | None, plan_id: str, request: Any)
     metadata = dict(row["metadata"] or {})
     metadata["planName"] = request.planName
     metadata["employeeIds"] = request.employeeIds
+    metadata["sections"] = serialized_sections
     metadata["savedBy"] = user_id
     metadata["savedAt"] = now.isoformat()
     session.execute(
@@ -224,6 +237,8 @@ def update_plan(session: Session, user_id: str | None, plan_id: str, request: An
         values["reading_order"] = request.readingOrder
     if request.employeeIds is not None:
         metadata["employeeIds"] = request.employeeIds
+    if request.sections is not None:
+        metadata["sections"] = _serialize_sections(request.sections)
     values["metadata"] = metadata
 
     session.execute(
@@ -390,6 +405,7 @@ def get_plan(session: Session, plan_id: str) -> dict:
         evidenceChunkIds=row["evidence_chunk_ids"] or [],
         recommendReason=row["recommend_reason"],
         readingOrder=row["reading_order"] or [],
+        sections=(row["metadata"] or {}).get("sections") or [],
         employeeIds=(row["metadata"] or {}).get("employeeIds") or [],
         completedDocuments=list(set(completed_document_ids)),
         passedDocuments=list(set(passed_document_ids)),

@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useEffectEvent, useRef, useCallback } from "react";
 import { useParams, useSearchParams, useNavigate } from "react-router";
 import {
   ArrowLeft,
+  BookOpenCheck,
   CheckCircle2,
+  Clock3,
   CircleAlert,
   GraduationCap,
   MessageSquare,
@@ -12,6 +14,7 @@ import {
 import {
   createPostQuiz,
   createSession,
+  getSession,
   submitEvent,
   submitPostQuiz,
   type PostQuiz,
@@ -20,9 +23,48 @@ import {
 import { appealQuestion } from "../services/questionService";
 import { getPlan, type TrainingPlan } from "../services/planService";
 import { ChoiceQuestion } from "../components/ChoiceQuestion";
-import type { ClassroomMessage, ClassroomUiAction, ClassroomEventResponse } from "../types/classroom";
+import type {
+  ClassroomEventResponse,
+  ClassroomMessage,
+  ClassroomSessionDetail,
+  ClassroomUiAction,
+} from "../types/classroom";
 
 let messageCounter = 0;
+const SESSION_STORAGE_VERSION = "v1";
+
+function getStoredSessionKey(planId?: string, documentId?: string | null): string {
+  return `rag-lab:classroom-session:${SESSION_STORAGE_VERSION}:${planId || "no-plan"}:${documentId || "all"}`;
+}
+
+function pendingActionsToUiActions(
+  actions: ClassroomSessionDetail["metadata"]["pendingActions"],
+): ClassroomUiAction[] {
+  if (!actions?.length) return [];
+  return [{
+    actionType: "button_group",
+    data: {
+      buttons: actions.map((item) => ({
+        label: item.label,
+        eventType: item.eventType,
+        payload: {},
+      })),
+    },
+  }];
+}
+
+function hasAnswerAction(actions?: ClassroomUiAction[]): boolean {
+  return Boolean(actions?.some((action) =>
+    action.actionType === "single_choice"
+    || action.actionType === "true_false"
+    || action.actionType === "subjective"
+  ));
+}
+
+function shouldDisplayRestoredMessage(message: ClassroomMessage): boolean {
+  if (message.stateAtTime === "CHECK_UNDERSTAND") return false;
+  return !hasAnswerAction(message.metadata?.uiActions);
+}
 
 function extractErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -37,26 +79,31 @@ export function ClassroomPage() {
   const action = searchParams.get("action");
 
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<(ClassroomMessage & { _key: number })[]>([]);
+  const [messages, setMessages] = useState<(ClassroomMessage & { _key: string })[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [currentState, setCurrentState] = useState("INIT");
+  const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
+  const [sectionTotal, setSectionTotal] = useState(0);
+  const [completedSections, setCompletedSections] = useState(0);
   const [uiActions, setUiActions] = useState<ClassroomUiAction[]>([]);
   const [error, setError] = useState("");
   const [plan, setPlan] = useState<TrainingPlan | null>(null);
   const [postQuiz, setPostQuiz] = useState<PostQuiz | null>(null);
   const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>({});
   const [quizResult, setQuizResult] = useState<PostQuizSubmission | null>(null);
-  const [autoStarted, setAutoStarted] = useState(false);
-  const [autoQuizStarted, setAutoQuizStarted] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const autoStartedRef = useRef(false);
+  const autoQuizStartedRef = useRef(false);
+  const onStartSession = useEffectEvent(handleStartSession);
+  const onStartPostQuiz = useEffectEvent(handleStartPostQuiz);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const pushMessage = useCallback((msg: ClassroomMessage) => {
-    setMessages((prev) => [...prev, { ...msg, _key: ++messageCounter }]);
+    setMessages((prev) => [...prev, { ...msg, _key: `local-${++messageCounter}` }]);
   }, []);
 
   // 加载计划信息
@@ -71,25 +118,107 @@ export function ClassroomPage() {
 
   // 自动创建会话
   useEffect(() => {
-    if (!planId || autoStarted) return;
-    setAutoStarted(true);
-    handleStartSession();
+    if (!planId || autoStartedRef.current) return;
+    autoStartedRef.current = true;
+    void onStartSession();
   }, [planId]);
 
   async function handleStartSession() {
     setLoading(true);
     setError("");
     try {
-      const result = await createSession("demo-user", planId || undefined, documentId || undefined);
-      setSessionId(result.localSessionId || result.sessionId);
-      setCurrentState(result.currentState);
-      const planText = result.planId ? `已关联学习计划 ${result.planId}。` : "未选择学习计划，将使用平台检索兜底。";
-      pushMessage({ role: "system", content: `课堂会话已创建。${planText} 点击「开始学习」进入课程。` });
+      const storageKey = getStoredSessionKey(planId, documentId);
+      const storedSessionId = window.localStorage.getItem(storageKey);
+      if (storedSessionId) {
+        try {
+          const detail = await getSession(storedSessionId);
+          restoreSession(detail);
+          return;
+        } catch {
+          window.localStorage.removeItem(storageKey);
+        }
+      }
 
+      const result = await createSession("demo-user", planId || undefined, documentId || undefined);
+      const createdSessionId = result.localSessionId || result.sessionId;
+      window.localStorage.setItem(storageKey, createdSessionId);
+      setSessionId(createdSessionId);
+      setCurrentState(result.currentState);
+      setCurrentSectionIndex(result.currentSectionIndex || 0);
+      await advanceOpeningSteps(createdSessionId, result.currentState);
     } catch (err) {
       setError(extractErrorMessage(err));
     } finally {
       setLoading(false);
+    }
+  }
+
+  function restoreSession(detail: ClassroomSessionDetail) {
+    setSessionId(detail.sessionId);
+    setCurrentState(detail.currentState);
+    setCurrentSectionIndex(detail.currentSectionIndex || detail.metadata.currentSectionIndex || 0);
+    const completedIds = detail.metadata.completedSectionIds || [];
+    setCompletedSections(completedIds.length);
+
+    const snapshotSections = detail.metadata.inputs?.courseSnapshot?.sections || [];
+    setSectionTotal(snapshotSections.length);
+    const restoredMessages = detail.messages
+      .filter(shouldDisplayRestoredMessage)
+      .map((message, index) => ({
+        ...message,
+        _key: message.messageId || `restored-${index}`,
+      }));
+    setMessages([
+      ...restoredMessages,
+      {
+        role: "system",
+        content: `已恢复上次学习进度，当前位于第 ${(detail.currentSectionIndex || 0) + 1} 节。`,
+        _key: `restored-notice-${++messageCounter}`,
+      },
+    ]);
+
+    const lastMessageActions = [...detail.messages]
+      .reverse()
+      .find((message) => message.metadata?.uiActions?.length)
+      ?.metadata?.uiActions;
+    setUiActions(lastMessageActions || pendingActionsToUiActions(detail.metadata.pendingActions));
+
+    if (detail.currentState === "INIT" || detail.currentState === "PLAN") {
+      void advanceOpeningSteps(detail.sessionId, detail.currentState);
+    }
+  }
+
+  function applyEventResult(result: ClassroomEventResponse) {
+    setCurrentState(result.classroomState);
+    setUiActions(result.uiActions || []);
+    if (result.progressUpdate?.sectionIndex !== undefined) {
+      setCurrentSectionIndex(result.progressUpdate.sectionIndex);
+    }
+    if (result.progressUpdate?.sectionTotal !== undefined) {
+      setSectionTotal(result.progressUpdate.sectionTotal);
+    }
+    if (result.progressUpdate?.completedSections !== undefined) {
+      setCompletedSections(result.progressUpdate.completedSections);
+    }
+    if (result.visibleContent && !hasAnswerAction(result.uiActions)) {
+      pushMessage({
+        role: "assistant",
+        content: result.visibleContent,
+        uiActions: result.uiActions,
+      });
+    }
+  }
+
+  async function advanceOpeningSteps(targetSessionId: string, initialState: string) {
+    let state = initialState;
+    if (state === "INIT") {
+      const planResult = await submitEvent(targetSessionId, "start", {});
+      applyEventResult(planResult);
+      state = planResult.classroomState;
+    }
+    if (state === "PLAN") {
+      const teachingResult = await submitEvent(targetSessionId, "continue", {});
+      applyEventResult(teachingResult);
     }
   }
 
@@ -102,17 +231,32 @@ export function ClassroomPage() {
         pushMessage({ role: "user", content: query });
       }
 
-      const result: ClassroomEventResponse = await submitEvent(sessionId, eventType, payload, query);
-
-      setCurrentState(result.classroomState);
-      setUiActions(result.uiActions || []);
-
-      if (result.visibleContent) {
-        pushMessage({
-          role: "assistant",
-          content: result.visibleContent,
-          uiActions: result.uiActions,
-        });
+      const sourceState = currentState;
+      const result = await submitEvent(sessionId, eventType, payload, query);
+      if (sourceState === "TEACH" && eventType === "continue" && result.classroomState === "CHECK_UNDERSTAND") {
+        try {
+          const checkpointResult = await submitEvent(sessionId, "continue", {});
+          applyEventResult(checkpointResult);
+        } catch (err) {
+          applyEventResult(result);
+          throw err;
+        }
+      } else if (
+        sourceState === "GRADE"
+        && eventType === "continue"
+        && result.classroomState === "REVIEW"
+        && result.uiActions.some((action) =>
+          (action.data.buttons as Array<{ eventType?: string }> | undefined)
+            ?.some((button) => button.eventType === "continue")
+        )
+      ) {
+        if (result.visibleContent) {
+          pushMessage({ role: "assistant", content: result.visibleContent });
+        }
+        const summaryResult = await submitEvent(sessionId, "continue", {});
+        applyEventResult(summaryResult);
+      } else {
+        applyEventResult(result);
       }
     } catch (err) {
       setError(extractErrorMessage(err));
@@ -160,12 +304,12 @@ export function ClassroomPage() {
   }
 
   useEffect(() => {
-    if (action !== "quiz" || autoQuizStarted || currentState !== "COMPLETED" || !documentId) {
+    if (action !== "quiz" || autoQuizStartedRef.current || currentState !== "COMPLETED" || !documentId) {
       return;
     }
-    setAutoQuizStarted(true);
-    handleStartPostQuiz();
-  }, [action, autoQuizStarted, currentState, documentId]);
+    autoQuizStartedRef.current = true;
+    void onStartPostQuiz();
+  }, [action, currentState, documentId]);
 
   async function handleSubmitPostQuiz() {
     if (!postQuiz) return;
@@ -203,13 +347,20 @@ export function ClassroomPage() {
     const actions: { state: string; label: string; eventType: string; className?: string }[] = [
       { state: "INIT", label: "开始学习计划", eventType: "start", className: "primary" },
       { state: "PLAN", label: "进入教学", eventType: "continue", className: "primary" },
-      { state: "TEACH", label: "确认理解", eventType: "continue", className: "secondary" },
-      { state: "CHECK_UNDERSTAND", label: "进入测验", eventType: "continue", className: "secondary" },
+      { state: "TEACH", label: "进入本节 Checkpoint", eventType: "continue", className: "primary" },
+      { state: "CHECK_UNDERSTAND", label: "开始 Checkpoint", eventType: "continue", className: "primary" },
       { state: "GRADE", label: "查看结果", eventType: "continue", className: "secondary" },
       { state: "REVIEW", label: "课程总结", eventType: "continue", className: "secondary" },
     ];
     return actions.filter((action) => action.state === currentState);
   }
+
+  const planSections = plan?.sections || [];
+  const currentSection = planSections[currentSectionIndex];
+  const displayedSectionTotal = sectionTotal || planSections.length;
+  const progressPercent = displayedSectionTotal > 0
+    ? Math.min(100, Math.round((completedSections / displayedSectionTotal) * 100))
+    : 0;
 
   function renderAction(action: ClassroomUiAction, index: number) {
     if (action.actionType === "button_group") {
@@ -235,7 +386,11 @@ export function ClassroomPage() {
         <ChoiceQuestion
           key={`action-${index}`}
           question={String(action.data.content || action.data.question || "请选择")}
-          options={(action.data.options as { label: string; text: string }[]) || []}
+          options={((action.data.options as unknown[]) || []).map((opt, i) =>
+            typeof opt === "string"
+              ? { label: String.fromCharCode(65 + i), text: opt }
+              : (opt as { label: string; text: string })
+          )}
           onAnswer={(answer) => handleStructuredAnswer(action, answer)}
           disabled={loading}
         />
@@ -273,7 +428,7 @@ export function ClassroomPage() {
         {sessionId && <span className="state-pill">状态：{currentState}</span>}
         <button className="button ghost" onClick={() => navigate(`/plans/${planId}`)}>
           <ArrowLeft size={17} aria-hidden="true" />
-          返回计划
+          保存并退出
         </button>
       </header>
 
@@ -297,6 +452,29 @@ export function ClassroomPage() {
         </div>
       ) : (
         <>
+          <section className="classroom-progress-card" aria-label="课堂学习进度">
+            <div className="classroom-progress-copy">
+              <p className="eyebrow">当前学习小节</p>
+              <h3>{currentSection?.title || `第 ${currentSectionIndex + 1} 节`}</h3>
+              <p>{currentSection?.learningObjective || "完成本节讲解与 Checkpoint 后记录学习进度。"}</p>
+              <div className="classroom-progress-meta">
+                <span><BookOpenCheck size={16} /> 已完成 {completedSections}/{displayedSectionTotal || "?"} 节</span>
+                {currentSection?.estimatedMinutes ? (
+                  <span><Clock3 size={16} /> 预计 {currentSection.estimatedMinutes} 分钟</span>
+                ) : null}
+                {currentSection?.checkpointCriteria?.length ? (
+                  <span>Checkpoint：{currentSection.checkpointCriteria.join("；")}</span>
+                ) : null}
+              </div>
+            </div>
+            <div className="classroom-progress-value" aria-label={`课程进度 ${progressPercent}%`}>
+              <strong>{progressPercent}%</strong>
+              <div className="classroom-progress-track">
+                <span style={{ width: `${progressPercent}%` }} />
+              </div>
+            </div>
+          </section>
+
           <div className="classroom-surface">
             <div className="message-stream">
             {messages.map((msg) => (
@@ -334,18 +512,6 @@ export function ClassroomPage() {
                 {action.label}
               </button>
             ))}
-          {currentState === "SUMMARY" && (
-              <>
-                <button onClick={() => handleEvent("next_section", {})}
-                  disabled={loading} className="button secondary">
-                  下一节
-                </button>
-                <button onClick={() => handleEvent("complete", {})}
-                  disabled={loading} className="button primary">
-                  完成课程
-                </button>
-              </>
-            )}
             {currentState === "COMPLETED" && documentId && !postQuiz && (
               <button onClick={handleStartPostQuiz} disabled={loading} className="button primary">
                 开始课后测验

@@ -1,5 +1,9 @@
 import { apiGet, apiPost } from "./apiClient";
-import type { ClassroomSession, ClassroomEventResponse } from "../types/classroom";
+import type {
+  ClassroomEventResponse,
+  ClassroomSession,
+  ClassroomSessionDetail,
+} from "../types/classroom";
 
 export function createSession(endUserId: string, planId?: string, documentId?: string): Promise<ClassroomSession> {
   return apiPost("/classroom/sessions", {
@@ -22,7 +26,7 @@ export function submitEvent(
   });
 }
 
-export function getSession(sessionId: string): Promise<unknown> {
+export function getSession(sessionId: string): Promise<ClassroomSessionDetail> {
   return apiGet(`/classroom/sessions/${sessionId}`);
 }
 

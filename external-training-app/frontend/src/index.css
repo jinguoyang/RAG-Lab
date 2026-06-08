@@ -777,8 +777,69 @@ textarea:focus {
 }
 
 .classroom-page {
-  height: calc(100vh - 64px);
-  max-height: 920px;
+  min-height: calc(100vh - 64px);
+}
+
+.classroom-progress-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px;
+  gap: 24px;
+  align-items: center;
+  padding: 20px 22px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(23, 33, 31, 0.08);
+  border-radius: 8px;
+  box-shadow: 0 14px 32px rgba(23, 33, 31, 0.06);
+}
+
+.classroom-progress-copy h3 {
+  margin: 6px 0 8px;
+}
+
+.classroom-progress-copy > p:last-of-type {
+  margin: 0;
+  color: #5d6b66;
+}
+
+.classroom-progress-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 14px;
+  color: #52615d;
+  font-size: 13px;
+}
+
+.classroom-progress-meta span {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.classroom-progress-value {
+  display: grid;
+  gap: 10px;
+}
+
+.classroom-progress-value strong {
+  color: #0b5d47;
+  font-size: 28px;
+  text-align: right;
+}
+
+.classroom-progress-track {
+  height: 8px;
+  overflow: hidden;
+  background: #e4ebe7;
+  border-radius: 999px;
+}
+
+.classroom-progress-track span {
+  display: block;
+  height: 100%;
+  background: #1a7f65;
+  border-radius: inherit;
+  transition: width 180ms ease;
 }
 
 .start-panel {
@@ -816,9 +877,23 @@ textarea:focus {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  height: min(58vh, 560px);
+  height: min(52vh, 520px);
   overflow-y: auto;
   padding-right: 8px;
+}
+
+@media (max-width: 680px) {
+  .classroom-progress-card {
+    grid-template-columns: 1fr;
+  }
+
+  .classroom-progress-value strong {
+    text-align: left;
+  }
+
+  .message-bubble {
+    max-width: 92%;
+  }
 }
 
 .message-bubble {

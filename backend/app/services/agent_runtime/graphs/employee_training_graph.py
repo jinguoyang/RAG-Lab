@@ -291,6 +291,19 @@ def _make_generate_content(model, qa_run_tool, build_agent_fn, checkpointer, sys
     - rag_explain: RAG 解释错题
     - agent_task: 占位
     """
+    def fallback_teaching_narration(base_content: str) -> str:
+        """模型不可用时提供结构化教学引导，避免退化为纯证据搬运。"""
+        title_line = next((line for line in base_content.splitlines() if line.startswith("本节学习")), "本节内容")
+        objective_line = next((line for line in base_content.splitlines() if line.startswith("学习目标：")), "")
+        objective = objective_line.removeprefix("学习目标：") or "理解本节关键要求并能用于实际作业"
+        return (
+            f"学习目标：{objective}\n"
+            f"核心解释：{title_line}的多份证据共同定义了作业条件、执行要求和异常处置边界，学习时要把它们连成完整流程，而不是记住单条原文。\n"
+            "适用条件：执行本节对应作业、检查现场条件或处理异常时，应优先核对下方证据中的明确要求。\n"
+            "风险点：忽略前置条件、记录要求或异常处置动作，会造成流程失控，也无法证明作业符合规范。\n"
+            "具体作业案例：开始作业前先逐项核对证据要求；发现条件不满足时暂停作业，完成规定的调整、确认和记录后再继续。"
+        )
+
     def generate_content(state: EmployeeTrainingState) -> dict[str, Any]:
         domain = state.get("domainResult", {})
         mode = domain.get("responseMode", state.get("responseMode", "template"))
@@ -306,13 +319,20 @@ def _make_generate_content(model, qa_run_tool, build_agent_fn, checkpointer, sys
         if mode == "teaching_narration":
             if model is not None:
                 try:
-                    prompt = f"请对以下教学内容做简洁的讲解引导（不超过200字）：\n{base_content[:500]}"
+                    prompt = (
+                        "请基于以下多证据教学包，生成面向员工的课堂讲解。"
+                        "必须使用“学习目标、核心解释、适用条件、风险点、具体作业案例”五个标题；"
+                        "解释证据之间的关系，不要只复述原文；案例必须包含具体情境和正确动作；"
+                        "不得编造证据中没有的要求，整体不超过400字。\n\n"
+                        f"{base_content[:2400]}"
+                    )
                     resp = model.invoke([{"role": "user", "content": prompt}])
                     narration = resp.content if hasattr(resp, "content") else str(resp)
-                    return generated_result(f"{narration}\n\n---\n\n{base_content}")
+                    return generated_result(f"{narration}\n\n参考依据：\n\n{base_content}")
                 except Exception as exc:
                     logger.warning("教学讲解生成失败: %s", exc)
-            return generated_result(base_content)
+            narration = fallback_teaching_narration(base_content)
+            return generated_result(f"{narration}\n\n参考依据：\n\n{base_content}")
 
         if mode == "rag_explain":
             if model is not None and qa_run_tool is not None and build_agent_fn is not None:

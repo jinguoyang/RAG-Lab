@@ -11,6 +11,7 @@ export interface TrainingPlan {
   abilityGroups?: unknown[];
   evidenceChunkIds?: string[];
   readingOrder?: string[];
+  sections?: TrainingSection[];
   employeeIds?: string[];
   recommendReason?: string;
   completedDocuments?: string[];
@@ -28,6 +29,26 @@ export interface TrainingDocument {
   category?: string | null;
   difficulty?: string | null;
   summary?: string | null;
+}
+
+export interface TrainingSection {
+  sectionId: string;
+  title: string;
+  learningObjective: string;
+  sourceDocumentIds: string[];
+  evidenceChunkIds: string[];
+  keyPoints: string[];
+  checkpointCriteria: string[];
+  teachingScript?: {
+    opening: string;
+    explanation: string;
+    scenario: string;
+    interactionQuestions: string[];
+    summary: string;
+  } | null;
+  teachingQualityScore?: number;
+  estimatedMinutes: number;
+  required: boolean;
 }
 
 export function listPlans(): Promise<TrainingPlan[]> {
@@ -63,6 +84,7 @@ export function savePlan(
     evidenceChunkIds?: string[];
     recommendReason?: string | null;
     readingOrder: string[];
+    sections?: TrainingSection[];
     employeeIds: string[];
     version?: number;
   }
@@ -76,6 +98,7 @@ export function updatePlan(
     planName?: string;
     documents?: TrainingDocument[];
     readingOrder?: string[];
+    sections?: TrainingSection[];
     employeeIds?: string[];
   }
 ): Promise<{ planId: string; status: string }> {

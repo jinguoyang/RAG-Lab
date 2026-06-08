@@ -36,6 +36,19 @@ def test_save_plan_inserts_final_plan_without_existing_draft():
             evidenceChunkIds=["chunk-001"],
             recommendReason="覆盖基础安全要求",
             readingOrder=["doc-001"],
+            sections=[
+                {
+                    "sectionId": "section-001",
+                    "title": "识别现场风险",
+                    "learningObjective": "能够识别现场风险",
+                    "sourceDocumentIds": ["doc-001"],
+                    "evidenceChunkIds": ["chunk-001"],
+                    "keyPoints": ["风险识别"],
+                    "checkpointCriteria": ["能识别风险"],
+                    "estimatedMinutes": 8,
+                    "required": True,
+                }
+            ],
             employeeIds=["emp-001", "emp-002"],
             version=1,
         )
@@ -47,6 +60,7 @@ def test_save_plan_inserts_final_plan_without_existing_draft():
         assert plan["status"] == "saved"
         assert plan["employeeIds"] == ["emp-001", "emp-002"]
         assert plan["documents"][0]["documentId"] == "doc-001"
+        assert plan["sections"][0]["sectionId"] == "section-001"
     finally:
         session.close()
         metadata.drop_all(engine)

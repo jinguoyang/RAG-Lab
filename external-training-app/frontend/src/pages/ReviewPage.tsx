@@ -21,6 +21,7 @@ import {
   updatePlan,
   type TrainingDocument,
   type TrainingPlan,
+  type TrainingSection,
 } from "../services/planService";
 
 const MOCK_EMPLOYEES = [
@@ -97,6 +98,7 @@ export function ReviewPage() {
   const [viewMode, setViewMode] = useState<"list" | "editor">("list");
   const [editingPlan, setEditingPlan] = useState<TrainingPlan | null>(null);
   const [selectedDocs, setSelectedDocs] = useState<TrainingDocument[]>([]);
+  const [selectedSections, setSelectedSections] = useState<TrainingSection[]>([]);
   const [candidateDocs, setCandidateDocs] = useState<TrainingDocument[]>([]);
   const [appliedDocumentQuery, setAppliedDocumentQuery] = useState("");
   const [form, setForm] = useState({
@@ -168,6 +170,7 @@ export function ReviewPage() {
     setViewMode("list");
     setEditingPlan(null);
     setSelectedDocs([]);
+    setSelectedSections([]);
     setCandidateDocs([]);
     setAppliedDocumentQuery("");
     setSelectedEmployeeIds([]);
@@ -184,11 +187,13 @@ export function ReviewPage() {
         documentQuery: "",
       });
       setSelectedDocs(normalizeTrainingDocuments((plan.documents || []) as TrainingDocument[], plan.abilityGroups || []));
+      setSelectedSections(plan.sections || []);
       setSelectedEmployeeIds(plan.employeeIds || []);
     } else {
       setEditingPlan(null);
       setForm({ planName: "", jobTitle: "", jobDescription: "", documentQuery: "" });
       setSelectedDocs([]);
+      setSelectedSections([]);
       setSelectedEmployeeIds([]);
     }
     setCandidateDocs([]);
@@ -209,6 +214,7 @@ export function ReviewPage() {
       });
       // 使用平台推荐的文档作为候选
       setSelectedDocs(normalizeTrainingDocuments((draft.documents || []) as TrainingDocument[], draft.abilityGroups || []));
+      setSelectedSections(draft.sections || []);
       // 如果是新计划，保存 draft 的 planId 用于后续保存
       if (!editingPlan) {
         setEditingPlan(draft);
@@ -229,6 +235,14 @@ export function ReviewPage() {
 
   function removeDocument(documentId: string) {
     setSelectedDocs((prev) => prev.filter((item) => item.documentId !== documentId));
+    setSelectedSections((prev) =>
+      prev
+        .map((section) => ({
+          ...section,
+          sourceDocumentIds: section.sourceDocumentIds.filter((id) => id !== documentId),
+        }))
+        .filter((section) => section.sourceDocumentIds.length > 0)
+    );
   }
 
   function moveDocument(index: number, direction: -1 | 1) {
@@ -249,6 +263,22 @@ export function ReviewPage() {
     });
   }
 
+  function updateSection(index: number, patch: Partial<TrainingSection>) {
+    setSelectedSections((prev) => prev.map((section, itemIndex) => (
+      itemIndex === index ? { ...section, ...patch } : section
+    )));
+  }
+
+  function moveSection(index: number, direction: -1 | 1) {
+    setSelectedSections((prev) => {
+      const next = [...prev];
+      const target = index + direction;
+      if (target < 0 || target >= next.length) return prev;
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
   async function handleSave() {
     if (!editingPlan) return;
     setLoading(true);
@@ -261,6 +291,7 @@ export function ReviewPage() {
           planName,
           documents: selectedDocs,
           readingOrder: selectedDocs.map((d) => d.documentId),
+          sections: selectedSections,
           employeeIds: selectedEmployeeIds,
         });
       } else {
@@ -275,6 +306,7 @@ export function ReviewPage() {
           evidenceChunkIds: [],
           recommendReason: editingPlan.recommendReason || null,
           readingOrder: selectedDocs.map((d) => d.documentId),
+          sections: selectedSections,
           employeeIds: selectedEmployeeIds,
           version: 1,
         });
@@ -500,6 +532,69 @@ export function ReviewPage() {
               );
             })}
           </div>
+        </div>
+      </section>
+
+      <section className="work-surface">
+        <div className="form-panel">
+          <div className="section-title">
+            <Sparkles size={20} aria-hidden="true" />
+            <h3>学习小节 ({selectedSections.length})</h3>
+          </div>
+          <p className="text-xs opacity-60">
+            小节按可验证学习目标组织，可跨多个文档；课堂将按此顺序执行 Checkpoint。
+          </p>
+          <ol className="compact-list editable-list">
+            {selectedSections.map((section, index) => (
+              <li key={section.sectionId} className="doc-edit-row">
+                <div className="doc-edit-main">
+                  <strong>{index + 1}. {section.title}</strong>
+                  <div className="doc-edit-controls">
+                    <button type="button" className="icon-button" onClick={() => moveSection(index, -1)} disabled={index === 0} title="上移">
+                      <ArrowUp size={14} aria-hidden="true" />
+                    </button>
+                    <button type="button" className="icon-button" onClick={() => moveSection(index, 1)} disabled={index === selectedSections.length - 1} title="下移">
+                      <ArrowDown size={14} aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+                <label>
+                  <span>小节标题</span>
+                  <input value={section.title} onChange={(event) => updateSection(index, { title: event.target.value })} />
+                </label>
+                <label>
+                  <span>学习目标</span>
+                  <textarea
+                    value={section.learningObjective}
+                    onChange={(event) => updateSection(index, { learningObjective: event.target.value })}
+                  />
+                </label>
+                <div className="doc-meta-row">
+                  <label>
+                    <span>预计分钟</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={120}
+                      value={section.estimatedMinutes}
+                      onChange={(event) => updateSection(index, { estimatedMinutes: Number(event.target.value) || 1 })}
+                    />
+                  </label>
+                  <label className="employee-option">
+                    <input
+                      type="checkbox"
+                      checked={section.required}
+                      onChange={(event) => updateSection(index, { required: event.target.checked })}
+                    />
+                    <span>必修小节</span>
+                  </label>
+                </div>
+                <p className="text-xs opacity-60">
+                  关联文档：{section.sourceDocumentIds.length} 份；Checkpoint 标准：{section.checkpointCriteria.join("、")}
+                </p>
+              </li>
+            ))}
+          </ol>
         </div>
       </section>
 

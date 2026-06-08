@@ -1,6 +1,7 @@
 """员工培训课堂 Agent 状态机和结构化输出服务。"""
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -31,6 +32,7 @@ from app.services.training_agent_service import (
     read_training_evidence,
     resolve_training_context,
 )
+from app.services.training_llm_client import call_llm
 from app.tables import (
     rag_apps,
     training_classroom_events,
@@ -115,7 +117,25 @@ def create_classroom_session(session: Session, credential: str, request: Any) ->
     now = datetime.now(UTC)
     session_id = new_id()
     runtime_version = resolve_runtime_version(getattr(request, "runtimeVersion", None))
-    metadata = {"inputs": request.inputs or {}, "source": "employee_training_agent"}
+    inputs = dict(request.inputs or {})
+    snapshot = inputs.get("courseSnapshot")
+    if isinstance(snapshot, dict):
+        documents = snapshot.get("documents") if isinstance(snapshot.get("documents"), list) else []
+        valid_document_ids = {
+            str(item.get("documentId"))
+            for item in documents
+            if isinstance(item, dict) and item.get("documentId")
+        }
+        sections = snapshot.get("sections") if isinstance(snapshot.get("sections"), list) else []
+        for section in sections:
+            if not isinstance(section, dict):
+                raise ClassroomEventError("courseSnapshot.sections contains invalid section")
+            source_ids = section.get("sourceDocumentIds")
+            if not isinstance(source_ids, list) or not source_ids:
+                raise ClassroomEventError("courseSnapshot section requires sourceDocumentIds")
+            if not set(map(str, source_ids)).issubset(valid_document_ids):
+                raise ClassroomEventError("courseSnapshot section references unknown document")
+    metadata = {"inputs": inputs, "source": "employee_training_agent"}
     session.execute(
         insert(training_classroom_sessions).values(
             session_id=session_id,
@@ -208,7 +228,7 @@ def _get_pending_actions(current_state: str, state_row: Any, is_last_section: bo
         return [{"label": "开始学习", "eventType": "continue"}]
     if current_state == "TEACH":
         return [
-            {"label": "听懂了，继续", "eventType": "continue"},
+            {"label": "进入本节 Checkpoint", "eventType": "continue"},
             {"label": "我还不清楚", "eventType": "query"},
         ]
     if current_state == "CHECK_UNDERSTAND":
@@ -228,15 +248,11 @@ def _get_pending_actions(current_state: str, state_row: Any, is_last_section: bo
         return [
             {"label": "重新学习", "eventType": "retry_teach"},
             {"label": "重新测验", "eventType": "retry_quiz"},
-            {"label": "完成复习", "eventType": "continue"},
         ]
     if current_state == "SUMMARY":
         if is_last_section:
             return [{"label": "完成课程", "eventType": "complete"}]
-        return [
-            {"label": "下一节", "eventType": "next_section"},
-            {"label": "完成课程", "eventType": "complete"},
-        ]
+        return [{"label": "下一节", "eventType": "next_section"}]
     if current_state == "COMPLETED":
         return []
     if current_state == "OFF_TOPIC":
@@ -491,6 +507,37 @@ def _ordered_plan_documents(plan_row: Mapping[str, Any] | None) -> list[dict[str
     return ordered
 
 
+def _ordered_course_sections(state_row: Any, plan_row: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+    """优先读取课堂冻结快照中的小节，兼容平台计划 metadata 中的小节。"""
+    metadata = _mapping_get(state_row, "metadata", {}) or {}
+    inputs = metadata.get("inputs") if isinstance(metadata, dict) else {}
+    snapshot = inputs.get("courseSnapshot") if isinstance(inputs, dict) else {}
+    raw_sections = snapshot.get("sections") if isinstance(snapshot, dict) else None
+    if not isinstance(raw_sections, list) and plan_row is not None:
+        plan_metadata = plan_row.get("metadata") or {}
+        raw_sections = plan_metadata.get("sections") if isinstance(plan_metadata, dict) else None
+    if not isinstance(raw_sections, list):
+        return []
+    return [
+        section
+        for section in raw_sections
+        if isinstance(section, dict)
+        and section.get("sectionId")
+        and section.get("title")
+        and isinstance(section.get("sourceDocumentIds"), list)
+        and section.get("sourceDocumentIds")
+    ]
+
+
+def _current_course_section(state_row: Any, plan_row: Mapping[str, Any] | None = None) -> dict[str, Any] | None:
+    """读取课堂当前结构化小节；旧课程没有 sections 时返回 None。"""
+    sections = _ordered_course_sections(state_row, plan_row)
+    if not sections:
+        return None
+    index = min(int(_mapping_get(state_row, "current_section_index", 0) or 0), len(sections) - 1)
+    return sections[index]
+
+
 def _plan_document_ids(plan_documents: list[dict[str, Any]]) -> list[str]:
     """提取计划文档 ID，供证据读取限定在学习计划范围内。"""
     return [str(item["documentId"]) for item in plan_documents if item.get("documentId")]
@@ -504,13 +551,162 @@ def _find_evidence_for_document(rows: list[Any], document_id: str) -> Any | None
     return None
 
 
+def _is_low_value_teaching_evidence(row: Any) -> bool:
+    """识别不适合直接进入教学讲解的封面、目录等低价值证据。"""
+    heading = "".join(str(_mapping_get(row, "heading", "") or "").lower().split())
+    section = "".join(str(_mapping_get(row, "section", "") or "").lower().split())
+    content = " ".join(str(_mapping_get(row, "content", "") or "").split())
+    labels = {heading.strip("：:.-_"), section.strip("：:.-_")}
+    low_value_labels = {
+        "封面",
+        "目录",
+        "目次",
+        "版本记录",
+        "修订记录",
+        "变更记录",
+        "更改记录",
+        "tableofcontents",
+        "revisionhistory",
+    }
+    if labels & low_value_labels:
+        return True
+    if not content:
+        return True
+    if any(label.startswith(("附录", "appendix")) for label in labels if label) and len(content) <= 20:
+        return True
+    compact_content = "".join(content.split())
+    if "目次" in compact_content and ("......" in compact_content or "规范性引用文件" in compact_content):
+        return True
+    if "......" in compact_content and ("记录表单" in compact_content or "参考文献" in compact_content):
+        return True
+    if "版本" in compact_content and "更改内容" in compact_content and "更改单编号" in compact_content:
+        return True
+    if "前言" in compact_content and "本标准" in compact_content and ("起草" in compact_content or "首次发布" in compact_content):
+        return True
+    if len(compact_content) <= 100 and "附录" in compact_content and "规范性附录" in compact_content:
+        return True
+    return (
+        len(compact_content) <= 320
+        and "企业标准" in compact_content
+        and "发布" in compact_content
+        and "实施" in compact_content
+    )
+
+
+def _filter_teaching_evidence(rows: list[Any]) -> list[Any]:
+    """过滤不应进入教学讲解的低价值证据。"""
+    return [row for row in rows if not _is_low_value_teaching_evidence(row)]
+
+
+def _teaching_evidence_label(row: Any) -> str:
+    """生成多证据教学包中的证据标签。"""
+    metadata = _mapping_get(row, "metadata", {}) or {}
+    metadata_title = metadata.get("title") if isinstance(metadata, dict) else None
+    source = str(
+        _mapping_get(row, "document_name")
+        or metadata_title
+        or f"文档 {str(_mapping_get(row, 'document_id', ''))[:8]}"
+    )
+    location = str(_mapping_get(row, "heading") or _mapping_get(row, "section") or "")
+    return f"{source} / {location}" if location and location != source else source
+
+
+def _build_teaching_evidence_packet(
+    title: str,
+    section: Mapping[str, Any] | None,
+    rows: list[Any],
+) -> tuple[str, list[ClassroomCitationDTO]]:
+    """把当前小节的多个正文片段整理为供教学模型使用的结构化证据包。"""
+    selected_rows = _filter_teaching_evidence(rows)[:4]
+    if not selected_rows:
+        return f"本节学习「{title}」。\n\n当前小节仅召回低教学价值片段，暂无可用于讲解的正文证据，请联系管理员复核课程材料。", []
+    lines = [f"本节学习「{title}」。"]
+    learning_objective = str(section.get("learningObjective") or "理解本节关键要求并能用于实际作业") if section is not None else "理解本节关键要求并能用于实际作业"
+    lines.append(f"学习目标：{learning_objective}")
+    key_points = [str(item) for item in (section.get("keyPoints") or []) if item] if section is not None else []
+    criteria = section.get("checkpointCriteria") if section is not None else None
+    core_explanation = "；".join(key_points) if key_points else "把多份证据中的前置条件、执行要求和异常处置串成完整作业流程"
+    lines.extend([
+        f"核心解释：本节重点不是记忆孤立条文，而是掌握「{core_explanation}」。",
+        f"适用条件：当执行与「{title}」相关的现场作业、检查或异常处置时，应对照下方证据确认条件。",
+        "风险点：跳过前置确认、异常处置或记录要求，会造成作业失控，也无法证明执行符合规范。",
+        f"具体作业案例：开始「{title}」相关作业前先核对关键条件；发现条件不符合时暂停作业，按证据要求完成调整、确认和记录后再继续。",
+    ])
+    if isinstance(criteria, list) and criteria:
+        lines.append("小节验收标准：" + "；".join(str(item) for item in criteria if item))
+    lines.append("\n参考证据：")
+    for index, row in enumerate(selected_rows, start=1):
+        lines.append(f"{index}. [{_teaching_evidence_label(row)}] {evidence_preview(row, 420)}")
+    lines.append("\n请基于以上证据理解关键要求；不清楚的地方可以继续追问。")
+    citations = [
+        ClassroomCitationDTO(
+            documentId=str(_mapping_get(row, "document_id", "")),
+            chunkId=str(_mapping_get(row, "chunk_id", "")) or None,
+            content=evidence_preview(row, 180),
+            score=1.0,
+        )
+        for row in selected_rows
+    ]
+    return "\n".join(lines), citations
+
+
+def _render_teaching_script(title: str, section: Mapping[str, Any]) -> str | None:
+    """将冻结的章节讲稿渲染为面向学员的课堂内容，不暴露 Chunk 原文。"""
+    script = section.get("teachingScript")
+    if not isinstance(script, Mapping):
+        return None
+    opening = str(script.get("opening") or "").strip()
+    explanation = str(script.get("explanation") or "").strip()
+    scenario = str(script.get("scenario") or "").strip()
+    questions = [str(item).strip() for item in (script.get("interactionQuestions") or []) if str(item).strip()]
+    summary = str(script.get("summary") or "").strip()
+    if not all((opening, explanation, scenario, summary)):
+        return None
+    objective = str(section.get("learningObjective") or "理解本节要求并能应用到实际工作。")
+    question_text = "\n".join(f"- {item}" for item in questions) if questions else "- 你会如何把本节要求应用到自己的岗位？"
+    return (
+        f"{title}\n\n"
+        f"学习目标\n{objective}\n\n"
+        f"情境导入\n{opening}\n\n"
+        f"教师讲解\n{explanation}\n\n"
+        f"工作案例\n{scenario}\n\n"
+        f"想一想\n{question_text}\n\n"
+        f"本节小结\n{summary}"
+    )
+
+
+def _has_prepared_teaching_script(state_row: Any, plan_row: Mapping[str, Any] | None = None) -> bool:
+    """判断当前小节是否已有冻结讲稿，避免 Graph 再次改写。"""
+    section = _current_course_section(state_row, plan_row)
+    return bool(section and isinstance(section.get("teachingScript"), Mapping))
+
+
 def _current_evidence(session: Session, app_id: str, kb_id: Any, state_row: Any, query: str = "") -> tuple[str, list[ClassroomCitationDTO]]:
     """读取当前章节证据，生成教学正文和引用。"""
     metadata = state_row["metadata"] or {}
     inputs = metadata.get("inputs") if isinstance(metadata, dict) else {}
     plan_row = _read_learning_plan(session, state_row)
     plan_documents = _ordered_plan_documents(plan_row)
-    document_ids = _plan_document_ids(plan_documents)
+    course_sections = _ordered_course_sections(state_row, plan_row)
+    section = None
+    if course_sections:
+        section = course_sections[min(state_row["current_section_index"], len(course_sections) - 1)]
+    document_ids = (
+        [str(document_id) for document_id in section["sourceDocumentIds"]]
+        if section is not None
+        else _plan_document_ids(plan_documents)
+    )
+    evidence_chunk_ids = section.get("evidenceChunkIds") if section is not None else None
+    pinned_rows = []
+    if isinstance(evidence_chunk_ids, list) and evidence_chunk_ids:
+        pinned_rows = read_training_evidence(
+            session,
+            kb_id,
+            "",
+            limit=len(evidence_chunk_ids),
+            document_ids=document_ids or None,
+            chunk_ids=[str(chunk_id) for chunk_id in evidence_chunk_ids],
+        )
     rows = read_training_evidence(
         session,
         kb_id,
@@ -518,33 +714,58 @@ def _current_evidence(session: Session, app_id: str, kb_id: Any, state_row: Any,
         limit=max(6, len(document_ids) * 3) if document_ids else 6,
         document_ids=document_ids or None,
     )
+    if pinned_rows:
+        seen_chunk_ids: set[str] = set()
+        merged_rows = []
+        for row in [*pinned_rows, *rows]:
+            chunk_id = str(_mapping_get(row, "chunk_id", ""))
+            if chunk_id in seen_chunk_ids:
+                continue
+            seen_chunk_ids.add(chunk_id)
+            merged_rows.append(row)
+        rows = merged_rows
     if not rows:
+        if section is not None:
+            return f"本节学习「{section['title']}」。\n\n当前小节暂无可引用的正文片段，请联系管理员复核课程证据。", []
         if plan_documents:
             index = min(state_row["current_section_index"], len(plan_documents) - 1)
             title = str(plan_documents[index].get("title") or "当前章节")
             return f"本节学习「{title}」。\n\n当前章节已来自学习计划，但知识库暂无可引用的正文片段，请联系管理员复核文档入库状态。", []
         return "当前知识库暂无可用于本课程的学习材料，请联系管理员补充文档。", []
-    if plan_documents:
+    if section is not None:
+        title = str(section["title"])
+        if isinstance(evidence_chunk_ids, list) and evidence_chunk_ids:
+            evidence_order = {str(chunk_id): index for index, chunk_id in enumerate(evidence_chunk_ids)}
+            rows = sorted(
+                rows,
+                key=lambda row: evidence_order.get(str(_mapping_get(row, "chunk_id", "")), len(evidence_order)),
+            )
+    elif plan_documents:
         index = min(state_row["current_section_index"], len(plan_documents) - 1)
         plan_doc = plan_documents[index]
         document_id = str(plan_doc["documentId"])
-        row = _find_evidence_for_document(rows, document_id) or rows[min(index, len(rows) - 1)]
-        title = str(plan_doc.get("title") or evidence_title(row))
+        document_rows = [row for row in rows if str(_mapping_get(row, "document_id", "")) == document_id]
+        rows = document_rows or [rows[min(index, len(rows) - 1)]]
+        title = str(plan_doc.get("title") or evidence_title(rows[0]))
     else:
         index = min(state_row["current_section_index"], len(rows) - 1)
-        row = rows[index]
-        title = evidence_title(row)
-    preview = evidence_preview(row, 360)
-    content = f"本节学习「{title}」。\n\n{preview}\n\n请先理解关键要求，随后可以继续进入测验，或直接追问不清楚的地方。"
-    citations = [
-        ClassroomCitationDTO(
-            documentId=str(row["document_id"]),
-            chunkId=str(row["chunk_id"]),
-            content=evidence_preview(row, 180),
-            score=1.0,
-        )
-    ]
-    return content, citations
+        rows = [rows[index]]
+        title = evidence_title(rows[0])
+    if section is not None:
+        prepared_content = _render_teaching_script(title, section)
+        if prepared_content is not None:
+            selected_rows = _filter_teaching_evidence(rows)
+            citations = [
+                ClassroomCitationDTO(
+                    documentId=str(_mapping_get(row, "document_id", "")),
+                    chunkId=str(_mapping_get(row, "chunk_id", "")) or None,
+                    content=evidence_preview(row, 180),
+                    score=1.0,
+                )
+                for row in selected_rows
+            ]
+            return prepared_content, citations
+    return _build_teaching_evidence_packet(title, section, rows)
 
 
 def _plan_content(session: Session, kb_id: Any, state_row: Any) -> tuple[str, list[ClassroomCitationDTO]]:
@@ -554,6 +775,7 @@ def _plan_content(session: Session, kb_id: Any, state_row: Any) -> tuple[str, li
     _query = _inputs.get("jobTitle", "") if isinstance(_inputs, dict) else ""
     plan_row = _read_learning_plan(session, state_row)
     plan_documents = _ordered_plan_documents(plan_row)
+    course_sections = _ordered_course_sections(state_row, plan_row)
     rows = read_training_evidence(
         session,
         kb_id,
@@ -561,7 +783,18 @@ def _plan_content(session: Session, kb_id: Any, state_row: Any) -> tuple[str, li
         limit=max(6, len(plan_documents) * 3) if plan_documents else 6,
         document_ids=_plan_document_ids(plan_documents) or None,
     )
-    if plan_documents:
+    if course_sections:
+        titles = [str(item["title"]) for item in course_sections]
+        reason = str(plan_row.get("recommend_reason") or "").strip() if plan_row is not None else ""
+        if not reason:
+            reason = "已按可验证学习目标组织课程小节。"
+        lines = [
+            f"{index}. {section['title']}：{section.get('learningObjective', '')}"
+            for index, section in enumerate(course_sections, start=1)
+        ]
+        content = f"本课程已按学习目标组织为 {len(course_sections)} 个小节。\n课程摘要：{reason}\n\n学习小节：\n" + "\n".join(lines)
+        citations = []
+    elif plan_documents:
         titles = [str(item.get("title") or item["documentId"]) for item in plan_documents]
         reason = str(plan_row.get("recommend_reason") or "").strip() if plan_row is not None else ""
         if not reason:
@@ -606,41 +839,186 @@ def _plan_content(session: Session, kb_id: Any, state_row: Any) -> tuple[str, li
     return content, citations
 
 
-def _quiz_payload(session: Session, state_row: Any, kb_id: Any) -> tuple[str, list[ClassroomUiActionDTO], list[ClassroomCitationDTO]]:
-    """生成课堂测验动作，优先使用平台题库，缺省时基于证据给出即时题。"""
-    question = session.execute(
-        select(training_questions)
-        .where(training_questions.c.app_id == state_row["app_id"])
-        .where(training_questions.c.status.in_(["approved", "published"]))
-        .order_by(training_questions.c.created_at.asc())
-        .limit(1)
-    ).mappings().first()
+def _quiz_payload(session: Session, state_row: Any, kb_id: Any, session_id: str) -> tuple[str, list[ClassroomUiActionDTO], list[ClassroomCitationDTO]]:
+    """基于当前小节讲稿调用 LLM 现场生成一道 Checkpoint 测验题。"""
+    section = _current_course_section(state_row, _read_learning_plan(session, state_row))
+    section_id = str(section["sectionId"]) if section is not None else "default"
+    question_id = f"llm-quiz-{section_id}"
+
+    # 从冻结讲稿提取教学内容作为出题上下文
+    section_content = _render_teaching_script(str(section.get("title", "本节内容")), section) if section is not None else ""
+    if not section_content:
+        section_title = str(section.get("title", "本节内容")) if section is not None else "本节内容"
+        section_content = section_title
+
+    checkpoint_criteria = list(section.get("checkpointCriteria") or []) if section is not None else []
+    criteria_hint = "验收标准：" + "；".join(checkpoint_criteria) if checkpoint_criteria else ""
+
+    prompt = (
+        "你是一个培训测验出题专家。根据以下教学内容，生成 1 道单选题（4 个选项，1 个正确答案）。\n"
+        "题目应测试对内容的理解，而非简单记忆；干扰选项应基于材料内容，不能明显错误。\n\n"
+        f"教学内容：\n{section_content[:3000]}\n\n"
+        f"{criteria_hint}\n\n"
+        '返回 JSON 格式：\n'
+        '{"stem": "题目内容", '
+        '"options": [{"label": "A", "text": "选项文本"}, {"label": "B", "text": "选项文本"}, '
+        '{"label": "C", "text": "选项文本"}, {"label": "D", "text": "选项文本"}], '
+        '"correctAnswer": "A", "explanation": "解析"}'
+    )
+
     citations: list[ClassroomCitationDTO] = []
-    if question is not None:
-        visible = question["content"]
+    try:
+        audit = begin_app_llm_invocation(
+            session,
+            {"session_id": session_id, "app_id": str(state_row["app_id"])},
+            endpoint="/api/v1/training/classroom/sessions/events",
+            operation="generateCheckpointQuiz",
+            skill_name="generateCheckpointQuiz",
+            input_summary={"sectionId": section_id, "sectionContentLength": len(section_content)},
+            user_content={"sectionId": section_id},
+        )
+    except Exception:
+        audit = None
+
+    try:
+        raw = call_llm(
+            [{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=1000,
+            timeout=30,
+        )
+        text = raw.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+        parsed = json.loads(text)
+
+        stem = str(parsed.get("stem", "")).strip()
+        options = parsed.get("options", [])
+        correct_answer = str(parsed.get("correctAnswer", "")).strip()
+        explanation = str(parsed.get("explanation", "")).strip()
+
+        if not stem or not options or not correct_answer:
+            raise ValueError("LLM 返回的题目字段不完整")
+
+        # 标准化：确保 correctAnswer 是选项标签（A/B/C/D）而非完整文本
+        option_labels = [str(opt.get("label", "")) if isinstance(opt, dict) else "" for opt in options]
+        option_texts = [str(opt.get("text", "")) if isinstance(opt, dict) else str(opt) for opt in options]
+        if correct_answer not in option_labels:
+            # LLM 可能返回了完整文本而非标签，尝试匹配
+            for label, text in zip(option_labels, option_texts):
+                if text and (correct_answer == text or correct_answer in text or text in correct_answer):
+                    correct_answer = label
+                    break
+
+        if audit is not None:
+            finish_app_llm_invocation(
+                session, audit, status="success",
+                assistant_content={"stem": stem, "optionCount": len(options)},
+                response_summary={"sectionId": section_id, "questionId": question_id},
+            )
+
+        # 将正确答案存入会话 metadata，供评分时读取
+        _merge_session_metadata(session, session_id, {
+            "current_llm_quiz": {
+                "questionId": question_id,
+                "correctAnswer": correct_answer,
+                "explanation": explanation or "请回看本节材料。",
+                "options": options,
+            },
+        })
+
         action = ClassroomUiActionDTO(
-            actionType=question["question_type"],
+            actionType="single_choice",
             data={
-                "questionId": str(question["question_id"]),
-                "content": question["content"],
-                "options": question["options"] or [],
-                "questionType": question["question_type"],
+                "questionId": question_id,
+                "content": stem,
+                "options": options,
+                "questionType": "single_choice",
+                "sectionId": section_id,
+                "checkpointCriteria": checkpoint_criteria,
+                "evidenceChunkIds": [],
                 "answerEventType": "submit_answer",
             },
         )
-        return visible, [action], citations
+        return stem, [action], citations
 
-    content, citations = _current_evidence(session, str(state_row["app_id"]), kb_id, state_row)
-    action = ClassroomUiActionDTO(
-        actionType="true_false",
-        data={
-            "questionId": "inline-true-false",
-            "content": "判断题：本节内容中的要求需要作为后续作业依据。",
-            "options": [{"label": "true", "text": "正确"}, {"label": "false", "text": "错误"}],
-            "answerEventType": "submit_answer",
-        },
-    )
-    return f"请完成本节测验。\n\n{content}", [action], citations
+    except Exception as exc:
+        if audit is not None:
+            try:
+                finish_app_llm_invocation(
+                    session, audit, status="error",
+                    assistant_content={"error": str(exc)},
+                    response_summary={"sectionId": section_id, "fallback": True},
+                )
+            except Exception:
+                pass
+        logger.warning("LLM 随堂测验生成失败，回退到判断题: %s", exc)
+        # 回退：生成一道简单的判断题
+        fallback_answer = "A"
+        _merge_session_metadata(session, session_id, {
+            "current_llm_quiz": {
+                "questionId": question_id,
+                "correctAnswer": fallback_answer,
+                "explanation": "请回看本节材料。",
+                "options": [{"label": "A", "text": "正确"}, {"label": "B", "text": "错误"}],
+            },
+        })
+        fallback_content = f"请判断：根据本节内容，你是否理解了{section.get('title', '本节内容') if section is not None else '本节内容'}的核心要求？"
+        action = ClassroomUiActionDTO(
+            actionType="true_false",
+            data={
+                "questionId": question_id,
+                "content": fallback_content,
+                "options": [{"label": "A", "text": "正确"}, {"label": "B", "text": "错误"}],
+                "questionType": "true_false",
+                "sectionId": section_id,
+                "checkpointCriteria": checkpoint_criteria,
+                "evidenceChunkIds": [],
+                "answerEventType": "submit_answer",
+            },
+        )
+        return fallback_content, [action], citations
+
+
+def _question_matches_section(question: Any, section: Mapping[str, Any] | None) -> bool:
+    """判断题目证据是否属于当前结构化小节；旧课程继续兼容首道发布题目。"""
+    if section is None:
+        return True
+    question_chunk_ids = {str(item) for item in (_mapping_get(question, "evidence_chunk_ids", []) or []) if item}
+    section_chunk_ids = {str(item) for item in (section.get("evidenceChunkIds") or []) if item}
+    if section_chunk_ids:
+        return bool(question_chunk_ids & section_chunk_ids)
+    metadata = _mapping_get(question, "metadata", {}) or {}
+    document_id = str(metadata.get("documentId") or "") if isinstance(metadata, dict) else ""
+    source_document_ids = {str(item) for item in (section.get("sourceDocumentIds") or []) if item}
+    return bool(document_id and document_id in source_document_ids)
+
+
+def _checkpoint_feedback(section: Mapping[str, Any] | None, explanation: str, passed: bool) -> str:
+    """把评分说明对齐到当前小节验收标准，形成可执行的通过或补强反馈。"""
+    criteria = [str(item) for item in (section.get("checkpointCriteria") or []) if item] if section is not None else []
+    if not criteria:
+        return explanation
+    label = "已验证的验收标准" if passed else "需要补强的验收标准"
+    return f"{label}：{'；'.join(criteria)}。\n答题反馈：{explanation}"
+
+
+def _passed_section_summary(
+    section: Mapping[str, Any] | None,
+    checkpoint_feedback: str = "",
+) -> str:
+    """使用本节讲稿生成通过小结，避免显示脱离课程上下文的通用复习话术。"""
+    section = section or {}
+    teaching_script = section.get("teachingScript") or {}
+    summary = str(teaching_script.get("summary") or "").strip()
+    if not summary:
+        title = str(section.get("title") or "本节内容").strip()
+        summary = f"你已完成“{title}”的学习，请把本节判断方法用于后续工作场景。"
+
+    content = f"Checkpoint 已通过。\n\n本节复习建议：{summary}"
+    if checkpoint_feedback:
+        content += f"\n\n{checkpoint_feedback}"
+    return content
 
 
 def _get_passing_score(state_row) -> int:
@@ -661,6 +1039,11 @@ def _count_sections(session: Session, kb_id: Any, query: str, session_id: str | 
             .limit(1)
         ).mappings().first()
         meta = session_row.get("metadata") if isinstance(session_row, Mapping) else {}
+        course_sections = _ordered_course_sections(session_row) if isinstance(session_row, Mapping) else []
+        if course_sections:
+            count = len(course_sections)
+            _merge_session_metadata(session, session_id, {"_cached_section_count": count})
+            return count
         cached = meta.get("_cached_section_count") if isinstance(meta, dict) else None
         if isinstance(cached, int) and cached > 0:
             return cached
@@ -700,6 +1083,17 @@ def _grade_answer(session: Session, state_row: Any, payload: dict[str, Any], con
         is_correct = answer.lower() == correct_answer
         return (100 if is_correct else 0), ("回答正确。" if is_correct else "回答不正确，请回看本节材料。")
 
+    # LLM 现场出题：从会话 metadata 读取正确答案
+    if question_id.startswith("llm-quiz-"):
+        metadata = state_row["metadata"] or {}
+        quiz_meta = (metadata.get("current_llm_quiz") or {}) if isinstance(metadata, dict) else {}
+        if str(quiz_meta.get("questionId", "")) != question_id:
+            return 0, "测验题目已过期，请重新开始。"
+        correct_answer = str(quiz_meta.get("correctAnswer", "")).strip()
+        explanation = str(quiz_meta.get("explanation", "")).strip() or "请回看本节材料。"
+        is_correct = answer.lower() == correct_answer.lower()
+        return (100 if is_correct else 0), ("回答正确。" if is_correct else f"回答不正确，{explanation}")
+
     question = session.execute(
         select(training_questions)
         .where(training_questions.c.question_id == question_id)
@@ -708,6 +1102,9 @@ def _grade_answer(session: Session, state_row: Any, payload: dict[str, Any], con
     ).mappings().first()
     if question is None:
         return 0, "题目不存在或不属于当前课堂应用。"
+    section = _current_course_section(state_row, _read_learning_plan(session, state_row))
+    if section is not None and not _question_matches_section(question, section):
+        raise ClassroomEventError("提交的题目不属于当前小节 Checkpoint")
     if question["question_type"] == "subjective":
         if HAS_GRADING_SERVICE:
             audit = None
@@ -823,6 +1220,50 @@ def _recent_context_messages(session: Session, session_id: str, limit: int = 6) 
     return [{"role": row["role"], "content": row["content"]} for row in reversed(rows)]
 
 
+def _is_runtime_evidence_refusal(answer: str) -> bool:
+    """识别 Runtime 因检索不到授权证据而返回的固定拒答。"""
+    normalized = " ".join(answer.split())
+    return any(
+        phrase in normalized
+        for phrase in (
+            "当前用户没有可用于回答的授权证据",
+            "资料不足，无法基于当前授权证据回答",
+            "现有资料不足以回答",
+        )
+    )
+
+
+def _answer_query_from_section_script(session: Session, state_row: Any, query: str) -> str | None:
+    """以当前冻结讲稿为受控上下文回答课堂追问，不重新拼接或展示 Chunk。"""
+    section = _current_course_section(state_row, _read_learning_plan(session, state_row))
+    if section is None:
+        return None
+    title = str(section.get("title") or "当前小节").strip()
+    script = _render_teaching_script(title, section)
+    if not script:
+        return None
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "你是员工培训课堂教师。只能依据给定的当前小节讲稿回答，"
+                "先直接回应问题，再用一个工作场景解释；不要提及 Chunk、检索或内部证据编号，"
+                "不要照抄整段讲稿。若讲稿确实无法支持回答，请明确说本节材料未覆盖。"
+            ),
+        },
+        {
+            "role": "user",
+            "content": f"当前小节讲稿：\n{script}\n\n学员追问：{query}",
+        },
+    ]
+    try:
+        return call_llm(messages, temperature=0.1, max_tokens=600, timeout=60).strip()
+    except Exception as exc:
+        logger.debug("章节讲稿追问生成失败: %s", exc)
+        explanation = str((section.get("teachingScript") or {}).get("explanation") or "").strip()
+        return f"结合本节内容：{explanation}" if explanation else None
+
+
 def _answer_query_with_agent(
     session: Session,
     credential: str,
@@ -830,11 +1271,15 @@ def _answer_query_with_agent(
     kb_id: Any,
     query: str,
 ) -> tuple[str, list[ClassroomCitationDTO]]:
-    """优先调用平台 App Runtime 生成追问回答，失败时回退到证据摘要。"""
+    """新课程优先基于冻结章节讲稿回答，旧课程再使用 App Runtime 和证据摘要。"""
     from app.services.app_runtime_service import chat_with_app_runtime
 
     session_id = str(state_row["session_id"])
     history = _recent_context_messages(session, session_id)
+    section_answer = _answer_query_from_section_script(session, state_row, query)
+    if section_answer:
+        return section_answer, []
+
     context_lines = "\n".join(f"{item['role']}: {item['content']}" for item in history[-4:])
     agent_query = f"当前是员工培训课堂，请基于课程材料回答追问。\n最近对话：\n{context_lines}\n用户追问：{query}"
     try:
@@ -869,6 +1314,10 @@ def _answer_query_with_agent(
                 )
             except Exception as exc:
                 logger.debug("Skill 审计记录失败: %s", exc)
+        if _is_runtime_evidence_refusal(response.answer):
+            section_answer = _answer_query_from_section_script(session, state_row, query)
+            if section_answer:
+                return section_answer, []
         return response.answer, citations
     except Exception as exc:
         logger.debug("App Runtime 调用失败，回退到证据摘要: %s", exc)
@@ -1001,7 +1450,7 @@ def apply_classroom_domain_event(
             resultState="TEACH" if current_state in {"OFF_TOPIC", "CHECK_UNDERSTAND"} else current_state,
             responseMode="agent_task",
             visibleContent=content,
-            uiActions=[_button_group(("听懂了，继续", "continue", {}), ("继续追问", "query", {}))],
+            uiActions=[_button_group(("进入本节 Checkpoint", "continue", {}), ("继续追问", "query", {}))],
             citations=citations,
             userMessage=user_message,
         )
@@ -1024,12 +1473,13 @@ def apply_classroom_domain_event(
     # --- continue/start_plan from PLAN ---
     if event_type in {"continue", "start_plan"} and current_state == "PLAN":
         content, citations = _current_evidence(session, str(state_row["app_id"]), context.kb_row["kb_id"], state_row)
+        response_mode = "template" if _has_prepared_teaching_script(state_row, _read_learning_plan(session, state_row)) else "teaching_narration"
         return ClassroomDomainResult(
             eventType=event_type,
             resultState="TEACH",
-            responseMode="teaching_narration",
+            responseMode=response_mode,
             visibleContent=content,
-            uiActions=[_button_group(("听懂了，继续", "continue", {}), ("我还不清楚", "query", {}))],
+            uiActions=[_button_group(("进入本节 Checkpoint", "continue", {}), ("我还不清楚", "query", {}))],
             citations=citations,
             userMessage=user_message,
         )
@@ -1047,7 +1497,9 @@ def apply_classroom_domain_event(
 
     # --- continue/start_quiz from CHECK_UNDERSTAND ---
     if event_type in {"continue", "start_quiz"} and current_state == "CHECK_UNDERSTAND":
-        visible, actions, citations = _quiz_payload(session, state_row, context.kb_row["kb_id"])
+        visible, actions, citations = _quiz_payload(session, state_row, context.kb_row["kb_id"], session_id)
+        if not actions:
+            raise ClassroomTransitionError(visible)
         return ClassroomDomainResult(
             eventType=event_type,
             resultState="QUIZ",
@@ -1063,7 +1515,22 @@ def apply_classroom_domain_event(
         score, explanation = _grade_answer(session, state_row, payload, context)
         passing_score = _get_passing_score(state_row)
         passed = score >= passing_score
-        _merge_session_metadata(session, session_id, {"lastScore": score, "lastPassed": passed, "lastPassingScore": passing_score})
+        current_section = _current_course_section(state_row, _read_learning_plan(session, state_row))
+        feedback = _checkpoint_feedback(current_section, explanation, passed)
+        checkpoint_criteria = list(current_section.get("checkpointCriteria") or []) if current_section is not None else []
+        _merge_session_metadata(
+            session,
+            session_id,
+            {
+                "lastScore": score,
+                "lastPassed": passed,
+                "lastPassingScore": passing_score,
+                "lastQuestionId": str(payload.get("questionId") or ""),
+                "lastSectionId": str(current_section["sectionId"]) if current_section is not None else None,
+                "lastCheckpointCriteria": checkpoint_criteria,
+                "lastCheckpointFeedback": feedback,
+            },
+        )
         if HAS_SKILL_REGISTRY:
             try:
                 record_training_skill_call(
@@ -1098,15 +1565,25 @@ def apply_classroom_domain_event(
                         score=score,
                         is_correct=passed,
                         explanation=explanation,
+                        metadata={
+                            "sectionId": str(current_section["sectionId"]) if current_section is not None else None,
+                            "checkpointCriteria": checkpoint_criteria,
+                        },
                     )
             except Exception as exc:
                 logger.debug("非关键操作失败，已忽略: %s", exc)
-        response_ctx = {"score": score, "passed": passed, "passingScore": passing_score}
+        response_ctx = {
+            "score": score,
+            "passed": passed,
+            "passingScore": passing_score,
+            "sectionId": str(current_section["sectionId"]) if current_section is not None else None,
+            "checkpointCriteria": checkpoint_criteria,
+        }
         if passed:
-            content = f"本次测验得分：{score}，达到通过线 {passing_score}。\n{explanation}"
+            content = f"本次测验得分：{score}，达到通过线 {passing_score}。\n{feedback}"
             actions = [_button_group(("查看复习建议", "continue", {}))]
         else:
-            content = f"本次测验得分：{score}，未达到通过线 {passing_score}。\n{explanation}"
+            content = f"本次测验得分：{score}，未达到通过线 {passing_score}。\n{feedback}"
             actions = [_button_group(("进入复习", "continue", {}))]
         return ClassroomDomainResult(
             eventType=event_type,
@@ -1122,8 +1599,11 @@ def apply_classroom_domain_event(
     if event_type == "continue" and current_state == "GRADE":
         metadata = state_row["metadata"] or {}
         last_passed = metadata.get("lastPassed", True) if isinstance(metadata, dict) else True
+        checkpoint_feedback = str(metadata.get("lastCheckpointFeedback") or "") if isinstance(metadata, dict) else ""
         if last_passed:
-            content = "测验通过，以下是本节复习建议：请回顾关键知识点，巩固学习成果。"
+            learning_plan = _read_learning_plan(session, state_row)
+            current_section = _current_course_section(state_row, learning_plan)
+            content = _passed_section_summary(current_section, checkpoint_feedback)
             actions = [_button_group(("完成复习", "continue", {}))]
             return ClassroomDomainResult(
                 eventType=event_type,
@@ -1135,12 +1615,12 @@ def apply_classroom_domain_event(
             )
         last_score = metadata.get("lastScore", 0) if isinstance(metadata, dict) else 0
         content, review_citations = _current_evidence(session, str(state_row["app_id"]), context.kb_row["kb_id"], state_row)
-        content = f"测验未通过（得分 {last_score}），请回顾以下错题和相关材料：\n\n{content}"
+        feedback = checkpoint_feedback or "请根据本节验收标准重新梳理遗漏点。"
+        content = f"测验未通过（得分 {last_score}）。\n{feedback}\n\n请回顾以下相关材料：\n\n{content}"
         actions = [
             _button_group(
                 ("重新学习", "retry_teach", {}),
                 ("重新测验", "retry_quiz", {}),
-                ("完成复习", "continue", {}),
             )
         ]
         return ClassroomDomainResult(
@@ -1157,16 +1637,19 @@ def apply_classroom_domain_event(
     if event_type in {"retry_teach", "retry_quiz"} and current_state == "REVIEW":
         if event_type == "retry_teach":
             content, citations = _current_evidence(session, str(state_row["app_id"]), context.kb_row["kb_id"], state_row)
+            response_mode = "template" if _has_prepared_teaching_script(state_row, _read_learning_plan(session, state_row)) else "teaching_narration"
             return ClassroomDomainResult(
                 eventType=event_type,
                 resultState="TEACH",
-                responseMode="teaching_narration",
+                responseMode=response_mode,
                 visibleContent=f"让我们重新学习本节内容。\n\n{content}",
-                uiActions=[_button_group(("听懂了，继续", "continue", {}), ("我还不清楚", "query", {}))],
+                uiActions=[_button_group(("进入本节 Checkpoint", "continue", {}), ("我还不清楚", "query", {}))],
                 citations=citations,
                 userMessage=user_message,
             )
-        visible, actions, citations = _quiz_payload(session, state_row, context.kb_row["kb_id"])
+        visible, actions, citations = _quiz_payload(session, state_row, context.kb_row["kb_id"], session_id)
+        if not actions:
+            raise ClassroomTransitionError(visible)
         return ClassroomDomainResult(
             eventType=event_type,
             resultState="QUIZ",
@@ -1182,15 +1665,45 @@ def apply_classroom_domain_event(
         metadata = state_row["metadata"] or {}
         last_passed = metadata.get("lastPassed", True) if isinstance(metadata, dict) else True
         if last_passed:
-            content = "本节小结：请将关键流程、风险点和证据出处纳入实际作业。"
+            learning_plan = _read_learning_plan(session, state_row)
+            current_section = _current_course_section(state_row, learning_plan)
+            content = _passed_section_summary(current_section)
         else:
-            content = "本节小结：你未通过测验，建议后续继续复习。请将关键流程、风险点和证据出处纳入实际作业。"
+            raise ClassroomTransitionError("当前小节尚未通过随堂测验，请重新学习或重新测验")
         _inputs = (state_row["metadata"] or {}).get("inputs", {})
         _query_str = _inputs.get("jobTitle", "") if isinstance(_inputs, dict) else ""
         total_sections = _count_sections(session, context.kb_row["kb_id"], _query_str, session_id=session_id)
         current_index = state_row["current_section_index"]
+        course_sections = _ordered_course_sections(state_row, _read_learning_plan(session, state_row))
+        completed_section_ids = [
+            str(item)
+            for item in (metadata.get("completedSectionIds") or [])
+            if item
+        ] if isinstance(metadata, dict) else []
+        if course_sections:
+            current_section_id = str(course_sections[min(current_index, len(course_sections) - 1)]["sectionId"])
+            if current_section_id not in completed_section_ids:
+                completed_section_ids.append(current_section_id)
+            _merge_session_metadata(session, session_id, {"completedSectionIds": completed_section_ids})
+        completed_count = len(completed_section_ids) if course_sections else current_index + 1
+        if HAS_PROGRESS_SERVICE:
+            try:
+                update_progress(
+                    session,
+                    session_id=session_id,
+                    app_id=str(state_row["app_id"]),
+                    end_user_id=str(state_row["end_user_id"]),
+                    plan_id=str(state_row["plan_id"]) if state_row["plan_id"] else None,
+                    current_section_index=current_index,
+                    completed_sections=completed_count,
+                    total_sections=total_sections,
+                    last_score=int(metadata.get("lastScore")) if isinstance(metadata, dict) and metadata.get("lastScore") is not None else None,
+                    status="in_progress",
+                )
+            except Exception as exc:
+                logger.debug("非关键操作失败，已忽略: %s", exc)
         if current_index < total_sections - 1:
-            actions = [_button_group(("下一节", "next_section", {}), ("完成课程", "complete", {}))]
+            actions = [_button_group(("下一节", "next_section", {}))]
         else:
             content += "\n\n所有章节已完成，你可以结束课程。"
             actions = [_button_group(("完成课程", "complete", {}))]
@@ -1200,6 +1713,11 @@ def apply_classroom_domain_event(
             responseMode="template",
             visibleContent=content,
             uiActions=actions,
+            progressUpdate=ClassroomProgressUpdateDTO(
+                sectionIndex=current_index,
+                sectionTotal=total_sections,
+                completedSections=completed_count,
+            ),
             userMessage=user_message,
         )
 
@@ -1218,6 +1736,7 @@ def apply_classroom_domain_event(
         next_state_row = dict(state_row)
         next_state_row["current_section_index"] = next_index
         content, citations = _current_evidence(session, str(state_row["app_id"]), context.kb_row["kb_id"], next_state_row)
+        response_mode = "template" if _has_prepared_teaching_script(next_state_row, _read_learning_plan(session, state_row)) else "teaching_narration"
         if HAS_PROGRESS_SERVICE:
             try:
                 update_progress(
@@ -1236,9 +1755,9 @@ def apply_classroom_domain_event(
         return ClassroomDomainResult(
             eventType=event_type,
             resultState="TEACH",
-            responseMode="teaching_narration",
+            responseMode=response_mode,
             visibleContent=content,
-            uiActions=[_button_group(("听懂了，继续", "continue", {}), ("我还不清楚", "query", {}))],
+            uiActions=[_button_group(("进入本节 Checkpoint", "continue", {}), ("我还不清楚", "query", {}))],
             citations=citations,
             progressUpdate=progress,
             userMessage=user_message,
@@ -1247,6 +1766,8 @@ def apply_classroom_domain_event(
     # --- complete from SUMMARY ---
     if event_type == "complete" and current_state == "SUMMARY":
         metadata = state_row["metadata"] or {}
+        if isinstance(metadata, dict) and "lastPassed" in metadata and not metadata.get("lastPassed"):
+            raise ClassroomTransitionError("当前小节尚未通过 Checkpoint，不能完成课程")
         inputs = metadata.get("inputs") if isinstance(metadata, dict) else {}
         query_str = str(inputs.get("jobTitle", "")) if isinstance(inputs, dict) else ""
         total_sections = _count_sections(session, context.kb_row["kb_id"], query_str, session_id=session_id)
@@ -1255,6 +1776,13 @@ def apply_classroom_domain_event(
             raise ClassroomTransitionError(
                 f"当前在第 {current_index + 1} 节（共 {total_sections} 节），还有未完成的章节，请继续学习"
             )
+        course_sections = _ordered_course_sections(state_row, _read_learning_plan(session, state_row))
+        if course_sections:
+            required_section_ids = {str(item["sectionId"]) for item in course_sections}
+            completed_section_ids = {str(item) for item in (metadata.get("completedSectionIds") or []) if item}
+            missing_section_ids = required_section_ids - completed_section_ids
+            if missing_section_ids:
+                raise ClassroomTransitionError("仍有小节尚未通过 Checkpoint，不能完成课程")
         last_score_val = metadata.get("lastScore") if isinstance(metadata, dict) else None
         if HAS_PROGRESS_SERVICE:
             try:

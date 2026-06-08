@@ -39,6 +39,32 @@ class DocumentDTO(BaseModel):
     difficulty: str | None = None
 
 
+class TeachingScriptDTO(BaseModel):
+    """面向学员展示的章节级教学讲稿。"""
+
+    opening: str
+    explanation: str
+    scenario: str
+    interactionQuestions: list[str] = Field(default_factory=list)
+    summary: str
+
+
+class LearningSectionDTO(BaseModel):
+    """按可验证学习目标组织的课程小节。"""
+
+    sectionId: str
+    title: str
+    learningObjective: str
+    sourceDocumentIds: list[str] = Field(default_factory=list)
+    evidenceChunkIds: list[str] = Field(default_factory=list)
+    keyPoints: list[str] = Field(default_factory=list)
+    checkpointCriteria: list[str] = Field(default_factory=list)
+    teachingScript: TeachingScriptDTO | None = None
+    teachingQualityScore: float = Field(default=0.0, ge=0.0, le=1.0)
+    estimatedMinutes: int = Field(default=8, ge=1, le=120)
+    required: bool = True
+
+
 class PlanDraftDTO(BaseModel):
     """学习计划草稿响应。"""
 
@@ -52,6 +78,7 @@ class PlanDraftDTO(BaseModel):
     evidenceChunkIds: list[str] = Field(default_factory=list)
     recommendReason: str = ""
     readingOrder: list[str] = Field(default_factory=list)
+    sections: list[LearningSectionDTO] = Field(default_factory=list)
     version: int = 1
     createdAt: str
     updatedAt: str

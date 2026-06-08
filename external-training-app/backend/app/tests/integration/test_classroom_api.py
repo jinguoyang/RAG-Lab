@@ -7,7 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.core.database import get_db
 from app.main import app
-from app.tables import metadata
+from app.tables import metadata, training_plans
 
 
 class FakePlatformClassroomClient:
@@ -15,8 +15,10 @@ class FakePlatformClassroomClient:
 
     def __init__(self):
         self.sessions = {}
+        self.last_create_payload = None
 
     def create_classroom_session(self, payload):
+        self.last_create_payload = payload
         session_id = "platform-session-001"
         data = {
             "sessionId": session_id,
@@ -39,8 +41,8 @@ class FakePlatformClassroomClient:
         data = self.sessions[session_id]
         return {
             **data,
-            "messages": [],
-            "metadata": {},
+            "messages": data.get("messages", []),
+            "metadata": data.get("metadata", {}),
             "updatedAt": "2026-05-29T00:00:00+00:00",
         }
 
@@ -104,6 +106,8 @@ def client(monkeypatch):
 
     app.dependency_overrides[get_db] = _override_db
     with TestClient(app) as c:
+        c.test_session = test_session
+        c.fake_platform = fake_platform
         yield c
     app.dependency_overrides.clear()
     test_session.close()
@@ -130,6 +134,104 @@ def test_create_and_read_session(client):
     detail = resp.json()
     assert detail["sessionId"] == session_id
     assert detail["messages"] == []
+
+
+def test_read_session_restores_checkpoint_and_section_progress(client):
+    """刷新课堂时应恢复历史消息、待答 Checkpoint 和小节进度。"""
+    response = client.post(
+        "/api/v1/classroom/sessions",
+        json={"endUserId": "user-001", "planId": "plan-001"},
+        headers={"Authorization": "Bearer dev-user"},
+    )
+    session_id = response.json()["sessionId"]
+    client.fake_platform.sessions[session_id].update({
+        "currentState": "QUIZ",
+        "currentSectionIndex": 1,
+        "messages": [{
+            "messageId": "message-001",
+            "role": "assistant",
+            "content": "请说明发现异常振动后的处置动作。",
+            "stateAtTime": "QUIZ",
+            "metadata": {
+                "uiActions": [{
+                    "actionType": "subjective",
+                    "data": {
+                        "questionId": "question-001",
+                        "sectionId": "section-002",
+                        "checkpointCriteria": ["说明停机动作", "说明上报要求"],
+                    },
+                }],
+            },
+            "createdAt": "2026-06-08T00:00:00+00:00",
+        }],
+        "metadata": {
+            "completedSectionIds": ["section-001"],
+            "pendingActions": [{"label": "提交答案", "eventType": "submit_answer"}],
+            "inputs": {
+                "courseSnapshot": {
+                    "sections": [
+                        {"sectionId": "section-001", "title": "启动检查"},
+                        {"sectionId": "section-002", "title": "异常停机"},
+                    ]
+                }
+            },
+        },
+    })
+
+    detail = client.get(f"/api/v1/classroom/sessions/{session_id}").json()
+
+    assert detail["currentState"] == "QUIZ"
+    assert detail["currentSectionIndex"] == 1
+    assert detail["metadata"]["completedSectionIds"] == ["section-001"]
+    action = detail["messages"][0]["metadata"]["uiActions"][0]
+    assert action["data"]["sectionId"] == "section-002"
+    assert action["data"]["checkpointCriteria"] == ["说明停机动作", "说明上报要求"]
+
+
+def test_create_session_passes_frozen_course_snapshot(client):
+    """创建课堂时应把 ex-app 保存的小节快照传给平台。"""
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    client.test_session.execute(
+        training_plans.insert().values(
+            plan_id="plan-with-sections",
+            app_id="app-001",
+            job_title="安全员",
+            job_description="负责风险识别",
+            status="saved",
+            ability_groups=[],
+            documents=[{"documentId": "doc-001", "title": "安全手册"}],
+            evidence_chunk_ids=["chunk-001"],
+            recommend_reason="",
+            reading_order=["doc-001"],
+            version=1,
+            metadata={
+                "sections": [
+                    {
+                        "sectionId": "section-001",
+                        "title": "风险识别",
+                        "learningObjective": "能够识别风险",
+                        "sourceDocumentIds": ["doc-001"],
+                    }
+                ]
+            },
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    client.test_session.commit()
+
+    response = client.post(
+        "/api/v1/classroom/sessions",
+        json={"endUserId": "user-001", "planId": "plan-with-sections"},
+        headers={"Authorization": "Bearer dev-user"},
+    )
+
+    assert response.status_code == 201
+    snapshot = client.fake_platform.last_create_payload["inputs"]["courseSnapshot"]
+    assert snapshot["sections"][0]["sectionId"] == "section-001"
+    assert snapshot["documents"][0]["documentId"] == "doc-001"
 
 
 def test_submit_event_state_transition(client):

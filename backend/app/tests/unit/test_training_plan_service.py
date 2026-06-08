@@ -8,8 +8,12 @@ import pytest
 
 from app.schemas.training_plan import AbilityGroupDTO, DocumentDTO
 from app.services.training_plan_service import (
+    _build_document_content_map,
+    _build_sections,
+    _generate_sections_with_llm,
     _generate_plan_with_llm,
     _rule_based_plan,
+    _score_teaching_script,
 )
 
 
@@ -85,6 +89,134 @@ class TestRuleBasedPlan:
     def test_evidence_chunk_ids_from_rows(self):
         groups, docs, order, reason, chunk_ids = _rule_based_plan("安全员", SAMPLE_ROWS)
         assert chunk_ids == ["c1", "c2", "c3", "c4"]
+
+
+class TestBuildSections:
+    """学习小节应按学习目标组织，而不是简单等同于文档。"""
+
+    def test_groups_multiple_documents_into_one_objective_section(self):
+        groups, docs, _, _, _ = _rule_based_plan("安全员", SAMPLE_ROWS)
+
+        sections = _build_sections(groups, docs, SAMPLE_ROWS)
+
+        assert sections
+        assert len(sections) < len(docs)
+        assert any(len(section.sourceDocumentIds) > 1 for section in sections)
+        assert all(section.learningObjective for section in sections)
+        assert all(section.checkpointCriteria for section in sections)
+
+
+class TestDocumentContentMap:
+    """课程蓝图应基于完整章节内容，而不是少量检索片段。"""
+
+    def test_groups_all_useful_chunks_by_document_and_section(self):
+        rows = [
+            _make_row("cover", "d1", "企业标准 2026 年发布", "封面"),
+            {**_make_row("c1", "d1", "呆滞物料包括长期无动态物料。", "术语和定义"), "section": "第三章"},
+            {**_make_row("c2", "d1", "库龄超过三年且异动率低于百分之二十。", "术语和定义"), "section": "第三章"},
+            {**_make_row("c3", "d1", "库管工季度识别并填写报表。", "管理流程"), "section": "第五章"},
+        ]
+
+        content_map = _build_document_content_map(rows)
+
+        assert "第三章 / 术语和定义" in content_map
+        assert "第五章 / 管理流程" in content_map
+        assert "呆滞物料包括长期无动态物料" in content_map
+        assert "库管工季度识别并填写报表" in content_map
+        assert "企业标准 2026 年发布" not in content_map
+
+
+class TestTeachingScriptQuality:
+    """教学脚本质量分用于阻止 Chunk 化和空泛讲解进入课堂。"""
+
+    def test_complete_lesson_script_reaches_initial_quality_threshold(self):
+        script = {
+            "opening": "仓库里一批电子元器件三年只领用了少量，你会直接报废吗？",
+            "explanation": (
+                "先判断物料是否满足无动态、低异动率或无后续需求等条件，再由物流牵头组织跨部门评审。"
+                "呆滞只表示需要进入评审，并不等于废品；质量、价值和使用可能性会共同决定处置方式。"
+            ),
+            "scenario": "库管工发现该批物料后记录库存和异动依据，主管复核，再提交季度评审决定退换、改造或报废。",
+            "interactionQuestions": ["质量合格的物料为什么仍可能成为呆滞物料？"],
+            "summary": "先有依据地识别，再跨部门评审，最后审批处置并完成账务和资料闭环。",
+        }
+        evidence = ["存储时间超过1年且期间无任何出入库动态。"]
+
+        score = _score_teaching_script(
+            script,
+            learning_objective="能够判断典型呆滞物料并说明后续流程。",
+            key_points=["判定条件", "跨部门评审", "处置闭环"],
+            checkpoint_criteria=["能判断场景", "能说明依据"],
+            evidence_texts=evidence,
+        )
+
+        assert score >= 0.7
+
+    def test_chunk_labels_and_verbatim_copy_lower_quality_score(self):
+        evidence = "存储时间超过1年且期间无任何出入库动态。"
+        script = {
+            "opening": "",
+            "explanation": f"参考证据：chunkId=c1 {evidence}",
+            "scenario": "",
+            "interactionQuestions": [],
+            "summary": evidence,
+        }
+
+        score = _score_teaching_script(
+            script,
+            learning_objective="能够判断呆滞物料。",
+            key_points=["判定条件"],
+            checkpoint_criteria=["能判断场景"],
+            evidence_texts=[evidence],
+        )
+
+        assert score < 0.7
+
+
+class TestGenerateSectionsWithLlm:
+    """LLM 应直接生成章节级课程脚本，并受来源 ID 校验。"""
+
+    @patch("app.services.training_plan_service.call_llm")
+    @patch("app.services.training_plan_service.record_training_skill_call")
+    def test_generates_valid_section_script_from_document_map(self, _mock_audit, mock_llm):
+        mock_llm.return_value = """{
+          "sections": [{
+            "sectionId": "section-001",
+            "title": "识别呆滞物料",
+            "learningObjective": "能够判断典型呆滞物料并说明依据。",
+            "sourceDocumentIds": ["d1"],
+            "evidenceChunkIds": ["c1", "c2"],
+            "keyPoints": ["七类条件", "异动率", "呆滞不等于废品"],
+            "checkpointCriteria": ["能判断场景", "能说明依据"],
+            "teachingScript": {
+              "opening": "一批物料三年只领用了少量，是否应直接报废？",
+              "explanation": "先依据库龄、异动和后续需求识别，再进入跨部门评审。呆滞不等于废品。",
+              "scenario": "库管工核对台账后提报，主管复核并提交季度评审。",
+              "interactionQuestions": ["质量合格为什么仍可能呆滞？"],
+              "summary": "识别必须有数据依据，处置必须经过评审。"
+            },
+            "estimatedMinutes": 12,
+            "required": true
+          }]
+        }"""
+        rows = [
+            _make_row("c1", "d1", "存储超过1年无动态。", "判定条件"),
+            _make_row("c2", "d1", "呆滞物料需要跨部门评审。", "评审流程"),
+        ]
+
+        sections = _generate_sections_with_llm(
+            MagicMock(),
+            "仓库管理员",
+            "负责库存管理",
+            [DocumentDTO(documentId="d1", title="呆滞物料管理办法", abilityGroup="作业流程")],
+            rows,
+            "app-1",
+        )
+
+        assert sections is not None
+        assert sections[0].teachingScript is not None
+        assert sections[0].teachingQualityScore >= 0.7
+        assert sections[0].evidenceChunkIds == ["c1", "c2"]
 
 
 # ---------------------------------------------------------------------------
@@ -163,6 +295,18 @@ class TestGeneratePlanWithLlmSuccess:
         assert result is not None
         _, documents, _, _, _ = result
         assert documents[0].title == "生产环境安全操作规范.pdf"
+
+    @patch("app.services.training_plan_service.call_llm")
+    @patch("app.services.training_plan_service.record_training_skill_call")
+    def test_structured_plan_disables_thinking_and_limits_output(self, mock_audit, mock_llm):
+        """初始结构化计划不应让推理模型无限消耗输出预算。"""
+        mock_llm.return_value = _llm_json_response()
+
+        result = _generate_plan_with_llm(MagicMock(), "安全员", "", SAMPLE_ROWS, "app-1")
+
+        assert result is not None
+        assert mock_llm.call_args.kwargs["disable_thinking"] is True
+        assert mock_llm.call_args.kwargs["max_tokens"] == 2000
 
 
 # ---------------------------------------------------------------------------

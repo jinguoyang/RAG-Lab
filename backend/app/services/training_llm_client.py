@@ -24,6 +24,7 @@ def call_llm(
     temperature: float = 0.2,
     max_tokens: int | None = None,
     timeout: float = 60,
+    disable_thinking: bool = False,
 ) -> str:
     """调用 OpenAI-compatible LLM 接口，返回 assistant 消息文本。
 
@@ -32,6 +33,7 @@ def call_llm(
         temperature: 生成温度。
         max_tokens: 最大生成 token 数，None 时不限制。
         timeout: HTTP 超时秒数。
+        disable_thinking: 对支持该扩展的 MiMo 模型关闭思考模式。
 
     Returns:
         assistant 消息文本。
@@ -54,6 +56,8 @@ def call_llm(
     }
     if max_tokens is not None:
         request_json["max_tokens"] = max_tokens
+    if disable_thinking and settings.llm_model.lower().startswith("mimo-"):
+        request_json["thinking"] = {"type": "disabled"}
 
     try:
         response = httpx.post(

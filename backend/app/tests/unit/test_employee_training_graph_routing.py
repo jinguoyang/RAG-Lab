@@ -370,6 +370,69 @@ def test_generate_content_updates_domain_result_for_persistence():
     assert result["domainResult"]["visibleContent"].startswith("模型讲解")
 
 
+def test_generate_teaching_content_requests_structured_explanation():
+    """教学模型应基于完整多证据包生成解释、条件、风险和案例。"""
+    model = Mock()
+    model.invoke.return_value = SimpleNamespace(content="结构化讲解")
+    node = _make_generate_content(model, None, None, None, "", 2000, 6)
+    evidence_packet = "第一份证据。" + ("甲" * 600) + "第二份证据：异常振动时立即停机。"
+
+    node({
+        "responseMode": "teaching_narration",
+        "domainResult": {
+            "responseMode": "teaching_narration",
+            "visibleContent": evidence_packet,
+        },
+    })
+
+    prompt = model.invoke.call_args.args[0][0]["content"]
+    assert "核心解释" in prompt
+    assert "适用条件" in prompt
+    assert "风险点" in prompt
+    assert "具体作业案例" in prompt
+    assert "第二份证据" in prompt
+
+
+def test_generate_teaching_content_falls_back_when_model_fails():
+    """模型生成失败时应保留多证据教学包。"""
+    model = Mock()
+    model.invoke.side_effect = RuntimeError("provider unavailable")
+    node = _make_generate_content(model, None, None, None, "", 2000, 6)
+
+    result = node({
+        "responseMode": "teaching_narration",
+        "domainResult": {
+            "responseMode": "teaching_narration",
+            "visibleContent": "多证据教学包",
+        },
+    })
+
+    content = result["domainResult"]["visibleContent"]
+    assert "核心解释" in content
+    assert "适用条件" in content
+    assert "风险点" in content
+    assert "具体作业案例" in content
+    assert "多证据教学包" in content
+
+
+def test_generate_teaching_content_has_structured_fallback_without_model():
+    """未配置模型时也不能退化为单纯展示证据原文。"""
+    node = _make_generate_content(None, None, None, None, "", 2000, 6)
+
+    result = node({
+        "responseMode": "teaching_narration",
+        "domainResult": {
+            "responseMode": "teaching_narration",
+            "visibleContent": "本节学习「温湿度管控」。\n学习目标：能够说明超标后的恢复条件。",
+        },
+    })
+
+    content = result["domainResult"]["visibleContent"]
+    assert "学习目标：能够说明超标后的恢复条件" in content
+    assert "具体作业案例" in content
+    assert "参考依据" in content
+
+
 def test_text_leaf_persists_business_response():
     """自由文本叶子也应写入课堂消息、事件和幂等快照。"""
     persisted = Mock(eventId="evt-text", progressUpdate=None)
