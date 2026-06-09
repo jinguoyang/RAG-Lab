@@ -641,11 +641,18 @@ def _build_sections(
     return sections
 
 
-def create_plan_draft(session: Session, credential: str, request: Any) -> PlanDraftDTO:
+def create_plan_draft(
+    session: Session,
+    credential: str,
+    request: Any,
+    task_id: str | None = None,
+) -> PlanDraftDTO:
     """基于当前员工培训 App 的知识库证据生成学习计划草稿。
 
     优先使用 LLM 生成，失败时静默回退到规则化逻辑。
     """
+    from app.services.task_manager import task_manager as _tm
+
     context = resolve_training_context(session, credential)
     audit = begin_app_llm_invocation(
         session,
@@ -665,9 +672,19 @@ def create_plan_draft(session: Session, credential: str, request: Any) -> PlanDr
     try:
         now = datetime.now(UTC)
         query = f"{request.jobTitle} {request.jobDescription or ''}".strip()
+
+        if task_id:
+            _tm.append_log(task_id, "info", "正在检索知识库证据...")
+
         rows = read_training_evidence(session, context.kb_row["kb_id"], query, limit=8)
 
+        if task_id:
+            _tm.append_log(task_id, "info", f"检索到 {len(rows)} 条证据")
+
         # 尝试 LLM 生成
+        if task_id:
+            _tm.append_log(task_id, "info", "正在调用 LLM 生成学习计划...")
+
         llm_result = _generate_plan_with_llm(
             session,
             request.jobTitle,
@@ -679,11 +696,18 @@ def create_plan_draft(session: Session, credential: str, request: Any) -> PlanDr
         fallback = llm_result is None
         if llm_result is not None:
             groups, documents, reading_order, recommend_reason, evidence_chunk_ids = llm_result
+            if task_id:
+                _tm.append_log(task_id, "info", "LLM 生成学习计划成功")
         else:
-            # 回退到规则化逻辑
+            if task_id:
+                _tm.append_log(task_id, "warning", "LLM 生成失败，回退到规则化逻辑")
             groups, documents, reading_order, recommend_reason, evidence_chunk_ids = _rule_based_plan(
                 request.jobTitle, rows,
             )
+
+        if task_id:
+            _tm.append_log(task_id, "info", "正在获取文档详细内容...")
+
         full_rows = read_training_evidence(
             session,
             context.kb_row["kb_id"],
@@ -693,6 +717,10 @@ def create_plan_draft(session: Session, credential: str, request: Any) -> PlanDr
         )
         if not full_rows:
             full_rows = rows
+
+        if task_id:
+            _tm.append_log(task_id, "info", "正在生成课程章节...")
+
         sections = _generate_sections_with_llm(
             session,
             request.jobTitle,
@@ -701,6 +729,9 @@ def create_plan_draft(session: Session, credential: str, request: Any) -> PlanDr
             full_rows,
             str(context.app_row["app_id"]),
         ) or _build_sections(groups, documents, full_rows)
+
+        if task_id:
+            _tm.append_log(task_id, "info", f"生成了 {len(sections)} 个课程章节")
         evidence_chunk_ids = [str(row["chunk_id"]) for row in full_rows]
 
         plan_id = new_id()
@@ -732,6 +763,9 @@ def create_plan_draft(session: Session, credential: str, request: Any) -> PlanDr
             )
         )
         session.commit()
+
+        if task_id:
+            _tm.append_log(task_id, "info", "学习计划已保存到数据库")
 
         response = PlanDraftDTO(
             planId=str(plan_id),

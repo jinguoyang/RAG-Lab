@@ -29,6 +29,7 @@ from app.services.training_agent_service import (
     read_training_evidence,
     resolve_training_context,
 )
+from app.services.task_manager import task_manager
 from app.services.training_llm_client import LLMCallError, call_llm
 from app.services.training_llm_json_service import TrainingLLMOutputError, parse_training_json
 from app.services.training_skill_registry_service import record_training_skill_call
@@ -359,12 +360,17 @@ def _generate_questions_with_llm(
     return questions
 
 
-def create_question_drafts(session: Session, credential: str, request: Any) -> list[QuestionDraftDTO]:
+def create_question_drafts(session: Session, credential: str, request: Any, *, task_id: str | None = None) -> list[QuestionDraftDTO]:
     """基于知识库证据生成判断、选择和主观题草稿。
 
     优先使用 LLM 辅助出题，LLM 失败时静默回退到模板生成。
     """
+    def _log(level: str, message: str) -> None:
+        if task_id:
+            task_manager.append_log(task_id, level, message)
+
     context = resolve_training_context(session, credential)
+    _log("info", "正在初始化题目生成上下文...")
     audit = begin_app_llm_invocation(
         session,
         context,
@@ -393,7 +399,8 @@ def create_question_drafts(session: Session, credential: str, request: Any) -> l
         responses: list[QuestionDraftDTO] = []
         fallback = False
         document_batches = requested_document_ids or [None]
-        for document_id in document_batches:
+        for batch_idx, document_id in enumerate(document_batches, 1):
+            _log("info", f"正在读取知识库证据（批次 {batch_idx}/{len(document_batches)}）...")
             rows = read_training_evidence(
                 session,
                 context.kb_row["kb_id"],
@@ -403,7 +410,9 @@ def create_question_drafts(session: Session, credential: str, request: Any) -> l
             )
             if not rows:
                 rows = []
+            _log("info", f"读取到 {len(rows)} 条证据")
 
+            _log("info", "正在调用 LLM 生成题目...")
             evidence_summaries = [evidence_preview(row) for row in rows]
             llm_questions = _generate_questions_with_llm(
                 session,
@@ -413,6 +422,10 @@ def create_question_drafts(session: Session, credential: str, request: Any) -> l
                 app_id=str(context.app_row["app_id"]),
             )
             fallback = fallback or not llm_questions
+            if llm_questions:
+                _log("info", f"LLM 生成了 {len(llm_questions)} 道题目")
+            else:
+                _log("warning", "LLM 生成失败，回退到模板生成")
             question_types = _question_type_sequence(question_count)
             aligned_llm_questions = _align_llm_questions_to_ratio(llm_questions, question_types)
 
@@ -431,8 +444,10 @@ def create_question_drafts(session: Session, credential: str, request: Any) -> l
                     )
                 )
 
+        _log("info", "正在保存题目草稿...")
         session.commit()
         question_ids = [item.questionId for item in responses]
+        _log("info", f"题目草稿生成完成，共 {len(responses)} 道")
         finish_app_llm_invocation(
             session,
             audit,
@@ -454,6 +469,7 @@ def create_question_drafts(session: Session, credential: str, request: Any) -> l
         return responses
     except Exception as exc:
         session.rollback()
+        _log("error", f"生成失败: {exc}")
         finish_app_llm_invocation(
             session,
             audit,

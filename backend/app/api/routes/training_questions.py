@@ -1,4 +1,8 @@
 """员工培训题库平台侧端点。"""
+from __future__ import annotations
+
+import logging
+import threading
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
@@ -8,6 +12,7 @@ from app.api.deps import get_current_user
 from app.api.routes.app_runtime import _extract_bearer_token, _raise_runtime_error
 from app.core.database import get_db_session
 from app.schemas.auth import CurrentUserResponse
+from app.schemas.task import TaskSummaryDTO
 from app.schemas.training_question import (
     QuestionAppealDTO,
     QuestionAppealRequest,
@@ -17,6 +22,7 @@ from app.schemas.training_question import (
     QuestionReviewRequest,
     QuestionUpdateRequest,
 )
+from app.services.task_manager import TaskType, task_manager
 from app.services.training_agent_service import TrainingAgentConflictError, TrainingAgentNotFoundError
 from app.services.training_question_service import (
     create_question_appeal,
@@ -28,6 +34,8 @@ from app.services.training_question_service import (
     update_question,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/training/questions", tags=["training"])
 
 
@@ -37,21 +45,41 @@ def _require_training_admin(current_user: CurrentUserResponse) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PERMISSION_DENIED")
 
 
-@router.post("/drafts", response_model=list[QuestionDraftDTO], status_code=status.HTTP_201_CREATED)
+def _run_question_draft_task(task_id: str, credential: str, request: QuestionDraftRequest) -> None:
+    """后台执行题目草稿生成任务。"""
+    session: Session | None = None
+    task_manager.start_task(task_id)
+    try:
+        from app.core.database import get_session_factory
+
+        session = get_session_factory()()
+        task_manager.append_log(task_id, "info", "开始生成题目草稿...")
+        result = create_question_drafts(session, credential, request, task_id=task_id)
+        task_manager.append_log(task_id, "info", "题目草稿生成完成")
+        task_manager.complete_task(task_id, result=[item.model_dump() for item in result])
+    except Exception as exc:
+        logger.exception("题目草稿生成失败: %s", exc)
+        task_manager.append_log(task_id, "error", f"生成失败: {exc}")
+        task_manager.fail_task(task_id, str(exc))
+    finally:
+        if session is not None:
+            session.close()
+
+
+@router.post("/drafts", response_model=TaskSummaryDTO, status_code=status.HTTP_202_ACCEPTED)
 def create_training_question_drafts(
     request: QuestionDraftRequest,
     authorization: Annotated[str | None, Header(alias="Authorization")] = None,
-    session: Session = Depends(get_db_session),
-) -> list[QuestionDraftDTO]:
-    """基于员工培训 Agent 和知识库证据生成题目草稿。"""
+) -> TaskSummaryDTO:
+    """基于员工培训 Agent 和知识库证据生成题目草稿（异步后台执行）。"""
     credential = _extract_bearer_token(authorization)
-    try:
-        return create_question_drafts(session, credential, request)
-    except TrainingAgentConflictError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    except Exception as exc:
-        _raise_runtime_error(exc)
-        raise
+    task = task_manager.create_task(
+        task_type=TaskType.QUESTION_GENERATION,
+        title=f"生成题目草稿: {request.jobTitle or request.planId}",
+    )
+    thread = threading.Thread(target=_run_question_draft_task, args=(task.id, credential, request), daemon=True)
+    thread.start()
+    return TaskSummaryDTO(**task.to_summary())
 
 
 @router.post("/{question_id}/publish", response_model=QuestionDraftDTO)
