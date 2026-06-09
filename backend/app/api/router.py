@@ -19,6 +19,7 @@ from app.api.routes.bindings import router as bindings_router
 from app.api.routes.observability import router as observability_router
 from app.api.routes.qa_runs import router as qa_runs_router
 from app.api.routes.rag_apps import router as rag_apps_router
+from app.api.routes.tasks import router as tasks_router
 from app.api.routes.training_plans import router as training_plans_router
 from app.api.routes.training_questions import router as training_questions_router
 from app.api.routes.training_classroom import router as training_classroom_router
@@ -50,6 +51,7 @@ api_router.include_router(parser_routing_router)
 api_router.include_router(qa_runs_router)
 api_router.include_router(graph_router)
 api_router.include_router(rag_apps_router)
+api_router.include_router(tasks_router)
 api_router.include_router(app_runtime_router)
 api_router.include_router(library_router)
 api_router.include_router(library_management_router)
