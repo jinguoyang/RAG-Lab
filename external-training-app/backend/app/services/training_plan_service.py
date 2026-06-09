@@ -24,21 +24,19 @@ def _serialize_sections(sections: list[Any] | None) -> list[dict[str, Any]]:
     ]
 
 
-def create_plan_draft(session: Session, user_id: str | None, request: Any) -> Any:
-    """生成学习计划草稿。
+def create_plan_draft(session: Session, user_id: str | None, request: Any) -> dict:
+    """生成学习计划草稿（异步）。
 
-    草稿只作为页面编辑的临时数据返回，不在 ex-app 本地落库；最终计划由
-    save_plan 统一保存，避免本地长期维护 draft 状态。
+    调用平台 API 创建后台任务，返回任务信息供前端订阅 SSE。
     """
     import httpx
     from app.core.config import get_settings
-    from app.schemas.training_plan import TrainingPlanDTO
     from app.services.platform_client import PlatformClient
 
     settings = get_settings()
     client = PlatformClient(settings.platform_base_url, settings.platform_api_key)
     try:
-        plan_data = client.create_plan_draft(
+        task_data = client.create_plan_draft(
             job_title=request.jobTitle,
             job_description=request.jobDescription,
         )
@@ -50,24 +48,8 @@ def create_plan_draft(session: Session, user_id: str | None, request: Any) -> An
     except httpx.ConnectError:
         raise TrainingPlanConflictError("无法连接平台服务，请检查配置")
 
-    return TrainingPlanDTO(
-        planId=plan_data["planId"],
-        appId=plan_data["appId"],
-        planName=request.planName or plan_data["jobTitle"],
-        jobTitle=plan_data["jobTitle"],
-        jobDescription=plan_data["jobDescription"],
-        status=plan_data["status"],
-        abilityGroups=plan_data["abilityGroups"],
-        documents=plan_data["documents"],
-        evidenceChunkIds=plan_data["evidenceChunkIds"],
-        recommendReason=plan_data["recommendReason"],
-        readingOrder=plan_data["readingOrder"],
-        sections=plan_data.get("sections") or [],
-        employeeIds=[],
-        version=plan_data["version"],
-        createdAt=plan_data["createdAt"],
-        updatedAt=plan_data["updatedAt"],
-    )
+    # 返回任务信息（id, type, title, status, createdAt 等）
+    return task_data
 
 
 def list_plans(session: Session, app_id: str | None = None) -> list[dict]:

@@ -44,12 +44,13 @@ def _raise_error(exc: Exception) -> None:
     raise HTTPException(status_code=500, detail=str(exc))
 
 
-@router.post("/drafts", response_model=TrainingPlanDTO, status_code=status.HTTP_201_CREATED)
+@router.post("/drafts", status_code=status.HTTP_202_ACCEPTED)
 def create_draft(
     request: TrainingPlanDraftRequest,
     authorization: Annotated[str | None, Header(alias="Authorization")] = None,
     session: Session = Depends(get_db),
 ):
+    """创建学习计划草稿（异步后台任务）。"""
     try:
         user_id = _extract_user_id(authorization)
         return create_plan_draft(session, user_id, request)

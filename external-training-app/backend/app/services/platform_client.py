@@ -14,7 +14,7 @@ class PlatformClient:
         self.headers = {"Authorization": f"Bearer {api_key}"}
 
     def create_plan_draft(self, job_title: str, job_description: str) -> dict:
-        """调用平台 /training/plans/drafts 生成学习计划。"""
+        """调用平台 /training/plans/drafts 生成学习计划（异步，返回任务信息）。"""
         resp = httpx.post(
             f"{self.base_url}/training/plans/drafts",
             headers=self.headers,
@@ -26,6 +26,45 @@ class PlatformClient:
         )
         resp.raise_for_status()
         return resp.json()
+
+    def get_task(self, task_id: str) -> dict:
+        """获取任务详情。"""
+        resp = httpx.get(
+            f"{self.base_url}/tasks/{task_id}",
+            headers=self.headers,
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def list_tasks(self) -> dict:
+        """获取所有任务列表。"""
+        resp = httpx.get(
+            f"{self.base_url}/tasks",
+            headers=self.headers,
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def cancel_task(self, task_id: str) -> dict:
+        """取消任务。"""
+        resp = httpx.post(
+            f"{self.base_url}/tasks/{task_id}/cancel",
+            headers=self.headers,
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def remove_task(self, task_id: str) -> None:
+        """删除任务。"""
+        resp = httpx.delete(
+            f"{self.base_url}/tasks/{task_id}",
+            headers=self.headers,
+            timeout=10.0,
+        )
+        resp.raise_for_status()
 
     def list_training_documents(
         self,
