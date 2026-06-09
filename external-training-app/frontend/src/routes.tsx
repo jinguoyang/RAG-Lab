@@ -7,6 +7,7 @@ import { QuestionReviewPage } from "./pages/QuestionReviewPage";
 import { QuestionBankPage } from "./pages/QuestionBankPage";
 import { PlanDetailPage } from "./pages/PlanDetailPage";
 import { QuizPage } from "./pages/QuizPage";
+import { TaskDetailPage } from "./pages/TaskDetailPage";
 
 export const router = createBrowserRouter([
   {
@@ -20,6 +21,7 @@ export const router = createBrowserRouter([
       { path: "plans/:planId/quiz", element: <QuizPage /> },
       { path: "questions", element: <QuestionReviewPage /> },
       { path: "question-bank", element: <QuestionBankPage /> },
+      { path: "tasks/:taskId", element: <TaskDetailPage /> },
     ],
   },
 ]);

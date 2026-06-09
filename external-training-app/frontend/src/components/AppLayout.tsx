@@ -6,6 +6,7 @@ import {
   FileQuestion,
   Home,
 } from "lucide-react";
+import { TaskList } from "./TaskList";
 
 const navItems = [
   { to: "/", label: "首页", icon: Home, end: true },
@@ -42,10 +43,7 @@ export function AppLayout() {
           ))}
         </nav>
 
-        <div className="sidebar-note">
-          <p>无 LLM / RAG Provider 能力</p>
-          <span>所有智能输出均由平台 API 返回，外部应用只负责审核、渲染与本地记录。</span>
-        </div>
+        <TaskList />
       </aside>
 
       <main className="app-main">

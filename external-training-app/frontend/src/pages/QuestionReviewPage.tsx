@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 import {
   CheckCircle2,
   CircleAlert,
@@ -9,6 +10,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
+import { useTaskContext } from "../contexts/TaskContext";
 import {
   createQuestion,
   generateQuestionDrafts,
@@ -316,6 +318,8 @@ function ManualQuestionForm({
 // ── 主页面 ──
 
 export function QuestionReviewPage() {
+  const navigate = useNavigate();
+  const { addTask } = useTaskContext();
   const [questions, setQuestions] = useState<TrainingQuestion[]>([]);
   const [plans, setPlans] = useState<TrainingPlan[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState("");
@@ -399,14 +403,19 @@ export function QuestionReviewPage() {
         }
         return "";
       }).filter(Boolean);
-      await generateQuestionDrafts({
+      const task = await generateQuestionDrafts({
         planId: selectedPlan.planId,
         jobTitle: selectedPlan.jobTitle,
         abilityGroups,
         count: 10,
         documentIds: [filterDocumentId],
       });
-      await loadQuestions(selectedPlanId);
+      addTask({
+        ...task,
+        logs: [],
+        status: task.status as "pending" | "running" | "completed" | "failed" | "cancelled",
+      });
+      navigate(`/tasks/${task.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

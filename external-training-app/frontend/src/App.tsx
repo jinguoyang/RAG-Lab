@@ -1,6 +1,11 @@
 import { RouterProvider } from "react-router";
 import { router } from "./routes";
+import { TaskProvider } from "./contexts/TaskContext";
 
 export default function App() {
-  return <RouterProvider router={router} />;
+  return (
+    <TaskProvider>
+      <RouterProvider router={router} />
+    </TaskProvider>
+  );
 }

@@ -1,4 +1,5 @@
 import { apiDelete, apiGet, apiPatch, apiPost } from "./apiClient";
+import type { TaskSummary } from "../contexts/TaskContext";
 import type {
   QuestionDraftRequest,
   QuestionReviewRequest,
@@ -14,7 +15,7 @@ export function listQuestions(planId?: string, status?: string): Promise<Trainin
   return apiGet(`/training/questions${query}`);
 }
 
-export function generateQuestionDrafts(data: QuestionDraftRequest): Promise<TrainingQuestion[]> {
+export function generateQuestionDrafts(data: QuestionDraftRequest): Promise<TaskSummary> {
   return apiPost("/training/questions/drafts", data);
 }
 

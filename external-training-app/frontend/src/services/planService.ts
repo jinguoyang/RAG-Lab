@@ -51,6 +51,17 @@ export interface TrainingSection {
   required: boolean;
 }
 
+export interface TaskSummary {
+  id: string;
+  type: string;
+  title: string;
+  status: string;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  error?: string;
+}
+
 export function listPlans(): Promise<TrainingPlan[]> {
   return apiGet("/training/plans");
 }
@@ -63,7 +74,7 @@ export function generatePlanDraft(data: {
   jobTitle: string;
   jobDescription: string;
   planName?: string;
-}): Promise<TrainingPlan> {
+}): Promise<TaskSummary> {
   return apiPost("/training/plans/drafts", data);
 }
 

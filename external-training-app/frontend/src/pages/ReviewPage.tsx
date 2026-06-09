@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router";
 import {
   ArrowDown,
   ArrowUp,
   CircleAlert,
   FileSearch,
+  Loader2,
   Pencil,
   Plus,
   Save,
@@ -23,6 +24,7 @@ import {
   type TrainingPlan,
   type TrainingSection,
 } from "../services/planService";
+import { useTaskContext } from "../contexts/TaskContext";
 
 const MOCK_EMPLOYEES = [
   { id: "emp-001", name: "张三", department: "检修车间" },
@@ -92,8 +94,32 @@ function normalizeTrainingDocuments(documents: TrainingDocument[] = [], abilityG
   return documents.map((document, index) => normalizeTrainingDocument(document, index, abilityGroups));
 }
 
+interface DraftPlan {
+  taskId: string;
+  planName: string;
+  jobTitle: string;
+  createdAt: string;
+}
+
 export function ReviewPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { addTask, getTask, subscribeToTask } = useTaskContext();
+  const [draftPlans, setDraftPlans] = useState<DraftPlan[]>([]);
+
+  // 从导航状态中读取草稿计划（从编辑器跳转过来时携带）
+  useEffect(() => {
+    const draft = (location.state as { draft?: DraftPlan } | null)?.draft;
+    if (draft) {
+      setDraftPlans((prev) => {
+        if (prev.some((d) => d.taskId === draft.taskId)) return prev;
+        return [...prev, draft];
+      });
+      // 清除导航状态，避免刷新页面时重复添加
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, []);
+  const draftCleanupRef = useRef<Map<string, () => void>>(new Map());
   const [plans, setPlans] = useState<TrainingPlan[]>([]);
   const [viewMode, setViewMode] = useState<"list" | "editor">("list");
   const [editingPlan, setEditingPlan] = useState<TrainingPlan | null>(null);
@@ -166,6 +192,52 @@ export function ReviewPage() {
     };
   }, []);
 
+  // 为每个生成中的草稿订阅 SSE，任务完成后自动刷新列表
+  useEffect(() => {
+    for (const draft of draftPlans) {
+      if (draftCleanupRef.current.has(draft.taskId)) continue;
+      const unsubscribe = subscribeToTask(draft.taskId);
+      draftCleanupRef.current.set(draft.taskId, unsubscribe);
+    }
+    // 清理已移除的草稿订阅
+    for (const [taskId, cleanup] of draftCleanupRef.current) {
+      if (!draftPlans.some((d) => d.taskId === taskId)) {
+        cleanup();
+        draftCleanupRef.current.delete(taskId);
+      }
+    }
+  }, [draftPlans, subscribeToTask]);
+
+  // 组件卸载时清理所有草稿订阅
+  useEffect(() => {
+    return () => {
+      for (const cleanup of draftCleanupRef.current.values()) {
+        cleanup();
+      }
+      draftCleanupRef.current.clear();
+    };
+  }, []);
+
+  // 监听任务状态变化，完成后用 result 打开编辑器
+  useEffect(() => {
+    for (const draft of draftPlans) {
+      const task = getTask(draft.taskId);
+      if (!task) continue;
+      if (task.status === "completed") {
+        setDraftPlans((prev) => prev.filter((d) => d.taskId !== draft.taskId));
+        const planResult = task.result as TrainingPlan | undefined;
+        if (planResult && planResult.planId) {
+          // 用平台返回的草稿数据打开编辑器，用户审核后手动保存
+          openEditor(planResult);
+        } else {
+          void refreshPlans();
+        }
+      }
+      // failed 状态保留在列表中，用户可手动关闭
+    }
+    // getTask 随 tasks Map 变化而重建，已隐式依赖 tasks 更新
+  }, [draftPlans, getTask]);
+
   function resetEditor() {
     setViewMode("list");
     setEditingPlan(null);
@@ -207,18 +279,25 @@ export function ReviewPage() {
     setLoading(true);
     setError("");
     try {
-      const draft = await generatePlanDraft({
+      const task = await generatePlanDraft({
         planName: form.planName,
         jobTitle: form.jobTitle,
         jobDescription: form.jobDescription,
       });
-      // 使用平台推荐的文档作为候选
-      setSelectedDocs(normalizeTrainingDocuments((draft.documents || []) as TrainingDocument[], draft.abilityGroups || []));
-      setSelectedSections(draft.sections || []);
-      // 如果是新计划，保存 draft 的 planId 用于后续保存
-      if (!editingPlan) {
-        setEditingPlan(draft);
-      }
+      // 添加任务到上下文
+      addTask({
+        ...task,
+        logs: [],
+        status: task.status as 'pending' | 'running' | 'completed' | 'failed' | 'cancelled',
+      });
+      // 携带草稿信息导航到学习计划列表页
+      const draft: DraftPlan = {
+        taskId: task.id,
+        planName: form.planName || form.jobTitle,
+        jobTitle: form.jobTitle,
+        createdAt: task.createdAt,
+      };
+      navigate("/reviews", { state: { draft } });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -355,7 +434,44 @@ export function ReviewPage() {
         )}
 
         <section className="list-section">
-          {savedPlans.length === 0 ? (
+          {draftPlans.map((draft) => {
+            const task = getTask(draft.taskId);
+            const isFailed = task?.status === "failed";
+            return (
+              <article key={`draft-${draft.taskId}`} className={`plan-item draft${isFailed ? " draft-failed" : ""}`}>
+                <div className="item-top">
+                  <div>
+                    <span className="tag">{isFailed ? "生成失败" : "生成中"}</span>
+                    <span className={`status ${isFailed ? "rejected" : "pending"}`}>
+                      {isFailed ? (
+                        <><CircleAlert size={14} aria-hidden="true" /> 失败</>
+                      ) : (
+                        <><Loader2 size={14} className="spinning" aria-hidden="true" /> 生成中</>
+                      )}
+                    </span>
+                  </div>
+                  <time>{new Date(draft.createdAt).toLocaleString()}</time>
+                </div>
+                <h3>{draft.planName}</h3>
+                <div className="answer-grid">
+                  <div>
+                    <span>岗位</span>
+                    <strong>{draft.jobTitle}</strong>
+                  </div>
+                </div>
+                {isFailed && (
+                  <button
+                    className="button ghost"
+                    onClick={() => setDraftPlans((prev) => prev.filter((d) => d.taskId !== draft.taskId))}
+                  >
+                    <X size={14} aria-hidden="true" />
+                    关闭
+                  </button>
+                )}
+              </article>
+            );
+          })}
+          {draftPlans.length === 0 && savedPlans.length === 0 ? (
             <div className="empty-state">
               <FileSearch size={28} aria-hidden="true" />
               <h3>暂无学习计划</h3>
