@@ -28,6 +28,7 @@ export interface TaskSummary {
   createdAt: string;
   startedAt?: string;
   completedAt?: string;
+  result?: unknown;
   error?: string;
 }
 
@@ -47,64 +48,6 @@ const API_BASE = '/api/v1';
 export function TaskProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<Map<string, Task>>(new Map());
   const eventSourcesRef = useRef<Map<string, EventSource>>(new Map());
-
-  const fetchTasks = useCallback(async () => {
-    try {
-      const response = await fetch(`${API_BASE}/tasks`);
-      if (!response.ok) return;
-      const data = await response.json();
-      setTasks(prev => {
-        const next = new Map(prev);
-        for (const summary of data.tasks) {
-          const existing = next.get(summary.id);
-          if (!existing) {
-            next.set(summary.id, { ...summary, logs: [] });
-          } else {
-            next.set(summary.id, {
-              ...existing,
-              status: summary.status,
-              startedAt: summary.startedAt,
-              completedAt: summary.completedAt,
-              error: summary.error,
-            });
-          }
-        }
-        return next;
-      });
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchTasks();
-  }, [fetchTasks]);
-
-  const addTask = useCallback((task: Task) => {
-    setTasks(prev => {
-      const next = new Map(prev);
-      next.set(task.id, task);
-      return next;
-    });
-  }, []);
-
-  const removeTask = useCallback((taskId: string) => {
-    const es = eventSourcesRef.current.get(taskId);
-    if (es) {
-      es.close();
-      eventSourcesRef.current.delete(taskId);
-    }
-    setTasks(prev => {
-      const next = new Map(prev);
-      next.delete(taskId);
-      return next;
-    });
-    void fetch(`${API_BASE}/tasks/${taskId}`, { method: 'DELETE' }).catch(() => {});
-  }, []);
-
-  const getTask = useCallback((taskId: string) => {
-    return tasks.get(taskId);
-  }, [tasks]);
 
   const subscribeToTask = useCallback((taskId: string) => {
     const existing = eventSourcesRef.current.get(taskId);
@@ -180,6 +123,75 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       eventSourcesRef.current.delete(taskId);
     };
   }, []);
+
+  const fetchTasks = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE}/tasks`);
+      if (!response.ok) return;
+      const data = await response.json();
+      const activeIds: string[] = [];
+      setTasks(prev => {
+        const next = new Map(prev);
+        for (const summary of data.tasks) {
+          const existing = next.get(summary.id);
+          if (!existing) {
+            next.set(summary.id, { ...summary, logs: [] });
+          } else {
+            next.set(summary.id, {
+              ...existing,
+              status: summary.status,
+              startedAt: summary.startedAt,
+              completedAt: summary.completedAt,
+              result: summary.result ?? existing.result,
+              error: summary.error,
+            });
+          }
+          if (summary.status === 'pending' || summary.status === 'running') {
+            activeIds.push(summary.id);
+          }
+        }
+        return next;
+      });
+      // 为活跃任务重新订阅 SSE 流
+      for (const id of activeIds) {
+        if (!eventSourcesRef.current.has(id)) {
+          subscribeToTask(id);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [subscribeToTask]);
+
+  useEffect(() => {
+    void fetchTasks();
+  }, [fetchTasks]);
+
+  const addTask = useCallback((task: Task) => {
+    setTasks(prev => {
+      const next = new Map(prev);
+      next.set(task.id, task);
+      return next;
+    });
+  }, []);
+
+  const removeTask = useCallback((taskId: string) => {
+    const es = eventSourcesRef.current.get(taskId);
+    if (es) {
+      es.close();
+      eventSourcesRef.current.delete(taskId);
+    }
+    setTasks(prev => {
+      const next = new Map(prev);
+      next.delete(taskId);
+      return next;
+    });
+    void fetch(`${API_BASE}/tasks/${taskId}`, { method: 'DELETE' }).catch(() => {});
+  }, []);
+
+  const getTask = useCallback((taskId: string) => {
+    return tasks.get(taskId);
+  }, [tasks]);
 
   const activeTasks: TaskSummary[] = Array.from(tasks.values())
     .filter(t => t.status === 'pending' || t.status === 'running')

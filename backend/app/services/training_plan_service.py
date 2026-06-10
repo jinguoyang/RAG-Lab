@@ -30,6 +30,38 @@ from app.tables import training_plans
 logger = logging.getLogger(__name__)
 
 
+def _order_documents(documents: list[DocumentDTO], reading_order: list[str]) -> list[DocumentDTO]:
+    """按推荐顺序排列文档，数组顺序将成为课堂执行顺序。"""
+    by_id = {document.documentId: document for document in documents}
+    ordered = [by_id[document_id] for document_id in reading_order if document_id in by_id]
+    ordered_ids = {document.documentId for document in ordered}
+    return [*ordered, *(document for document in documents if document.documentId not in ordered_ids)]
+
+
+def _load_documents_with_legacy_sections(
+    raw_documents: list[dict[str, Any]],
+    metadata: Mapping[str, Any],
+) -> list[DocumentDTO]:
+    """读取旧草稿时，仅归并可唯一定位到单份文档的小节。"""
+    documents = [DocumentDTO(**item) for item in raw_documents]
+    if any(document.sections for document in documents):
+        return documents
+    sections_by_document: dict[str, list[LearningSectionDTO]] = {}
+    for raw_section in metadata.get("sections") or []:
+        if not isinstance(raw_section, dict):
+            continue
+        source_ids = raw_section.get("sourceDocumentIds")
+        if not isinstance(source_ids, list) or len(source_ids) != 1:
+            continue
+        section_data = dict(raw_section)
+        section_data.pop("sourceDocumentIds", None)
+        sections_by_document.setdefault(str(source_ids[0]), []).append(LearningSectionDTO(**section_data))
+    return [
+        document.model_copy(update={"sections": sections_by_document.get(document.documentId, [])})
+        for document in documents
+    ]
+
+
 def _difficulty_for_index(index: int) -> str:
     """按学习顺序给出可编辑的默认难度分层。"""
     if index <= 1:
@@ -203,8 +235,8 @@ def _build_section_prompt(
         "你是企业一对一培训课程设计师。你要先理解完整制度结构，再按业务逻辑和可验证学习目标设计课程，"
         "不能按 Chunk 数量机械分节，也不能把 Chunk 原文直接当讲稿。\n"
         "严格返回 JSON，不要输出其他文字。格式为：\n"
-        '{"sections":[{"sectionId":"section-001","title":"string","learningObjective":"string",'
-        '"sourceDocumentIds":["documentId"],"evidenceChunkIds":["chunkId"],"keyPoints":["string"],'
+        '{"sections":[{"sectionId":"section-001","documentId":"documentId","title":"string","learningObjective":"string",'
+        '"evidenceChunkIds":["chunkId"],"keyPoints":["string"],'
         '"checkpointCriteria":["string"],"opening":"string","explanation":"string",'
         '"scenario":"string","interactionQuestions":["string"],"summary":"string",'
         '"estimatedMinutes":8,"required":true}]}\n'
@@ -214,7 +246,7 @@ def _build_section_prompt(
         "3. opening、explanation、scenario、interactionQuestions、summary 必须直接位于 section 对象中，禁止再嵌套对象。"
         " explanation 必须像教师讲稿一样解释概念关系、职责边界或流程顺序，不得列出 Chunk 标签或复制大段原文。\n"
         "4. opening 使用岗位情境提问；scenario 必须包含具体条件、判断过程和正确动作；interactionQuestions 为 1 至 3 个。\n"
-        "5. sourceDocumentIds 和 evidenceChunkIds 只能使用输入中真实存在的 ID。\n"
+        "5. documentId 和 evidenceChunkIds 只能使用输入中真实存在的 ID，每个小节只能属于一份文档。\n"
         "6. Checkpoint 标准必须可观察、可判断，不能写成泛泛的“理解本节”。"
     )
     user = (
@@ -229,29 +261,35 @@ def _parse_generated_sections(
     data: Mapping[str, Any],
     documents: list[DocumentDTO],
     rows: list[Mapping[str, Any]],
-) -> list[LearningSectionDTO]:
-    """校验模型章节来源并计算教学质量分。"""
+) -> list[DocumentDTO]:
+    """校验模型小节归属，并将有效小节挂到对应文档。"""
     valid_document_ids = {item.documentId for item in documents}
-    valid_chunk_ids = {str(row.get("chunk_id") or "") for row in rows}
+    chunk_document_ids = {
+        str(row.get("chunk_id") or ""): str(row.get("document_id") or "")
+        for row in rows
+        if row.get("chunk_id")
+    }
     evidence_by_chunk = {
         str(row.get("chunk_id") or ""): str(row.get("content") or "")
         for row in rows
         if row.get("chunk_id")
     }
-    sections: list[LearningSectionDTO] = []
+    sections_by_document: dict[str, list[LearningSectionDTO]] = {
+        document.documentId: [] for document in documents
+    }
+    seen_section_ids: set[str] = set()
     for index, raw in enumerate(data.get("sections") or [], start=1):
         if not isinstance(raw, Mapping):
             continue
-        source_document_ids = [
-            str(item) for item in (raw.get("sourceDocumentIds") or [])
-            if str(item) in valid_document_ids
-        ]
+        document_id = str(raw.get("documentId") or "")
         evidence_chunk_ids = [
             str(item) for item in (raw.get("evidenceChunkIds") or [])
-            if str(item) in valid_chunk_ids
+            if chunk_document_ids.get(str(item)) == document_id
         ]
-        if not source_document_ids or not evidence_chunk_ids:
+        section_id = str(raw.get("sectionId") or f"section-{index:03d}")
+        if document_id not in valid_document_ids or not evidence_chunk_ids or section_id in seen_section_ids:
             continue
+        seen_section_ids.add(section_id)
         script_raw = raw.get("teachingScript")
         if not isinstance(script_raw, Mapping):
             script_raw = {
@@ -272,12 +310,11 @@ def _parse_generated_sections(
             checkpoint_criteria=criteria,
             evidence_texts=[evidence_by_chunk[item] for item in evidence_chunk_ids if item in evidence_by_chunk],
         )
-        sections.append(
+        sections_by_document[document_id].append(
             LearningSectionDTO(
-                sectionId=str(raw.get("sectionId") or f"section-{index:03d}"),
+                sectionId=section_id,
                 title=str(raw.get("title") or f"第 {index} 节"),
                 learningObjective=objective,
-                sourceDocumentIds=source_document_ids,
                 evidenceChunkIds=evidence_chunk_ids,
                 keyPoints=key_points,
                 checkpointCriteria=criteria,
@@ -287,7 +324,10 @@ def _parse_generated_sections(
                 required=bool(raw.get("required", True)),
             )
         )
-    return sections
+    return [
+        document.model_copy(update={"sections": sections_by_document[document.documentId]})
+        for document in documents
+    ]
 
 
 def _generate_sections_with_llm(
@@ -297,8 +337,8 @@ def _generate_sections_with_llm(
     documents: list[DocumentDTO],
     rows: list[Mapping[str, Any]],
     app_id: str,
-) -> list[LearningSectionDTO] | None:
-    """基于入选文档全文生成章节课程蓝图，失败时由调用方回退。"""
+) -> list[DocumentDTO] | None:
+    """基于入选文档全文生成文档内课程小节，失败时由调用方回退。"""
     content_map = _build_document_content_map(rows)
     if not content_map:
         return None
@@ -333,7 +373,8 @@ def _generate_sections_with_llm(
                 last_parse_error = exc
         if data is None:
             raise last_parse_error or TrainingLLMOutputError("课程蓝图输出无法解析。")
-        sections = _parse_generated_sections(data, documents, rows)
+        generated_documents = _parse_generated_sections(data, documents, rows)
+        sections = [section for document in generated_documents for section in document.sections]
         if sections and any(section.teachingQualityScore < 0.7 for section in sections):
             scores = ", ".join(
                 f"{section.sectionId}={section.teachingQualityScore:.2f}"
@@ -361,15 +402,18 @@ def _generate_sections_with_llm(
                 disable_thinking=True,
             )
             repaired_data = parse_training_json(repaired_text, required_keys={"sections"})
-            repaired_sections = _parse_generated_sections(repaired_data, documents, rows)
+            repaired_documents = _parse_generated_sections(repaired_data, documents, rows)
+            repaired_sections = [section for document in repaired_documents for section in document.sections]
             if repaired_sections:
                 old_average = sum(item.teachingQualityScore for item in sections) / len(sections)
                 new_average = sum(item.teachingQualityScore for item in repaired_sections) / len(repaired_sections)
                 if new_average >= old_average:
                     sections = repaired_sections
+                    generated_documents = repaired_documents
     except (LLMCallError, TrainingLLMOutputError, ValueError, TypeError) as exc:
         logger.warning("课程蓝图生成失败，将回退到规则化小节: %s", exc)
         sections = []
+        generated_documents = []
     latency_ms = int((time.monotonic() - started_at) * 1000)
     record_training_skill_call(
         session,
@@ -382,7 +426,9 @@ def _generate_sections_with_llm(
         latency_ms=latency_ms,
     )
     session.flush()
-    return sections or None
+    if not sections or any(not document.sections for document in generated_documents):
+        return None
+    return generated_documents
 
 
 def _generate_plan_with_llm(
@@ -578,8 +624,8 @@ def _build_sections(
     groups: list[AbilityGroupDTO],
     documents: list[DocumentDTO],
     rows: list,
-) -> list[LearningSectionDTO]:
-    """按能力目标组织课程小节，允许一个小节引用多个文档和多个证据。"""
+) -> list[DocumentDTO]:
+    """为每份文档生成至少一个附属学习小节。"""
     chunks_by_document: dict[str, list[str]] = {}
     for row in rows:
         document_id = str(row["document_id"])
@@ -589,20 +635,11 @@ def _build_sections(
             chunks_by_document[document_id].append(chunk_id)
 
     group_descriptions = {group.name: group.description for group in groups}
-    grouped_documents: dict[str, list[DocumentDTO]] = {}
-    for document in documents:
+    result: list[DocumentDTO] = []
+    for index, document in enumerate(documents, start=1):
         group_name = document.abilityGroup or (groups[0].name if groups else "课程目标")
-        grouped_documents.setdefault(group_name, []).append(document)
-
-    sections: list[LearningSectionDTO] = []
-    for index, (group_name, group_documents) in enumerate(grouped_documents.items(), start=1):
-        source_document_ids = [document.documentId for document in group_documents]
-        evidence_chunk_ids = [
-            chunk_id
-            for document_id in source_document_ids
-            for chunk_id in chunks_by_document.get(document_id, [])
-        ]
-        key_points = [document.title for document in group_documents]
+        evidence_chunk_ids = chunks_by_document.get(document.documentId, [])
+        key_points = [document.title]
         objective = group_descriptions.get(group_name) or f"理解并应用{group_name}相关要求。"
         teaching_script = TeachingScriptDTO(
             opening=f"在实际工作中遇到与「{group_name}」相关的问题时，你会先检查什么？",
@@ -614,15 +651,13 @@ def _build_sections(
         evidence_texts = [
             str(row.get("content") or "")
             for row in rows
-            if str(row.get("document_id") or "") in source_document_ids
+            if str(row.get("document_id") or "") == document.documentId
         ]
         criteria = [f"能够说明{group_name}的关键要求", f"能够在实际场景中应用{group_name}要求"]
-        sections.append(
-            LearningSectionDTO(
-                sectionId=f"section-{index:03d}",
+        section = LearningSectionDTO(
+                sectionId=f"section-{document.documentId}-{index:03d}",
                 title=group_name,
                 learningObjective=objective,
-                sourceDocumentIds=source_document_ids,
                 evidenceChunkIds=evidence_chunk_ids,
                 keyPoints=key_points,
                 checkpointCriteria=criteria,
@@ -637,8 +672,10 @@ def _build_sections(
                 estimatedMinutes=max(5, min(30, len(evidence_chunk_ids) * 3)),
                 required=True,
             )
+        result.append(
+            document.model_copy(update={"sections": [section]})
         )
-    return sections
+    return result
 
 
 def create_plan_draft(
@@ -704,6 +741,7 @@ def create_plan_draft(
             groups, documents, reading_order, recommend_reason, evidence_chunk_ids = _rule_based_plan(
                 request.jobTitle, rows,
             )
+        documents = _order_documents(documents, reading_order)
 
         if task_id:
             _tm.append_log(task_id, "info", "正在获取文档详细内容...")
@@ -721,7 +759,7 @@ def create_plan_draft(
         if task_id:
             _tm.append_log(task_id, "info", "正在生成课程章节...")
 
-        sections = _generate_sections_with_llm(
+        documents = _generate_sections_with_llm(
             session,
             request.jobTitle,
             request.jobDescription or "",
@@ -731,7 +769,8 @@ def create_plan_draft(
         ) or _build_sections(groups, documents, full_rows)
 
         if task_id:
-            _tm.append_log(task_id, "info", f"生成了 {len(sections)} 个课程章节")
+            section_count = sum(len(document.sections) for document in documents)
+            _tm.append_log(task_id, "info", f"生成了 {section_count} 个课程章节")
         evidence_chunk_ids = [str(row["chunk_id"]) for row in full_rows]
 
         plan_id = new_id()
@@ -751,8 +790,8 @@ def create_plan_draft(
                 version=1,
                 metadata={
                     "source": "employee_training_agent",
+                    "planName": (request.planName or request.jobTitle).strip(),
                     "retrievalQuery": query,
-                    "sections": [item.model_dump() for item in sections],
                 },
                 created_at=now,
                 created_by=context.actor.user.userId,
@@ -770,6 +809,7 @@ def create_plan_draft(
         response = PlanDraftDTO(
             planId=str(plan_id),
             appId=str(context.app_row["app_id"]),
+            planName=(request.planName or request.jobTitle).strip(),
             jobTitle=request.jobTitle,
             jobDescription=request.jobDescription,
             status="draft",
@@ -777,8 +817,6 @@ def create_plan_draft(
             documents=documents,
             evidenceChunkIds=evidence_chunk_ids,
             recommendReason=recommend_reason,
-            readingOrder=reading_order,
-            sections=sections,
             version=1,
             createdAt=now.isoformat(),
             updatedAt=now.isoformat(),
@@ -815,6 +853,65 @@ def create_plan_draft(
         raise
 
 
+def list_plan_drafts(session: Session, credential: str) -> list[PlanDraftDTO]:
+    """列出当前员工培训 App 已持久化、尚未由 ex-app 保存的计划草稿。"""
+    context = resolve_training_context(session, credential)
+    rows = session.execute(
+        select(training_plans)
+        .where(training_plans.c.app_id == context.app_row["app_id"])
+        .where(training_plans.c.status == "draft")
+        .where(training_plans.c.deleted_at.is_(None))
+        .order_by(training_plans.c.created_at.desc())
+    ).mappings().all()
+
+    plans: list[PlanDraftDTO] = []
+    for row in rows:
+        metadata = row["metadata"] or {}
+        plans.append(
+            PlanDraftDTO(
+                planId=str(row["plan_id"]),
+                appId=str(row["app_id"]),
+                planName=metadata.get("planName") or row["job_title"],
+                jobTitle=row["job_title"],
+                jobDescription=row["job_description"] or "",
+                status=row["status"],
+                abilityGroups=[AbilityGroupDTO(**item) for item in (row["ability_groups"] or [])],
+                documents=_load_documents_with_legacy_sections(row["documents"] or [], metadata),
+                evidenceChunkIds=row["evidence_chunk_ids"] or [],
+                recommendReason=row["recommend_reason"] or "",
+                version=row["version"],
+                createdAt=row["created_at"].isoformat(),
+                updatedAt=row["updated_at"].isoformat(),
+            )
+        )
+    return plans
+
+
+def delete_plan_draft(session: Session, credential: str, plan_id: str) -> dict[str, str]:
+    """软删除当前 App 的学习计划草稿。"""
+    context = resolve_training_context(session, credential)
+    row = session.execute(
+        select(training_plans)
+        .where(training_plans.c.plan_id == plan_id)
+        .where(training_plans.c.app_id == context.app_row["app_id"])
+        .where(training_plans.c.deleted_at.is_(None))
+    ).mappings().first()
+    if row is None:
+        raise TrainingAgentNotFoundError(f"Plan {plan_id} not found.")
+    if row["status"] != "draft":
+        raise TrainingAgentConflictError(f"Plan {plan_id} is not a draft.")
+
+    now = datetime.now(UTC)
+    actor_id = context.actor.user.userId
+    session.execute(
+        update(training_plans)
+        .where(training_plans.c.plan_id == plan_id)
+        .values(deleted_at=now, deleted_by=actor_id, updated_at=now, updated_by=actor_id)
+    )
+    session.commit()
+    return {"planId": plan_id, "status": "deleted"}
+
+
 def _review_plan(session: Session, plan_id: str, user_id: str, new_status: str) -> PlanDraftDTO:
     """通用审核逻辑：将 draft 计划改为 published 或 rejected。"""
     row = session.execute(
@@ -845,12 +942,12 @@ def _review_plan(session: Session, plan_id: str, user_id: str, new_status: str) 
     session.commit()
 
     ability_groups = [AbilityGroupDTO(**g) for g in (row["ability_groups"] or [])]
-    documents = [DocumentDTO(**d) for d in (row["documents"] or [])]
     metadata = row["metadata"] or {}
-    sections = [LearningSectionDTO(**item) for item in metadata.get("sections", []) if isinstance(item, dict)]
+    documents = _load_documents_with_legacy_sections(row["documents"] or [], metadata)
     return PlanDraftDTO(
         planId=str(row["plan_id"]),
         appId=str(row["app_id"]),
+        planName=metadata.get("planName") or row["job_title"],
         jobTitle=row["job_title"],
         jobDescription=row["job_description"] or "",
         status=new_status,
@@ -858,8 +955,6 @@ def _review_plan(session: Session, plan_id: str, user_id: str, new_status: str) 
         documents=documents,
         evidenceChunkIds=row["evidence_chunk_ids"] or [],
         recommendReason=row["recommend_reason"] or "",
-        readingOrder=row["reading_order"] or [],
-        sections=sections,
         version=row["version"],
         createdAt=row["created_at"].isoformat(),
         updatedAt=now.isoformat(),

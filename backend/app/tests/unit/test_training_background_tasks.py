@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.api.routes import training_plans, training_questions
+from app.api.routes import tasks, training_plans, training_questions
 from app.schemas.training_plan import PlanDraftRequest
 from app.schemas.training_question import QuestionDraftRequest
 from app.services.task_manager import TaskStatus, TaskType, task_manager
@@ -19,6 +19,20 @@ class _FakeSession:
 
     def close(self) -> None:
         self.closed = True
+
+
+def test_completed_plan_task_list_keeps_result_for_page_recovery():
+    """学习计划页重新加载任务列表时，应能恢复已完成草稿的结果。"""
+    task = task_manager.create_task(TaskType.PLAN_GENERATION, "生成学习计划: 财务")
+    task_manager.complete_task(task.id, result={"planId": "plan-001", "jobTitle": "财务"})
+
+    try:
+        response = tasks.list_tasks()
+        summary = next(item for item in response.tasks if item.id == task.id)
+
+        assert summary.result == {"planId": "plan-001", "jobTitle": "财务"}
+    finally:
+        task_manager._tasks.pop(task.id, None)
 
 
 @pytest.mark.parametrize(

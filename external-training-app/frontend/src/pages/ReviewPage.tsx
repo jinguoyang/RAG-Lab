@@ -87,6 +87,7 @@ function normalizeTrainingDocument(
     ...document,
     difficulty: normalizeDifficulty(document.difficulty, index),
     abilityGroup: documentAbilityGroup(document) || abilityGroupName(abilityGroups[index]) || "",
+    sections: document.sections || [],
   };
 }
 
@@ -104,7 +105,7 @@ interface DraftPlan {
 export function ReviewPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { addTask, getTask, subscribeToTask } = useTaskContext();
+  const { tasks, addTask, getTask, subscribeToTask } = useTaskContext();
   const [draftPlans, setDraftPlans] = useState<DraftPlan[]>([]);
 
   // 从导航状态中读取草稿计划（从编辑器跳转过来时携带）
@@ -124,7 +125,6 @@ export function ReviewPage() {
   const [viewMode, setViewMode] = useState<"list" | "editor">("list");
   const [editingPlan, setEditingPlan] = useState<TrainingPlan | null>(null);
   const [selectedDocs, setSelectedDocs] = useState<TrainingDocument[]>([]);
-  const [selectedSections, setSelectedSections] = useState<TrainingSection[]>([]);
   const [candidateDocs, setCandidateDocs] = useState<TrainingDocument[]>([]);
   const [appliedDocumentQuery, setAppliedDocumentQuery] = useState("");
   const [form, setForm] = useState({
@@ -134,6 +134,12 @@ export function ReviewPage() {
     documentQuery: "",
   });
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    planName: "",
+    jobTitle: "",
+    jobDescription: "",
+  });
   const [loading, setLoading] = useState(false);
   const [loadingDocuments, setLoadingDocuments] = useState(false);
   const [error, setError] = useState("");
@@ -142,6 +148,29 @@ export function ReviewPage() {
     () => plans.filter((item) => item.status === "saved"),
     [plans]
   );
+
+  const platformPlanDrafts = useMemo(
+    () => plans.filter((item) => item.status === "draft"),
+    [plans]
+  );
+
+  const recoveredPlanDrafts = useMemo(() => {
+    const savedPlanIds = new Set(plans.map((item) => item.planId));
+    const trackedTaskIds = new Set(draftPlans.map((item) => item.taskId));
+
+    return Array.from(tasks.values()).flatMap((task) => {
+      if (
+        task.type !== "plan_generation"
+        || task.status !== "completed"
+        || trackedTaskIds.has(task.id)
+      ) {
+        return [];
+      }
+      const result = task.result as TrainingPlan | undefined;
+      if (!result?.planId || savedPlanIds.has(result.planId)) return [];
+      return [{ task, plan: result }];
+    });
+  }, [draftPlans, plans, tasks]);
 
   const filteredCandidateDocs = useMemo(() => {
     const query = form.documentQuery.trim().toLowerCase();
@@ -242,7 +271,6 @@ export function ReviewPage() {
     setViewMode("list");
     setEditingPlan(null);
     setSelectedDocs([]);
-    setSelectedSections([]);
     setCandidateDocs([]);
     setAppliedDocumentQuery("");
     setSelectedEmployeeIds([]);
@@ -259,13 +287,11 @@ export function ReviewPage() {
         documentQuery: "",
       });
       setSelectedDocs(normalizeTrainingDocuments((plan.documents || []) as TrainingDocument[], plan.abilityGroups || []));
-      setSelectedSections(plan.sections || []);
       setSelectedEmployeeIds(plan.employeeIds || []);
     } else {
       setEditingPlan(null);
       setForm({ planName: "", jobTitle: "", jobDescription: "", documentQuery: "" });
       setSelectedDocs([]);
-      setSelectedSections([]);
       setSelectedEmployeeIds([]);
     }
     setCandidateDocs([]);
@@ -275,14 +301,16 @@ export function ReviewPage() {
   }
 
   async function handleGenerateRecommendations() {
-    if (!form.jobTitle.trim()) return;
+    const planName = createForm.planName.trim();
+    const jobTitle = createForm.jobTitle.trim();
+    if (!planName || !jobTitle) return;
     setLoading(true);
     setError("");
     try {
       const task = await generatePlanDraft({
-        planName: form.planName,
-        jobTitle: form.jobTitle,
-        jobDescription: form.jobDescription,
+        planName,
+        jobTitle,
+        jobDescription: createForm.jobDescription.trim(),
       });
       // 添加任务到上下文
       addTask({
@@ -293,10 +321,12 @@ export function ReviewPage() {
       // 携带草稿信息导航到学习计划列表页
       const draft: DraftPlan = {
         taskId: task.id,
-        planName: form.planName || form.jobTitle,
-        jobTitle: form.jobTitle,
+        planName,
+        jobTitle,
         createdAt: task.createdAt,
       };
+      setCreateModalOpen(false);
+      setCreateForm({ planName: "", jobTitle: "", jobDescription: "" });
       navigate("/reviews", { state: { draft } });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -308,20 +338,25 @@ export function ReviewPage() {
   function addDocument(document: TrainingDocument) {
     setSelectedDocs((prev) => {
       if (prev.some((item) => item.documentId === document.documentId)) return prev;
-      return [...prev, normalizeTrainingDocument(document, prev.length)];
+      const normalized = normalizeTrainingDocument(document, prev.length);
+      return [...prev, {
+        ...normalized,
+        sections: normalized.sections.length > 0 ? normalized.sections : [{
+          sectionId: `section-${document.documentId}-${Date.now()}`,
+          title: documentTitle(document),
+          learningObjective: `掌握《${documentTitle(document)}》的关键要求`,
+          evidenceChunkIds: [],
+          keyPoints: [],
+          checkpointCriteria: ["能够说明本小节的关键要求"],
+          estimatedMinutes: 8,
+          required: true,
+        }],
+      }];
     });
   }
 
   function removeDocument(documentId: string) {
     setSelectedDocs((prev) => prev.filter((item) => item.documentId !== documentId));
-    setSelectedSections((prev) =>
-      prev
-        .map((section) => ({
-          ...section,
-          sourceDocumentIds: section.sourceDocumentIds.filter((id) => id !== documentId),
-        }))
-        .filter((section) => section.sourceDocumentIds.length > 0)
-    );
   }
 
   function moveDocument(index: number, direction: -1 | 1) {
@@ -342,20 +377,28 @@ export function ReviewPage() {
     });
   }
 
-  function updateSection(index: number, patch: Partial<TrainingSection>) {
-    setSelectedSections((prev) => prev.map((section, itemIndex) => (
-      itemIndex === index ? { ...section, ...patch } : section
+  function updateSection(documentIndex: number, sectionIndex: number, patch: Partial<TrainingSection>) {
+    setSelectedDocs((prev) => prev.map((document, itemIndex) => (
+      itemIndex === documentIndex
+        ? {
+            ...document,
+            sections: document.sections.map((section, index) => (
+              index === sectionIndex ? { ...section, ...patch } : section
+            )),
+          }
+        : document
     )));
   }
 
-  function moveSection(index: number, direction: -1 | 1) {
-    setSelectedSections((prev) => {
-      const next = [...prev];
-      const target = index + direction;
-      if (target < 0 || target >= next.length) return prev;
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
+  function moveSection(documentIndex: number, sectionIndex: number, direction: -1 | 1) {
+    setSelectedDocs((prev) => prev.map((document, itemIndex) => {
+      if (itemIndex !== documentIndex) return document;
+      const sections = [...document.sections];
+      const target = sectionIndex + direction;
+      if (target < 0 || target >= sections.length) return document;
+      [sections[sectionIndex], sections[target]] = [sections[target], sections[sectionIndex]];
+      return { ...document, sections };
+    }));
   }
 
   async function handleSave() {
@@ -369,8 +412,6 @@ export function ReviewPage() {
         await updatePlan(editingPlan.planId, {
           planName,
           documents: selectedDocs,
-          readingOrder: selectedDocs.map((d) => d.documentId),
-          sections: selectedSections,
           employeeIds: selectedEmployeeIds,
         });
       } else {
@@ -384,8 +425,6 @@ export function ReviewPage() {
           documents: selectedDocs,
           evidenceChunkIds: [],
           recommendReason: editingPlan.recommendReason || null,
-          readingOrder: selectedDocs.map((d) => d.documentId),
-          sections: selectedSections,
           employeeIds: selectedEmployeeIds,
           version: 1,
         });
@@ -420,7 +459,13 @@ export function ReviewPage() {
             <h2>学习计划管理</h2>
             <p>创建、编辑和管理学习计划。保存计划时将自动生成题目。</p>
           </div>
-          <button className="button primary" onClick={() => openEditor()}>
+          <button
+            className="button primary"
+            onClick={() => {
+              setError("");
+              setCreateModalOpen(true);
+            }}
+          >
             <Plus size={17} aria-hidden="true" />
             新建计划
           </button>
@@ -471,7 +516,84 @@ export function ReviewPage() {
               </article>
             );
           })}
-          {draftPlans.length === 0 && savedPlans.length === 0 ? (
+          {recoveredPlanDrafts.map(({ task, plan }) => (
+            <article key={`recovered-${task.id}`} className="plan-item draft">
+              <div className="item-top">
+                <div>
+                  <span className="tag">平台草稿</span>
+                  <span className="status pending">待保存</span>
+                </div>
+                <time>{new Date(task.completedAt || task.createdAt).toLocaleString()}</time>
+              </div>
+              <h3>{plan.planName || plan.jobTitle}</h3>
+              {plan.recommendReason && <p className="explanation">{plan.recommendReason}</p>}
+              <div className="answer-grid">
+                <div>
+                  <span>文档</span>
+                  <strong>{plan.documents?.length || 0} 份</strong>
+                </div>
+                <div>
+                  <span>岗位</span>
+                  <strong>{plan.jobTitle}</strong>
+                </div>
+                <div>
+                  <span>任务 ID</span>
+                  <strong className="text-xs">{task.id.slice(0, 8)}...</strong>
+                </div>
+              </div>
+              <div className="item-actions">
+                <button className="button primary" onClick={() => openEditor(plan)}>
+                  <Pencil size={16} aria-hidden="true" />
+                  继续编辑并保存
+                </button>
+                <button className="button reject" onClick={() => handleDelete(plan.planId)}>
+                  <Trash2 size={16} aria-hidden="true" />
+                  删除
+                </button>
+              </div>
+            </article>
+          ))}
+          {platformPlanDrafts.map((plan) => (
+            <article key={`platform-${plan.planId}`} className="plan-item draft">
+              <div className="item-top">
+                <div>
+                  <span className="tag">平台草稿</span>
+                  <span className="status pending">待保存</span>
+                </div>
+                <time>{new Date(plan.createdAt).toLocaleString()}</time>
+              </div>
+              <h3>{plan.planName || plan.jobTitle}</h3>
+              {plan.recommendReason && <p className="explanation">{plan.recommendReason}</p>}
+              <div className="answer-grid">
+                <div>
+                  <span>文档</span>
+                  <strong>{plan.documents?.length || 0} 份</strong>
+                </div>
+                <div>
+                  <span>岗位</span>
+                  <strong>{plan.jobTitle}</strong>
+                </div>
+                <div>
+                  <span>计划 ID</span>
+                  <strong className="text-xs">{plan.planId.slice(0, 8)}...</strong>
+                </div>
+              </div>
+              <div className="item-actions">
+                <button className="button primary" onClick={() => openEditor(plan)}>
+                  <Pencil size={16} aria-hidden="true" />
+                  继续编辑并保存
+                </button>
+                <button className="button reject" onClick={() => handleDelete(plan.planId)}>
+                  <Trash2 size={16} aria-hidden="true" />
+                  删除
+                </button>
+              </div>
+            </article>
+          ))}
+          {draftPlans.length === 0
+            && recoveredPlanDrafts.length === 0
+            && platformPlanDrafts.length === 0
+            && savedPlans.length === 0 ? (
             <div className="empty-state">
               <FileSearch size={28} aria-hidden="true" />
               <h3>暂无学习计划</h3>
@@ -520,6 +642,75 @@ export function ReviewPage() {
             ))
           )}
         </section>
+        {createModalOpen && (
+          <div className="modal-backdrop" role="presentation">
+            <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="create-plan-title">
+              <header className="modal-header">
+                <div>
+                  <p className="eyebrow">New Plan</p>
+                  <h2 id="create-plan-title">新建计划</h2>
+                </div>
+                <button
+                  type="button"
+                  className="icon-button"
+                  title="关闭"
+                  onClick={() => setCreateModalOpen(false)}
+                >
+                  <X size={18} aria-hidden="true" />
+                </button>
+              </header>
+              <div className="modal-body">
+                <label>
+                  <span>计划名称</span>
+                  <input
+                    value={createForm.planName}
+                    onChange={(event) => setCreateForm({ ...createForm, planName: event.target.value })}
+                    placeholder="例如：财务岗位培训计划"
+                    autoFocus
+                    required
+                  />
+                </label>
+                <label>
+                  <span>岗位名称</span>
+                  <input
+                    value={createForm.jobTitle}
+                    onChange={(event) => setCreateForm({ ...createForm, jobTitle: event.target.value })}
+                    placeholder="例如：财务"
+                    required
+                  />
+                </label>
+                <label>
+                  <span>岗位简介</span>
+                  <textarea
+                    value={createForm.jobDescription}
+                    onChange={(event) => setCreateForm({ ...createForm, jobDescription: event.target.value })}
+                    placeholder="描述岗位职责、技能要求和培训目标"
+                  />
+                </label>
+                {error && (
+                  <div className="notice danger">
+                    <CircleAlert size={18} aria-hidden="true" />
+                    <span>{error}</span>
+                  </div>
+                )}
+              </div>
+              <footer className="modal-actions">
+                <button type="button" className="button ghost" onClick={() => setCreateModalOpen(false)}>
+                  取消
+                </button>
+                <button
+                  type="button"
+                  className="button primary"
+                  onClick={handleGenerateRecommendations}
+                  disabled={loading || !createForm.planName.trim() || !createForm.jobTitle.trim()}
+                >
+                  <Sparkles size={17} aria-hidden="true" />
+                  {loading ? "生成中..." : "生成学习计划"}
+                </button>
+              </footer>
+            </section>
+          </div>
+        )}
       </section>
     );
   }
@@ -529,8 +720,8 @@ export function ReviewPage() {
     <section className="page-stack">
       <header className="page-header">
         <div>
-          <p className="eyebrow">{editingPlan?.status === "saved" ? "Edit Plan" : "New Plan"}</p>
-          <h2>{editingPlan?.status === "saved" ? "编辑学习计划" : "新建学习计划"}</h2>
+          <p className="eyebrow">Edit Plan</p>
+          <h2>编辑学习计划</h2>
           <p>填写岗位信息，查询并选择知识库文档，保存后系统将自动生成题目。</p>
         </div>
         <button className="button ghost" onClick={resetEditor}>
@@ -578,15 +769,6 @@ export function ReviewPage() {
               required
             />
           </label>
-          <button
-            type="button"
-            className="button secondary"
-            onClick={handleGenerateRecommendations}
-            disabled={loading || !form.jobTitle.trim()}
-          >
-            <Sparkles size={17} aria-hidden="true" />
-            {loading ? "生成中..." : "获取平台推荐文档"}
-          </button>
         </div>
 
         <div className="form-panel">
@@ -651,69 +833,6 @@ export function ReviewPage() {
         </div>
       </section>
 
-      <section className="work-surface">
-        <div className="form-panel">
-          <div className="section-title">
-            <Sparkles size={20} aria-hidden="true" />
-            <h3>学习小节 ({selectedSections.length})</h3>
-          </div>
-          <p className="text-xs opacity-60">
-            小节按可验证学习目标组织，可跨多个文档；课堂将按此顺序执行 Checkpoint。
-          </p>
-          <ol className="compact-list editable-list">
-            {selectedSections.map((section, index) => (
-              <li key={section.sectionId} className="doc-edit-row">
-                <div className="doc-edit-main">
-                  <strong>{index + 1}. {section.title}</strong>
-                  <div className="doc-edit-controls">
-                    <button type="button" className="icon-button" onClick={() => moveSection(index, -1)} disabled={index === 0} title="上移">
-                      <ArrowUp size={14} aria-hidden="true" />
-                    </button>
-                    <button type="button" className="icon-button" onClick={() => moveSection(index, 1)} disabled={index === selectedSections.length - 1} title="下移">
-                      <ArrowDown size={14} aria-hidden="true" />
-                    </button>
-                  </div>
-                </div>
-                <label>
-                  <span>小节标题</span>
-                  <input value={section.title} onChange={(event) => updateSection(index, { title: event.target.value })} />
-                </label>
-                <label>
-                  <span>学习目标</span>
-                  <textarea
-                    value={section.learningObjective}
-                    onChange={(event) => updateSection(index, { learningObjective: event.target.value })}
-                  />
-                </label>
-                <div className="doc-meta-row">
-                  <label>
-                    <span>预计分钟</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={120}
-                      value={section.estimatedMinutes}
-                      onChange={(event) => updateSection(index, { estimatedMinutes: Number(event.target.value) || 1 })}
-                    />
-                  </label>
-                  <label className="employee-option">
-                    <input
-                      type="checkbox"
-                      checked={section.required}
-                      onChange={(event) => updateSection(index, { required: event.target.checked })}
-                    />
-                    <span>必修小节</span>
-                  </label>
-                </div>
-                <p className="text-xs opacity-60">
-                  关联文档：{section.sourceDocumentIds.length} 份；Checkpoint 标准：{section.checkpointCriteria.join("、")}
-                </p>
-              </li>
-            ))}
-          </ol>
-        </div>
-      </section>
-
       <section className="work-surface two-column">
         <div className="form-panel">
           <div className="section-title">
@@ -755,6 +874,80 @@ export function ReviewPage() {
                     placeholder="能力组"
                   />
                 </div>
+                <div className="section-title">
+                  <Sparkles size={16} aria-hidden="true" />
+                  <h3>文档内小节 ({document.sections.length})</h3>
+                </div>
+                <ol className="compact-list editable-list">
+                  {document.sections.map((section, sectionIndex) => (
+                    <li key={section.sectionId} className="doc-edit-row">
+                      <div className="doc-edit-main">
+                        <strong>{sectionIndex + 1}. {section.title}</strong>
+                        <div className="doc-edit-controls">
+                          <button
+                            type="button"
+                            className="icon-button"
+                            onClick={() => moveSection(index, sectionIndex, -1)}
+                            disabled={sectionIndex === 0}
+                            title="上移小节"
+                          >
+                            <ArrowUp size={14} aria-hidden="true" />
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            onClick={() => moveSection(index, sectionIndex, 1)}
+                            disabled={sectionIndex === document.sections.length - 1}
+                            title="下移小节"
+                          >
+                            <ArrowDown size={14} aria-hidden="true" />
+                          </button>
+                        </div>
+                      </div>
+                      <label>
+                        <span>小节标题</span>
+                        <input
+                          value={section.title}
+                          onChange={(event) => updateSection(index, sectionIndex, { title: event.target.value })}
+                        />
+                      </label>
+                      <label>
+                        <span>学习目标</span>
+                        <textarea
+                          value={section.learningObjective}
+                          onChange={(event) => updateSection(index, sectionIndex, { learningObjective: event.target.value })}
+                        />
+                      </label>
+                      <div className="doc-meta-row">
+                        <label>
+                          <span>预计分钟</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={120}
+                            value={section.estimatedMinutes}
+                            onChange={(event) => updateSection(index, sectionIndex, {
+                              estimatedMinutes: Number(event.target.value) || 1,
+                            })}
+                          />
+                        </label>
+                        <label className="employee-option">
+                          <input
+                            type="checkbox"
+                            checked={section.required}
+                            onChange={(event) => updateSection(index, sectionIndex, {
+                              required: event.target.checked,
+                            })}
+                          />
+                          <span>必修小节</span>
+                        </label>
+                      </div>
+                      <p className="text-xs opacity-60">
+                        小节标准：{section.checkpointCriteria.join("、")}
+                      </p>
+                    </li>
+                  ))}
+                </ol>
               </li>
             ))}
           </ol>

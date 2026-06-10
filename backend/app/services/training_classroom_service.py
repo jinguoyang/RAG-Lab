@@ -109,6 +109,29 @@ def validate_classroom_transition(current_state: str, next_state: str) -> bool:
     return next_state in CLASSROOM_TRANSITIONS.get(current_state, [])
 
 
+def _validate_course_snapshot(snapshot: Mapping[str, Any]) -> None:
+    """校验文档内小节快照，防止旧顶层结构继续进入课堂。"""
+    if "sections" in snapshot:
+        raise ClassroomEventError("courseSnapshot 不允许顶层 sections")
+    documents = snapshot.get("documents")
+    if not isinstance(documents, list) or not documents:
+        raise ClassroomEventError("courseSnapshot.documents 不能为空")
+    seen_section_ids: set[str] = set()
+    for document in documents:
+        if not isinstance(document, Mapping) or not document.get("documentId"):
+            raise ClassroomEventError("courseSnapshot.documents contains invalid document")
+        sections = document.get("sections")
+        if not isinstance(sections, list) or not sections:
+            raise ClassroomEventError("courseSnapshot document requires sections")
+        for section in sections:
+            if not isinstance(section, Mapping) or not section.get("sectionId") or not section.get("title"):
+                raise ClassroomEventError("courseSnapshot document contains invalid section")
+            section_id = str(section["sectionId"])
+            if section_id in seen_section_ids:
+                raise ClassroomEventError("courseSnapshot contains duplicate sectionId")
+            seen_section_ids.add(section_id)
+
+
 def create_classroom_session(session: Session, credential: str, request: Any) -> ClassroomSessionResponse:
     """创建平台侧课堂会话，后续上下文和状态以此为准。"""
     from app.services.agent_runtime.runtime_facade import resolve_runtime_version
@@ -120,21 +143,7 @@ def create_classroom_session(session: Session, credential: str, request: Any) ->
     inputs = dict(request.inputs or {})
     snapshot = inputs.get("courseSnapshot")
     if isinstance(snapshot, dict):
-        documents = snapshot.get("documents") if isinstance(snapshot.get("documents"), list) else []
-        valid_document_ids = {
-            str(item.get("documentId"))
-            for item in documents
-            if isinstance(item, dict) and item.get("documentId")
-        }
-        sections = snapshot.get("sections") if isinstance(snapshot.get("sections"), list) else []
-        for section in sections:
-            if not isinstance(section, dict):
-                raise ClassroomEventError("courseSnapshot.sections contains invalid section")
-            source_ids = section.get("sourceDocumentIds")
-            if not isinstance(source_ids, list) or not source_ids:
-                raise ClassroomEventError("courseSnapshot section requires sourceDocumentIds")
-            if not set(map(str, source_ids)).issubset(valid_document_ids):
-                raise ClassroomEventError("courseSnapshot section references unknown document")
+        _validate_course_snapshot(snapshot)
     metadata = {"inputs": inputs, "source": "employee_training_agent"}
     session.execute(
         insert(training_classroom_sessions).values(
@@ -486,47 +495,68 @@ def _read_learning_plan(session: Session, state_row: Any) -> Mapping[str, Any] |
 
 
 def _ordered_plan_documents(plan_row: Mapping[str, Any] | None) -> list[dict[str, Any]]:
-    """按 reading_order 返回计划文档，作为课堂章节的稳定来源。"""
+    """按文档数组顺序返回计划文档。"""
     if plan_row is None:
         return []
     raw_documents = plan_row.get("documents") or []
     if not isinstance(raw_documents, list):
         return []
     documents = [item for item in raw_documents if isinstance(item, dict) and item.get("documentId")]
-    by_id = {str(item["documentId"]): item for item in documents}
-    ordered: list[dict[str, Any]] = []
-    reading_order = plan_row.get("reading_order") or []
-    if isinstance(reading_order, list):
-        for document_id in reading_order:
-            doc = by_id.get(str(document_id))
-            if doc is not None and doc not in ordered:
-                ordered.append(doc)
-    for doc in documents:
-        if doc not in ordered:
-            ordered.append(doc)
-    return ordered
+    return documents
 
 
 def _ordered_course_sections(state_row: Any, plan_row: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
-    """优先读取课堂冻结快照中的小节，兼容平台计划 metadata 中的小节。"""
+    """按文档顺序和文档内小节顺序展开课堂执行序列。"""
     metadata = _mapping_get(state_row, "metadata", {}) or {}
     inputs = metadata.get("inputs") if isinstance(metadata, dict) else {}
     snapshot = inputs.get("courseSnapshot") if isinstance(inputs, dict) else {}
-    raw_sections = snapshot.get("sections") if isinstance(snapshot, dict) else None
-    if not isinstance(raw_sections, list) and plan_row is not None:
+    documents = snapshot.get("documents") if isinstance(snapshot, dict) else None
+    if not isinstance(documents, list) and plan_row is not None:
+        documents = plan_row.get("documents")
+    sections: list[dict[str, Any]] = []
+    if isinstance(documents, list):
+        for document in documents:
+            if not isinstance(document, Mapping) or not document.get("documentId"):
+                continue
+            document_id = str(document["documentId"])
+            document_title = str(document.get("title") or document_id)
+            for section in document.get("sections") or []:
+                if not isinstance(section, Mapping) or not section.get("sectionId") or not section.get("title"):
+                    continue
+                sections.append({
+                    **dict(section),
+                    "documentId": document_id,
+                    "documentTitle": document_title,
+                })
+    if sections:
+        return sections
+
+    # 仅用于恢复已经存在的旧课堂会话；新课堂快照入口会拒绝顶层 sections。
+    raw_snapshot_sections = snapshot.get("sections") if isinstance(snapshot, dict) else None
+    if isinstance(raw_snapshot_sections, list):
+        legacy_sections = []
+        for section in raw_snapshot_sections:
+            source_ids = section.get("sourceDocumentIds") if isinstance(section, dict) else None
+            if isinstance(source_ids, list) and len(source_ids) == 1:
+                legacy_sections.append({**section, "documentId": str(source_ids[0])})
+        if legacy_sections:
+            return legacy_sections
+
+    # 仅用于读取已经存在的旧计划。
+    if plan_row is not None:
         plan_metadata = plan_row.get("metadata") or {}
         raw_sections = plan_metadata.get("sections") if isinstance(plan_metadata, dict) else None
-    if not isinstance(raw_sections, list):
-        return []
-    return [
-        section
-        for section in raw_sections
-        if isinstance(section, dict)
-        and section.get("sectionId")
-        and section.get("title")
-        and isinstance(section.get("sourceDocumentIds"), list)
-        and section.get("sourceDocumentIds")
-    ]
+        if isinstance(raw_sections, list):
+            legacy_sections = []
+            for section in raw_sections:
+                source_ids = section.get("sourceDocumentIds") if isinstance(section, dict) else None
+                if isinstance(source_ids, list) and len(source_ids) == 1:
+                    legacy_sections.append({
+                        **section,
+                        "documentId": str(source_ids[0]),
+                    })
+            return legacy_sections
+    return []
 
 
 def _current_course_section(state_row: Any, plan_row: Mapping[str, Any] | None = None) -> dict[str, Any] | None:
@@ -691,11 +721,7 @@ def _current_evidence(session: Session, app_id: str, kb_id: Any, state_row: Any,
     section = None
     if course_sections:
         section = course_sections[min(state_row["current_section_index"], len(course_sections) - 1)]
-    document_ids = (
-        [str(document_id) for document_id in section["sourceDocumentIds"]]
-        if section is not None
-        else _plan_document_ids(plan_documents)
-    )
+    document_ids = [str(section["documentId"])] if section is not None else _plan_document_ids(plan_documents)
     evidence_chunk_ids = section.get("evidenceChunkIds") if section is not None else None
     pinned_rows = []
     if isinstance(evidence_chunk_ids, list) and evidence_chunk_ids:
@@ -990,8 +1016,7 @@ def _question_matches_section(question: Any, section: Mapping[str, Any] | None) 
         return bool(question_chunk_ids & section_chunk_ids)
     metadata = _mapping_get(question, "metadata", {}) or {}
     document_id = str(metadata.get("documentId") or "") if isinstance(metadata, dict) else ""
-    source_document_ids = {str(item) for item in (section.get("sourceDocumentIds") or []) if item}
-    return bool(document_id and document_id in source_document_ids)
+    return bool(document_id and document_id == str(section.get("documentId") or ""))
 
 
 def _checkpoint_feedback(section: Mapping[str, Any] | None, explanation: str, passed: bool) -> str:

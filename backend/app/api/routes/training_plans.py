@@ -9,14 +9,20 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
-from app.api.routes.app_runtime import _extract_bearer_token, _raise_runtime_error
+from app.api.routes.app_runtime import _extract_bearer_token
 from app.core.database import get_db_session
 from app.schemas.auth import CurrentUserResponse
 from app.schemas.task import TaskSummaryDTO
 from app.schemas.training_plan import PlanDraftDTO, PlanDraftRequest
 from app.services.task_manager import TaskType, task_manager
 from app.services.training_agent_service import TrainingAgentConflictError, TrainingAgentNotFoundError
-from app.services.training_plan_service import create_plan_draft, publish_plan, reject_plan
+from app.services.training_plan_service import (
+    create_plan_draft,
+    delete_plan_draft,
+    list_plan_drafts,
+    publish_plan,
+    reject_plan,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +70,37 @@ def create_training_plan_draft(
     thread = threading.Thread(target=_run_plan_draft_task, args=(task.id, credential, request), daemon=True)
     thread.start()
     return TaskSummaryDTO(**task.to_summary())
+
+
+@router.get("/drafts", response_model=list[PlanDraftDTO])
+def read_training_plan_drafts(
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+    session: Session = Depends(get_db_session),
+) -> list[PlanDraftDTO]:
+    """查询当前 App 已生成且尚未保存到外部应用的学习计划草稿。"""
+    credential = _extract_bearer_token(authorization)
+    try:
+        return list_plan_drafts(session, credential)
+    except TrainingAgentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except TrainingAgentConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.delete("/drafts/{plan_id}")
+def remove_training_plan_draft(
+    plan_id: str,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+    session: Session = Depends(get_db_session),
+) -> dict[str, str]:
+    """删除当前 App 尚未保存的学习计划草稿。"""
+    credential = _extract_bearer_token(authorization)
+    try:
+        return delete_plan_draft(session, credential, plan_id)
+    except TrainingAgentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except TrainingAgentConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.post("/{plan_id}/publish", response_model=PlanDraftDTO)

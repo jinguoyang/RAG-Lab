@@ -92,18 +92,22 @@ class TestRuleBasedPlan:
 
 
 class TestBuildSections:
-    """学习小节应按学习目标组织，而不是简单等同于文档。"""
+    """学习小节应附属于单份文档。"""
 
-    def test_groups_multiple_documents_into_one_objective_section(self):
+    def test_builds_sections_inside_each_document(self):
         groups, docs, _, _, _ = _rule_based_plan("安全员", SAMPLE_ROWS)
 
-        sections = _build_sections(groups, docs, SAMPLE_ROWS)
+        documents = _build_sections(groups, docs, SAMPLE_ROWS)
 
-        assert sections
-        assert len(sections) < len(docs)
-        assert any(len(section.sourceDocumentIds) > 1 for section in sections)
-        assert all(section.learningObjective for section in sections)
-        assert all(section.checkpointCriteria for section in sections)
+        assert len(documents) == len(docs)
+        assert all(document.sections for document in documents)
+        assert all(section.learningObjective for document in documents for section in document.sections)
+        assert all(section.checkpointCriteria for document in documents for section in document.sections)
+        assert all(
+            "sourceDocumentIds" not in section.model_dump()
+            for document in documents
+            for section in document.sections
+        )
 
 
 class TestDocumentContentMap:
@@ -184,7 +188,7 @@ class TestGenerateSectionsWithLlm:
             "sectionId": "section-001",
             "title": "识别呆滞物料",
             "learningObjective": "能够判断典型呆滞物料并说明依据。",
-            "sourceDocumentIds": ["d1"],
+            "documentId": "d1",
             "evidenceChunkIds": ["c1", "c2"],
             "keyPoints": ["七类条件", "异动率", "呆滞不等于废品"],
             "checkpointCriteria": ["能判断场景", "能说明依据"],
@@ -204,7 +208,7 @@ class TestGenerateSectionsWithLlm:
             _make_row("c2", "d1", "呆滞物料需要跨部门评审。", "评审流程"),
         ]
 
-        sections = _generate_sections_with_llm(
+        documents = _generate_sections_with_llm(
             MagicMock(),
             "仓库管理员",
             "负责库存管理",
@@ -213,10 +217,10 @@ class TestGenerateSectionsWithLlm:
             "app-1",
         )
 
-        assert sections is not None
-        assert sections[0].teachingScript is not None
-        assert sections[0].teachingQualityScore >= 0.7
-        assert sections[0].evidenceChunkIds == ["c1", "c2"]
+        assert documents is not None
+        assert documents[0].sections[0].teachingScript is not None
+        assert documents[0].sections[0].teachingQualityScore >= 0.7
+        assert documents[0].sections[0].evidenceChunkIds == ["c1", "c2"]
 
 
 # ---------------------------------------------------------------------------

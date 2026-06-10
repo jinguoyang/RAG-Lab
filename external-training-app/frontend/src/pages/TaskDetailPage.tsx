@@ -170,7 +170,7 @@ export function TaskDetailPage() {
         </div>
 
         {/* 结果区域 */}
-        {task.status === 'completed' && task.result && (
+        {task.status === 'completed' && task.result != null && (
           <div className="card task-result-card">
             <h3>执行结果</h3>
             <pre className="task-result-content">

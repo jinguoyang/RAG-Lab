@@ -13,16 +13,37 @@ class PlatformClient:
         self.base_url = base_url.rstrip("/")
         self.headers = {"Authorization": f"Bearer {api_key}"}
 
-    def create_plan_draft(self, job_title: str, job_description: str) -> dict:
+    def create_plan_draft(self, plan_name: str, job_title: str, job_description: str) -> dict:
         """调用平台 /training/plans/drafts 生成学习计划（异步，返回任务信息）。"""
         resp = httpx.post(
             f"{self.base_url}/training/plans/drafts",
             headers=self.headers,
             json={
+                "planName": plan_name,
                 "jobTitle": job_title,
                 "jobDescription": job_description,
             },
             timeout=60.0,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def delete_plan_draft(self, plan_id: str) -> dict:
+        """删除平台已持久化的当前 App 学习计划草稿。"""
+        resp = httpx.delete(
+            f"{self.base_url}/training/plans/drafts/{plan_id}",
+            headers=self.headers,
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def list_plan_drafts(self) -> list[dict]:
+        """查询平台已持久化的当前 App 学习计划草稿。"""
+        resp = httpx.get(
+            f"{self.base_url}/training/plans/drafts",
+            headers=self.headers,
+            timeout=10.0,
         )
         resp.raise_for_status()
         return resp.json()

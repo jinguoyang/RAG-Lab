@@ -11,6 +11,7 @@ class PlanDraftRequest(BaseModel):
 
     jobTitle: str = Field(min_length=1, max_length=256)
     jobDescription: str = Field(default="", max_length=4000)
+    planName: str | None = Field(default=None, min_length=1, max_length=256)
 
     @field_validator("jobTitle")
     @classmethod
@@ -29,16 +30,6 @@ class AbilityGroupDTO(BaseModel):
     description: str
 
 
-class DocumentDTO(BaseModel):
-    """学习计划推荐文档。"""
-
-    documentId: str
-    title: str
-    relevance: float = 0.0
-    abilityGroup: str | None = None
-    difficulty: str | None = None
-
-
 class TeachingScriptDTO(BaseModel):
     """面向学员展示的章节级教学讲稿。"""
 
@@ -50,12 +41,11 @@ class TeachingScriptDTO(BaseModel):
 
 
 class LearningSectionDTO(BaseModel):
-    """按可验证学习目标组织的课程小节。"""
+    """单份文档内按可验证学习目标组织的课程小节。"""
 
     sectionId: str
     title: str
     learningObjective: str
-    sourceDocumentIds: list[str] = Field(default_factory=list)
     evidenceChunkIds: list[str] = Field(default_factory=list)
     keyPoints: list[str] = Field(default_factory=list)
     checkpointCriteria: list[str] = Field(default_factory=list)
@@ -65,11 +55,23 @@ class LearningSectionDTO(BaseModel):
     required: bool = True
 
 
+class DocumentDTO(BaseModel):
+    """学习计划推荐文档及其附属学习小节。"""
+
+    documentId: str
+    title: str
+    relevance: float = 0.0
+    abilityGroup: str | None = None
+    difficulty: str | None = None
+    sections: list[LearningSectionDTO] = Field(default_factory=list)
+
+
 class PlanDraftDTO(BaseModel):
     """学习计划草稿响应。"""
 
     planId: str
     appId: str
+    planName: str | None = None
     jobTitle: str
     jobDescription: str = ""
     status: str = "draft"
@@ -77,8 +79,6 @@ class PlanDraftDTO(BaseModel):
     documents: list[DocumentDTO] = Field(default_factory=list)
     evidenceChunkIds: list[str] = Field(default_factory=list)
     recommendReason: str = ""
-    readingOrder: list[str] = Field(default_factory=list)
-    sections: list[LearningSectionDTO] = Field(default_factory=list)
     version: int = 1
     createdAt: str
     updatedAt: str

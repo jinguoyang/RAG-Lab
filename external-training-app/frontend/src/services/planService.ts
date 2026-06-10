@@ -10,8 +10,6 @@ export interface TrainingPlan {
   documents?: TrainingDocument[];
   abilityGroups?: unknown[];
   evidenceChunkIds?: string[];
-  readingOrder?: string[];
-  sections?: TrainingSection[];
   employeeIds?: string[];
   recommendReason?: string;
   completedDocuments?: string[];
@@ -29,13 +27,13 @@ export interface TrainingDocument {
   category?: string | null;
   difficulty?: string | null;
   summary?: string | null;
+  sections: TrainingSection[];
 }
 
 export interface TrainingSection {
   sectionId: string;
   title: string;
   learningObjective: string;
-  sourceDocumentIds: string[];
   evidenceChunkIds: string[];
   keyPoints: string[];
   checkpointCriteria: string[];
@@ -94,8 +92,6 @@ export function savePlan(
     documents: TrainingDocument[];
     evidenceChunkIds?: string[];
     recommendReason?: string | null;
-    readingOrder: string[];
-    sections?: TrainingSection[];
     employeeIds: string[];
     version?: number;
   }
@@ -108,8 +104,6 @@ export function updatePlan(
   data: {
     planName?: string;
     documents?: TrainingDocument[];
-    readingOrder?: string[];
-    sections?: TrainingSection[];
     employeeIds?: string[];
   }
 ): Promise<{ planId: string; status: string }> {

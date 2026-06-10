@@ -72,6 +72,12 @@ class Task:
         }
 
     def to_summary(self) -> dict[str, Any]:
+        # 学习计划草稿需要在页面刷新后继续编辑；其他任务结果可能较大，不放入列表响应。
+        recoverable_result = (
+            self.result
+            if self.type == TaskType.PLAN_GENERATION and self.status == TaskStatus.COMPLETED
+            else None
+        )
         return {
             "id": self.id,
             "type": self.type.value,
@@ -80,6 +86,7 @@ class Task:
             "createdAt": self.created_at.isoformat(),
             "startedAt": self.started_at.isoformat() if self.started_at else None,
             "completedAt": self.completed_at.isoformat() if self.completed_at else None,
+            "result": recoverable_result,
             "error": self.error,
         }
 

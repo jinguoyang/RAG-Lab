@@ -22,6 +22,7 @@ class TaskSummaryDTO(BaseModel):
     createdAt: datetime
     startedAt: datetime | None = None
     completedAt: datetime | None = None
+    result: Any = None
     error: str | None = None
 
 

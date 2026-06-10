@@ -40,6 +40,12 @@ export interface ClassroomSectionSnapshot {
   teachingQualityScore?: number;
 }
 
+export interface ClassroomDocumentSnapshot {
+  documentId: string;
+  title: string;
+  sections: ClassroomSectionSnapshot[];
+}
+
 export interface ClassroomSessionDetail extends ClassroomSession {
   messages: ClassroomMessage[];
   metadata: {
@@ -49,7 +55,7 @@ export interface ClassroomSessionDetail extends ClassroomSession {
     completedSectionIds?: string[];
     inputs?: {
       courseSnapshot?: {
-        sections?: ClassroomSectionSnapshot[];
+        documents?: ClassroomDocumentSnapshot[];
       };
     };
     [key: string]: unknown;

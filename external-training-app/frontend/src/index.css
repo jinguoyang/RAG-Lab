@@ -1921,3 +1921,56 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 }
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.56);
+  backdrop-filter: blur(4px);
+}
+
+.modal-panel {
+  width: min(560px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid rgba(23, 33, 31, 0.12);
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.24);
+}
+
+.modal-header,
+.modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+}
+
+.modal-header {
+  border-bottom: 1px solid rgba(23, 33, 31, 0.1);
+}
+
+.modal-header h2 {
+  margin: 2px 0 0;
+}
+
+.modal-body {
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+}
+
+.modal-body label {
+  display: grid;
+  gap: 8px;
+}
+
+.modal-actions {
+  justify-content: flex-end;
+  border-top: 1px solid rgba(23, 33, 31, 0.1);
+}

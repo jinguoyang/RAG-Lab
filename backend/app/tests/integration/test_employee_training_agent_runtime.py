@@ -193,7 +193,7 @@ def test_plan_draft_uses_kb_evidence_and_persists_platform_plan(db):
     assert response.planId
     assert response.documents[0].title == "现场安全制度"
     assert response.evidenceChunkIds
-    assert response.readingOrder == [doc.documentId for doc in response.documents]
+    assert all(document.sections for document in response.documents)
     assert db.execute(training_plans.select()).mappings().one()["app_id"] == app_id
 
     invocation = db.execute(app_invocations.select()).mappings().one()

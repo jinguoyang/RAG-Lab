@@ -20,6 +20,11 @@ import {
   type PostQuiz,
   type PostQuizSubmission,
 } from "../services/classroomService";
+
+function userVisibleText(value: unknown) {
+  // 平台内部仍保留 Checkpoint 术语，ex-app 对用户统一展示为“小节”。
+  return String(value ?? "").replace(/Checkpoint/gi, "小节");
+}
 import { appealQuestion } from "../services/questionService";
 import { getPlan, type TrainingPlan } from "../services/planService";
 import { ChoiceQuestion } from "../components/ChoiceQuestion";
@@ -160,7 +165,8 @@ export function ClassroomPage() {
     const completedIds = detail.metadata.completedSectionIds || [];
     setCompletedSections(completedIds.length);
 
-    const snapshotSections = detail.metadata.inputs?.courseSnapshot?.sections || [];
+    const snapshotSections = (detail.metadata.inputs?.courseSnapshot?.documents || [])
+      .flatMap((document) => document.sections || []);
     setSectionTotal(snapshotSections.length);
     const restoredMessages = detail.messages
       .filter(shouldDisplayRestoredMessage)
@@ -347,15 +353,15 @@ export function ClassroomPage() {
     const actions: { state: string; label: string; eventType: string; className?: string }[] = [
       { state: "INIT", label: "开始学习计划", eventType: "start", className: "primary" },
       { state: "PLAN", label: "进入教学", eventType: "continue", className: "primary" },
-      { state: "TEACH", label: "进入本节 Checkpoint", eventType: "continue", className: "primary" },
-      { state: "CHECK_UNDERSTAND", label: "开始 Checkpoint", eventType: "continue", className: "primary" },
+      { state: "TEACH", label: "进入本节练习", eventType: "continue", className: "primary" },
+      { state: "CHECK_UNDERSTAND", label: "开始本节练习", eventType: "continue", className: "primary" },
       { state: "GRADE", label: "查看结果", eventType: "continue", className: "secondary" },
       { state: "REVIEW", label: "课程总结", eventType: "continue", className: "secondary" },
     ];
     return actions.filter((action) => action.state === currentState);
   }
 
-  const planSections = plan?.sections || [];
+  const planSections = (plan?.documents || []).flatMap((document) => document.sections || []);
   const currentSection = planSections[currentSectionIndex];
   const displayedSectionTotal = sectionTotal || planSections.length;
   const progressPercent = displayedSectionTotal > 0
@@ -374,7 +380,7 @@ export function ClassroomPage() {
               disabled={loading}
               className="button primary compact-button"
             >
-              {button.label}
+              {userVisibleText(button.label)}
             </button>
           ))}
         </div>
@@ -385,7 +391,7 @@ export function ClassroomPage() {
       return (
         <ChoiceQuestion
           key={`action-${index}`}
-          question={String(action.data.content || action.data.question || "请选择")}
+          question={userVisibleText(action.data.content || action.data.question || "请选择")}
           options={((action.data.options as unknown[]) || []).map((opt, i) =>
             typeof opt === "string"
               ? { label: String.fromCharCode(65 + i), text: opt }
@@ -400,7 +406,7 @@ export function ClassroomPage() {
     if (action.actionType === "subjective") {
       return (
         <div key={`action-${index}`} className="choice-question">
-          <p className="font-medium">{String(action.data.content || "请输入答案")}</p>
+          <p className="font-medium">{userVisibleText(action.data.content || "请输入答案")}</p>
           <textarea
             className="subjective-input"
             disabled={loading}
@@ -456,14 +462,14 @@ export function ClassroomPage() {
             <div className="classroom-progress-copy">
               <p className="eyebrow">当前学习小节</p>
               <h3>{currentSection?.title || `第 ${currentSectionIndex + 1} 节`}</h3>
-              <p>{currentSection?.learningObjective || "完成本节讲解与 Checkpoint 后记录学习进度。"}</p>
+              <p>{currentSection?.learningObjective || "完成本节讲解与练习后记录学习进度。"}</p>
               <div className="classroom-progress-meta">
                 <span><BookOpenCheck size={16} /> 已完成 {completedSections}/{displayedSectionTotal || "?"} 节</span>
                 {currentSection?.estimatedMinutes ? (
                   <span><Clock3 size={16} /> 预计 {currentSection.estimatedMinutes} 分钟</span>
                 ) : null}
                 {currentSection?.checkpointCriteria?.length ? (
-                  <span>Checkpoint：{currentSection.checkpointCriteria.join("；")}</span>
+                  <span>小节标准：{currentSection.checkpointCriteria.join("；")}</span>
                 ) : null}
               </div>
             </div>
@@ -482,7 +488,7 @@ export function ClassroomPage() {
                 key={msg._key}
                 className={`message-bubble ${msg.role}`}
               >
-                <p className="whitespace-pre-wrap">{msg.content}</p>
+                <p className="whitespace-pre-wrap">{userVisibleText(msg.content)}</p>
               </div>
             ))}
 

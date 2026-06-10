@@ -8,7 +8,7 @@ from uuid import uuid4
 import pytest
 
 from app.services.training_agent_service import TrainingAgentConflictError, TrainingAgentNotFoundError
-from app.services.training_plan_service import publish_plan, reject_plan
+from app.services.training_plan_service import delete_plan_draft, list_plan_drafts, publish_plan, reject_plan
 from app.services.training_question_service import publish_question, reject_question
 
 
@@ -91,6 +91,58 @@ def _mock_session_empty() -> MagicMock:
     session = MagicMock()
     session.execute.return_value = mock_result
     return session
+
+
+def test_list_plan_drafts_returns_current_app_drafts(monkeypatch):
+    """平台应从数据库恢复当前 App 尚未保存到 ex-app 的学习计划草稿。"""
+    app_id = str(uuid4())
+    row = _make_plan_row(app_id=app_id, status="draft")
+    mappings = MagicMock()
+    mappings.all.return_value = [row]
+    result = MagicMock()
+    result.mappings.return_value = mappings
+    session = MagicMock()
+    session.execute.return_value = result
+    monkeypatch.setattr(
+        "app.services.training_plan_service.resolve_training_context",
+        lambda *_args: MagicMock(app_row={"app_id": app_id}),
+    )
+
+    plans = list_plan_drafts(session, "app-key")
+
+    assert [item.planId for item in plans] == [str(row["plan_id"])]
+    assert plans[0].status == "draft"
+
+
+def test_delete_plan_draft_soft_deletes_current_app_draft(monkeypatch):
+    """平台草稿删除应校验 App 归属并执行软删除。"""
+    app_id = str(uuid4())
+    plan_id = str(uuid4())
+    row = _make_plan_row(app_id=app_id, plan_id=plan_id, status="draft")
+    session = _mock_session_with_row(row)
+    monkeypatch.setattr(
+        "app.services.training_plan_service.resolve_training_context",
+        lambda *_args: MagicMock(app_row={"app_id": app_id}, actor=MagicMock(user=MagicMock(userId="user-1"))),
+    )
+
+    result = delete_plan_draft(session, "app-key", plan_id)
+
+    assert result == {"planId": plan_id, "status": "deleted"}
+    session.commit.assert_called_once()
+
+
+def test_delete_plan_draft_rejects_saved_plan(monkeypatch):
+    """平台只允许删除 draft 状态的学习计划。"""
+    app_id = str(uuid4())
+    row = _make_plan_row(app_id=app_id, status="published")
+    session = _mock_session_with_row(row)
+    monkeypatch.setattr(
+        "app.services.training_plan_service.resolve_training_context",
+        lambda *_args: MagicMock(app_row={"app_id": app_id}),
+    )
+
+    with pytest.raises(TrainingAgentConflictError):
+        delete_plan_draft(session, "app-key", str(row["plan_id"]))
 
 
 # ---------------------------------------------------------------------------

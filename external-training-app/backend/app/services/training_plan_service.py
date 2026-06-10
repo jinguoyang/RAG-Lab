@@ -16,12 +16,59 @@ class TrainingPlanConflictError(ValueError):
     pass
 
 
-def _serialize_sections(sections: list[Any] | None) -> list[dict[str, Any]]:
-    """将章节 DTO 转成可写入 JSON 列的普通字典。"""
+def _serialize_documents(documents: list[Any] | None) -> list[dict[str, Any]]:
+    """将嵌套文档 DTO 转成可写入 JSON 列的普通字典。"""
     return [
         item.model_dump() if hasattr(item, "model_dump") else dict(item)
-        for item in (sections or [])
+        for item in (documents or [])
     ]
+
+
+def _normalize_plan_name(plan_name: str) -> str:
+    """统一计划名称判重口径：裁剪首尾空格并忽略英文大小写。"""
+    return plan_name.strip().casefold()
+
+
+def _assert_unique_plan_name(
+    session: Session,
+    plan_name: str,
+    *,
+    exclude_plan_id: str | None = None,
+) -> str:
+    """校验计划名称在本地计划和平台草稿中唯一，并返回裁剪后的名称。"""
+    import httpx
+
+    from app.core.config import get_settings
+    from app.services.platform_client import PlatformClient
+
+    stripped_name = plan_name.strip()
+    normalized_name = _normalize_plan_name(stripped_name)
+    rows = session.execute(
+        select(training_plans)
+        .where(training_plans.c.deleted_at.is_(None))
+    ).mappings().all()
+    for row in rows:
+        if str(row["plan_id"]) == exclude_plan_id:
+            continue
+        existing_name = (row["metadata"] or {}).get("planName") or row["job_title"]
+        if _normalize_plan_name(str(existing_name)) == normalized_name:
+            raise TrainingPlanConflictError("计划名称已存在")
+
+    try:
+        settings = get_settings()
+        drafts = PlatformClient(
+            settings.platform_base_url,
+            settings.platform_api_key,
+        ).list_plan_drafts()
+    except (ValueError, httpx.HTTPError):
+        drafts = []
+    for draft in drafts:
+        if str(draft.get("planId")) == exclude_plan_id:
+            continue
+        existing_name = draft.get("planName") or draft.get("jobTitle") or ""
+        if _normalize_plan_name(str(existing_name)) == normalized_name:
+            raise TrainingPlanConflictError("计划名称已存在")
+    return stripped_name
 
 
 def create_plan_draft(session: Session, user_id: str | None, request: Any) -> dict:
@@ -35,8 +82,10 @@ def create_plan_draft(session: Session, user_id: str | None, request: Any) -> di
 
     settings = get_settings()
     client = PlatformClient(settings.platform_base_url, settings.platform_api_key)
+    plan_name = _assert_unique_plan_name(session, request.planName)
     try:
         task_data = client.create_plan_draft(
+            plan_name=plan_name,
             job_title=request.jobTitle,
             job_description=request.jobDescription,
         )
@@ -53,15 +102,19 @@ def create_plan_draft(session: Session, user_id: str | None, request: Any) -> di
 
 
 def list_plans(session: Session, app_id: str | None = None) -> list[dict]:
-    """列出学习计划。"""
+    """列出本地最终计划，并合并平台侧尚未保存的草稿。"""
+    import httpx
+
+    from app.core.config import get_settings
     from app.schemas.training_plan import TrainingPlanDTO
+    from app.services.platform_client import PlatformClient
 
     query = select(training_plans).where(training_plans.c.deleted_at.is_(None))
     if app_id:
         query = query.where(training_plans.c.app_id == app_id)
     rows = session.execute(query.order_by(training_plans.c.created_at.desc())).mappings().all()
 
-    return [
+    local_plans = [
         TrainingPlanDTO(
             planId=r["plan_id"],
             appId=r["app_id"],
@@ -73,8 +126,6 @@ def list_plans(session: Session, app_id: str | None = None) -> list[dict]:
             documents=r["documents"] or [],
             evidenceChunkIds=r["evidence_chunk_ids"] or [],
             recommendReason=r["recommend_reason"],
-            readingOrder=r["reading_order"] or [],
-            sections=(r["metadata"] or {}).get("sections") or [],
             employeeIds=(r["metadata"] or {}).get("employeeIds") or [],
             version=r["version"],
             createdAt=r["created_at"].isoformat(),
@@ -82,6 +133,25 @@ def list_plans(session: Session, app_id: str | None = None) -> list[dict]:
         ).model_dump()
         for r in rows
     ]
+    local_plan_ids = {item["planId"] for item in local_plans}
+
+    try:
+        settings = get_settings()
+        platform_drafts = PlatformClient(
+            settings.platform_base_url,
+            settings.platform_api_key,
+        ).list_plan_drafts()
+    except (ValueError, httpx.HTTPError):
+        # 平台暂不可用时仍返回 ex-app 本地业务真值，避免列表整体失败。
+        platform_drafts = []
+
+    for draft in platform_drafts:
+        if draft.get("planId") in local_plan_ids:
+            continue
+        if app_id and draft.get("appId") != app_id:
+            continue
+        local_plans.append(TrainingPlanDTO(**draft).model_dump())
+    return local_plans
 
 
 def review_plan(session: Session, user_id: str | None, plan_id: str, decision: str, notes: str = "") -> dict:
@@ -123,13 +193,13 @@ def save_plan(session: Session, user_id: str | None, plan_id: str, request: Any)
         .where(training_plans.c.deleted_at.is_(None))
     ).mappings().first()
 
+    plan_name = _assert_unique_plan_name(session, request.planName, exclude_plan_id=plan_id)
     now = datetime.now(timezone.utc)
-    serialized_sections = _serialize_sections(request.sections)
+    serialized_documents = _serialize_documents(request.documents)
     if row is None:
         metadata = {
-            "planName": request.planName,
+            "planName": plan_name,
             "employeeIds": request.employeeIds,
-            "sections": serialized_sections,
             "savedBy": user_id,
             "savedAt": now.isoformat(),
         }
@@ -141,10 +211,10 @@ def save_plan(session: Session, user_id: str | None, plan_id: str, request: Any)
                 job_description=request.jobDescription,
                 status="saved",
                 ability_groups=request.abilityGroups,
-                documents=request.documents,
+                documents=serialized_documents,
                 evidence_chunk_ids=request.evidenceChunkIds,
                 recommend_reason=request.recommendReason,
-                reading_order=request.readingOrder,
+                reading_order=[item["documentId"] for item in serialized_documents],
                 version=request.version,
                 metadata=metadata,
                 created_at=now,
@@ -157,9 +227,8 @@ def save_plan(session: Session, user_id: str | None, plan_id: str, request: Any)
         return {"planId": plan_id, "status": "saved"}
 
     metadata = dict(row["metadata"] or {})
-    metadata["planName"] = request.planName
+    metadata["planName"] = plan_name
     metadata["employeeIds"] = request.employeeIds
-    metadata["sections"] = serialized_sections
     metadata["savedBy"] = user_id
     metadata["savedAt"] = now.isoformat()
     session.execute(
@@ -167,8 +236,8 @@ def save_plan(session: Session, user_id: str | None, plan_id: str, request: Any)
         .where(training_plans.c.plan_id == plan_id)
         .values(
             status="saved",
-            documents=request.documents,
-            reading_order=request.readingOrder,
+            documents=serialized_documents,
+            reading_order=[item["documentId"] for item in serialized_documents],
             metadata=metadata,
             updated_at=now,
             updated_by=user_id,
@@ -212,15 +281,17 @@ def update_plan(session: Session, user_id: str | None, plan_id: str, request: An
 
     values: dict[str, Any] = {"updated_at": now, "updated_by": user_id}
     if request.planName is not None:
-        metadata["planName"] = request.planName
+        metadata["planName"] = _assert_unique_plan_name(
+            session,
+            request.planName,
+            exclude_plan_id=plan_id,
+        )
     if request.documents is not None:
-        values["documents"] = request.documents
-    if request.readingOrder is not None:
-        values["reading_order"] = request.readingOrder
+        serialized_documents = _serialize_documents(request.documents)
+        values["documents"] = serialized_documents
+        values["reading_order"] = [item["documentId"] for item in serialized_documents]
     if request.employeeIds is not None:
         metadata["employeeIds"] = request.employeeIds
-    if request.sections is not None:
-        metadata["sections"] = _serialize_sections(request.sections)
     values["metadata"] = metadata
 
     session.execute(
@@ -233,14 +304,30 @@ def update_plan(session: Session, user_id: str | None, plan_id: str, request: An
 
 
 def delete_plan(session: Session, user_id: str | None, plan_id: str) -> dict:
-    """软删除学习计划。"""
+    """软删除本地计划；本地不存在时代理删除平台草稿。"""
     row = session.execute(
         select(training_plans)
         .where(training_plans.c.plan_id == plan_id)
         .where(training_plans.c.deleted_at.is_(None))
     ).mappings().first()
     if row is None:
-        raise TrainingPlanNotFoundError(f"学习计划 {plan_id} 不存在")
+        import httpx
+
+        from app.core.config import get_settings
+        from app.services.platform_client import PlatformClient
+
+        settings = get_settings()
+        try:
+            return PlatformClient(
+                settings.platform_base_url,
+                settings.platform_api_key,
+            ).delete_plan_draft(plan_id)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                raise TrainingPlanNotFoundError(f"学习计划 {plan_id} 不存在") from exc
+            raise TrainingPlanConflictError(f"平台草稿删除失败: {exc.response.text[:200]}") from exc
+        except httpx.HTTPError as exc:
+            raise TrainingPlanConflictError("平台服务不可用，暂时无法删除草稿") from exc
 
     now = datetime.now(timezone.utc)
     session.execute(
@@ -386,8 +473,6 @@ def get_plan(session: Session, plan_id: str) -> dict:
         documents=row["documents"] or [],
         evidenceChunkIds=row["evidence_chunk_ids"] or [],
         recommendReason=row["recommend_reason"],
-        readingOrder=row["reading_order"] or [],
-        sections=(row["metadata"] or {}).get("sections") or [],
         employeeIds=(row["metadata"] or {}).get("employeeIds") or [],
         completedDocuments=list(set(completed_document_ids)),
         passedDocuments=list(set(passed_document_ids)),

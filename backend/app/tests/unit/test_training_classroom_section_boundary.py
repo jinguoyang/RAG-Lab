@@ -9,14 +9,17 @@ import pytest
 
 from app.schemas.training_classroom import ClassroomUiActionDTO
 from app.services.training_classroom_service import (
+    ClassroomEventError,
     ClassroomTransitionError,
     _answer_query_with_agent,
     _count_sections,
     _current_evidence,
     _get_passing_score,
     _is_low_value_teaching_evidence,
+    _ordered_course_sections,
     _passed_section_summary,
     _plan_content,
+    _validate_course_snapshot,
     validate_classroom_transition,
 )
 
@@ -65,9 +68,17 @@ class TestCountSections:
             "metadata": {
                 "inputs": {
                     "courseSnapshot": {
-                        "sections": [
-                            {"sectionId": "s1", "title": "目标一", "sourceDocumentIds": ["d1"]},
-                            {"sectionId": "s2", "title": "目标二", "sourceDocumentIds": ["d2"]},
+                        "documents": [
+                            {
+                                "documentId": "d1",
+                                "title": "文档一",
+                                "sections": [{"sectionId": "s1", "title": "目标一"}],
+                            },
+                            {
+                                "documentId": "d2",
+                                "title": "文档二",
+                                "sections": [{"sectionId": "s2", "title": "目标二"}],
+                            },
                         ]
                     }
                 }
@@ -75,6 +86,42 @@ class TestCountSections:
         }
 
         assert _count_sections(session, "kb-1", "安全员", session_id="session-1") == 2
+
+
+class TestNestedCourseSnapshot:
+    """课堂应按文档顺序和文档内小节顺序展开。"""
+
+    def test_flattens_nested_sections_in_document_order(self):
+        snapshot = {
+            "documents": [
+                {
+                    "documentId": "doc-b",
+                    "title": "第二份文档",
+                    "sections": [
+                        {"sectionId": "b-1", "title": "B1"},
+                        {"sectionId": "b-2", "title": "B2"},
+                    ],
+                },
+                {
+                    "documentId": "doc-a",
+                    "title": "第一份文档",
+                    "sections": [{"sectionId": "a-1", "title": "A1"}],
+                },
+            ]
+        }
+        state = {"metadata": {"inputs": {"courseSnapshot": snapshot}}}
+
+        sections = _ordered_course_sections(state)
+
+        assert [item["sectionId"] for item in sections] == ["b-1", "b-2", "a-1"]
+        assert [item["documentId"] for item in sections] == ["doc-b", "doc-b", "doc-a"]
+
+    def test_rejects_top_level_sections(self):
+        with pytest.raises(ClassroomEventError, match="顶层 sections"):
+            _validate_course_snapshot({
+                "documents": [],
+                "sections": [{"sectionId": "legacy"}],
+            })
 
     @patch("app.services.training_classroom_service.read_training_evidence")
     def test_returns_evidence_count(self, mock_evidence):
@@ -1052,19 +1099,22 @@ class TestClassroomUsesLearningPlan:
         mock_evidence.return_value = [
             {"chunk_id": "cover", "document_id": "doc-a", "heading": "封面", "section": "", "content": "企业标准发布页", "metadata": {}},
             {"chunk_id": "chunk-a", "document_id": "doc-a", "heading": "作业前确认", "section": "操作要求", "content": "启动设备前必须确认防护罩闭合。", "metadata": {}},
-            {"chunk_id": "chunk-b", "document_id": "doc-b", "heading": "异常处置", "section": "风险控制", "content": "发现异常振动时应立即停机并上报。", "metadata": {}},
+            {"chunk_id": "chunk-b", "document_id": "doc-a", "heading": "异常处置", "section": "风险控制", "content": "发现异常振动时应立即停机并上报。", "metadata": {}},
         ]
         state_row = _make_state_row("TEACH", metadata={
             "inputs": {
                 "jobTitle": "设备操作员",
                 "courseSnapshot": {
-                    "sections": [{
-                        "sectionId": "section-1",
-                        "title": "设备启动与异常处置",
-                        "learningObjective": "能够安全启动设备并识别异常。",
-                        "checkpointCriteria": ["说明启动前确认项", "说明异常处置动作"],
-                        "sourceDocumentIds": ["doc-a", "doc-b"],
-                        "evidenceChunkIds": ["chunk-a", "chunk-b"],
+                    "documents": [{
+                        "documentId": "doc-a",
+                        "title": "设备操作规程",
+                        "sections": [{
+                            "sectionId": "section-1",
+                            "title": "设备启动与异常处置",
+                            "learningObjective": "能够安全启动设备并识别异常。",
+                            "checkpointCriteria": ["说明启动前确认项", "说明异常处置动作"],
+                            "evidenceChunkIds": ["chunk-a", "chunk-b"],
+                        }],
                     }]
                 },
             }
@@ -1080,7 +1130,7 @@ class TestClassroomUsesLearningPlan:
         assert "启动设备前必须确认防护罩闭合" in content
         assert "发现异常振动时应立即停机并上报" in content
         assert "企业标准发布页" not in content
-        assert {citation.documentId for citation in citations} == {"doc-a", "doc-b"}
+        assert {citation.documentId for citation in citations} == {"doc-a"}
         assert {citation.chunkId for citation in citations} == {"chunk-a", "chunk-b"}
         assert mock_evidence.call_args_list[0].kwargs["chunk_ids"] == ["chunk-a", "chunk-b"]
 

@@ -192,13 +192,10 @@ def create_classroom_session(session: Session, user_id: str | None, request: Any
             .limit(1)
         ).mappings().first()
         if plan_row is not None:
-            plan_metadata = plan_row["metadata"] or {}
             inputs["courseSnapshot"] = {
                 "planId": str(plan_row["plan_id"]),
                 "version": plan_row["version"],
                 "documents": plan_row["documents"] or [],
-                "readingOrder": plan_row["reading_order"] or [],
-                "sections": plan_metadata.get("sections") or [],
             }
 
     # 构造平台 API 请求

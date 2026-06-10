@@ -201,21 +201,20 @@ def test_create_session_passes_frozen_course_snapshot(client):
             job_description="负责风险识别",
             status="saved",
             ability_groups=[],
-            documents=[{"documentId": "doc-001", "title": "安全手册"}],
+            documents=[{
+                "documentId": "doc-001",
+                "title": "安全手册",
+                "sections": [{
+                    "sectionId": "section-001",
+                    "title": "风险识别",
+                    "learningObjective": "能够识别风险",
+                }],
+            }],
             evidence_chunk_ids=["chunk-001"],
             recommend_reason="",
             reading_order=["doc-001"],
             version=1,
-            metadata={
-                "sections": [
-                    {
-                        "sectionId": "section-001",
-                        "title": "风险识别",
-                        "learningObjective": "能够识别风险",
-                        "sourceDocumentIds": ["doc-001"],
-                    }
-                ]
-            },
+            metadata={},
             created_at=now,
             updated_at=now,
         )
@@ -230,7 +229,9 @@ def test_create_session_passes_frozen_course_snapshot(client):
 
     assert response.status_code == 201
     snapshot = client.fake_platform.last_create_payload["inputs"]["courseSnapshot"]
-    assert snapshot["sections"][0]["sectionId"] == "section-001"
+    assert "sections" not in snapshot
+    assert "readingOrder" not in snapshot
+    assert snapshot["documents"][0]["sections"][0]["sectionId"] == "section-001"
     assert snapshot["documents"][0]["documentId"] == "doc-001"
 
 
