@@ -874,80 +874,61 @@ export function ReviewPage() {
                     placeholder="能力组"
                   />
                 </div>
-                <div className="section-title">
-                  <Sparkles size={16} aria-hidden="true" />
-                  <h3>文档内小节 ({document.sections.length})</h3>
-                </div>
-                <ol className="compact-list editable-list">
-                  {document.sections.map((section, sectionIndex) => (
-                    <li key={section.sectionId} className="doc-edit-row">
-                      <div className="doc-edit-main">
-                        <strong>{sectionIndex + 1}. {section.title}</strong>
-                        <div className="doc-edit-controls">
-                          <button
-                            type="button"
-                            className="icon-button"
-                            onClick={() => moveSection(index, sectionIndex, -1)}
-                            disabled={sectionIndex === 0}
-                            title="上移小节"
-                          >
-                            <ArrowUp size={14} aria-hidden="true" />
-                          </button>
-                          <button
-                            type="button"
-                            className="icon-button"
-                            onClick={() => moveSection(index, sectionIndex, 1)}
-                            disabled={sectionIndex === document.sections.length - 1}
-                            title="下移小节"
-                          >
-                            <ArrowDown size={14} aria-hidden="true" />
-                          </button>
+                <details className="document-sections" open>
+                  <summary className="section-title document-sections-summary">
+                    <Sparkles size={16} aria-hidden="true" />
+                    <h3>文档内小节 ({document.sections.length})</h3>
+                  </summary>
+                  <ol className="compact-list editable-list section-edit-list">
+                    {document.sections.map((section, sectionIndex) => (
+                      <li key={section.sectionId} className="section-edit-item">
+                        <div className="section-editor">
+                          <div className="section-editor-summary">
+                            <span className="section-index">{sectionIndex + 1}.</span>
+                            <input
+                              className="section-title-input"
+                              aria-label={`第 ${sectionIndex + 1} 个小节标题`}
+                              value={section.title}
+                              onChange={(event) => updateSection(index, sectionIndex, { title: event.target.value })}
+                            />
+                            <div className="doc-edit-controls">
+                              <button
+                                type="button"
+                                className="icon-button"
+                                onClick={() => moveSection(index, sectionIndex, -1)}
+                                disabled={sectionIndex === 0}
+                                title="上移小节"
+                              >
+                                <ArrowUp size={14} aria-hidden="true" />
+                              </button>
+                              <button
+                                type="button"
+                                className="icon-button"
+                                onClick={() => moveSection(index, sectionIndex, 1)}
+                                disabled={sectionIndex === document.sections.length - 1}
+                                title="下移小节"
+                              >
+                                <ArrowDown size={14} aria-hidden="true" />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="section-editor-body">
+                            <label>
+                              <span>学习目标</span>
+                              <textarea
+                                value={section.learningObjective}
+                                onChange={(event) => updateSection(index, sectionIndex, { learningObjective: event.target.value })}
+                              />
+                            </label>
+                            <p className="section-criteria">
+                              小节标准：{section.checkpointCriteria.join("、")}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                      <label>
-                        <span>小节标题</span>
-                        <input
-                          value={section.title}
-                          onChange={(event) => updateSection(index, sectionIndex, { title: event.target.value })}
-                        />
-                      </label>
-                      <label>
-                        <span>学习目标</span>
-                        <textarea
-                          value={section.learningObjective}
-                          onChange={(event) => updateSection(index, sectionIndex, { learningObjective: event.target.value })}
-                        />
-                      </label>
-                      <div className="doc-meta-row">
-                        <label>
-                          <span>预计分钟</span>
-                          <input
-                            type="number"
-                            min={1}
-                            max={120}
-                            value={section.estimatedMinutes}
-                            onChange={(event) => updateSection(index, sectionIndex, {
-                              estimatedMinutes: Number(event.target.value) || 1,
-                            })}
-                          />
-                        </label>
-                        <label className="employee-option">
-                          <input
-                            type="checkbox"
-                            checked={section.required}
-                            onChange={(event) => updateSection(index, sectionIndex, {
-                              required: event.target.checked,
-                            })}
-                          />
-                          <span>必修小节</span>
-                        </label>
-                      </div>
-                      <p className="text-xs opacity-60">
-                        小节标准：{section.checkpointCriteria.join("、")}
-                      </p>
-                    </li>
-                  ))}
-                </ol>
+                      </li>
+                    ))}
+                  </ol>
+                </details>
               </li>
             ))}
           </ol>

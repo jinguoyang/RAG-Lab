@@ -235,6 +235,59 @@ def test_create_session_passes_frozen_course_snapshot(client):
     assert snapshot["documents"][0]["documentId"] == "doc-001"
 
 
+def test_create_session_limits_snapshot_to_requested_document(client):
+    """单文档课堂只向平台发送目标文档及其附属小节。"""
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    client.test_session.execute(
+        training_plans.insert().values(
+            plan_id="plan-two-documents",
+            app_id="app-001",
+            job_title="场内财务",
+            job_description="负责库存资产价值管理",
+            status="saved",
+            ability_groups=[],
+            documents=[
+                {
+                    "documentId": "doc-001",
+                    "title": "呆滞物料管理办法",
+                    "sections": [{"sectionId": "section-001", "title": "呆滞物料识别"}],
+                },
+                {
+                    "documentId": "doc-002",
+                    "title": "物料存贮规程",
+                    "sections": [{"sectionId": "section-002", "title": "温湿度控制"}],
+                },
+            ],
+            evidence_chunk_ids=["chunk-001", "chunk-002"],
+            recommend_reason="先学习呆滞物料，再学习存贮环境。",
+            reading_order=["doc-001", "doc-002"],
+            version=1,
+            metadata={},
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    client.test_session.commit()
+
+    response = client.post(
+        "/api/v1/classroom/sessions",
+        json={
+            "endUserId": "user-001",
+            "planId": "plan-two-documents",
+            "documentId": "doc-002",
+        },
+        headers={"Authorization": "Bearer dev-user"},
+    )
+
+    assert response.status_code == 201
+    inputs = client.fake_platform.last_create_payload["inputs"]
+    assert inputs["documentId"] == "doc-002"
+    assert [item["documentId"] for item in inputs["courseSnapshot"]["documents"]] == ["doc-002"]
+    assert inputs["courseSnapshot"]["documents"][0]["sections"][0]["sectionId"] == "section-002"
+
+
 def test_submit_event_state_transition(client):
     """提交事件触发状态流转。"""
     resp = client.post(

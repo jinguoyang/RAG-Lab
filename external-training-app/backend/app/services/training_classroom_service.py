@@ -192,10 +192,21 @@ def create_classroom_session(session: Session, user_id: str | None, request: Any
             .limit(1)
         ).mappings().first()
         if plan_row is not None:
+            plan_documents = plan_row["documents"] or []
+            if request.documentId:
+                plan_documents = [
+                    document
+                    for document in plan_documents
+                    if isinstance(document, dict) and document.get("documentId") == request.documentId
+                ]
+                if not plan_documents:
+                    raise ClassroomSessionConflictError(
+                        f"学习计划中不存在文档 {request.documentId}"
+                    )
             inputs["courseSnapshot"] = {
                 "planId": str(plan_row["plan_id"]),
                 "version": plan_row["version"],
-                "documents": plan_row["documents"] or [],
+                "documents": plan_documents,
             }
 
     # 构造平台 API 请求

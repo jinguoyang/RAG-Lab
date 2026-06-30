@@ -903,6 +903,60 @@ textarea:focus {
   margin: 0;
 }
 
+.markdown-message {
+  display: grid;
+  gap: 8px;
+  overflow-x: auto;
+  line-height: 1.65;
+}
+
+.markdown-message > * {
+  margin: 0;
+}
+
+.markdown-message ul,
+.markdown-message ol {
+  padding-left: 20px;
+}
+
+.markdown-message li + li {
+  margin-top: 4px;
+}
+
+.markdown-message table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.markdown-message th,
+.markdown-message td {
+  padding: 6px 8px;
+  border: 1px solid rgba(23, 33, 31, 0.12);
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-message code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(23, 33, 31, 0.06);
+  font-size: 0.92em;
+}
+
+.markdown-message pre {
+  overflow-x: auto;
+  padding: 10px;
+  border-radius: 8px;
+  background: #f3f6f3;
+}
+
+.markdown-message pre code {
+  padding: 0;
+  background: transparent;
+}
+
 .message-bubble.user {
   align-self: flex-end;
   color: #ffffff;
@@ -1119,11 +1173,31 @@ textarea:focus {
   display: flex;
   gap: 8px;
   align-items: center;
-  min-height: 44px;
-  padding: 10px;
+  min-height: 38px;
+  padding: 8px 10px;
   background: #ffffff;
   border: 1px solid rgba(23, 33, 31, 0.1);
   border-radius: 8px;
+}
+
+.quiz-option input[type="radio"] {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+  border-radius: 50%;
+}
+
+.quiz-option span {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #34433e;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .quiz-result-row {
@@ -1139,7 +1213,9 @@ textarea:focus {
 .doc-edit-row {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 8px;
+  width: 100%;
 }
 
 .doc-edit-main {
@@ -1157,6 +1233,9 @@ textarea:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 100%;
+  color: #17211f;
+  font-size: 17px;
+  font-weight: 800;
 }
 
 .doc-edit-controls {
@@ -1183,6 +1262,94 @@ textarea:focus {
   color: inherit;
   width: 100%;
   min-width: 0;
+}
+
+/* 文档内小节整体可折叠，内部编辑器撑满文档卡片。 */
+.document-sections {
+  width: 100%;
+}
+
+.document-sections-summary {
+  justify-content: flex-start;
+  cursor: pointer;
+  list-style: none;
+}
+
+.document-sections-summary::-webkit-details-marker {
+  display: none;
+}
+
+.document-sections-summary::after {
+  width: 8px;
+  height: 8px;
+  margin-left: 2px;
+  border-right: 2px solid #65736f;
+  border-bottom: 2px solid #65736f;
+  content: "";
+  transform: rotate(-45deg);
+  transition: transform 160ms ease;
+}
+
+.document-sections[open] > .document-sections-summary::after {
+  transform: rotate(45deg);
+}
+
+.document-sections > .section-edit-list {
+  margin-top: 12px;
+}
+
+.section-edit-list,
+.section-edit-item,
+.section-editor {
+  width: 100%;
+  min-width: 0;
+}
+
+.editable-list .section-edit-item {
+  display: block;
+  padding: 0;
+}
+
+.section-editor {
+  overflow: hidden;
+  background: #fbfcfa;
+  border: 1px solid rgba(23, 33, 31, 0.1);
+  border-radius: 8px;
+}
+
+.section-editor-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.section-index {
+  color: #34433e;
+  font-size: 15px;
+  font-weight: 400;
+}
+
+.section-title-input {
+  min-width: 0;
+  min-height: 38px;
+  padding: 7px 9px;
+  font-size: 15px;
+  font-weight: 400;
+}
+
+.section-editor-body {
+  display: grid;
+  gap: 12px;
+  padding: 4px 12px 12px 35px;
+}
+
+.section-criteria {
+  margin: 0;
+  color: #65736f;
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 /* ── Employee Select ───────────────────────────────── */

@@ -143,6 +143,29 @@ def _build_document_content_map(rows: list[Mapping[str, Any]], max_chars: int = 
     return "\n".join(lines)[:max_chars]
 
 
+def _document_fact_lines(rows: list[Mapping[str, Any]], document_id: str, limit: int = 3) -> list[str]:
+    """从单份文档证据中抽取可直接进入 fallback 讲稿的关键事实。"""
+    facts: list[str] = []
+    for row in rows:
+        if str(row.get("document_id") or "") != document_id or _is_low_value_plan_evidence(row):
+            continue
+        preview = evidence_preview(row, limit=180).strip()
+        if not preview:
+            continue
+        for separator in ("。", "；", ";", "\n"):
+            preview = preview.replace(separator, "。")
+        for part in preview.split("。"):
+            fact = " ".join(part.split()).strip(" ，,、")
+            if len(fact) < 8 or fact in facts:
+                continue
+            facts.append(fact)
+            if len(facts) >= limit:
+                break
+        if len(facts) >= limit:
+            break
+    return facts
+
+
 def _max_verbatim_overlap(script_text: str, evidence_texts: list[str]) -> float:
     """估算讲稿与单条证据的直接重合度，避免整段复制 Chunk。"""
     normalized_script = "".join(script_text.split())
@@ -229,10 +252,11 @@ def _build_section_prompt(
     documents: list[DocumentDTO],
     content_map: str,
 ) -> list[dict[str, str]]:
-    """构建课程蓝图 Prompt，要求模型基于全文结构输出章节级讲稿。"""
+    """构建单文档课程蓝图 Prompt，要求模型基于全文结构输出章节级讲稿。"""
     valid_documents = "\n".join(f"- {item.documentId}: {item.title}" for item in documents)
     system = (
-        "你是企业一对一培训课程设计师。你要先理解完整制度结构，再按业务逻辑和可验证学习目标设计课程，"
+        "你是企业一对一培训课程设计师。当前任务只允许为输入中的唯一一份文档设计学习小节。"
+        "你要先理解该文档的完整制度结构，再按业务逻辑和可验证学习目标设计课程，"
         "不能按 Chunk 数量机械分节，也不能把 Chunk 原文直接当讲稿。\n"
         "严格返回 JSON，不要输出其他文字。格式为：\n"
         '{"sections":[{"sectionId":"section-001","documentId":"documentId","title":"string","learningObjective":"string",'
@@ -247,7 +271,9 @@ def _build_section_prompt(
         " explanation 必须像教师讲稿一样解释概念关系、职责边界或流程顺序，不得列出 Chunk 标签或复制大段原文。\n"
         "4. opening 使用岗位情境提问；scenario 必须包含具体条件、判断过程和正确动作；interactionQuestions 为 1 至 3 个。\n"
         "5. documentId 和 evidenceChunkIds 只能使用输入中真实存在的 ID，每个小节只能属于一份文档。\n"
-        "6. Checkpoint 标准必须可观察、可判断，不能写成泛泛的“理解本节”。"
+        "6. Checkpoint 标准必须可观察、可判断，不能写成泛泛的“理解本节”。\n"
+        "7. 不得引用其他课程文档、课程总体目标或其他文档的主题；所有小节都必须能从当前文档内容中得到支持。\n"
+        "8. 小节标题和 learningObjective 必须互不重复；相近内容应合并成一个小节。"
     )
     user = (
         f"岗位名称：{job_title}\n岗位描述：{job_description}\n\n"
@@ -278,6 +304,9 @@ def _parse_generated_sections(
         document.documentId: [] for document in documents
     }
     seen_section_ids: set[str] = set()
+    seen_section_topics: dict[str, set[tuple[str, str]]] = {
+        document.documentId: set() for document in documents
+    }
     for index, raw in enumerate(data.get("sections") or [], start=1):
         if not isinstance(raw, Mapping):
             continue
@@ -289,7 +318,13 @@ def _parse_generated_sections(
         section_id = str(raw.get("sectionId") or f"section-{index:03d}")
         if document_id not in valid_document_ids or not evidence_chunk_ids or section_id in seen_section_ids:
             continue
+        title = str(raw.get("title") or f"第 {index} 节").strip()
+        objective = str(raw.get("learningObjective") or "").strip()
+        topic_key = ("".join(title.split()).lower(), "".join(objective.split()).lower())
+        if topic_key in seen_section_topics[document_id]:
+            continue
         seen_section_ids.add(section_id)
+        seen_section_topics[document_id].add(topic_key)
         script_raw = raw.get("teachingScript")
         if not isinstance(script_raw, Mapping):
             script_raw = {
@@ -302,7 +337,6 @@ def _parse_generated_sections(
         script = TeachingScriptDTO(**script_raw)
         key_points = [str(item) for item in (raw.get("keyPoints") or []) if item]
         criteria = [str(item) for item in (raw.get("checkpointCriteria") or []) if item]
-        objective = str(raw.get("learningObjective") or "").strip()
         quality_score = _score_teaching_script(
             script.model_dump(),
             learning_objective=objective,
@@ -313,7 +347,7 @@ def _parse_generated_sections(
         sections_by_document[document_id].append(
             LearningSectionDTO(
                 sectionId=section_id,
-                title=str(raw.get("title") or f"第 {index} 节"),
+                title=title,
                 learningObjective=objective,
                 evidenceChunkIds=evidence_chunk_ids,
                 keyPoints=key_points,
@@ -330,6 +364,105 @@ def _parse_generated_sections(
     ]
 
 
+def _generate_document_sections_with_llm(
+    job_title: str,
+    job_description: str,
+    document: DocumentDTO,
+    rows: list[Mapping[str, Any]],
+) -> DocumentDTO | None:
+    """只使用单份文档全文生成小节，确保模型上下文不存在其他课程文档。"""
+    content_map = _build_document_content_map(rows)
+    if not content_map:
+        return None
+    messages = _build_section_prompt(job_title, job_description, [document], content_map)
+    data = None
+    last_parse_error: Exception | None = None
+    for attempt in range(2):
+        retry_messages = messages if attempt == 0 else [
+            messages[0],
+            {
+                "role": "user",
+                "content": (
+                    f"{messages[1]['content']}\n\n"
+                    "上一轮输出未形成有效 JSON。请重新生成，尤其检查每个 section 的大括号和逗号；"
+                    "五个讲稿字段必须直接放在 section 内，最终只返回一个可被 JSON.parse 解析的对象。"
+                ),
+            },
+        ]
+        try:
+            raw_text = call_llm(
+                retry_messages,
+                temperature=0.1,
+                max_tokens=7000,
+                timeout=120,
+                disable_thinking=True,
+            )
+            data = parse_training_json(raw_text, required_keys={"sections"})
+            break
+        except TrainingLLMOutputError as exc:
+            last_parse_error = exc
+    if data is None:
+        raise last_parse_error or TrainingLLMOutputError("课程蓝图输出无法解析。")
+
+    generated_document = _parse_generated_sections(data, [document], rows)[0]
+    sections = generated_document.sections
+    if sections and any(section.teachingQualityScore < 0.7 for section in sections):
+        scores = ", ".join(
+            f"{section.sectionId}={section.teachingQualityScore:.2f}"
+            for section in sections
+        )
+        repair_messages = [
+            messages[0],
+            {
+                "role": "user",
+                "content": (
+                    f"{messages[1]['content']}\n\n"
+                    "上一版课程蓝图如下：\n"
+                    f"{json.dumps(data, ensure_ascii=False)}\n\n"
+                    f"程序质量评分：{scores}。请只重写低于 0.70 的五个讲稿字段，"
+                    "补足情境导入、概念关系或流程顺序、具体工作案例、互动问题和行动小结；"
+                    "禁止复制 Chunk 原文，小节来源 ID 和顺序保持不变。返回完整 JSON。"
+                ),
+            },
+        ]
+        repaired_text = call_llm(
+            repair_messages,
+            temperature=0.2,
+            max_tokens=7000,
+            timeout=120,
+            disable_thinking=True,
+        )
+        repaired_data = parse_training_json(repaired_text, required_keys={"sections"})
+        repaired_document = _parse_generated_sections(repaired_data, [document], rows)[0]
+        repaired_sections = repaired_document.sections
+        if repaired_sections:
+            old_average = sum(item.teachingQualityScore for item in sections) / len(sections)
+            new_average = sum(item.teachingQualityScore for item in repaired_sections) / len(repaired_sections)
+            if new_average >= old_average:
+                generated_document = repaired_document
+    return generated_document if generated_document.sections else None
+
+
+def _ensure_unique_section_ids(
+    document: DocumentDTO,
+    seen_section_ids: set[str],
+) -> DocumentDTO:
+    """在多文档结果合并时修正重复小节 ID，避免课堂快照校验冲突。"""
+    sections: list[LearningSectionDTO] = []
+    for index, section in enumerate(document.sections, start=1):
+        section_id = section.sectionId
+        if section_id in seen_section_ids:
+            section_id = f"section-{document.documentId}-{index:03d}"
+        suffix = 1
+        candidate = section_id
+        while candidate in seen_section_ids:
+            suffix += 1
+            candidate = f"{section_id}-{suffix}"
+        seen_section_ids.add(candidate)
+        sections.append(section.model_copy(update={"sectionId": candidate}))
+    return document.model_copy(update={"sections": sections})
+
+
 def _generate_sections_with_llm(
     session: Session,
     job_title: str,
@@ -338,82 +471,32 @@ def _generate_sections_with_llm(
     rows: list[Mapping[str, Any]],
     app_id: str,
 ) -> list[DocumentDTO] | None:
-    """基于入选文档全文生成文档内课程小节，失败时由调用方回退。"""
-    content_map = _build_document_content_map(rows)
-    if not content_map:
-        return None
+    """逐文档调用 LLM 生成课程小节，任一文档失败时由调用方整体回退。"""
     started_at = time.monotonic()
+    generated_documents: list[DocumentDTO] = []
+    seen_section_ids: set[str] = set()
     try:
-        messages = _build_section_prompt(job_title, job_description, documents, content_map)
-        data = None
-        last_parse_error: Exception | None = None
-        for attempt in range(2):
-            retry_messages = messages if attempt == 0 else [
-                messages[0],
-                {
-                    "role": "user",
-                    "content": (
-                        f"{messages[1]['content']}\n\n"
-                        "上一轮输出未形成有效 JSON。请重新生成，尤其检查每个 section 的大括号和逗号；"
-                        "五个讲稿字段必须直接放在 section 内，最终只返回一个可被 JSON.parse 解析的对象。"
-                    ),
-                },
+        for document in documents:
+            document_rows = [
+                row for row in rows
+                if str(row.get("document_id") or "") == document.documentId
             ]
-            try:
-                raw_text = call_llm(
-                    retry_messages,
-                    temperature=0.1,
-                    max_tokens=7000,
-                    timeout=120,
-                    disable_thinking=True,
-                )
-                data = parse_training_json(raw_text, required_keys={"sections"})
+            generated_document = _generate_document_sections_with_llm(
+                job_title,
+                job_description,
+                document,
+                document_rows,
+            )
+            if generated_document is None:
+                generated_documents = []
                 break
-            except TrainingLLMOutputError as exc:
-                last_parse_error = exc
-        if data is None:
-            raise last_parse_error or TrainingLLMOutputError("课程蓝图输出无法解析。")
-        generated_documents = _parse_generated_sections(data, documents, rows)
-        sections = [section for document in generated_documents for section in document.sections]
-        if sections and any(section.teachingQualityScore < 0.7 for section in sections):
-            scores = ", ".join(
-                f"{section.sectionId}={section.teachingQualityScore:.2f}"
-                for section in sections
+            generated_documents.append(
+                _ensure_unique_section_ids(generated_document, seen_section_ids)
             )
-            repair_messages = [
-                messages[0],
-                {
-                    "role": "user",
-                    "content": (
-                        f"{messages[1]['content']}\n\n"
-                        "上一版课程蓝图如下：\n"
-                        f"{json.dumps(data, ensure_ascii=False)}\n\n"
-                        f"程序质量评分：{scores}。请只重写低于 0.70 的五个讲稿字段，"
-                        "补足情境导入、概念关系或流程顺序、具体工作案例、互动问题和行动小结；"
-                        "禁止复制 Chunk 原文，章节来源 ID 和课程顺序保持不变。返回完整 JSON。"
-                    ),
-                },
-            ]
-            repaired_text = call_llm(
-                repair_messages,
-                temperature=0.2,
-                max_tokens=7000,
-                timeout=120,
-                disable_thinking=True,
-            )
-            repaired_data = parse_training_json(repaired_text, required_keys={"sections"})
-            repaired_documents = _parse_generated_sections(repaired_data, documents, rows)
-            repaired_sections = [section for document in repaired_documents for section in document.sections]
-            if repaired_sections:
-                old_average = sum(item.teachingQualityScore for item in sections) / len(sections)
-                new_average = sum(item.teachingQualityScore for item in repaired_sections) / len(repaired_sections)
-                if new_average >= old_average:
-                    sections = repaired_sections
-                    generated_documents = repaired_documents
     except (LLMCallError, TrainingLLMOutputError, ValueError, TypeError) as exc:
         logger.warning("课程蓝图生成失败，将回退到规则化小节: %s", exc)
-        sections = []
         generated_documents = []
+    sections = [section for document in generated_documents for section in document.sections]
     latency_ms = int((time.monotonic() - started_at) * 1000)
     record_training_skill_call(
         session,
@@ -639,14 +722,32 @@ def _build_sections(
     for index, document in enumerate(documents, start=1):
         group_name = document.abilityGroup or (groups[0].name if groups else "课程目标")
         evidence_chunk_ids = chunks_by_document.get(document.documentId, [])
-        key_points = [document.title]
+        fact_lines = _document_fact_lines(rows, document.documentId)
+        key_points = fact_lines or [document.title]
         objective = group_descriptions.get(group_name) or f"理解并应用{group_name}相关要求。"
+        evidence_brief = "；".join(fact_lines)
+        explanation = (
+            f"本节围绕{objective}展开。材料中的关键要求包括：{evidence_brief}。"
+            "学习时要把这些要求对应到适用条件、检查动作、异常处置和记录留痕。"
+            if evidence_brief
+            else f"本节围绕{objective}展开。先建立整体判断，再结合关键材料理解执行顺序和风险边界。"
+        )
+        scenario = (
+            f"员工执行{group_name}相关工作时，先对照材料确认「{fact_lines[0]}」，"
+            "再逐项检查后续要求；如发现超期、环境异常或参数不满足要求，应暂停直接使用，完成复核、处置和记录。"
+            if fact_lines
+            else f"员工执行{group_name}相关工作时，先核对适用条件，再按要求处理并保留必要记录。"
+        )
         teaching_script = TeachingScriptDTO(
             opening=f"在实际工作中遇到与「{group_name}」相关的问题时，你会先检查什么？",
-            explanation=f"本节围绕{objective}展开。先建立整体判断，再结合关键材料理解执行顺序和风险边界。",
-            scenario=f"员工执行{group_name}相关工作时，先核对适用条件，再按要求处理并保留必要记录。",
-            interactionQuestions=[f"你认为{group_name}最容易被忽略的环节是什么？"],
-            summary=f"掌握{group_name}的判断依据、执行顺序和异常处理要求。",
+            explanation=explanation,
+            scenario=scenario,
+            interactionQuestions=[f"结合材料中的具体要求，你认为{group_name}最容易被忽略的环节是什么？"],
+            summary=(
+                f"本节至少要掌握：{evidence_brief}，并能说明对应的检查、处置和记录要求。"
+                if evidence_brief
+                else f"掌握{group_name}的判断依据、执行顺序和异常处理要求。"
+            ),
         )
         evidence_texts = [
             str(row.get("content") or "")

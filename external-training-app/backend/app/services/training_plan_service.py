@@ -304,18 +304,18 @@ def update_plan(session: Session, user_id: str | None, plan_id: str, request: An
 
 
 def delete_plan(session: Session, user_id: str | None, plan_id: str) -> dict:
-    """软删除本地计划；本地不存在时代理删除平台草稿。"""
+    """删除本地计划，并同步清理平台同 ID 草稿。"""
+    import httpx
+
+    from app.core.config import get_settings
+    from app.services.platform_client import PlatformClient
+
     row = session.execute(
         select(training_plans)
         .where(training_plans.c.plan_id == plan_id)
         .where(training_plans.c.deleted_at.is_(None))
     ).mappings().first()
     if row is None:
-        import httpx
-
-        from app.core.config import get_settings
-        from app.services.platform_client import PlatformClient
-
         settings = get_settings()
         try:
             return PlatformClient(
@@ -328,6 +328,19 @@ def delete_plan(session: Session, user_id: str | None, plan_id: str) -> dict:
             raise TrainingPlanConflictError(f"平台草稿删除失败: {exc.response.text[:200]}") from exc
         except httpx.HTTPError as exc:
             raise TrainingPlanConflictError("平台服务不可用，暂时无法删除草稿") from exc
+
+    settings = get_settings()
+    try:
+        PlatformClient(
+            settings.platform_base_url,
+            settings.platform_api_key,
+        ).delete_plan_draft(plan_id)
+    except httpx.HTTPStatusError as exc:
+        # 平台草稿可能已被清理；404 不影响本地计划删除。
+        if exc.response.status_code != 404:
+            raise TrainingPlanConflictError(f"平台草稿删除失败: {exc.response.text[:200]}") from exc
+    except httpx.HTTPError as exc:
+        raise TrainingPlanConflictError("平台服务不可用，暂时无法删除学习计划") from exc
 
     now = datetime.now(timezone.utc)
     session.execute(
@@ -378,6 +391,14 @@ def generate_questions_for_plan(plan_id: str) -> None:
 
         client = PlatformClient(settings.platform_base_url, settings.platform_api_key)
         now = datetime.now(timezone.utc)
+        ability_group_names = [
+            group.get("name")
+            for group in (row["ability_groups"] or [])
+            if isinstance(group, dict) and group.get("name")
+        ]
+        ability_group_names.extend(
+            group for group in (row["ability_groups"] or []) if isinstance(group, str) and group
+        )
 
         for doc in documents:
             doc_id = doc.get("documentId") if isinstance(doc, dict) else None
@@ -387,7 +408,7 @@ def generate_questions_for_plan(plan_id: str) -> None:
                 templates = client.create_question_drafts(
                     plan_id=plan_id,
                     job_title=row["job_title"],
-                    ability_groups=row["ability_groups"] or [],
+                    ability_groups=ability_group_names,
                     count=10,
                     document_ids=[doc_id],
                 )

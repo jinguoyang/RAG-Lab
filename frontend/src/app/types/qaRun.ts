@@ -74,6 +74,11 @@ export interface QARunCitationDTO {
   locationSnapshot: Record<string, unknown>;
 }
 
+export interface QARunAnswerBlockDTO {
+  text: string;
+  citationEvidenceIds: string[];
+}
+
 export interface QARunDetailDTO {
   runId: string;
   sourceRunId: string | null;
@@ -83,6 +88,7 @@ export interface QARunDetailDTO {
   query: string;
   rewrittenQuery: string | null;
   answer: string | null;
+  answerBlocks?: QARunAnswerBlockDTO[];
   retrievalDiagnostics: Record<string, unknown>;
   overrideSnapshot: Record<string, unknown>;
   pipelineSnapshot: Record<string, unknown>;

@@ -1,4 +1,6 @@
 """平台 API 客户端。"""
+import time
+
 import httpx
 
 
@@ -122,7 +124,7 @@ class PlatformClient:
         count: int | None = None,
         document_ids: list[str] | None = None,
     ) -> list[dict]:
-        """调用平台 /training/questions/drafts 生成题目。"""
+        """调用平台生成题目，并等待异步任务返回题目列表。"""
         payload = {
             "planId": plan_id,
             "jobTitle": job_title,
@@ -138,7 +140,21 @@ class PlatformClient:
             timeout=60.0,
         )
         resp.raise_for_status()
-        return resp.json()
+        task = resp.json()
+        task_id = task.get("id")
+        if not task_id:
+            raise RuntimeError("平台题目生成响应缺少任务 ID")
+
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            task = self.get_task(task_id)
+            if task.get("status") == "completed":
+                return task.get("result") or []
+            if task.get("status") in {"failed", "cancelled"}:
+                raise RuntimeError(task.get("error") or "平台题目生成任务失败")
+            time.sleep(0.5)
+
+        raise httpx.TimeoutException("等待平台题目生成任务超时")
 
     def grade_subjective_answer(self, payload: dict) -> dict:
         """调用平台主观题评分能力，不传平台题库 questionId。"""

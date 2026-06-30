@@ -12,6 +12,7 @@ from app.services.training_plan_service import (
     _build_sections,
     _generate_sections_with_llm,
     _generate_plan_with_llm,
+    _parse_generated_sections,
     _rule_based_plan,
     _score_teaching_script,
 )
@@ -109,6 +110,35 @@ class TestBuildSections:
             for section in document.sections
         )
 
+    def test_rule_based_section_script_uses_document_evidence(self):
+        rows = [
+            _make_row(
+                "c1",
+                "d1",
+                "IC直插、直插光耦、IC贴片、光耦贴片的贮存期限为24个月。"
+                "超储蜂鸣器除检查引脚可焊性外，还应按照进厂检验标准测试器件各项参数。",
+                heading="贮存期限",
+                document_name="周转存贮通用工艺规程.pdf",
+            ),
+            _make_row(
+                "c2",
+                "d1",
+                "处理超储物料时应保留复验记录，并根据测试结果决定是否继续使用。",
+                heading="超储处理",
+                document_name="周转存贮通用工艺规程.pdf",
+            ),
+        ]
+        groups, docs, _, _, _ = _rule_based_plan("检验员", rows)
+
+        documents = _build_sections(groups, docs, rows)
+
+        script = documents[0].sections[0].teachingScript
+        assert script is not None
+        combined = "\n".join([script.explanation, script.scenario, script.summary])
+        assert "IC直插" in combined
+        assert "进厂检验标准" in combined
+        assert "先建立整体判断" not in script.explanation
+
 
 class TestDocumentContentMap:
     """课程蓝图应基于完整章节内容，而不是少量检索片段。"""
@@ -179,6 +209,115 @@ class TestTeachingScriptQuality:
 
 class TestGenerateSectionsWithLlm:
     """LLM 应直接生成章节级课程脚本，并受来源 ID 校验。"""
+
+    @patch("app.services.training_plan_service.call_llm")
+    @patch("app.services.training_plan_service.record_training_skill_call")
+    def test_generates_each_document_with_isolated_prompt(self, _mock_audit, mock_llm):
+        """多文档计划应逐文档生成小节，避免整课上下文污染单文档拆分。"""
+        mock_llm.side_effect = [
+            """{"sections":[{
+              "sectionId":"section-001","documentId":"d1","title":"呆滞物料识别",
+              "learningObjective":"能够依据库存动态识别呆滞物料。",
+              "evidenceChunkIds":["c1"],"keyPoints":["库存动态"],"checkpointCriteria":["能说明识别依据"],
+              "opening":"一批物料长期没有出入库，你会先核对什么？",
+              "explanation":"先核对库存动态和库龄，再判断是否达到呆滞识别条件，然后由主管复核，最后进入跨部门评审流程。",
+              "scenario":"库管工发现物料长期无动态后，核对台账并记录判断依据，再提交主管复核和评审。",
+              "interactionQuestions":["为什么不能只看库龄？"],
+              "summary":"识别呆滞物料要同时核对库龄和库存动态。",
+              "estimatedMinutes":8,"required":true
+            }]}""",
+            """{"sections":[{
+              "sectionId":"section-001","documentId":"d2","title":"温湿度控制",
+              "learningObjective":"能够按要求检查存贮环境。",
+              "evidenceChunkIds":["c2"],"keyPoints":["温湿度"],"checkpointCriteria":["能说明检查动作"],
+              "opening":"仓库温度超出范围时，你会先做什么？",
+              "explanation":"先读取温湿度记录，再确认偏差范围和持续时间，然后判断受影响物料，最后按要求处理并留痕。",
+              "scenario":"保管员发现温度超限后先复核仪表，再隔离受影响物料、上报主管并记录处理结果。",
+              "interactionQuestions":["为什么需要保留环境记录？"],
+              "summary":"环境控制要监测、确认、处理并留痕。",
+              "estimatedMinutes":8,"required":true
+            }]}""",
+        ]
+        documents = [
+            DocumentDTO(documentId="d1", title="呆滞物料管理办法", abilityGroup="库存管理"),
+            DocumentDTO(documentId="d2", title="物料存贮规程", abilityGroup="环境控制"),
+        ]
+        rows = [
+            _make_row("c1", "d1", "长期无库存动态的物料应进入识别流程。", "识别条件"),
+            _make_row("c2", "d2", "仓库应持续记录温湿度并处理超限。", "环境要求"),
+        ]
+
+        result = _generate_sections_with_llm(
+            MagicMock(),
+            "场内财务",
+            "负责库存资产价值管理",
+            documents,
+            rows,
+            "app-1",
+        )
+
+        assert result is not None
+        assert mock_llm.call_count == 2
+        first_prompt = mock_llm.call_args_list[0].args[0][1]["content"]
+        second_prompt = mock_llm.call_args_list[1].args[0][1]["content"]
+        assert "d1: 呆滞物料管理办法" in first_prompt
+        assert "长期无库存动态" in first_prompt
+        assert "d2: 物料存贮规程" not in first_prompt
+        assert "仓库应持续记录温湿度" not in first_prompt
+        assert "d2: 物料存贮规程" in second_prompt
+        assert "仓库应持续记录温湿度" in second_prompt
+        assert "d1: 呆滞物料管理办法" not in second_prompt
+        assert "长期无库存动态" not in second_prompt
+        assert [section.title for document in result for section in document.sections] == [
+            "呆滞物料识别",
+            "温湿度控制",
+        ]
+        section_ids = [section.sectionId for document in result for section in document.sections]
+        assert len(section_ids) == len(set(section_ids))
+
+    def test_deduplicates_repeated_sections_inside_document(self):
+        """模型重复返回相同标题和目标时，只保留第一节。"""
+        rows = [_make_row("c1", "d1", "仓库应持续记录温湿度并处理超限。", "环境要求")]
+        data = {
+            "sections": [
+                {
+                    "sectionId": "section-001",
+                    "documentId": "d1",
+                    "title": "物料存贮与环境控制",
+                    "learningObjective": "理解物料存贮期限和环境控制标准。",
+                    "evidenceChunkIds": ["c1"],
+                    "keyPoints": ["温湿度"],
+                    "checkpointCriteria": ["能说明控制标准"],
+                    "opening": "温度超限时怎么办？",
+                    "explanation": "先读取记录，再确认偏差，然后处理并留痕。",
+                    "scenario": "保管员复核仪表后隔离物料并上报。",
+                    "interactionQuestions": ["为什么需要留痕？"],
+                    "summary": "环境控制需要监测和闭环。",
+                },
+                {
+                    "sectionId": "section-002",
+                    "documentId": "d1",
+                    "title": "物料存贮与环境控制",
+                    "learningObjective": "理解物料存贮期限和环境控制标准。",
+                    "evidenceChunkIds": ["c1"],
+                    "keyPoints": ["温湿度"],
+                    "checkpointCriteria": ["能说明控制标准"],
+                    "opening": "温度超限时怎么办？",
+                    "explanation": "先读取记录，再确认偏差，然后处理并留痕。",
+                    "scenario": "保管员复核仪表后隔离物料并上报。",
+                    "interactionQuestions": ["为什么需要留痕？"],
+                    "summary": "环境控制需要监测和闭环。",
+                },
+            ]
+        }
+
+        documents = _parse_generated_sections(
+            data,
+            [DocumentDTO(documentId="d1", title="物料存贮规程")],
+            rows,
+        )
+
+        assert [section.sectionId for section in documents[0].sections] == ["section-001"]
 
     @patch("app.services.training_plan_service.call_llm")
     @patch("app.services.training_plan_service.record_training_skill_call")

@@ -4,6 +4,7 @@ from hashlib import sha256
 from copy import deepcopy
 import json
 import logging
+import re
 from typing import Any
 from uuid import UUID
 
@@ -96,6 +97,8 @@ from app.services.token_utils import estimate_tokens, rrf_score as _rrf_score
 
 
 logger = logging.getLogger(__name__)
+
+_INLINE_CITATION_PATTERN = re.compile(r"\[\[\s*([0-9,\s，]+)\s*\]\]|\[\s*(\d+)\s*\]")
 
 
 def _safe_langfuse_call(fn, *args, **kwargs):
@@ -636,8 +639,9 @@ def _expand_context_pairs_with_chunk_window(
     chunk_window: int,
 ) -> list[tuple[ProviderCandidate, UUID]]:
     """将相邻 Chunk 行合并进上下文，避免改变原始 retrieved evidence。"""
+    deduped_context_pairs = _dedupe_candidate_pairs_by_chunk_id(context_pairs)
     if chunk_window <= 0 or not adjacent_rows:
-        return context_pairs
+        return deduped_context_pairs
     rows_by_index: dict[int, list[RowMapping | dict[str, Any]]] = {}
     for row in adjacent_rows:
         chunk_index = _row_get(row, "chunk_index")
@@ -646,7 +650,7 @@ def _expand_context_pairs_with_chunk_window(
 
     expanded: list[tuple[ProviderCandidate, UUID]] = []
     seen_chunk_ids: set[str] = set()
-    for candidate, candidate_id in context_pairs:
+    for candidate, candidate_id in deduped_context_pairs:
         if candidate.chunk_id is not None:
             seen_chunk_ids.add(str(candidate.chunk_id))
         expanded.append((candidate, candidate_id))
@@ -665,6 +669,24 @@ def _expand_context_pairs_with_chunk_window(
                 expanded.append((_candidate_from_context_row(row, candidate), candidate_id))
                 seen_chunk_ids.add(row_chunk_key)
     return expanded
+
+
+def _dedupe_candidate_pairs_by_chunk_id(
+    candidate_pairs: list[tuple[ProviderCandidate, UUID]],
+) -> list[tuple[ProviderCandidate, UUID]]:
+    """按 chunkId 去重候选，避免同一 Chunk 在最终上下文和 Evidence 中重复出现。"""
+    deduped: list[tuple[ProviderCandidate, UUID]] = []
+    seen_chunk_ids: set[str] = set()
+    for candidate, candidate_id in candidate_pairs:
+        if candidate.chunk_id is None:
+            deduped.append((candidate, candidate_id))
+            continue
+        chunk_key = str(candidate.chunk_id)
+        if chunk_key in seen_chunk_ids:
+            continue
+        seen_chunk_ids.add(chunk_key)
+        deduped.append((candidate, candidate_id))
+    return deduped
 
 
 def _fetch_authorized_chunk_window_rows(
@@ -751,6 +773,75 @@ def _build_answer_verification_trace(
             for item in result.citation_verifications
         ],
     }
+
+
+def _extract_inline_citation_orders(text: str) -> list[int]:
+    """读取模型输出中的临时引用编号，并保持首次出现顺序。"""
+    orders: list[int] = []
+    for match in _INLINE_CITATION_PATTERN.finditer(text):
+        raw_numbers = match.group(1) or match.group(2) or ""
+        for item in re.split(r"[,，]\s*|\s+", raw_numbers):
+            if not item:
+                continue
+            try:
+                order = int(item)
+            except ValueError:
+                continue
+            if order not in orders:
+                orders.append(order)
+    return orders
+
+
+def _clean_inline_citations(text: str) -> str:
+    """移除临时引用标记，得到可直接展示的自然语言答案。"""
+    cleaned = _INLINE_CITATION_PATTERN.sub("", text)
+    cleaned = re.sub(r"[ \t]+([。！？；，、,.!?;:：])", r"\1", cleaned)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    return cleaned.strip()
+
+
+def _split_answer_segments(answer: str) -> list[str]:
+    """按段落和句末标点切分答案，用于建立句级引用块。"""
+    segments: list[str] = []
+    for paragraph in re.split(r"\n+", answer):
+        paragraph = paragraph.strip()
+        if not paragraph:
+            continue
+        matches = list(re.finditer(r".+?(?:[。！？!?](?:\s*(?:\[\[[0-9,\s，]+\]\]|\[\d+\]))*|$)", paragraph))
+        if not matches:
+            segments.append(paragraph)
+            continue
+        for match in matches:
+            segment = match.group(0).strip()
+            if segment:
+                segments.append(segment)
+    return segments
+
+
+def _build_answer_blocks(answer: str, evidence_ids_by_order: dict[int, str]) -> tuple[str, list[dict[str, Any]]]:
+    """将模型临时引用转换为稳定 evidenceId，并返回清理后的答案。
+
+    模型只看到上下文编号，不能直接生成数据库 ID；这里负责把 [[1]] 这类标记
+    映射为当前 QARun 持久化后的 evidenceId，供前端实现句尾可点击引用。
+    """
+    blocks: list[dict[str, Any]] = []
+    cleaned_segments: list[str] = []
+    for segment in _split_answer_segments(answer):
+        citation_ids = [
+            evidence_ids_by_order[order]
+            for order in _extract_inline_citation_orders(segment)
+            if order in evidence_ids_by_order
+        ]
+        text = _clean_inline_citations(segment)
+        if not text:
+            continue
+        cleaned_segments.append(text)
+        blocks.append({"text": text, "citationEvidenceIds": citation_ids[:3]})
+
+    cleaned_answer = "\n".join(cleaned_segments).strip() or _clean_inline_citations(answer)
+    if not blocks and cleaned_answer:
+        blocks.append({"text": cleaned_answer, "citationEvidenceIds": []})
+    return cleaned_answer, blocks
 
 
 def _normalize_feedback_status(value: str) -> str:
@@ -1660,61 +1751,10 @@ def _execute_provider_qa_run(
     )
     trace_order += 1
 
-    try:
-        if not pipeline_params["rerank"]["enabled"]:
-            reranked_candidates = fused_candidates[: pipeline_params["rerankTopN"]]
-            rerank_status = "skipped"
-            rerank_error = None
-            rerank_usage = {}
-        else:
-            reranked_candidates = provider_set.rerank.rerank(rewritten_query, fused_candidates, pipeline_params["rerankTopN"])
-            rerank_usage = getattr(provider_set.rerank, "last_usage", {})
-            for key in ("inputTokens", "outputTokens", "totalTokens"):
-                aggregated_tokens[key] += rerank_usage.get(key, 0)
-            _safe_langfuse_method(
-                lf_trace,
-                "span",
-                name="rerank",
-                input={"query": rewritten_query, "candidateCount": len(fused_candidates)},
-                output={"candidateCount": len(reranked_candidates)},
-                metadata={"provider": settings.rerank_provider, "usage": rerank_usage},
-            )
-            reranked_candidates = _filter_candidates_by_score_threshold(
-                reranked_candidates,
-                {"dense": pipeline_params["rerank"]["scoreThreshold"], "sparse": pipeline_params["rerank"]["scoreThreshold"], "graph": pipeline_params["rerank"]["scoreThreshold"]},
-            )
-            rerank_status = "success"
-            rerank_error = None
-    except ProviderError as exc:
-        reranked_candidates = fused_candidates[: pipeline_params["rerankTopN"]]
-        rerank_status = "partial"
-        rerank_error = str(exc)
-        rerank_usage = {}
-        provider_errors.append("rerank")
-    _insert_trace_step(
-        session,
-        run_id,
-        trace_order,
-        "rerank",
-        rerank_status,
-        {"inputCandidates": len(fused_candidates)},
-        {"candidateCount": len(reranked_candidates)},
-        {
-            "provider": settings.rerank_provider,
-            "topN": pipeline_params["rerankTopN"],
-            "scoreThreshold": pipeline_params["rerank"]["scoreThreshold"],
-            **rerank_usage,
-        },
-        error_code="PROVIDER_ERROR" if rerank_error else None,
-        error_message=rerank_error,
-        started_at=started_at,
-    )
-    trace_order += 1
-
     authorized_pairs, dropped_by_permission, candidate_records = _authorize_provider_candidates(
         session,
         kb_id,
-        reranked_candidates,
+        fused_candidates,
         access_filter,
     )
     _persist_candidate_records(session, run_id, candidate_records)
@@ -1726,7 +1766,7 @@ def _execute_provider_qa_run(
         trace_order,
         "permissionFilter",
         "success",
-        {"inputCandidates": len(reranked_candidates)},
+        {"inputCandidates": len(fused_candidates)},
         {
             "authorizedCandidates": len(authorized_pairs),
             "droppedCandidates": dropped_by_permission,
@@ -1793,18 +1833,20 @@ def _execute_provider_qa_run(
     trace_order += 1
 
     if not authorized_pairs:
+        answer = "未找到相应知识"
         session.execute(
             update(qa_runs)
             .where(qa_runs.c.run_id == run_id)
             .values(
                 rewritten_query=rewritten_query,
-                status="failed",
-                answer="当前用户没有可用于回答的授权证据。",
+                status="success",
+                answer=answer,
                 metrics={
                     "latencyMs": int((datetime.now(UTC) - started_at).total_seconds() * 1000),
                     "hitCount": 0,
                     "evidenceCount": 0,
                     "citationCount": 0,
+                    "answerBlocks": [{"text": answer, "citationEvidenceIds": []}],
                     "tokenUsage": aggregated_tokens,
                     "retrievalDiagnostics": {
                         **raw_channel_counts,
@@ -1822,7 +1864,7 @@ def _execute_provider_qa_run(
         _safe_langfuse_method(
             lf_trace,
             "update",
-            output={"answer": "当前用户没有可用于回答的授权证据。", "status": "failed"},
+            output={"answer": answer, "status": "success"},
             usage={
                 "input": aggregated_tokens["inputTokens"],
                 "output": aggregated_tokens["outputTokens"],
@@ -1859,9 +1901,11 @@ def _execute_provider_qa_run(
             )
             _persist_candidate_records(session, run_id, re_records)
             if re_authorized:
-                authorized_pairs = authorized_pairs + re_authorized
+                before_merge_count = len(authorized_pairs)
+                authorized_pairs = _dedupe_candidate_pairs_by_chunk_id(authorized_pairs + re_authorized)
                 corrective_trace["acceptedNewEvidence"] = True
-                corrective_trace["newEvidenceCount"] = len(re_authorized)
+                corrective_trace["newEvidenceCount"] = max(0, len(authorized_pairs) - before_merge_count)
+                corrective_trace["dedupedNewEvidenceCount"] = max(0, len(re_authorized) - corrective_trace["newEvidenceCount"])
             else:
                 corrective_trace["acceptedNewEvidence"] = False
         corrective_trace["stoppedByMaxRounds"] = False
@@ -1954,33 +1998,143 @@ def _execute_provider_qa_run(
         chunk_window,
     )
 
-    # B-323: Parent-child 上下文打包
+    # B-323: Parent-child 候选在 rerank 前进入候选池；最终 Evidence 仍以 rerank/packing 后结果为准。
     parent_rows = _fetch_authorized_parent_chunk_rows(session, kb_id, expanded_context_pairs, access_filter)
     parent_pairs: list[tuple[ProviderCandidate, UUID]] = []
     if parent_rows:
         for row in parent_rows:
             parent_candidate = _candidate_from_context_row(row, expanded_context_pairs[0][0])
             parent_pairs.append((parent_candidate, expanded_context_pairs[0][1]))
-    all_context_pairs = expanded_context_pairs + parent_pairs
-    authorized_chunk_results = [_candidate_to_chunk_result(candidate) for candidate, _candidate_id in authorized_pairs]
-    all_authorized_chunk_results = [_candidate_to_chunk_result(candidate) for candidate, _candidate_id in all_context_pairs]
+    pre_rerank_context_pairs = _dedupe_candidate_pairs_by_chunk_id(expanded_context_pairs + parent_pairs)
+    pre_rerank_candidates = [candidate for candidate, _candidate_id in pre_rerank_context_pairs]
+
+    try:
+        if not pipeline_params["rerank"]["enabled"]:
+            reranked_candidates = pre_rerank_candidates[: pipeline_params["rerankTopN"]]
+            rerank_status = "skipped"
+            rerank_error = None
+            rerank_usage = {}
+        else:
+            reranked_candidates = provider_set.rerank.rerank(
+                rewritten_query,
+                pre_rerank_candidates,
+                pipeline_params["rerankTopN"],
+            )
+            rerank_usage = getattr(provider_set.rerank, "last_usage", {})
+            for key in ("inputTokens", "outputTokens", "totalTokens"):
+                aggregated_tokens[key] += rerank_usage.get(key, 0)
+            _safe_langfuse_method(
+                lf_trace,
+                "span",
+                name="rerank",
+                input={"query": rewritten_query, "candidateCount": len(pre_rerank_candidates)},
+                output={"candidateCount": len(reranked_candidates)},
+                metadata={"provider": settings.rerank_provider, "usage": rerank_usage},
+            )
+            reranked_candidates = _filter_candidates_by_score_threshold(
+                reranked_candidates,
+                {
+                    "dense": pipeline_params["rerank"]["scoreThreshold"],
+                    "sparse": pipeline_params["rerank"]["scoreThreshold"],
+                    "graph": pipeline_params["rerank"]["scoreThreshold"],
+                },
+            )
+            rerank_status = "success"
+            rerank_error = None
+    except ProviderError as exc:
+        reranked_candidates = pre_rerank_candidates[: pipeline_params["rerankTopN"]]
+        rerank_status = "partial"
+        rerank_error = str(exc)
+        rerank_usage = {}
+        provider_errors.append("rerank")
+
+    candidate_id_by_chunk_id = {
+        str(candidate.chunk_id): candidate_id
+        for candidate, candidate_id in pre_rerank_context_pairs
+        if candidate.chunk_id is not None
+    }
+    reranked_pairs = [
+        (candidate, candidate_id_by_chunk_id[str(candidate.chunk_id)])
+        for candidate in reranked_candidates
+        if candidate.chunk_id is not None and str(candidate.chunk_id) in candidate_id_by_chunk_id
+    ]
+    _insert_trace_step(
+        session,
+        run_id,
+        trace_order,
+        "rerank",
+        rerank_status,
+        {
+            "inputCandidates": len(pre_rerank_candidates),
+            "baseAuthorizedCandidates": len(authorized_pairs),
+            "expandedContextCandidates": max(0, len(expanded_context_pairs) - len(authorized_pairs)),
+            "parentExpandedCandidates": len(parent_pairs),
+        },
+        {"candidateCount": len(reranked_pairs)},
+        {
+            "provider": settings.rerank_provider,
+            "topN": pipeline_params["rerankTopN"],
+            "scoreThreshold": pipeline_params["rerank"]["scoreThreshold"],
+            **rerank_usage,
+        },
+        error_code="PROVIDER_ERROR" if rerank_error else None,
+        error_message=rerank_error,
+        started_at=started_at,
+    )
+    trace_order += 1
+
+    if not reranked_pairs:
+        answer = "未找到相应知识"
+        session.execute(
+            update(qa_runs)
+            .where(qa_runs.c.run_id == run_id)
+            .values(
+                rewritten_query=rewritten_query,
+                status="success",
+                answer=answer,
+                metrics={
+                    "latencyMs": int((datetime.now(UTC) - started_at).total_seconds() * 1000),
+                    "hitCount": len(fused_candidates),
+                    "evidenceCount": 0,
+                    "citationCount": 0,
+                    "answerBlocks": [{"text": answer, "citationEvidenceIds": []}],
+                    "tokenUsage": aggregated_tokens,
+                    "retrievalDiagnostics": {
+                        **raw_channel_counts,
+                        "fusedCount": len(fused_candidates),
+                        "droppedByPermission": dropped_by_permission,
+                        "providerErrors": provider_errors,
+                        "pipelineParams": pipeline_params,
+                    },
+                    "configAudit": config_audit["summary"],
+                },
+                started_at=started_at,
+                finished_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+        )
+        _safe_langfuse_method(lf_trace, "update", output={"answer": answer, "status": "success"})
+        _safe_langfuse_call(langfuse.flush)
+        return
+
+    reranked_chunk_results = [_candidate_to_chunk_result(candidate) for candidate, _candidate_id in reranked_pairs]
     packing_strategy = pipeline_params["contextPacking"].get("packingStrategy", "relevance_first")
     packed_context = pack_context_with_parent_child(
-        child_chunks=authorized_chunk_results,
-        all_chunks=all_authorized_chunk_results,
+        child_chunks=reranked_chunk_results,
+        all_chunks=reranked_chunk_results,
         max_tokens=pipeline_params["maxContextTokens"],
         packing_strategy=packing_strategy,
-        chunk_window=chunk_window,
+        chunk_window=0,
     )
     packed_chunk_ids = {chunk.chunk_id for chunk in packed_context.chunks}
     context_pairs = [
         pair
-        for pair in all_context_pairs
+        for pair in reranked_pairs
         if pair[0].chunk_id is not None and str(pair[0].chunk_id) in packed_chunk_ids
     ]
     if not context_pairs:
         context_pairs = _limit_candidate_pairs_by_context_tokens(
-            expanded_context_pairs,
+            reranked_pairs,
             pipeline_params["maxContextTokens"],
         )
     context_candidates = [candidate for candidate, _candidate_id in context_pairs]
@@ -1990,13 +2144,14 @@ def _execute_provider_qa_run(
         trace_order,
         "contextPacking",
         "success",
-        {"authorizedEvidenceCount": len(authorized_pairs)},
+        {"authorizedEvidenceCount": len(reranked_pairs)},
         {
             "packingStrategy": packing_strategy,
-            "parentExpandedCount": max(0, len(packed_context.chunks) - len(authorized_chunk_results)),
+            "parentExpandedCount": len(parent_pairs),
             "truncatedByTokenBudget": bool(packed_context.truncation_log),
             "contextCandidateCount": len(context_candidates),
-            "expandedContextCandidates": max(0, len(expanded_context_pairs) - len(authorized_pairs)),
+            "expandedContextCandidates": max(0, len(pre_rerank_context_pairs) - len(authorized_pairs)),
+            "preRerankContextCount": len(pre_rerank_context_pairs),
             "chunkWindow": chunk_window,
             "maxContextTokens": pipeline_params["maxContextTokens"],
         },
@@ -2062,8 +2217,10 @@ def _execute_provider_qa_run(
 
     verifier_evidence: list[dict[str, Any]] = []
     verifier_citations: list[dict[str, Any]] = []
+    evidence_ids_by_order: dict[int, str] = {}
     for evidence_order, (candidate, candidate_id) in enumerate(context_pairs, start=1):
         evidence_id = new_id()
+        evidence_ids_by_order[evidence_order] = str(evidence_id)
         content_snapshot = candidate.content or "Provider 候选未返回正文，当前仅保留来源摘要。"
         content_hash = sha256(content_snapshot.encode("utf-8")).hexdigest()
         evidence_payload = {
@@ -2141,12 +2298,15 @@ def _execute_provider_qa_run(
     )
     trace_order += 1
 
+    answer, answer_blocks = _build_answer_blocks(answer, evidence_ids_by_order)
     verification_trace = _build_answer_verification_trace(answer, verifier_evidence, verifier_citations)
     if verification_trace["suggestedAction"] == "refuse":
         answer = "资料不足，无法基于当前授权证据回答。"
+        answer_blocks = [{"text": answer, "citationEvidenceIds": []}]
         provider_errors.append("answerVerifier")
     elif verification_trace["suggestedAction"] == "degrade" and verification_trace.get("degradedAnswer"):
         answer = verification_trace["degradedAnswer"]
+        answer_blocks = [{"text": answer, "citationEvidenceIds": []}]
     _insert_trace_step(
         session,
         run_id,
@@ -2171,6 +2331,7 @@ def _execute_provider_qa_run(
                 "hitCount": len(fused_candidates),
                 "evidenceCount": len(context_pairs),
                 "citationCount": len(context_pairs),
+                "answerBlocks": answer_blocks,
                 "tokenUsage": aggregated_tokens,
                 "retrievalDiagnostics": {
                     **raw_channel_counts,
@@ -2564,6 +2725,7 @@ def get_qa_run_detail(
         query=row["query"],
         rewrittenQuery=row["rewritten_query"],
         answer=row["answer"],
+        answerBlocks=row["metrics"].get("answerBlocks", []),
         retrievalDiagnostics=row["metrics"].get("retrievalDiagnostics", {}),
         overrideSnapshot=row["override_snapshot"],
         pipelineSnapshot=row["pipeline_snapshot"] or {},

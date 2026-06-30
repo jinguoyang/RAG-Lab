@@ -63,7 +63,7 @@ def main() -> int:
             raise SystemExit("文档所在知识库没有可用的员工培训 App。")
 
         title = str(rows[0]["document_name"] or args.document_id)
-        sections = _generate_sections_with_llm(
+        generated_documents = _generate_sections_with_llm(
             session,
             args.job_title,
             args.job_description,
@@ -71,8 +71,11 @@ def main() -> int:
             rows,
             str(app_id),
         )
-        if not sections:
+        if not generated_documents:
             raise SystemExit("课程蓝图生成失败。")
+        sections = generated_documents[0].sections
+        if not sections:
+            raise SystemExit("课程蓝图未生成有效小节。")
 
         average_score = round(sum(item.teachingQualityScore for item in sections) / len(sections), 3)
         result = {

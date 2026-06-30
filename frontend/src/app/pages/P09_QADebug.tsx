@@ -64,6 +64,10 @@ interface CandidateRecord {
 interface ScenarioPayload {
   status: "success" | "partial" | "failed";
   answer: string[];
+  answerBlocks?: {
+    text: string;
+    citationIds: string[];
+  }[];
   runMeta: string;
   notice?: { variant: "info" | "warning"; title: string; message: string };
   rewrite: string;
@@ -72,6 +76,7 @@ interface ScenarioPayload {
   candidates: CandidateRecord[];
   citations: {
     id: string;
+    evidenceId?: string;
     type: "document" | "graph";
     title: string;
     snippet: string;
@@ -378,6 +383,8 @@ export function QADebug() {
   const [rewriteEnabled, setRewriteEnabled] = useState(readRewriteEnabled(seed.overrideParams));
   const [channels, setChannels] = useState(resolveReplayChannels(seed));
   const [rerankerTopN, setRerankerTopN] = useState(readStringNumber(seed.overrideParams, "rerankerTopN", "5"));
+  const [resultTab, setResultTab] = useState("trace");
+  const [highlightedEvidenceId, setHighlightedEvidenceId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{
     variant: "success" | "info" | "warning" | "error";
     title: string;
@@ -411,6 +418,20 @@ export function QADebug() {
       errorMessage: null,
     };
   }, [query, result.rewrite, result.rewriteTrace, rewriteEnabled, runResult]);
+
+  const citationIndexByEvidenceId = useMemo(() => {
+    const index = new Map<string, ScenarioPayload["citations"][number]>();
+    result.citations.forEach((citation) => {
+      if (citation.evidenceId) {
+        index.set(citation.evidenceId, citation);
+      }
+    });
+    return index;
+  }, [result.citations]);
+
+  const answerBlocks = result.answerBlocks && result.answerBlocks.length > 0
+    ? result.answerBlocks
+    : result.answer.map((text) => ({ text, citationIds: [] }));
 
   useEffect(() => {
     if (!seed.query) return;
@@ -540,6 +561,23 @@ export function QADebug() {
 
   function handleReplayHistory() {
     navigate(`/kb/${kbId}/history`);
+  }
+
+  function handleAnswerCitationClick(evidenceId: string) {
+    const citation = citationIndexByEvidenceId.get(evidenceId);
+    if (!citation) {
+      setFeedback({
+        variant: "warning",
+        title: "引用未找到",
+        message: "当前回答引用没有匹配到可展示的 Evidence，可能来自旧运行或权限裁剪结果。",
+      });
+      return;
+    }
+    setResultTab("evidence");
+    setHighlightedEvidenceId(evidenceId);
+    window.setTimeout(() => {
+      document.getElementById(`qa-evidence-${citation.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 80);
   }
 
   function handleOpenCitation(citation: ScenarioPayload["citations"][number]) {
@@ -835,13 +873,30 @@ export function QADebug() {
                   </div>
                 </div>
                 <div className="p-6 text-sm text-near-black leading-relaxed space-y-4">
-                  {result.answer.map((paragraph) => (
-                    <p key={paragraph}>{paragraph}</p>
+                  {answerBlocks.map((block, blockIndex) => (
+                    <p key={`${block.text}-${blockIndex}`}>
+                      <span>{block.text}</span>
+                      {block.citationIds.map((evidenceId) => {
+                        const citation = citationIndexByEvidenceId.get(evidenceId);
+                        if (!citation) return null;
+                        return (
+                          <button
+                            key={evidenceId}
+                            type="button"
+                            onClick={() => handleAnswerCitationClick(evidenceId)}
+                            className="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded border border-terracotta/30 bg-terracotta/10 px-1.5 align-baseline text-[11px] font-semibold text-terracotta transition-colors hover:bg-terracotta hover:text-white"
+                            aria-label={`查看引用 ${citation.id}`}
+                          >
+                            [{citation.id}]
+                          </button>
+                        );
+                      })}
+                    </p>
                   ))}
                 </div>
               </section>
 
-              <Tabs.Root defaultValue="trace" className="bg-ivory border border-border-cream rounded-xl shadow-sm">
+              <Tabs.Root value={resultTab} onValueChange={setResultTab} className="bg-ivory border border-border-cream rounded-xl shadow-sm">
                 <div className="p-2 border-b border-border-cream">
                   <Tabs.List className="flex gap-2 flex-wrap">
                     <Tabs.Trigger value="trace" className="px-4 py-2 text-sm font-medium text-stone-gray hover:text-near-black data-[state=active]:bg-parchment data-[state=active]:text-terracotta rounded-md transition-colors">
@@ -971,7 +1026,12 @@ export function QADebug() {
                       return (
                         <div
                           key={citation.id}
-                          className="p-4 hover:bg-border-cream/20 transition-colors cursor-pointer"
+                          id={`qa-evidence-${citation.id}`}
+                          className={`p-4 transition-colors cursor-pointer ${
+                            citation.evidenceId && highlightedEvidenceId === citation.evidenceId
+                              ? "bg-terracotta/10 ring-1 ring-inset ring-terracotta/40"
+                              : "hover:bg-border-cream/20"
+                          }`}
                           onClick={() => handleOpenCitation(citation)}
                         >
                           <div className="flex gap-3">

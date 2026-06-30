@@ -105,6 +105,13 @@ class QARunCitationDTO(BaseModel):
     locationSnapshot: dict[str, Any]
 
 
+class QARunAnswerBlockDTO(BaseModel):
+    """答案文本块及其句级 Evidence 绑定，供前端渲染可点击引用标签。"""
+
+    text: str
+    citationEvidenceIds: list[str] = Field(default_factory=list)
+
+
 class QARunDetailDTO(BaseModel):
     """QARun 详情响应，覆盖 P09 结果区和 P10 历史详情的最小字段。"""
 
@@ -116,6 +123,7 @@ class QARunDetailDTO(BaseModel):
     query: str
     rewrittenQuery: str | None
     answer: str | None
+    answerBlocks: list[QARunAnswerBlockDTO] = Field(default_factory=list)
     retrievalDiagnostics: dict[str, Any]
     overrideSnapshot: dict[str, Any]
     pipelineSnapshot: dict[str, Any]

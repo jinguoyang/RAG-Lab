@@ -116,6 +116,39 @@ class TestNestedCourseSnapshot:
         assert [item["sectionId"] for item in sections] == ["b-1", "b-2", "a-1"]
         assert [item["documentId"] for item in sections] == ["doc-b", "doc-b", "doc-a"]
 
+    def test_filters_sections_by_requested_document(self):
+        """单文档课堂即使收到完整快照，也只能展开目标文档小节。"""
+        snapshot = {
+            "documents": [
+                {
+                    "documentId": "doc-a",
+                    "title": "呆滞物料管理办法",
+                    "sections": [{"sectionId": "a-1", "title": "呆滞物料识别"}],
+                },
+                {
+                    "documentId": "doc-b",
+                    "title": "物料存贮规程",
+                    "sections": [
+                        {"sectionId": "b-1", "title": "存贮期限"},
+                        {"sectionId": "b-2", "title": "温湿度控制"},
+                    ],
+                },
+            ]
+        }
+        state = {
+            "metadata": {
+                "inputs": {
+                    "documentId": "doc-b",
+                    "courseSnapshot": snapshot,
+                }
+            }
+        }
+
+        sections = _ordered_course_sections(state)
+
+        assert [item["sectionId"] for item in sections] == ["b-1", "b-2"]
+        assert {item["documentId"] for item in sections} == {"doc-b"}
+
     def test_rejects_top_level_sections(self):
         with pytest.raises(ClassroomEventError, match="顶层 sections"):
             _validate_course_snapshot({
@@ -316,6 +349,7 @@ _PATCH_UPDATE_STATE = "app.services.training_classroom_service._update_state"
 _PATCH_MERGE_META = "app.services.training_classroom_service._merge_session_metadata"
 _PATCH_QUIZ_PAYLOAD = "app.services.training_classroom_service._quiz_payload"
 _PATCH_GRADE = "app.services.training_classroom_service._grade_answer"
+_PATCH_RECORD_ANSWER = "app.services.training_classroom_service.record_answer"
 
 
 class TestGradePassAndFail:
@@ -366,6 +400,36 @@ class TestGradePassAndFail:
 
         assert "未达到通过线" in resp.visibleContent
         assert resp.resultState == "GRADE"
+
+    @patch(_PATCH_RECORD_ANSWER, side_effect=RuntimeError("answer audit failed"))
+    @patch(_PATCH_MERGE_META)
+    @patch(_PATCH_GRADE, return_value=(100, "回答正确。"))
+    @patch(_PATCH_INSERT_MSG, return_value=str(uuid4()))
+    @patch(_PATCH_INSERT_EVENT, return_value=str(uuid4()))
+    @patch(_PATCH_UPDATE_STATE)
+    @patch(_PATCH_RESOLVE)
+    @patch(_PATCH_READ_SESSION)
+    def test_optional_answer_record_failure_keeps_main_event(
+        self, mock_read, mock_resolve, mock_update, mock_event, mock_msg, mock_grade, mock_merge, mock_record
+    ):
+        """答题审计失败时，课堂主事件仍应继续持久化。"""
+        state_row = _make_state_row("QUIZ")
+        mock_read.return_value = state_row
+        mock_resolve.return_value = _make_context()
+        mock_session = MagicMock()
+
+        from app.services.training_classroom_service import submit_classroom_event
+
+        resp = submit_classroom_event(
+            mock_session,
+            "cred",
+            str(state_row["session_id"]),
+            _make_request("submit_answer", {"answer": "true", "questionId": "question-001"}),
+        )
+
+        assert resp.resultState == "GRADE"
+        assert mock_record.called
+        assert mock_event.called
 
     @patch(_PATCH_MERGE_META)
     @patch(_PATCH_GRADE, return_value=(0, "未说明异常后的上报动作。"))
@@ -1065,6 +1129,54 @@ class TestClassroomUsesLearningPlan:
         assert "设备维护流程" in content
         assert "Page 1" not in content
         assert "Page 3" not in content
+
+    @patch(_PATCH_EVIDENCE, return_value=[])
+    def test_plan_content_describes_only_requested_document(self, _mock_evidence):
+        """单文档课堂摘要和小节列表不得继续使用整个课程的内容。"""
+        state_row = _make_state_row("INIT", metadata={
+            "inputs": {
+                "documentId": "doc-b",
+                "courseSnapshot": {
+                    "documents": [
+                        {
+                            "documentId": "doc-a",
+                            "title": "呆滞物料管理办法",
+                            "sections": [{
+                                "sectionId": "section-a",
+                                "title": "呆滞物料识别",
+                                "learningObjective": "能够识别呆滞物料。",
+                            }],
+                        },
+                        {
+                            "documentId": "doc-b",
+                            "title": "物料存贮规程",
+                            "sections": [{
+                                "sectionId": "section-b",
+                                "title": "温湿度控制",
+                                "learningObjective": "能够检查存贮环境。",
+                            }],
+                        },
+                    ]
+                },
+            }
+        })
+        state_row["plan_id"] = "plan-001"
+        plan_row = {
+            "plan_id": "plan-001",
+            "status": "published",
+            "documents": [
+                {"documentId": "doc-a", "title": "呆滞物料管理办法"},
+                {"documentId": "doc-b", "title": "物料存贮规程"},
+            ],
+            "recommend_reason": "先学习呆滞物料，再学习物料存贮环境。",
+        }
+
+        content, _citations = _plan_content(_PlanSession(plan_row), "kb-1", state_row)
+
+        assert "物料存贮规程" in content
+        assert "温湿度控制" in content
+        assert "呆滞物料识别" not in content
+        assert "先学习呆滞物料" not in content
 
     @patch(_PATCH_EVIDENCE)
     def test_current_evidence_follows_learning_plan_reading_order(self, mock_evidence):

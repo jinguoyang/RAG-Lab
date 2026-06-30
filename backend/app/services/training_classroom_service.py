@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any
 
@@ -43,6 +43,15 @@ from app.tables import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _run_optional_db_write(session: Session, operation: Callable[[], None], log_message: str) -> None:
+    """在 savepoint 中执行非关键写库，避免失败后污染课堂主事务。"""
+    try:
+        with session.begin_nested():
+            operation()
+    except Exception as exc:
+        logger.debug("%s: %s", log_message, exc)
 
 try:
     from app.services.training_grading_service import grade_subjective_answer
@@ -181,6 +190,7 @@ def create_classroom_session(session: Session, credential: str, request: Any) ->
             )
             session.commit()
         except Exception as exc:
+            session.rollback()
             logger.debug("非关键操作失败，已忽略: %s", exc)
     return ClassroomSessionResponse(
         sessionId=str(session_id),
@@ -494,14 +504,31 @@ def _read_learning_plan(session: Session, state_row: Any) -> Mapping[str, Any] |
     return row
 
 
-def _ordered_plan_documents(plan_row: Mapping[str, Any] | None) -> list[dict[str, Any]]:
-    """按文档数组顺序返回计划文档。"""
+def _requested_document_id(state_row: Any) -> str | None:
+    """读取本次课堂指定的唯一文档 ID；未指定时返回 None。"""
+    metadata = _mapping_get(state_row, "metadata", {}) or {}
+    inputs = metadata.get("inputs") if isinstance(metadata, dict) else {}
+    document_id = inputs.get("documentId") if isinstance(inputs, dict) else None
+    return str(document_id) if document_id else None
+
+
+def _ordered_plan_documents(
+    plan_row: Mapping[str, Any] | None,
+    state_row: Any | None = None,
+) -> list[dict[str, Any]]:
+    """按文档数组顺序返回计划文档，并应用课堂单文档约束。"""
     if plan_row is None:
         return []
     raw_documents = plan_row.get("documents") or []
     if not isinstance(raw_documents, list):
         return []
     documents = [item for item in raw_documents if isinstance(item, dict) and item.get("documentId")]
+    requested_document_id = _requested_document_id(state_row) if state_row is not None else None
+    if requested_document_id:
+        documents = [
+            item for item in documents
+            if str(item.get("documentId")) == requested_document_id
+        ]
     return documents
 
 
@@ -513,12 +540,15 @@ def _ordered_course_sections(state_row: Any, plan_row: Mapping[str, Any] | None 
     documents = snapshot.get("documents") if isinstance(snapshot, dict) else None
     if not isinstance(documents, list) and plan_row is not None:
         documents = plan_row.get("documents")
+    requested_document_id = _requested_document_id(state_row)
     sections: list[dict[str, Any]] = []
     if isinstance(documents, list):
         for document in documents:
             if not isinstance(document, Mapping) or not document.get("documentId"):
                 continue
             document_id = str(document["documentId"])
+            if requested_document_id and document_id != requested_document_id:
+                continue
             document_title = str(document.get("title") or document_id)
             for section in document.get("sections") or []:
                 if not isinstance(section, Mapping) or not section.get("sectionId") or not section.get("title"):
@@ -716,7 +746,7 @@ def _current_evidence(session: Session, app_id: str, kb_id: Any, state_row: Any,
     metadata = state_row["metadata"] or {}
     inputs = metadata.get("inputs") if isinstance(metadata, dict) else {}
     plan_row = _read_learning_plan(session, state_row)
-    plan_documents = _ordered_plan_documents(plan_row)
+    plan_documents = _ordered_plan_documents(plan_row, state_row)
     course_sections = _ordered_course_sections(state_row, plan_row)
     section = None
     if course_sections:
@@ -800,7 +830,7 @@ def _plan_content(session: Session, kb_id: Any, state_row: Any) -> tuple[str, li
     _inputs = _meta.get("inputs") if isinstance(_meta, dict) else {}
     _query = _inputs.get("jobTitle", "") if isinstance(_inputs, dict) else ""
     plan_row = _read_learning_plan(session, state_row)
-    plan_documents = _ordered_plan_documents(plan_row)
+    plan_documents = _ordered_plan_documents(plan_row, state_row)
     course_sections = _ordered_course_sections(state_row, plan_row)
     rows = read_training_evidence(
         session,
@@ -811,14 +841,23 @@ def _plan_content(session: Session, kb_id: Any, state_row: Any) -> tuple[str, li
     )
     if course_sections:
         titles = [str(item["title"]) for item in course_sections]
-        reason = str(plan_row.get("recommend_reason") or "").strip() if plan_row is not None else ""
-        if not reason:
-            reason = "已按可验证学习目标组织课程小节。"
+        requested_document_id = _requested_document_id(state_row)
+        if requested_document_id and plan_documents:
+            document_title = str(plan_documents[0].get("title") or requested_document_id)
+            reason = f"当前课堂仅学习文档「{document_title}」，小节均依据该文档内容生成。"
+        else:
+            reason = str(plan_row.get("recommend_reason") or "").strip() if plan_row is not None else ""
+            if not reason:
+                reason = "已按可验证学习目标组织课程小节。"
         lines = [
             f"{index}. {section['title']}：{section.get('learningObjective', '')}"
             for index, section in enumerate(course_sections, start=1)
         ]
-        content = f"本课程已按学习目标组织为 {len(course_sections)} 个小节。\n课程摘要：{reason}\n\n学习小节：\n" + "\n".join(lines)
+        prefix = f"当前文档：{plan_documents[0].get('title')}\n" if requested_document_id and plan_documents else ""
+        content = (
+            f"{prefix}本课程已按学习目标组织为 {len(course_sections)} 个小节。"
+            f"\n课程摘要：{reason}\n\n学习小节：\n" + "\n".join(lines)
+        )
         citations = []
     elif plan_documents:
         titles = [str(item.get("title") or item["documentId"]) for item in plan_documents]
@@ -851,7 +890,7 @@ def _plan_content(session: Session, kb_id: Any, state_row: Any) -> tuple[str, li
     if not titles:
         return "已初始化课程，但当前知识库没有可展示的学习材料。", []
     if HAS_SKILL_REGISTRY:
-        try:
+        def record_plan_skill_call() -> None:
             record_training_skill_call(
                 session,
                 skill_name="buildLearningPlanDraft",
@@ -860,8 +899,8 @@ def _plan_content(session: Session, kb_id: Any, state_row: Any) -> tuple[str, li
                 input_summary=f"jobTitle={((state_row['metadata'] or {}).get('inputs', {}) or {}).get('jobTitle', '')}",
                 output_summary=f"sections={len(titles)}",
             )
-        except Exception as exc:
-            logger.debug("非关键操作失败，已忽略: %s", exc)
+
+        _run_optional_db_write(session, record_plan_skill_call, "非关键操作失败，已忽略")
     return content, citations
 
 
@@ -1072,7 +1111,11 @@ def _count_sections(session: Session, kb_id: Any, query: str, session_id: str | 
         cached = meta.get("_cached_section_count") if isinstance(meta, dict) else None
         if isinstance(cached, int) and cached > 0:
             return cached
-        plan_documents = _ordered_plan_documents(_read_learning_plan(session, session_row)) if isinstance(session_row, Mapping) else []
+        plan_documents = (
+            _ordered_plan_documents(_read_learning_plan(session, session_row), session_row)
+            if isinstance(session_row, Mapping)
+            else []
+        )
         if plan_documents:
             count = len(plan_documents)
             _merge_session_metadata(session, session_id, {"_cached_section_count": count})
@@ -1327,7 +1370,7 @@ def _answer_query_with_agent(
             for item in response.citations
         ]
         if HAS_SKILL_REGISTRY:
-            try:
+            def record_intent_skill_call() -> None:
                 record_training_skill_call(
                     session,
                     skill_name="classifyIntent",
@@ -1337,8 +1380,8 @@ def _answer_query_with_agent(
                     input_summary=query[:120],
                     output_summary=f"answer_len={len(response.answer)}",
                 )
-            except Exception as exc:
-                logger.debug("Skill 审计记录失败: %s", exc)
+
+            _run_optional_db_write(session, record_intent_skill_call, "Skill 审计记录失败")
         if _is_runtime_evidence_refusal(response.answer):
             section_answer = _answer_query_from_section_script(session, state_row, query)
             if section_answer:
@@ -1350,7 +1393,7 @@ def _answer_query_with_agent(
         if history:
             content = f"{content}\n\n我已结合最近 {len(history)} 条课堂消息继续讲解。"
         if HAS_SKILL_REGISTRY:
-            try:
+            def record_fallback_skill_call() -> None:
                 record_training_skill_call(
                     session,
                     skill_name="classifyIntent",
@@ -1360,8 +1403,8 @@ def _answer_query_with_agent(
                     input_summary=query[:120],
                     output_summary=f"fallback_answer_len={len(content)}",
                 )
-            except Exception as exc:
-                logger.debug("非关键操作失败，已忽略: %s", exc)
+
+            _run_optional_db_write(session, record_fallback_skill_call, "非关键操作失败，已忽略")
         return content, citations
 
 
@@ -1557,7 +1600,7 @@ def apply_classroom_domain_event(
             },
         )
         if HAS_SKILL_REGISTRY:
-            try:
+            def record_grade_skill_call() -> None:
                 record_training_skill_call(
                     session,
                     skill_name="gradeSubjectiveAnswer",
@@ -1567,10 +1610,10 @@ def apply_classroom_domain_event(
                     input_summary=f"questionId={payload.get('questionId', '')}",
                     output_summary=f"score={score},passed={passed}",
                 )
-            except Exception as exc:
-                logger.debug("非关键操作失败，已忽略: %s", exc)
+
+            _run_optional_db_write(session, record_grade_skill_call, "非关键操作失败，已忽略")
         if HAS_PROGRESS_SERVICE:
-            try:
+            def record_quiz_answer() -> None:
                 q_id = str(payload.get("questionId") or "")
                 if q_id and q_id != "inline-true-false":
                     q_row = session.execute(
@@ -1595,8 +1638,8 @@ def apply_classroom_domain_event(
                             "checkpointCriteria": checkpoint_criteria,
                         },
                     )
-            except Exception as exc:
-                logger.debug("非关键操作失败，已忽略: %s", exc)
+
+            _run_optional_db_write(session, record_quiz_answer, "非关键操作失败，已忽略")
         response_ctx = {
             "score": score,
             "passed": passed,
@@ -1712,7 +1755,7 @@ def apply_classroom_domain_event(
             _merge_session_metadata(session, session_id, {"completedSectionIds": completed_section_ids})
         completed_count = len(completed_section_ids) if course_sections else current_index + 1
         if HAS_PROGRESS_SERVICE:
-            try:
+            def update_summary_progress() -> None:
                 update_progress(
                     session,
                     session_id=session_id,
@@ -1725,8 +1768,8 @@ def apply_classroom_domain_event(
                     last_score=int(metadata.get("lastScore")) if isinstance(metadata, dict) and metadata.get("lastScore") is not None else None,
                     status="in_progress",
                 )
-            except Exception as exc:
-                logger.debug("非关键操作失败，已忽略: %s", exc)
+
+            _run_optional_db_write(session, update_summary_progress, "非关键操作失败，已忽略")
         if current_index < total_sections - 1:
             actions = [_button_group(("下一节", "next_section", {}))]
         else:
@@ -1763,7 +1806,7 @@ def apply_classroom_domain_event(
         content, citations = _current_evidence(session, str(state_row["app_id"]), context.kb_row["kb_id"], next_state_row)
         response_mode = "template" if _has_prepared_teaching_script(next_state_row, _read_learning_plan(session, state_row)) else "teaching_narration"
         if HAS_PROGRESS_SERVICE:
-            try:
+            def update_next_section_progress() -> None:
                 update_progress(
                     session,
                     session_id=session_id,
@@ -1775,8 +1818,8 @@ def apply_classroom_domain_event(
                     total_sections=total_sections,
                     status="in_progress",
                 )
-            except Exception as exc:
-                logger.debug("非关键操作失败，已忽略: %s", exc)
+
+            _run_optional_db_write(session, update_next_section_progress, "非关键操作失败，已忽略")
         return ClassroomDomainResult(
             eventType=event_type,
             resultState="TEACH",
@@ -1810,7 +1853,7 @@ def apply_classroom_domain_event(
                 raise ClassroomTransitionError("仍有小节尚未通过 Checkpoint，不能完成课程")
         last_score_val = metadata.get("lastScore") if isinstance(metadata, dict) else None
         if HAS_PROGRESS_SERVICE:
-            try:
+            def update_completed_progress() -> None:
                 update_progress(
                     session,
                     session_id=session_id,
@@ -1823,8 +1866,8 @@ def apply_classroom_domain_event(
                     last_score=int(last_score_val) if last_score_val is not None else None,
                     status="completed",
                 )
-            except Exception as exc:
-                logger.debug("非关键操作失败，已忽略: %s", exc)
+
+            _run_optional_db_write(session, update_completed_progress, "非关键操作失败，已忽略")
         return ClassroomDomainResult(
             eventType=event_type,
             resultState="COMPLETED",

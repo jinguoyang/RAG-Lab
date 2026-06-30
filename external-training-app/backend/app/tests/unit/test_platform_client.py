@@ -116,18 +116,35 @@ def test_delete_plan_draft_uses_platform_api_key(monkeypatch):
 
 
 def test_create_question_drafts_uses_api_key_without_app_id(monkeypatch):
-    """题库草稿生成不允许通过请求体切换 App。"""
+    """题库草稿生成应等待平台异步任务完成并返回题目列表。"""
     from app.services.platform_client import PlatformClient
 
     captured = {}
 
     def fake_post(url, headers, json, timeout):
         captured.update({"url": url, "headers": headers, "json": json, "timeout": timeout})
-        return httpx.Response(status_code=201, json=[], request=httpx.Request("POST", url))
+        return httpx.Response(
+            status_code=202,
+            json={"id": "task-001", "status": "pending"},
+            request=httpx.Request("POST", url),
+        )
+
+    def fake_get(url, headers, timeout):
+        captured["task_url"] = url
+        return httpx.Response(
+            status_code=200,
+            json={
+                "id": "task-001",
+                "status": "completed",
+                "result": [{"questionId": "question-001", "content": "题目"}],
+            },
+            request=httpx.Request("GET", url),
+        )
 
     monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(httpx, "get", fake_get)
 
-    PlatformClient("http://platform/api/v1", "key").create_question_drafts(
+    result = PlatformClient("http://platform/api/v1", "key").create_question_drafts(
         "plan-001",
         "安全员",
         ["基础认知"],
@@ -138,6 +155,8 @@ def test_create_question_drafts_uses_api_key_without_app_id(monkeypatch):
     assert "appId" not in captured["json"]
     assert captured["json"]["planId"] == "plan-001"
     assert captured["json"]["documentIds"] == ["doc-001"]
+    assert captured["task_url"] == "http://platform/api/v1/tasks/task-001"
+    assert result == [{"questionId": "question-001", "content": "题目"}]
 
 
 def test_grade_subjective_answer_does_not_send_question_id(monkeypatch):

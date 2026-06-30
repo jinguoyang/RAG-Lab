@@ -16,6 +16,13 @@ function extractErrorMessage(err: unknown): string {
   return String(err);
 }
 
+function formatQuizOptionText(questionType: string, option: { label: string; text: string }): string {
+  if (questionType === "true_false") {
+    return option.text || (option.label === "true" ? "正确" : "错误");
+  }
+  return `${option.label}. ${option.text}`;
+}
+
 export function QuizPage() {
   const { planId } = useParams<{ planId: string }>();
   const [searchParams] = useSearchParams();
@@ -173,7 +180,7 @@ export function QuizPage() {
                         disabled={!!quizResult}
                       />
                       <span>
-                        {option.label}. {option.text}
+                        {formatQuizOptionText(question.questionType, option)}
                       </span>
                     </label>
                   ))}

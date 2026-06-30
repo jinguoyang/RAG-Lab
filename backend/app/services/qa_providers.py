@@ -1082,7 +1082,15 @@ class HttpLlmProvider(LlmProvider):
         evidence_text = "\n".join(f"[{index}] {candidate.content or candidate.metadata}" for index, candidate in enumerate(evidence, start=1))
         return self._chat(
             [
-                {"role": "system", "content": "Answer using only the provided evidence. If evidence is insufficient, say so."},
+                {
+                    "role": "system",
+                    "content": (
+                        "你是知识库问答助手。只基于给定证据回答；证据不足时直接说明资料不足。"
+                        "回答要简洁，优先给出结论，不要写“根据提供的证据”“证据 [1] 显示”等过程性话术。"
+                        "每个包含事实、数字、结论或对比的句子末尾必须添加 1-3 个临时引用，格式为 [[1]] 或 [[1,2]]。"
+                        "临时引用编号只能来自输入证据编号，不要编造编号，不要输出参考文献列表。"
+                    ),
+                },
                 {"role": "user", "content": f"Question: {query}\nEvidence:\n{evidence_text}"},
             ],
             temperature=temperature,

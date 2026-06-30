@@ -5,6 +5,10 @@ import { deriveQAPartialDiagnostics, type QAPartialDiagnostics } from "../utils/
 export interface QADebugResultViewModel {
   status: "success" | "partial" | "failed";
   answer: string[];
+  answerBlocks: {
+    text: string;
+    citationIds: string[];
+  }[];
   runMeta: string;
   notice?: { variant: "info" | "warning"; title: string; message: string };
   rewrite: string;
@@ -20,6 +24,7 @@ export interface QADebugResultViewModel {
   }[];
   citations: {
     id: string;
+    evidenceId: string;
     type: "document" | "graph";
     title: string;
     snippet: string;
@@ -158,6 +163,11 @@ function readTraceOutputNumber(detail: QARunDetailDTO, stepKey: string, key: str
   return isRecord(output) && typeof output[key] === "number" ? output[key] : null;
 }
 
+function readTraceInputNumber(detail: QARunDetailDTO, stepKey: string, key: string): number | null {
+  const input = traceStep(detail, stepKey)?.inputSummary;
+  return isRecord(input) && typeof input[key] === "number" ? input[key] : null;
+}
+
 function readTraceMetricNumber(detail: QARunDetailDTO, stepKey: string, key: string): number | null {
   const metrics = traceStep(detail, stepKey)?.metrics;
   return isRecord(metrics) && typeof metrics[key] === "number" ? metrics[key] : null;
@@ -227,7 +237,13 @@ function diagnosticsFromTrace(detail: QARunDetailDTO, diagnostics: Record<string
     readNumber(diagnostics, "denseCount") + readNumber(diagnostics, "sparseCount") + readNumber(diagnostics, "graphCount");
   const deduped = readTraceOutputNumber(detail, "fusion", "candidateCount") ?? readNumber(diagnostics, "fusedCount");
   const reranked = readTraceOutputNumber(detail, "rerank", "candidateCount");
+  const authorizedAfterPermission = readTraceOutputNumber(detail, "permissionFilter", "authorizedCandidates");
+  const authorizedForContext = readTraceInputNumber(detail, "contextPacking", "authorizedEvidenceCount");
   const finalContext = readTraceOutputNumber(detail, "contextPacking", "contextCandidateCount") ?? evidenceCount;
+  const expandedContext =
+    readTraceInputNumber(detail, "rerank", "expandedContextCandidates") ??
+    readTraceOutputNumber(detail, "contextPacking", "expandedContextCandidates") ??
+    0;
   const droppedByPermission =
     readTraceOutputNumber(detail, "permissionFilter", "droppedCandidates") ??
     readNumber(diagnostics, "droppedByPermission");
@@ -236,7 +252,10 @@ function diagnosticsFromTrace(detail: QARunDetailDTO, diagnostics: Record<string
     recalled,
     deduped,
     reranked,
+    authorizedAfterPermission,
+    authorizedForContext,
     finalContext,
+    expandedContext,
     droppedByPermission,
   };
 }
@@ -257,9 +276,47 @@ export function toQADebugResult(detail: QARunDetailDTO): QADebugResultViewModel 
       .map((item, index) => [item.candidateId as string, index + 1]),
   );
 
+  const answerBlocks =
+    detail.answerBlocks && detail.answerBlocks.length > 0
+      ? detail.answerBlocks.map((block) => ({
+          text: block.text,
+          citationIds: block.citationEvidenceIds,
+        }))
+      : (detail.answer ? [detail.answer] : ["运行已创建，当前暂无回答。"]).map((text) => ({
+          text,
+          citationIds: [],
+        }));
+  const citedEvidenceIds = Array.from(
+    new Set(answerBlocks.flatMap((block) => block.citationIds).filter((evidenceId) => evidenceById.has(evidenceId))),
+  );
+  const citationRows =
+    citedEvidenceIds.length > 0
+      ? citedEvidenceIds
+          .map((evidenceId) => detail.citations.find((citation) => citation.evidenceId === evidenceId))
+          .filter((citation): citation is QARunDetailDTO["citations"][number] => Boolean(citation))
+      : detail.citations;
+  const citedEvidenceCount = citedEvidenceIds.length > 0 ? citationRows.length : 0;
+  const correctiveAdded =
+    typeof funnel.authorizedForContext === "number" && typeof funnel.authorizedAfterPermission === "number"
+      ? Math.max(0, funnel.authorizedForContext - funnel.authorizedAfterPermission)
+      : null;
+  const contextSummaryParts = [
+    `Fusion 后 ${funnel.deduped} 条`,
+    `Rerank 后 ${funnel.reranked ?? "-"} 条`,
+    typeof correctiveAdded === "number" && correctiveAdded > 0 && typeof funnel.authorizedForContext === "number"
+      ? `Corrective RAG 追加 ${correctiveAdded} 条，授权上下文 ${funnel.authorizedForContext} 条`
+      : typeof funnel.authorizedForContext === "number"
+        ? `授权上下文 ${funnel.authorizedForContext} 条`
+        : null,
+    funnel.expandedContext > 0 ? `chunkWindow 扩展 ${funnel.expandedContext} 条` : null,
+    `生成上下文 ${funnel.finalContext} 条`,
+    citedEvidenceIds.length > 0 ? `答案实际引用 ${citedEvidenceCount} 条` : `当前历史记录未提供句级引用，展示持久化 Citation/Evidence ${evidenceCount} 条`,
+  ].filter(Boolean);
+
   return {
     status: statusToViewStatus(detail.status),
-    answer: detail.answer ? [detail.answer] : ["运行已创建，当前暂无回答。"],
+    answer: answerBlocks.map((block) => block.text),
+    answerBlocks,
     runMeta: `${detail.runId} • ${detail.metrics.latencyMs ?? "-"} ms • rev ${detail.configRevisionId}`,
     rewrite: detail.rewrittenQuery || detail.query,
     rewriteTrace: toQARewriteTrace(detail),
@@ -292,7 +349,7 @@ export function toQADebugResult(detail: QARunDetailDTO): QADebugResultViewModel 
           undefined,
       };
     }),
-    citations: detail.citations.map((citation, index) => {
+    citations: citationRows.map((citation, index) => {
       const evidence = evidenceById.get(citation.evidenceId);
       const location = citation.locationSnapshot;
       const sourceSnapshot = evidence?.sourceSnapshot ?? {};
@@ -304,6 +361,7 @@ export function toQADebugResult(detail: QARunDetailDTO): QADebugResultViewModel 
       const sourceModality = readString(location, "sourceModality") ?? readString(sourceSnapshot, "sourceModality");
       return {
         id: String(index + 1),
+        evidenceId: citation.evidenceId,
         type: "document",
         title: [citation.label || "Citation", documentName, chunkIndex].filter(Boolean).join(" · "),
         snippet: evidence?.contentSnapshot || "当前证据策略未返回正文快照。",
@@ -326,7 +384,7 @@ export function toQADebugResult(detail: QARunDetailDTO): QADebugResultViewModel 
       deduped: String(funnel.deduped),
       filtered: String(funnel.droppedByPermission),
       finalContext: String(funnel.finalContext),
-      rerankSummary: `Fusion 后 ${funnel.deduped} 条，Rerank 后 ${funnel.reranked ?? "-"} 条，Context Packing 后 ${funnel.finalContext} 条；当前 Citation/Evidence 持久化 ${evidenceCount} 条。`,
+      rerankSummary: contextSummaryParts.join("；") + "。",
     },
     partialDiagnostics: deriveQAPartialDiagnostics(detail),
   };

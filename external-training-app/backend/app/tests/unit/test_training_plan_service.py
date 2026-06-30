@@ -215,6 +215,54 @@ def test_delete_plan_proxies_platform_draft_when_not_saved_locally(monkeypatch):
     }
 
 
+def test_delete_saved_plan_also_deletes_platform_draft(monkeypatch):
+    """删除已保存计划时应同步删除平台草稿，避免刷新后重新显示为草稿。"""
+    engine, session = _session()
+    deleted_platform_plan_ids: list[str] = []
+    try:
+        now = datetime.now(timezone.utc)
+        session.execute(
+            training_plans.insert().values(
+                plan_id="plan-001",
+                app_id="app-001",
+                job_title="财务",
+                job_description="",
+                status="saved",
+                ability_groups=[],
+                documents=[],
+                evidence_chunk_ids=[],
+                recommend_reason="",
+                reading_order=[],
+                version=1,
+                metadata={"planName": "财务计划"},
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        session.commit()
+
+        class FakeClient:
+            def __init__(self, base_url, api_key):
+                pass
+
+            def delete_plan_draft(self, plan_id):
+                deleted_platform_plan_ids.append(plan_id)
+                return {"planId": plan_id, "status": "deleted"}
+
+        monkeypatch.setenv("EXT_TRAINING_PLATFORM_API_KEY", "test-key")
+        monkeypatch.setattr("app.services.platform_client.PlatformClient", FakeClient)
+
+        assert delete_plan(session, "admin", "plan-001") == {
+            "planId": "plan-001",
+            "status": "deleted",
+        }
+        assert deleted_platform_plan_ids == ["plan-001"]
+    finally:
+        session.close()
+        metadata.drop_all(engine)
+        engine.dispose()
+
+
 def test_save_plan_inserts_final_plan_without_existing_draft():
     """最终保存计划时允许本地不存在草稿，只落库 saved 计划并回显员工绑定。"""
     engine, session = _session()
@@ -470,6 +518,64 @@ def test_generate_questions_does_not_treat_legacy_approved_as_duplicate(monkeypa
 
         assert len(calls) == 1
         assert calls[0]["document_ids"] == ["doc-001"]
+    finally:
+        if session.is_active:
+            session.close()
+        metadata.drop_all(engine)
+        engine.dispose()
+
+
+def test_generate_questions_sends_ability_group_names(monkeypatch):
+    """自动出题只向平台发送能力组名称，避免对象结构触发请求校验失败。"""
+    engine, session = _session()
+    try:
+        now = datetime.now(timezone.utc)
+        session.execute(
+            training_plans.insert().values(
+                plan_id="plan-001",
+                app_id="app-001",
+                job_title="财务",
+                job_description="",
+                status="saved",
+                ability_groups=[
+                    {"name": "呆滞物料识别与管理", "description": "掌握识别和处置要求"},
+                    {"name": "物料存贮与环境控制", "description": "掌握存贮环境要求"},
+                ],
+                documents=[{"documentId": "doc-001", "title": "管理办法"}],
+                evidence_chunk_ids=[],
+                recommend_reason="",
+                reading_order=["doc-001"],
+                version=1,
+                metadata={"planName": "财务学习计划", "employeeIds": []},
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        session.commit()
+        calls = []
+
+        class FakeClient:
+            def __init__(self, base_url, api_key):
+                pass
+
+            def create_question_drafts(self, **kwargs):
+                calls.append(kwargs)
+                return []
+
+        class SessionFactory:
+            def __call__(self):
+                return session
+
+        monkeypatch.setenv("EXT_TRAINING_PLATFORM_API_KEY", "test-key")
+        monkeypatch.setattr("app.core.database.SessionLocal", SessionFactory())
+        monkeypatch.setattr("app.services.platform_client.PlatformClient", FakeClient)
+
+        generate_questions_for_plan("plan-001")
+
+        assert calls[0]["ability_groups"] == [
+            "呆滞物料识别与管理",
+            "物料存贮与环境控制",
+        ]
     finally:
         if session.is_active:
             session.close()

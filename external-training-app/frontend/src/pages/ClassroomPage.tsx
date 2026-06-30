@@ -1,5 +1,7 @@
 import { useState, useEffect, useEffectEvent, useRef, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
 import { useParams, useSearchParams, useNavigate } from "react-router";
+import remarkGfm from "remark-gfm";
 import {
   ArrowLeft,
   BookOpenCheck,
@@ -20,11 +22,6 @@ import {
   type PostQuiz,
   type PostQuizSubmission,
 } from "../services/classroomService";
-
-function userVisibleText(value: unknown) {
-  // 平台内部仍保留 Checkpoint 术语，ex-app 对用户统一展示为“小节”。
-  return String(value ?? "").replace(/Checkpoint/gi, "小节");
-}
 import { appealQuestion } from "../services/questionService";
 import { getPlan, type TrainingPlan } from "../services/planService";
 import { ChoiceQuestion } from "../components/ChoiceQuestion";
@@ -37,6 +34,27 @@ import type {
 
 let messageCounter = 0;
 const SESSION_STORAGE_VERSION = "v1";
+const MARKDOWN_REMARK_PLUGINS = [remarkGfm];
+
+function userVisibleText(value: unknown) {
+  // 平台内部仍保留 Checkpoint 术语，ex-app 对用户统一展示为“小节”。
+  return String(value ?? "").replace(/Checkpoint/gi, "小节");
+}
+
+function renderMessageContent(msg: ClassroomMessage) {
+  // 助手和系统消息来自大模型或平台编排，按 GFM Markdown 展示表格、列表等结构。
+  const content = userVisibleText(msg.content);
+  if (msg.role === "user") {
+    return <p className="whitespace-pre-wrap">{content}</p>;
+  }
+  return (
+    <div className="markdown-message">
+      <ReactMarkdown remarkPlugins={MARKDOWN_REMARK_PLUGINS}>
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}
 
 function getStoredSessionKey(planId?: string, documentId?: string | null): string {
   return `rag-lab:classroom-session:${SESSION_STORAGE_VERSION}:${planId || "no-plan"}:${documentId || "all"}`;
@@ -69,6 +87,13 @@ function hasAnswerAction(actions?: ClassroomUiAction[]): boolean {
 function shouldDisplayRestoredMessage(message: ClassroomMessage): boolean {
   if (message.stateAtTime === "CHECK_UNDERSTAND") return false;
   return !hasAnswerAction(message.metadata?.uiActions);
+}
+
+function formatQuizOptionText(questionType: string, option: { label: string; text: string }): string {
+  if (questionType === "true_false") {
+    return option.text || (option.label === "true" ? "正确" : "错误");
+  }
+  return `${option.label}. ${option.text}`;
 }
 
 function extractErrorMessage(err: unknown): string {
@@ -488,7 +513,7 @@ export function ClassroomPage() {
                 key={msg._key}
                 className={`message-bubble ${msg.role}`}
               >
-                <p className="whitespace-pre-wrap">{userVisibleText(msg.content)}</p>
+                {renderMessageContent(msg)}
               </div>
             ))}
 
@@ -548,7 +573,7 @@ export function ClassroomPage() {
                             }
                             disabled={!!quizResult}
                           />
-                          <span>{option.label}. {option.text}</span>
+                          <span>{formatQuizOptionText(question.questionType, option)}</span>
                         </label>
                       ))}
                     </div>
