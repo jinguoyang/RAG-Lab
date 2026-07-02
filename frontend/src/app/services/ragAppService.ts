@@ -6,6 +6,7 @@ import type {
   AppConversationDetailDTO,
   AppTrainingReportDTO,
   BatchDeleteRagAppsResponse,
+  EmbeddedAppDeploymentDTO,
   RagAppApiKeyCreateRequest,
   RagAppApiKeyCreateResponse,
   RagAppApiKeyDTO,
@@ -72,6 +73,38 @@ export async function deleteRagAppApiKey(
   apiKeyId: string,
 ): Promise<void> {
   return apiDelete(`/rag-apps/${appId}/api-keys/${apiKeyId}`);
+}
+
+export async function listRagAppEmbeddedDeployments(appId: string): Promise<EmbeddedAppDeploymentDTO[]> {
+  return apiGet<EmbeddedAppDeploymentDTO[]>(`/rag-apps/${appId}/embedded-deployments`);
+}
+
+export async function startRagAppEmbeddedDeployment(
+  appId: string,
+  deploymentId: string,
+): Promise<EmbeddedAppDeploymentDTO> {
+  return apiPostJson<EmbeddedAppDeploymentDTO>(`/rag-apps/${appId}/embedded-deployments/${deploymentId}/start`, {});
+}
+
+export async function stopRagAppEmbeddedDeployment(
+  appId: string,
+  deploymentId: string,
+): Promise<EmbeddedAppDeploymentDTO> {
+  return apiPostJson<EmbeddedAppDeploymentDTO>(`/rag-apps/${appId}/embedded-deployments/${deploymentId}/stop`, {});
+}
+
+export async function restartRagAppEmbeddedDeployment(
+  appId: string,
+  deploymentId: string,
+): Promise<EmbeddedAppDeploymentDTO> {
+  return apiPostJson<EmbeddedAppDeploymentDTO>(`/rag-apps/${appId}/embedded-deployments/${deploymentId}/restart`, {});
+}
+
+export async function checkRagAppEmbeddedDeploymentHealth(
+  appId: string,
+  deploymentId: string,
+): Promise<EmbeddedAppDeploymentDTO> {
+  return apiPostJson<EmbeddedAppDeploymentDTO>(`/rag-apps/${appId}/embedded-deployments/${deploymentId}/health-check`, {});
 }
 
 export async function listRagAppInvocations(

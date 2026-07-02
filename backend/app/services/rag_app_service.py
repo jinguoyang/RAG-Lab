@@ -1,11 +1,13 @@
 from datetime import UTC, datetime
 from hashlib import sha256
 import secrets
+import socket
 from uuid import UUID
 
 from app.core.db_types import new_id
 
 from sqlalchemy import RowMapping, delete, func, insert, or_, select, update
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.schemas.auth import CurrentUserResponse
@@ -18,6 +20,7 @@ from app.schemas.rag_app import (
     AppTrainingReportDTO,
     AppTrainingResultDTO,
     BatchDeleteRagAppsResponse,
+    EmbeddedAppDeploymentDTO,
     RagAppApiKeyCreateRequest,
     RagAppApiKeyCreateResponse,
     RagAppApiKeyDTO,
@@ -27,6 +30,14 @@ from app.schemas.rag_app import (
 )
 from app.services.audit_service import write_audit_log
 from app.services.agent_scenario_template_service import list_agent_scenario_templates
+from app.services.embedded_app_deployment_service import (
+    EmbeddedAppDeploymentError,
+    check_embedded_http_health,
+    embedded_app_project_name,
+    ensure_embedded_database_exists,
+    run_compose_action,
+    write_embedded_training_runtime_files,
+)
 from app.services.permission_service import has_kb_permission, kb_visibility_condition
 from app.services.default_pipeline import build_scenario_pipeline_definition
 from app.tables import (
@@ -34,6 +45,7 @@ from app.tables import (
     app_invocations,
     app_messages,
     config_revisions,
+    embedded_app_deployments,
     knowledge_bases,
     rag_app_api_keys,
     rag_apps,
@@ -63,6 +75,11 @@ SCENARIO_FIELD_NAMES = {
     "publishChannels",
     "embedSettings",
 }
+
+EMBEDDED_TRAINING_APP_TYPE = "external_training"
+EMBEDDED_SYSTEM_KEY_TYPE = "embedded_system"
+EMBEDDED_BACKEND_PORT_RANGE = range(18001, 19000)
+EMBEDDED_FRONTEND_PORT_RANGE = range(19001, 20000)
 
 
 def _default_scenario_payload() -> dict[str, object]:
@@ -215,10 +232,40 @@ def _to_api_key_dto(row: RowMapping) -> RagAppApiKeyDTO:
         appId=str(row["app_id"]),
         keyPrefix=row["key_prefix"],
         status=row["status"],
+        keyType=row["key_type"] or "normal",
+        managedBy=row["managed_by"] or "user",
+        displayName=row["display_name"],
+        deletable=bool(row["deletable"]),
         expiresAt=row["expires_at"].isoformat() if row["expires_at"] else None,
         lastUsedAt=row["last_used_at"].isoformat() if row["last_used_at"] else None,
         createdAt=row["created_at"].isoformat(),
         revokedAt=row["revoked_at"].isoformat() if row["revoked_at"] else None,
+    )
+
+
+def _to_embedded_deployment_dto(row: RowMapping) -> EmbeddedAppDeploymentDTO:
+    """转换内置嵌入子程序部署状态，供管理端和后续监控页读取。"""
+    return EmbeddedAppDeploymentDTO(
+        deploymentId=str(row["deployment_id"]),
+        appId=str(row["app_id"]),
+        appType=row["app_type"],
+        apiKeyId=str(row["api_key_id"]),
+        databaseName=row["database_name"],
+        backendPort=row["backend_port"],
+        frontendPort=row["frontend_port"],
+        backendPid=row["backend_pid"],
+        frontendPid=row["frontend_pid"],
+        serviceName=row["service_name"],
+        status=row["status"],
+        healthStatus=row["health_status"],
+        publicUrl=row["public_url"],
+        lastStartAt=row["last_start_at"].isoformat() if row["last_start_at"] else None,
+        lastStopAt=row["last_stop_at"].isoformat() if row["last_stop_at"] else None,
+        lastHealthCheckAt=row["last_health_check_at"].isoformat() if row["last_health_check_at"] else None,
+        errorMessage=row["error_message"],
+        metadata=row["metadata"] or {},
+        createdAt=row["created_at"].isoformat(),
+        updatedAt=row["updated_at"].isoformat(),
     )
 
 
@@ -452,6 +499,7 @@ def create_rag_app(
     app_id = new_id()
     actor_id = current_user.user.userId
     now = datetime.now(UTC)
+    app_metadata = _metadata_with_scenario(request.metadata, request)
     row = session.execute(
         insert(rag_apps)
         .values(
@@ -462,7 +510,7 @@ def create_rag_app(
             description=request.description,
             status="active",
             output_policy=request.outputPolicy or {},
-            metadata=_metadata_with_scenario(request.metadata, request),
+            metadata=app_metadata,
             created_at=now,
             created_by=actor_id,
             updated_at=now,
@@ -470,6 +518,18 @@ def create_rag_app(
         )
         .returning(rag_apps)
     ).mappings().one()
+    if _is_embedded_training_requested(app_metadata):
+        plain_key, system_key_row = _insert_api_key(
+            session,
+            app_id,
+            actor_id,
+            now,
+            key_type=EMBEDDED_SYSTEM_KEY_TYPE,
+            managed_by="system",
+            display_name="内置嵌入页调用 Key",
+            deletable=False,
+        )
+        _create_embedded_training_deployment(session, current_user, app_id, system_key_row, plain_key, now)
     write_audit_log(
         session,
         current_user,
@@ -630,6 +690,139 @@ def _generate_plain_api_key() -> str:
     return f"rlak_{secrets.token_urlsafe(32)}"
 
 
+def _is_embedded_training_requested(metadata: dict | None) -> bool:
+    """判断是否需要为员工培训应用创建内置嵌入子程序部署记录。"""
+    scenario = _scenario_payload_from_metadata(metadata)
+    if scenario["scenarioType"] != "employee_training":
+        return False
+    publish_channels = scenario["publishChannels"]
+    embed_settings = scenario["embedSettings"]
+    return bool(publish_channels.get("embed") or embed_settings.get("enabled"))
+
+
+def _is_port_available(port: int) -> bool:
+    """通过实际 bind 探测端口，避免只依赖部署表导致端口冲突。"""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+    return True
+
+
+def _allocate_port(session: Session, column, port_range: range) -> int:
+    """先排除平台已记录端口，再做系统端口探测；唯一索引负责并发兜底。"""
+    used_ports = {
+        int(value)
+        for value in session.execute(select(column).select_from(embedded_app_deployments)).scalars()
+        if value is not None
+    }
+    for port in port_range:
+        if port in used_ports:
+            continue
+        if _is_port_available(port):
+            return port
+    raise RagAppConflictError("EMBEDDED_APP_NO_AVAILABLE_PORT")
+
+
+def _embedded_database_name(app_id: UUID | str) -> str:
+    """生成内置培训子程序数据库名；使用 8 位前缀降低碰撞概率。"""
+    prefix = str(app_id).replace("-", "")[:8].lower()
+    return f"ext_training_{prefix}"
+
+
+def _insert_api_key(
+    session: Session,
+    app_id: UUID,
+    actor_id: UUID | str | None,
+    now: datetime,
+    *,
+    key_type: str = "normal",
+    managed_by: str = "user",
+    display_name: str | None = None,
+    deletable: bool = True,
+    expires_at: datetime | None = None,
+) -> tuple[str, RowMapping]:
+    """创建 App API Key，返回明文和摘要行；明文由调用方决定是否返回或注入配置。"""
+    plain_key = _generate_plain_api_key()
+    key_hash = sha256(plain_key.encode("utf-8")).hexdigest()
+    api_key_id = new_id()
+    row = session.execute(
+        insert(rag_app_api_keys)
+        .values(
+            api_key_id=api_key_id,
+            app_id=app_id,
+            key_hash=key_hash,
+            key_prefix=plain_key[:16],
+            status="active",
+            key_type=key_type,
+            managed_by=managed_by,
+            display_name=display_name,
+            deletable=deletable,
+            expires_at=expires_at,
+            created_at=now,
+            created_by=actor_id,
+        )
+        .returning(rag_app_api_keys)
+    ).mappings().one()
+    return plain_key, row
+
+
+def _create_embedded_training_deployment(
+    session: Session,
+    current_user: CurrentUserResponse,
+    app_id: UUID,
+    api_key_row: RowMapping,
+    plain_api_key: str,
+    now: datetime,
+) -> None:
+    """为勾选嵌入页的员工培训应用创建内置子程序部署记录。"""
+    backend_port = _allocate_port(session, embedded_app_deployments.c.backend_port, EMBEDDED_BACKEND_PORT_RANGE)
+    frontend_port = _allocate_port(session, embedded_app_deployments.c.frontend_port, EMBEDDED_FRONTEND_PORT_RANGE)
+    database_name = _embedded_database_name(app_id)
+    try:
+        write_embedded_training_runtime_files(
+            app_id=app_id,
+            database_name=database_name,
+            platform_api_key=plain_api_key,
+            backend_port=backend_port,
+            frontend_port=frontend_port,
+        )
+    except EmbeddedAppDeploymentError as exc:
+        raise RagAppConflictError(str(exc) or "EMBEDDED_APP_CONFIG_WRITE_FAILED") from exc
+    session.execute(
+        insert(embedded_app_deployments).values(
+            deployment_id=new_id(),
+            app_id=app_id,
+            app_type=EMBEDDED_TRAINING_APP_TYPE,
+            api_key_id=api_key_row["api_key_id"],
+            database_name=database_name,
+            backend_port=backend_port,
+            frontend_port=frontend_port,
+            backend_pid=None,
+            frontend_pid=None,
+            service_name=embedded_app_project_name(app_id),
+            status="pending",
+            health_status="unknown",
+            public_url=f"http://localhost:{frontend_port}",
+            last_start_at=None,
+            last_stop_at=None,
+            last_health_check_at=None,
+            error_message=None,
+            metadata={
+                "platformApiKeySource": "rag_app_api_keys",
+                "platformApiKeyId": str(api_key_row["api_key_id"]),
+                "databaseName": database_name,
+            },
+            created_at=now,
+            created_by=current_user.user.userId,
+            updated_at=now,
+            updated_by=current_user.user.userId,
+        )
+    )
+
+
 def create_rag_app_api_key(
     session: Session,
     current_user: CurrentUserResponse,
@@ -640,32 +833,23 @@ def create_rag_app_api_key(
     app_row = _read_visible_app_row(session, current_user, app_id)
     _ensure_app_manage_permission(session, current_user, app_row["kb_id"])
 
-    plain_key = _generate_plain_api_key()
-    key_hash = sha256(plain_key.encode("utf-8")).hexdigest()
-    key_prefix = plain_key[:16]
-    api_key_id = new_id()
     actor_id = current_user.user.userId
-    row = session.execute(
-        insert(rag_app_api_keys)
-        .values(
-            api_key_id=api_key_id,
-            app_id=app_id,
-            key_hash=key_hash,
-            key_prefix=key_prefix,
-            status="active",
-            expires_at=request.expiresAt,
-            created_by=actor_id,
-        )
-        .returning(rag_app_api_keys)
-    ).mappings().one()
+    now = datetime.now(UTC)
+    plain_key, row = _insert_api_key(
+        session,
+        app_id,
+        actor_id,
+        now,
+        expires_at=request.expiresAt,
+    )
     write_audit_log(
         session,
         current_user,
         "rag_app_api_key.create",
         "rag_app_api_key",
-        api_key_id,
+        row["api_key_id"],
         kb_id=app_row["kb_id"],
-        detail={"appId": str(app_id), "keyPrefix": key_prefix},
+        detail={"appId": str(app_id), "keyPrefix": row["key_prefix"]},
     )
     session.commit()
     return RagAppApiKeyCreateResponse(apiKey=plain_key, item=_to_api_key_dto(row))
@@ -690,6 +874,8 @@ def delete_rag_app_api_key(
     if key_row is None:
         session.rollback()
         raise RagAppApiKeyNotFoundError
+    if key_row["key_type"] == EMBEDDED_SYSTEM_KEY_TYPE or not key_row["deletable"]:
+        raise RagAppConflictError("APP_API_KEY_SYSTEM_MANAGED")
     session.execute(
         update(app_invocations)
         .where(app_invocations.c.api_key_id == api_key_id)
@@ -711,6 +897,229 @@ def delete_rag_app_api_key(
         detail={"appId": str(app_id), "keyPrefix": key_row["key_prefix"]},
     )
     session.commit()
+
+
+def list_embedded_app_deployments(
+    session: Session,
+    current_user: CurrentUserResponse,
+    app_id: UUID,
+) -> list[EmbeddedAppDeploymentDTO]:
+    """列出指定应用的内置子程序部署记录；Key 状态和运行状态分开管理。"""
+    app_row = _read_visible_app_row(session, current_user, app_id)
+    _ensure_app_manage_permission(session, current_user, app_row["kb_id"])
+    rows = session.execute(
+        select(embedded_app_deployments)
+        .where(embedded_app_deployments.c.app_id == app_id)
+        .order_by(embedded_app_deployments.c.created_at.desc())
+    ).mappings()
+    return [_to_embedded_deployment_dto(row) for row in rows]
+
+
+def _read_embedded_deployment_row(
+    session: Session,
+    app_id: UUID,
+    deployment_id: UUID,
+) -> RowMapping:
+    """读取指定应用下的内置子程序部署记录；不存在时按应用不存在处理。"""
+    row = session.execute(
+        select(embedded_app_deployments).where(
+            embedded_app_deployments.c.app_id == app_id,
+            embedded_app_deployments.c.deployment_id == deployment_id,
+        )
+    ).mappings().first()
+    if row is None:
+        raise RagAppNotFoundError
+    return row
+
+
+def _update_embedded_deployment_status(
+    session: Session,
+    current_user: CurrentUserResponse,
+    deployment_id: UUID,
+    now: datetime,
+    **values,
+) -> RowMapping:
+    """更新部署记录状态字段并返回最新行。"""
+    if "status_value" in values:
+        values["status"] = values.pop("status_value")
+    row = session.execute(
+        update(embedded_app_deployments)
+        .where(embedded_app_deployments.c.deployment_id == deployment_id)
+        .values(
+            **values,
+            updated_at=now,
+            updated_by=current_user.user.userId,
+        )
+        .returning(embedded_app_deployments)
+    ).mappings().one()
+    return row
+
+
+def _mark_embedded_deployment_failed(
+    session: Session,
+    current_user: CurrentUserResponse,
+    deployment_id: UUID,
+    now: datetime,
+    error_message: str,
+) -> RowMapping:
+    """记录部署操作失败，保留 active 系统 Key 供后续恢复。"""
+    return _update_embedded_deployment_status(
+        session,
+        current_user,
+        deployment_id,
+        now,
+        status_value="failed",
+        health_status="unknown",
+        error_message=error_message[:2000],
+    )
+
+
+def start_embedded_app_deployment(
+    session: Session,
+    current_user: CurrentUserResponse,
+    app_id: UUID,
+    deployment_id: UUID,
+) -> EmbeddedAppDeploymentDTO:
+    """启动内置培训子程序；系统 Key 保持 active，入口由部署状态控制。"""
+    app_row = _read_visible_app_row(session, current_user, app_id)
+    _ensure_app_manage_permission(session, current_user, app_row["kb_id"])
+    deployment_row = _read_embedded_deployment_row(session, app_id, deployment_id)
+    now = datetime.now(UTC)
+    try:
+        ensure_embedded_database_exists(deployment_row["database_name"])
+        run_compose_action(app_id, "up")
+        row = _update_embedded_deployment_status(
+            session,
+            current_user,
+            deployment_id,
+            now,
+            status_value="running",
+            health_status="unknown",
+            last_start_at=now,
+            error_message=None,
+        )
+        write_audit_log(
+            session,
+            current_user,
+            "embedded_app.start",
+            "embedded_app_deployment",
+            deployment_id,
+            kb_id=app_row["kb_id"],
+            detail={"appId": str(app_id), "serviceName": deployment_row["service_name"]},
+        )
+        session.commit()
+        return _to_embedded_deployment_dto(row)
+    except (EmbeddedAppDeploymentError, SQLAlchemyError, OSError) as exc:
+        row = _mark_embedded_deployment_failed(session, current_user, deployment_id, now, str(exc))
+        session.commit()
+        return _to_embedded_deployment_dto(row)
+
+
+def stop_embedded_app_deployment(
+    session: Session,
+    current_user: CurrentUserResponse,
+    app_id: UUID,
+    deployment_id: UUID,
+) -> EmbeddedAppDeploymentDTO:
+    """停止内置培训子程序；不删除系统 Key、运行目录和独立数据库。"""
+    app_row = _read_visible_app_row(session, current_user, app_id)
+    _ensure_app_manage_permission(session, current_user, app_row["kb_id"])
+    _read_embedded_deployment_row(session, app_id, deployment_id)
+    now = datetime.now(UTC)
+    try:
+        run_compose_action(app_id, "stop")
+        row = _update_embedded_deployment_status(
+            session,
+            current_user,
+            deployment_id,
+            now,
+            status_value="stopped",
+            health_status="unknown",
+            last_stop_at=now,
+            error_message=None,
+        )
+        write_audit_log(
+            session,
+            current_user,
+            "embedded_app.stop",
+            "embedded_app_deployment",
+            deployment_id,
+            kb_id=app_row["kb_id"],
+            detail={"appId": str(app_id)},
+        )
+        session.commit()
+        return _to_embedded_deployment_dto(row)
+    except (EmbeddedAppDeploymentError, SQLAlchemyError, OSError) as exc:
+        row = _mark_embedded_deployment_failed(session, current_user, deployment_id, now, str(exc))
+        session.commit()
+        return _to_embedded_deployment_dto(row)
+
+
+def restart_embedded_app_deployment(
+    session: Session,
+    current_user: CurrentUserResponse,
+    app_id: UUID,
+    deployment_id: UUID,
+) -> EmbeddedAppDeploymentDTO:
+    """重启内置培训子程序，复用已有 Compose project 和运行目录。"""
+    app_row = _read_visible_app_row(session, current_user, app_id)
+    _ensure_app_manage_permission(session, current_user, app_row["kb_id"])
+    _read_embedded_deployment_row(session, app_id, deployment_id)
+    now = datetime.now(UTC)
+    try:
+        run_compose_action(app_id, "restart")
+        row = _update_embedded_deployment_status(
+            session,
+            current_user,
+            deployment_id,
+            now,
+            status_value="running",
+            health_status="unknown",
+            last_start_at=now,
+            error_message=None,
+        )
+        write_audit_log(
+            session,
+            current_user,
+            "embedded_app.restart",
+            "embedded_app_deployment",
+            deployment_id,
+            kb_id=app_row["kb_id"],
+            detail={"appId": str(app_id)},
+        )
+        session.commit()
+        return _to_embedded_deployment_dto(row)
+    except (EmbeddedAppDeploymentError, SQLAlchemyError, OSError) as exc:
+        row = _mark_embedded_deployment_failed(session, current_user, deployment_id, now, str(exc))
+        session.commit()
+        return _to_embedded_deployment_dto(row)
+
+
+def check_embedded_app_deployment_health(
+    session: Session,
+    current_user: CurrentUserResponse,
+    app_id: UUID,
+    deployment_id: UUID,
+) -> EmbeddedAppDeploymentDTO:
+    """刷新内置培训子程序健康状态；只检查入口可达性，不改变 API Key 状态。"""
+    app_row = _read_visible_app_row(session, current_user, app_id)
+    _ensure_app_manage_permission(session, current_user, app_row["kb_id"])
+    deployment_row = _read_embedded_deployment_row(session, app_id, deployment_id)
+    backend_ok = check_embedded_http_health(f"http://127.0.0.1:{deployment_row['backend_port']}/health")
+    frontend_ok = bool(deployment_row["public_url"]) and check_embedded_http_health(deployment_row["public_url"])
+    health_status = "healthy" if backend_ok and frontend_ok else "unhealthy"
+    now = datetime.now(UTC)
+    row = _update_embedded_deployment_status(
+        session,
+        current_user,
+        deployment_id,
+        now,
+        health_status=health_status,
+        last_health_check_at=now,
+        error_message=None if health_status == "healthy" else "EMBEDDED_APP_HEALTH_CHECK_FAILED",
+    )
+    session.commit()
+    return _to_embedded_deployment_dto(row)
 
 
 def list_rag_app_invocations(

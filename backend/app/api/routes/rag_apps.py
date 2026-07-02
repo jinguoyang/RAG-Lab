@@ -16,6 +16,7 @@ from app.schemas.rag_app import (
     AppTrainingReportDTO,
     BatchDeleteRagAppsRequest,
     BatchDeleteRagAppsResponse,
+    EmbeddedAppDeploymentDTO,
     RagAppApiKeyCreateRequest,
     RagAppApiKeyCreateResponse,
     RagAppApiKeyDTO,
@@ -29,6 +30,7 @@ from app.services.rag_app_service import (
     RagAppNotFoundError,
     RagAppPermissionError,
     batch_delete_rag_apps,
+    check_embedded_app_deployment_health,
     create_rag_app,
     create_rag_app_api_key,
     delete_rag_app,
@@ -37,9 +39,13 @@ from app.services.rag_app_service import (
     get_rag_app_conversation_detail,
     get_rag_app_invocation_stats,
     get_rag_app_training_report,
+    list_embedded_app_deployments,
     list_rag_app_api_keys,
     list_rag_app_invocations,
     list_rag_apps,
+    restart_embedded_app_deployment,
+    start_embedded_app_deployment,
+    stop_embedded_app_deployment,
     update_rag_app,
 )
 
@@ -214,6 +220,75 @@ def delete_rag_app_api_key_endpoint(
     """物理删除 App API Key；调用审计保留但解除 Key 关联。"""
     try:
         delete_rag_app_api_key(session, current_user, app_id, api_key_id)
+    except Exception as exc:
+        _raise_rag_app_error(exc)
+
+
+@router.get("/{app_id}/embedded-deployments", response_model=list[EmbeddedAppDeploymentDTO])
+def read_embedded_app_deployments(
+    app_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> list[EmbeddedAppDeploymentDTO]:
+    """读取内置嵌入子程序部署状态；部署状态不影响系统 Key 的 active 状态。"""
+    try:
+        return list_embedded_app_deployments(session, current_user, app_id)
+    except Exception as exc:
+        _raise_rag_app_error(exc)
+
+
+@router.post("/{app_id}/embedded-deployments/{deployment_id}/start", response_model=EmbeddedAppDeploymentDTO)
+def start_embedded_app_deployment_endpoint(
+    app_id: UUID,
+    deployment_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> EmbeddedAppDeploymentDTO:
+    """启动内置嵌入子程序；实际进程由 Docker Compose 独立托管。"""
+    try:
+        return start_embedded_app_deployment(session, current_user, app_id, deployment_id)
+    except Exception as exc:
+        _raise_rag_app_error(exc)
+
+
+@router.post("/{app_id}/embedded-deployments/{deployment_id}/stop", response_model=EmbeddedAppDeploymentDTO)
+def stop_embedded_app_deployment_endpoint(
+    app_id: UUID,
+    deployment_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> EmbeddedAppDeploymentDTO:
+    """停止内置嵌入子程序；不删除系统 Key、运行目录和子数据库。"""
+    try:
+        return stop_embedded_app_deployment(session, current_user, app_id, deployment_id)
+    except Exception as exc:
+        _raise_rag_app_error(exc)
+
+
+@router.post("/{app_id}/embedded-deployments/{deployment_id}/restart", response_model=EmbeddedAppDeploymentDTO)
+def restart_embedded_app_deployment_endpoint(
+    app_id: UUID,
+    deployment_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> EmbeddedAppDeploymentDTO:
+    """重启内置嵌入子程序，复用已有 Compose project。"""
+    try:
+        return restart_embedded_app_deployment(session, current_user, app_id, deployment_id)
+    except Exception as exc:
+        _raise_rag_app_error(exc)
+
+
+@router.post("/{app_id}/embedded-deployments/{deployment_id}/health-check", response_model=EmbeddedAppDeploymentDTO)
+def check_embedded_app_deployment_health_endpoint(
+    app_id: UUID,
+    deployment_id: UUID,
+    current_user: CurrentUserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> EmbeddedAppDeploymentDTO:
+    """刷新内置嵌入子程序健康状态。"""
+    try:
+        return check_embedded_app_deployment_health(session, current_user, app_id, deployment_id)
     except Exception as exc:
         _raise_rag_app_error(exc)
 

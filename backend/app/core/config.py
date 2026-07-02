@@ -20,6 +20,26 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("RAG_LAB_DATABASE_URL", "DATABASE_URL"),
     )
+    embedded_app_runtime_root: str = Field(
+        default="runtime/embedded-apps",
+        validation_alias=AliasChoices("RAG_LAB_EMBEDDED_APP_RUNTIME_ROOT", "EMBEDDED_APP_RUNTIME_ROOT"),
+    )
+    embedded_app_source_root: str = Field(
+        default="external-training-app",
+        validation_alias=AliasChoices("RAG_LAB_EMBEDDED_APP_SOURCE_ROOT", "EMBEDDED_APP_SOURCE_ROOT"),
+    )
+    embedded_app_backend_image: str = Field(
+        default="rag-lab/external-training-backend:latest",
+        validation_alias=AliasChoices("RAG_LAB_EMBEDDED_APP_BACKEND_IMAGE", "EMBEDDED_APP_BACKEND_IMAGE"),
+    )
+    embedded_app_frontend_image: str = Field(
+        default="rag-lab/external-training-frontend:latest",
+        validation_alias=AliasChoices("RAG_LAB_EMBEDDED_APP_FRONTEND_IMAGE", "EMBEDDED_APP_FRONTEND_IMAGE"),
+    )
+    embedded_app_platform_base_url: str = Field(
+        default="http://host.docker.internal:8000/api/v1",
+        validation_alias=AliasChoices("RAG_LAB_EMBEDDED_APP_PLATFORM_BASE_URL", "EMBEDDED_APP_PLATFORM_BASE_URL"),
+    )
     dev_auth_enabled: bool = False
     dev_default_username: str = "admin"
     dev_default_security_level: str = "public"

@@ -4,6 +4,7 @@ import * as Tabs from "@radix-ui/react-tabs";
 import {
   CheckSquare,
   Copy,
+  ExternalLink,
   FileText,
   KeyRound,
   MinusSquare,
@@ -34,6 +35,7 @@ import {
   shortId,
   toAppInvocationViewModel,
   toAppMessageViewModel,
+  toEmbeddedAppDeploymentViewModel,
   toRagAppTrainingReportViewModel,
   toRagAppApiKeyViewModel,
   toRagAppViewModel,
@@ -56,14 +58,19 @@ import {
   batchDeleteRagApps,
   createRagApp,
   createRagAppApiKey,
+  checkRagAppEmbeddedDeploymentHealth,
   deleteRagApp,
   deleteRagAppApiKey,
   getRagAppConversationDetail,
   getRagAppInvocationStats,
   getRagAppTrainingReport,
+  listRagAppEmbeddedDeployments,
   listRagAppApiKeys,
   listRagAppInvocations,
   listRagApps,
+  restartRagAppEmbeddedDeployment,
+  startRagAppEmbeddedDeployment,
+  stopRagAppEmbeddedDeployment,
   updateRagApp,
 } from "../services/ragAppService";
 import type { ConfigRevisionDTO } from "../types/config";
@@ -83,6 +90,7 @@ import type {
   AppInvocationStatus,
   AppConversationDetailDTO,
   AppTrainingReportDTO,
+  EmbeddedAppDeploymentDTO,
   RagAppApiKeyDTO,
   RagAppDTO,
   RagAppStatus,
@@ -141,6 +149,13 @@ function statusBadgeVariant(status: string): "success" | "inactive" | "warning" 
   return "warning";
 }
 
+function deploymentBadgeVariant(status: string): "success" | "inactive" | "warning" | "error" {
+  if (status === "running" || status === "healthy") return "success";
+  if (status === "stopped" || status === "unknown") return "inactive";
+  if (status === "failed" || status === "unhealthy") return "error";
+  return "warning";
+}
+
 function toNullableText(value: string): string | null {
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
@@ -174,6 +189,7 @@ export function RagAppManagement() {
   const [configRevisions, setConfigRevisions] = useState<ConfigRevisionDTO[]>([]);
   const [selectedApp, setSelectedApp] = useState<RagAppDTO | null>(null);
   const [apiKeys, setApiKeys] = useState<RagAppApiKeyDTO[]>([]);
+  const [embeddedDeployments, setEmbeddedDeployments] = useState<EmbeddedAppDeploymentDTO[]>([]);
   const [invocations, setInvocations] = useState<AppInvocationDTO[]>([]);
   const [invocationStats, setInvocationStats] = useState<AppInvocationStatsDTO | null>(null);
   const [trainingReport, setTrainingReport] = useState<AppTrainingReportDTO | null>(null);
@@ -218,6 +234,10 @@ export function RagAppManagement() {
   const isIndeterminate = !isAllSelected && apps.some((app) => selectedAppIds.has(app.appId));
   const selectedAppView = selectedApp ? toRagAppViewModel(selectedApp) : null;
   const keyRows = useMemo(() => apiKeys.map(toRagAppApiKeyViewModel), [apiKeys]);
+  const embeddedDeploymentRows = useMemo(
+    () => embeddedDeployments.map(toEmbeddedAppDeploymentViewModel),
+    [embeddedDeployments],
+  );
   const activeApiKeyCount = useMemo(
     () => apiKeys.filter((key) => key.status === "active" && (!key.expiresAt || new Date(key.expiresAt) >= new Date())).length,
     [apiKeys],
@@ -237,6 +257,12 @@ export function RagAppManagement() {
     () => scenarioTemplates.find((template) => template.templateId === appForm.scenarioTemplateId),
     [appForm.scenarioTemplateId, scenarioTemplates],
   );
+
+  /** 在新标签页打开当前外部应用入口。 */
+  const handleEnterApp = useCallback(() => {
+    const appUrl = embeddedDeployments[0]?.publicUrl || `${window.location.protocol}//${window.location.hostname}:5183/`;
+    window.open(appUrl, "_blank", "noopener,noreferrer");
+  }, [embeddedDeployments]);
 
   const loadApps = useCallback(async () => {
     setIsLoadingApps(true);
@@ -270,8 +296,9 @@ export function RagAppManagement() {
     setIsLoadingDetail(true);
     try {
       const shouldLoadTrainingReport = app.scenarioType === "employee_training";
-      const [keys, invocationPage, revisions, stats, report] = await Promise.all([
+      const [keys, deployments, invocationPage, revisions, stats, report] = await Promise.all([
         listRagAppApiKeys(app.appId),
+        listRagAppEmbeddedDeployments(app.appId),
         listRagAppInvocations(app.appId, {
           pageNo: 1,
           pageSize: INVOCATION_PAGE_SIZE,
@@ -282,6 +309,7 @@ export function RagAppManagement() {
         shouldLoadTrainingReport ? getRagAppTrainingReport(app.appId) : Promise.resolve(null),
       ]);
       setApiKeys(keys);
+      setEmbeddedDeployments(deployments);
       setInvocations(invocationPage.items);
       setConfigRevisions(revisions.items);
       setInvocationStats(stats);
@@ -618,6 +646,14 @@ export function RagAppManagement() {
 
   const handleDeleteApiKey = async (key: RagAppApiKeyDTO) => {
     if (!selectedApp) return;
+    if (!key.deletable || key.keyType === "embedded_system") {
+      setFeedback({
+        variant: "error",
+        title: "内置 Key 不可删除",
+        message: "该 Key 由系统管理，用于内置嵌入页调用平台接口。",
+      });
+      return;
+    }
     const confirmed = await confirmDialog({
       title: "确认删除 API Key",
       description: "删除后使用该 Key 的外部调用将返回 APP_API_KEY_INVALID，调用审计会保留但不再关联该 Key。",
@@ -637,6 +673,50 @@ export function RagAppManagement() {
         variant: "error",
         title: "删除失败",
         message: error instanceof Error ? error.message : "请刷新后重试。",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const replaceEmbeddedDeployment = (deployment: EmbeddedAppDeploymentDTO) => {
+    setEmbeddedDeployments((current) => current.map((item) => (
+      item.deploymentId === deployment.deploymentId ? deployment : item
+    )));
+  };
+
+  const handleEmbeddedDeploymentAction = async (
+    deployment: EmbeddedAppDeploymentDTO,
+    action: "start" | "stop" | "restart" | "health",
+  ) => {
+    if (!selectedApp) return;
+    const actionLabels = {
+      start: "启动",
+      stop: "停止",
+      restart: "重启",
+      health: "健康检查",
+    };
+    setIsSaving(true);
+    try {
+      const nextDeployment =
+        action === "start"
+          ? await startRagAppEmbeddedDeployment(selectedApp.appId, deployment.deploymentId)
+          : action === "stop"
+            ? await stopRagAppEmbeddedDeployment(selectedApp.appId, deployment.deploymentId)
+            : action === "restart"
+              ? await restartRagAppEmbeddedDeployment(selectedApp.appId, deployment.deploymentId)
+              : await checkRagAppEmbeddedDeploymentHealth(selectedApp.appId, deployment.deploymentId);
+      replaceEmbeddedDeployment(nextDeployment);
+      setFeedback({
+        variant: nextDeployment.status === "failed" || nextDeployment.healthStatus === "unhealthy" ? "error" : "success",
+        title: `内置培训应用${actionLabels[action]}完成`,
+        message: nextDeployment.errorMessage || `当前状态：${nextDeployment.status} / ${nextDeployment.healthStatus}`,
+      });
+    } catch (error) {
+      setFeedback({
+        variant: "error",
+        title: `内置培训应用${actionLabels[action]}失败`,
+        message: error instanceof Error ? error.message : "请检查 Docker 服务和端口占用情况。",
       });
     } finally {
       setIsSaving(false);
@@ -1055,6 +1135,11 @@ export function RagAppManagement() {
                     </div>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
+                    {selectedApp.publishChannels?.embed === true && (
+                      <Button variant="primary" size="sm" onClick={handleEnterApp}>
+                        <ExternalLink className="mr-1 h-3 w-3" /> 进入应用
+                      </Button>
+                    )}
                     <Button variant="outline" size="sm" onClick={() => openEditForm(selectedApp)}>
                       <Pencil className="mr-1 h-3 w-3" /> 编辑
                     </Button>
@@ -1196,6 +1281,86 @@ export function RagAppManagement() {
                           <Alert variant="warning" title="调用统计受影响">
                             知识库已停用，自停用以来无新调用记录。
                           </Alert>
+                        )}
+                        {embeddedDeploymentRows.length > 0 && (
+                          <div className="space-y-3 rounded-lg border border-border-cream bg-parchment p-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-xs text-stone-gray">内置培训应用</p>
+                                <p className="mt-1 text-xs text-stone-gray">由 Docker Compose 独立托管，系统 Key 保持 active。</p>
+                              </div>
+                              <Badge variant="warning">嵌入页</Badge>
+                            </div>
+                            {embeddedDeploymentRows.map((deployment, index) => {
+                              const sourceDeployment = embeddedDeployments[index];
+                              return (
+                                <div key={deployment.id} className="space-y-3 rounded-md border border-border-cream bg-white p-3">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <Badge variant={deploymentBadgeVariant(deployment.status)}>{deployment.statusLabel}</Badge>
+                                    <Badge variant={deploymentBadgeVariant(deployment.healthStatus)}>{deployment.healthLabel}</Badge>
+                                    {deployment.publicUrl && (
+                                      <a
+                                        href={deployment.publicUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex items-center text-xs text-terracotta hover:underline"
+                                      >
+                                        <ExternalLink className="mr-1 h-3 w-3" /> 打开
+                                      </a>
+                                    )}
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2 text-xs text-stone-gray">
+                                    <span>数据库：{deployment.databaseName}</span>
+                                    <span>服务：{deployment.serviceNameLabel}</span>
+                                    <span>后端端口：{deployment.backendPortLabel}</span>
+                                    <span>前端端口：{deployment.frontendPortLabel}</span>
+                                    <span>最近启动：{deployment.lastStartAtLabel}</span>
+                                    <span>最近停止：{deployment.lastStopAtLabel}</span>
+                                    <span className="col-span-2">健康检查：{deployment.lastHealthCheckAtLabel}</span>
+                                  </div>
+                                  {deployment.errorMessage && (
+                                    <p className="rounded-md bg-red-50 px-2 py-1 text-xs text-red-700">{deployment.errorMessage}</p>
+                                  )}
+                                  {sourceDeployment && (
+                                    <div className="flex flex-wrap justify-end gap-2">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={isSaving}
+                                        onClick={() => void handleEmbeddedDeploymentAction(sourceDeployment, "health")}
+                                      >
+                                        <RefreshCw className="mr-1 h-3 w-3" /> 检查
+                                      </Button>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={isSaving}
+                                        onClick={() => void handleEmbeddedDeploymentAction(sourceDeployment, "stop")}
+                                      >
+                                        <Square className="mr-1 h-3 w-3" /> 停止
+                                      </Button>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={isSaving}
+                                        onClick={() => void handleEmbeddedDeploymentAction(sourceDeployment, "restart")}
+                                      >
+                                        <RotateCcw className="mr-1 h-3 w-3" /> 重启
+                                      </Button>
+                                      <Button
+                                        variant="primary"
+                                        size="sm"
+                                        disabled={isSaving}
+                                        onClick={() => void handleEmbeddedDeploymentAction(sourceDeployment, "start")}
+                                      >
+                                        <PlayCircle className="mr-1 h-3 w-3" /> 启动
+                                      </Button>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
                         )}
                         <div className="rounded-lg border border-border-cream bg-parchment p-3">
                           <p className="text-xs text-stone-gray">调用统计</p>
@@ -1407,6 +1572,7 @@ export function RagAppManagement() {
                           <TableHeader>
                             <TableRow>
                               <TableHead>前缀</TableHead>
+                              <TableHead>来源</TableHead>
                               <TableHead>状态</TableHead>
                               <TableHead>可用性</TableHead>
                               <TableHead>过期时间</TableHead>
@@ -1417,12 +1583,18 @@ export function RagAppManagement() {
                           <TableBody>
                             {keyRows.length === 0 && (
                               <TableRow>
-                                <TableCell colSpan={6} className="text-stone-gray">暂无 API Key</TableCell>
+                                <TableCell colSpan={7} className="text-stone-gray">暂无 API Key</TableCell>
                               </TableRow>
                             )}
                             {keyRows.map((key) => (
                               <TableRow key={key.id}>
                                 <TableCell mono>{key.keyPrefix}</TableCell>
+                                <TableCell>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <Badge variant={key.deletable ? "inactive" : "warning"}>{key.sourceLabel}</Badge>
+                                    <span className="text-xs text-stone-gray">{key.managedByLabel}</span>
+                                  </div>
+                                </TableCell>
                                 <TableCell><Badge variant={statusBadgeVariant(key.status)}>{key.statusLabel}</Badge></TableCell>
                                 <TableCell>
                                   {(() => {
@@ -1437,7 +1609,9 @@ export function RagAppManagement() {
                                 <TableCell>{key.expiresAtLabel}</TableCell>
                                 <TableCell>{key.lastUsedAtLabel}</TableCell>
                                 <TableCell>
-                                  {key.status === "active" ? (
+                                  {!key.deletable ? (
+                                    <Badge variant="warning">不可删除</Badge>
+                                  ) : key.status === "active" ? (
                                     <Button variant="ghost" size="sm" disabled={isSaving} onClick={() => {
                                       const sourceKey = apiKeys.find((item) => item.apiKeyId === key.id);
                                       if (sourceKey) void handleDeleteApiKey(sourceKey);

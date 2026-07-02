@@ -3,9 +3,27 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+from sqlalchemy import func, select
+
 from app.schemas.rag_app import RagAppCreateRequest
-from app.services.rag_app_service import create_rag_app, get_rag_app, get_rag_app_training_report
-from app.tables import app_conversations, app_messages, config_revisions, knowledge_bases, rag_apps
+from app.services.rag_app_service import (
+    RagAppConflictError,
+    create_rag_app,
+    delete_rag_app_api_key,
+    get_rag_app,
+    get_rag_app_training_report,
+    list_embedded_app_deployments,
+    list_rag_app_api_keys,
+)
+from app.tables import (
+    app_conversations,
+    app_messages,
+    config_revisions,
+    embedded_app_deployments,
+    knowledge_bases,
+    rag_app_api_keys,
+    rag_apps,
+)
 
 
 def _insert_active_kb(db, owner_id):
@@ -97,6 +115,86 @@ def test_create_rag_app_persists_scenario_metadata(db, admin_user):
 
     row = db.execute(rag_apps.select().where(rag_apps.c.app_id == UUID(created.appId))).mappings().one()
     assert row["metadata"]["scenario"]["scenarioType"] == "employee_training"
+
+    deployment_count = db.execute(
+        select(func.count())
+        .select_from(embedded_app_deployments)
+        .where(embedded_app_deployments.c.app_id == UUID(created.appId))
+    ).scalar_one()
+    assert deployment_count == 0
+
+
+def test_create_embedded_training_app_creates_system_key_and_deployment(db, admin_user):
+    """勾选员工培训嵌入页时，系统应创建不可删除内置 Key 和独立 DB 部署记录。"""
+    owner_id = uuid4()
+    kb_id = _insert_active_kb(db, owner_id)
+    revision_id = _insert_saved_revision(db, kb_id, owner_id)
+
+    created = create_rag_app(
+        db,
+        admin_user,
+        RagAppCreateRequest(
+            name="内置培训页",
+            kbId=kb_id,
+            defaultConfigRevisionId=revision_id,
+            scenarioType="employee_training",
+            scenarioTemplateId="builtin_employee_training_v1",
+            publishChannels={"api": True, "embed": True},
+            embedSettings={"enabled": True, "allowedOrigins": []},
+        ),
+    )
+    app_id = UUID(created.appId)
+
+    keys = list_rag_app_api_keys(db, admin_user, app_id)
+    assert len(keys) == 1
+    assert keys[0].keyType == "embedded_system"
+    assert keys[0].managedBy == "system"
+    assert keys[0].displayName == "内置嵌入页调用 Key"
+    assert keys[0].deletable is False
+
+    deployments = list_embedded_app_deployments(db, admin_user, app_id)
+    assert len(deployments) == 1
+    assert deployments[0].appType == "external_training"
+    assert deployments[0].databaseName.startswith("ext_training_")
+    assert deployments[0].status == "pending"
+    assert deployments[0].healthStatus == "unknown"
+    assert deployments[0].backendPort != deployments[0].frontendPort
+
+
+def test_embedded_system_key_cannot_be_deleted(db, admin_user):
+    """内置嵌入系统 Key 是长期身份，删除入口必须拒绝。"""
+    owner_id = uuid4()
+    kb_id = _insert_active_kb(db, owner_id)
+    revision_id = _insert_saved_revision(db, kb_id, owner_id)
+    created = create_rag_app(
+        db,
+        admin_user,
+        RagAppCreateRequest(
+            name="不可删内置 Key",
+            kbId=kb_id,
+            defaultConfigRevisionId=revision_id,
+            scenarioType="employee_training",
+            scenarioTemplateId="builtin_employee_training_v1",
+            publishChannels={"api": True, "embed": True},
+            embedSettings={"enabled": True, "allowedOrigins": []},
+        ),
+    )
+    app_id = UUID(created.appId)
+    key_row = db.execute(
+        rag_app_api_keys.select().where(rag_app_api_keys.c.app_id == app_id)
+    ).mappings().one()
+
+    try:
+        delete_rag_app_api_key(db, admin_user, app_id, UUID(key_row["api_key_id"]))
+    except RagAppConflictError as exc:
+        assert str(exc) == "APP_API_KEY_SYSTEM_MANAGED"
+    else:
+        raise AssertionError("embedded system key should not be deletable")
+
+    remaining_key_count = db.execute(
+        select(func.count()).select_from(rag_app_api_keys).where(rag_app_api_keys.c.app_id == app_id)
+    ).scalar_one()
+    assert remaining_key_count == 1
 
 
 def test_get_rag_app_defaults_legacy_app_to_knowledge_qa(db, admin_user):

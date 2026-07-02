@@ -2,6 +2,8 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
+const backendProxyTarget = process.env.VITE_EXT_TRAINING_BACKEND_PROXY_TARGET ?? "http://localhost:8001";
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
@@ -12,7 +14,7 @@ export default defineConfig({
     },
     proxy: {
       "/api": {
-        target: "http://localhost:8001",
+        target: backendProxyTarget,
         changeOrigin: true,
       },
     },

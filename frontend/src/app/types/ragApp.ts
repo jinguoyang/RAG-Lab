@@ -60,6 +60,10 @@ export interface RagAppApiKeyDTO {
   appId: string;
   keyPrefix: string;
   status: RagAppApiKeyStatus;
+  keyType: "normal" | "embedded_system" | string;
+  managedBy: "user" | "system" | string;
+  displayName: string | null;
+  deletable: boolean;
   expiresAt: string | null;
   lastUsedAt: string | null;
   createdAt: string;
@@ -73,6 +77,29 @@ export interface RagAppApiKeyCreateRequest {
 export interface RagAppApiKeyCreateResponse {
   apiKey: string;
   item: RagAppApiKeyDTO;
+}
+
+export interface EmbeddedAppDeploymentDTO {
+  deploymentId: string;
+  appId: string;
+  appType: string;
+  apiKeyId: string;
+  databaseName: string;
+  backendPort: number;
+  frontendPort: number;
+  backendPid: number | null;
+  frontendPid: number | null;
+  serviceName: string | null;
+  status: "pending" | "running" | "stopped" | "failed" | string;
+  healthStatus: "unknown" | "healthy" | "unhealthy" | string;
+  publicUrl: string | null;
+  lastStartAt: string | null;
+  lastStopAt: string | null;
+  lastHealthCheckAt: string | null;
+  errorMessage: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface RagAppApiKeyRevokeResponse {
@@ -195,9 +222,30 @@ export interface RagAppApiKeyViewModel {
   keyPrefix: string;
   status: RagAppApiKeyStatus;
   statusLabel: string;
+  sourceLabel: string;
+  managedByLabel: string;
+  deletable: boolean;
   expiresAtLabel: string;
   lastUsedAtLabel: string;
   createdAtLabel: string;
+}
+
+export interface EmbeddedAppDeploymentViewModel {
+  id: string;
+  appType: string;
+  databaseName: string;
+  backendPortLabel: string;
+  frontendPortLabel: string;
+  serviceNameLabel: string;
+  status: string;
+  statusLabel: string;
+  healthStatus: string;
+  healthLabel: string;
+  publicUrl: string | null;
+  lastStartAtLabel: string;
+  lastStopAtLabel: string;
+  lastHealthCheckAtLabel: string;
+  errorMessage: string | null;
 }
 
 export interface AppInvocationViewModel {

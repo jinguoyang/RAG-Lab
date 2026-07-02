@@ -6,6 +6,8 @@ import type {
   AppMessageViewModel,
   AppTrainingReportDTO,
   AppTrainingReportViewModel,
+  EmbeddedAppDeploymentDTO,
+  EmbeddedAppDeploymentViewModel,
   RagAppApiKeyDTO,
   RagAppApiKeyViewModel,
   RagAppDTO,
@@ -84,15 +86,54 @@ export function toRagAppViewModel(app: RagAppDTO): RagAppViewModel {
 }
 
 export function toRagAppApiKeyViewModel(key: RagAppApiKeyDTO): RagAppApiKeyViewModel {
+  const isEmbeddedSystemKey = key.keyType === "embedded_system";
   return {
     id: key.apiKeyId,
     appId: key.appId,
     keyPrefix: key.keyPrefix,
     status: key.status,
     statusLabel: RAG_APP_API_KEY_STATUS_LABELS[key.status] ?? key.status,
+    sourceLabel: key.displayName || (isEmbeddedSystemKey ? "内置嵌入页调用 Key" : "普通 API Key"),
+    managedByLabel: key.managedBy === "system" ? "系统管理" : "用户管理",
+    deletable: key.deletable,
     expiresAtLabel: key.expiresAt ? formatDateTime(key.expiresAt) : "永不过期",
     lastUsedAtLabel: formatDateTime(key.lastUsedAt),
     createdAtLabel: formatDateTime(key.createdAt),
+  };
+}
+
+const EMBEDDED_DEPLOYMENT_STATUS_LABELS: Record<string, string> = {
+  pending: "待启动",
+  running: "运行中",
+  stopped: "已停止",
+  failed: "失败",
+};
+
+const EMBEDDED_HEALTH_STATUS_LABELS: Record<string, string> = {
+  unknown: "未检查",
+  healthy: "健康",
+  unhealthy: "异常",
+};
+
+export function toEmbeddedAppDeploymentViewModel(
+  deployment: EmbeddedAppDeploymentDTO,
+): EmbeddedAppDeploymentViewModel {
+  return {
+    id: deployment.deploymentId,
+    appType: deployment.appType,
+    databaseName: deployment.databaseName,
+    backendPortLabel: String(deployment.backendPort),
+    frontendPortLabel: String(deployment.frontendPort),
+    serviceNameLabel: deployment.serviceName || "-",
+    status: deployment.status,
+    statusLabel: EMBEDDED_DEPLOYMENT_STATUS_LABELS[deployment.status] ?? deployment.status,
+    healthStatus: deployment.healthStatus,
+    healthLabel: EMBEDDED_HEALTH_STATUS_LABELS[deployment.healthStatus] ?? deployment.healthStatus,
+    publicUrl: deployment.publicUrl,
+    lastStartAtLabel: formatDateTime(deployment.lastStartAt),
+    lastStopAtLabel: formatDateTime(deployment.lastStopAt),
+    lastHealthCheckAtLabel: formatDateTime(deployment.lastHealthCheckAt),
+    errorMessage: deployment.errorMessage,
   };
 }
 

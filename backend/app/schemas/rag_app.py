@@ -88,6 +88,10 @@ class RagAppApiKeyDTO(BaseModel):
     appId: str
     keyPrefix: str
     status: str
+    keyType: str = "normal"
+    managedBy: str = "user"
+    displayName: str | None = None
+    deletable: bool = True
     expiresAt: str | None = None
     lastUsedAt: str | None = None
     createdAt: str
@@ -105,6 +109,31 @@ class RagAppApiKeyCreateResponse(BaseModel):
 
     apiKey: str
     item: RagAppApiKeyDTO
+
+
+class EmbeddedAppDeploymentDTO(BaseModel):
+    """内置嵌入子程序部署状态，供后续运维监控页展示。"""
+
+    deploymentId: str
+    appId: str
+    appType: str
+    apiKeyId: str
+    databaseName: str
+    backendPort: int
+    frontendPort: int
+    backendPid: int | None = None
+    frontendPid: int | None = None
+    serviceName: str | None = None
+    status: str
+    healthStatus: str
+    publicUrl: str | None = None
+    lastStartAt: str | None = None
+    lastStopAt: str | None = None
+    lastHealthCheckAt: str | None = None
+    errorMessage: str | None = None
+    metadata: dict[str, Any]
+    createdAt: str
+    updatedAt: str
 
 
 class RagAppApiKeyRevokeResponse(BaseModel):
