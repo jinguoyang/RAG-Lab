@@ -714,11 +714,19 @@ def analyze_document_deletion_impact(
             "requires_strong_confirmation": False,
         }
 
-    # 2. 检查是否存在 active ChunkRevision（任一版本）
+    # 2. 检查是否存在仍挂在活跃绑定下的 active ChunkRevision（任一版本）
     active_binding_count = session.execute(
-        select(func.count()).select_from(chunk_revisions).where(
+        select(func.count())
+        .select_from(
+            chunk_revisions.join(
+                document_kb_bindings,
+                chunk_revisions.c.binding_id == document_kb_bindings.c.binding_id,
+            )
+        )
+        .where(
             chunk_revisions.c.document_version_id.in_(versions),
             chunk_revisions.c.status == "active",
+            document_kb_bindings.c.status.in_(["active", "processing", "pending"]),
         )
     ).scalar_one()
 

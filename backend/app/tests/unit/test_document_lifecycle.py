@@ -7,6 +7,7 @@ from app.services.document_service import (
     _to_chunk_dto,
     check_file_hash_duplicate,
     create_parse_revision,
+    delete_document,
     get_document_detail,
     list_chunks,
     list_documents,
@@ -18,6 +19,7 @@ from app.tables import (
     document_versions,
     documents,
     knowledge_bases,
+    stored_files,
 )
 
 
@@ -563,3 +565,177 @@ def test_get_document_detail_allows_nullable_library_version_chunk_count(db, adm
     assert detail is not None
     assert detail.activeVersion is not None
     assert detail.activeVersion.chunkCount is None
+
+
+def test_delete_bound_kb_document_keeps_library_source_file(db, admin_user):
+    """删除 KB 侧派生文档时不应删除文档库源文件对象。"""
+    now = datetime.now(timezone.utc)
+    kb_id = uuid4()
+    owner_id = uuid4()
+    source_doc_id = uuid4()
+    source_version_id = uuid4()
+    kb_doc_id = uuid4()
+    kb_version_id = uuid4()
+    file_id = uuid4()
+    binding_id = uuid4()
+    storage = Mock()
+
+    db.execute(
+        knowledge_bases.insert().values(
+            kb_id=kb_id,
+            name="绑定删除知识库",
+            description=None,
+            owner_id=owner_id,
+            sparse_index_enabled=False,
+            graph_index_enabled=False,
+            sparse_required_for_activation=False,
+            graph_required_for_activation=False,
+            status="active",
+            active_config_revision_id=None,
+            metadata={},
+            created_at=now,
+            created_by=owner_id,
+            updated_at=now,
+            updated_by=owner_id,
+        )
+    )
+    db.execute(
+        stored_files.insert().values(
+            file_id=file_id,
+            bucket="rag-lab",
+            object_key="dev/users/u/library/source.docx",
+            file_name="source.docx",
+            mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            file_size=12,
+            checksum="hash",
+            file_role="source",
+            status="active",
+            created_at=now,
+            created_by=owner_id,
+            deleted_at=None,
+            deleted_by=None,
+        )
+    )
+    db.execute(
+        documents.insert(),
+        [
+            {
+                "document_id": source_doc_id,
+                "kb_id": None,
+                "library_id": uuid4(),
+                "owner_id": owner_id,
+                "name": "文档库源文件",
+                "source_type": "upload",
+                "status": "active",
+                "active_version_id": source_version_id,
+                "metadata": {},
+                "created_at": now,
+                "created_by": owner_id,
+                "updated_at": now,
+                "updated_by": owner_id,
+            },
+            {
+                "document_id": kb_doc_id,
+                "kb_id": kb_id,
+                "library_id": None,
+                "owner_id": owner_id,
+                "name": "KB 派生文档",
+                "source_type": "library_bind",
+                "status": "active",
+                "active_version_id": kb_version_id,
+                "metadata": {"library_document_id": str(source_doc_id)},
+                "created_at": now,
+                "created_by": owner_id,
+                "updated_at": now,
+                "updated_by": owner_id,
+            },
+        ],
+    )
+    db.execute(
+        document_versions.insert(),
+        [
+            {
+                "version_id": source_version_id,
+                "document_id": source_doc_id,
+                "version_no": 1,
+                "source_file_id": file_id,
+                "status": "active",
+                "parse_status": "success",
+                "dense_index_status": "success",
+                "sparse_index_status": "not_required",
+                "graph_index_status": "not_required",
+                "retrieval_ready": True,
+                "chunk_count": None,
+                "token_count": None,
+                "metadata": {},
+                "created_at": now,
+                "created_by": owner_id,
+                "updated_at": now,
+                "updated_by": owner_id,
+            },
+            {
+                "version_id": kb_version_id,
+                "document_id": kb_doc_id,
+                "version_no": 1,
+                "source_file_id": file_id,
+                "status": "active",
+                "parse_status": "success",
+                "dense_index_status": "success",
+                "sparse_index_status": "not_required",
+                "graph_index_status": "not_required",
+                "retrieval_ready": True,
+                "chunk_count": 0,
+                "token_count": 0,
+                "metadata": {"library_document_id": str(source_doc_id)},
+                "created_at": now,
+                "created_by": owner_id,
+                "updated_at": now,
+                "updated_by": owner_id,
+            },
+        ],
+    )
+    db.execute(
+        document_kb_bindings.insert().values(
+            binding_id=binding_id,
+            document_id=source_doc_id,
+            kb_id=kb_id,
+            version_id=kb_version_id,
+            status="active",
+            chunk_count=0,
+            error_code=None,
+            error_message=None,
+            created_at=now,
+            created_by=owner_id,
+            updated_at=now,
+            updated_by=owner_id,
+            active_chunk_revision_id=None,
+        )
+    )
+
+    with patch("app.services.document_service.has_kb_permission", return_value=True), \
+         patch("app.services.document_service._insert_audit_log", return_value=uuid4()):
+        delete_document(
+            db,
+            admin_user,
+            kb_id,
+            kb_doc_id,
+            confirm_impact=True,
+            reason="library_unbind",
+            storage_provider=storage,
+        )
+
+    source_file = db.execute(
+        stored_files.select().where(stored_files.c.file_id == file_id)
+    ).mappings().one()
+    source_doc = db.execute(
+        documents.select().where(documents.c.document_id == source_doc_id)
+    ).mappings().one()
+    kb_doc = db.execute(
+        documents.select().where(documents.c.document_id == kb_doc_id)
+    ).mappings().one()
+
+    assert source_file["status"] == "active"
+    assert source_file["deleted_at"] is None
+    assert source_doc["status"] == "active"
+    assert kb_doc["status"] == "archived"
+    storage.delete_object.assert_not_called()

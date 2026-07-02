@@ -471,6 +471,16 @@ def _select_kb_documents(kb_id: UUID) -> sa.Select:
     return select(documents, sa.literal(str(kb_id)).label("effective_kb_id"))
 
 
+def _is_library_binding_document(row: RowMapping) -> bool:
+    """判断当前文档是否为文档库绑定生成的 KB 侧派生文档。
+
+    这类文档复用文档库源文件的 source_file_id，删除派生文档时只能清理
+    KB 侧数据，不能删除共享的 stored_files 或 MinIO 原始对象。
+    """
+    metadata = row.get("metadata") or {}
+    return row["source_type"] == "library_bind" or bool(metadata.get("library_document_id"))
+
+
 def _to_version_dto(row: RowMapping) -> DocumentVersionDTO:
     """将 document_versions 行转换为版本 DTO。"""
     metadata = row.get("metadata") or {}
@@ -2483,7 +2493,8 @@ def delete_document(
             )
         ).mappings()
     )
-    stored_file_ids = [row["file_id"] for row in stored_file_rows]
+    deletable_stored_file_rows = [] if _is_library_binding_document(document_row) else stored_file_rows
+    stored_file_ids = [row["file_id"] for row in deletable_stored_file_rows]
     actor_id = current_user.user.userId
     audit_log_id = _insert_audit_log(
         session,
@@ -2590,7 +2601,7 @@ def delete_document(
                 warnings.append(f"{target_store} 副本清理作业创建失败，业务删除已生效：{exc}")
 
     try:
-        minio_job = _create_minio_cleanup_job(session, kb_id, current_user, stored_file_rows, storage_provider)
+        minio_job = _create_minio_cleanup_job(session, kb_id, current_user, deletable_stored_file_rows, storage_provider)
         if minio_job is not None:
             session.commit()
             cleanup_jobs.append(minio_job)

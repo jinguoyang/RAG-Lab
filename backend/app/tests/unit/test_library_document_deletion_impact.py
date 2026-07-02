@@ -1,4 +1,5 @@
 """library_service 文档删除影响分析单元测试。"""
+from datetime import datetime, timezone
 from uuid import uuid4
 from unittest.mock import Mock, MagicMock, patch
 
@@ -10,6 +11,7 @@ from app.services.library_service import (
     analyze_document_deletion_impact,
     delete_library_document,
 )
+from app.tables import chunk_revisions, document_kb_bindings, document_versions
 
 
 def _make_mock_execute(*side_effects):
@@ -82,6 +84,102 @@ def test_analyze_blocked_by_active_binding():
     assert result["can_delete"] is False
     assert len(result["blocking_reasons"]) == 1
     assert "活跃的知识库绑定" in result["blocking_reasons"][0]
+
+
+def test_analyze_allows_disabled_binding_with_active_chunk_revision(db):
+    """已解绑的文档即使遗留 active ChunkRevision，也不应阻止源文档删除。"""
+    now = datetime.now(timezone.utc)
+    document_id = uuid4()
+    source_version_id = uuid4()
+    kb_version_id = uuid4()
+    binding_id = uuid4()
+
+    db.execute(
+        document_versions.insert(),
+        [
+            {
+                "version_id": source_version_id,
+                "document_id": document_id,
+                "version_no": 1,
+                "source_file_id": uuid4(),
+                "status": "active",
+                "parse_status": "success",
+                "dense_index_status": "success",
+                "sparse_index_status": "not_required",
+                "graph_index_status": "not_required",
+                "retrieval_ready": True,
+                "chunk_count": None,
+                "token_count": None,
+                "metadata": {},
+                "created_at": now,
+                "created_by": uuid4(),
+                "updated_at": now,
+                "updated_by": uuid4(),
+            },
+            {
+                "version_id": kb_version_id,
+                "document_id": uuid4(),
+                "version_no": 1,
+                "source_file_id": uuid4(),
+                "status": "active",
+                "parse_status": "success",
+                "dense_index_status": "success",
+                "sparse_index_status": "not_required",
+                "graph_index_status": "not_required",
+                "retrieval_ready": True,
+                "chunk_count": 0,
+                "token_count": 0,
+                "metadata": {"library_document_id": str(document_id)},
+                "created_at": now,
+                "created_by": uuid4(),
+                "updated_at": now,
+                "updated_by": uuid4(),
+            },
+        ],
+    )
+    db.execute(
+        document_kb_bindings.insert().values(
+            binding_id=binding_id,
+            document_id=document_id,
+            kb_id=uuid4(),
+            version_id=kb_version_id,
+            status="disabled",
+            chunk_count=1,
+            error_code=None,
+            error_message=None,
+            created_at=now,
+            created_by=uuid4(),
+            updated_at=now,
+            updated_by=uuid4(),
+            active_chunk_revision_id=None,
+        )
+    )
+    db.execute(
+        chunk_revisions.insert().values(
+            chunk_revision_id=uuid4(),
+            binding_id=binding_id,
+            knowledge_base_id=uuid4(),
+            document_id=document_id,
+            document_version_id=source_version_id,
+            parse_revision_id=uuid4(),
+            status="active",
+            chunk_count=1,
+            index_status=None,
+            build_started_at=now,
+            build_finished_at=now,
+            activated_at=now,
+            retired_at=None,
+            deleted_at=None,
+            created_by=uuid4(),
+            created_at=now,
+        )
+    )
+
+    result = analyze_document_deletion_impact(db, document_id)
+
+    assert result["can_delete"] is True
+    assert result["active_binding_count"] == 0
+    assert result["blocking_reasons"] == []
 
 
 def test_analyze_blocked_by_pending_jobs():
