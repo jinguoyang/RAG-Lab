@@ -76,6 +76,14 @@ Copy-Item .env.example .env
 .\scripts\start-dev.ps1
 ```
 
+linux版本：
+```
+conda activate rag-lab
+cd /data/rag/external-training-app/backend
+mkdir -p logs
+nohup python -m uvicorn app.main:app --host 0.0.0.0 --port 8002 > logs/backend.out.log 2> logs/backend.err.log &
+```
+
 启动后访问：
 
 - 健康检查：`http://localhost:8001/health`
@@ -87,6 +95,13 @@ Copy-Item .env.example .env
 cd external-training-app/frontend
 npm install
 npm run dev
+```
+
+linux版本后台启动
+```
+cd external-training-app/frontend
+npm install
+setsid npm run dev -- --host 0.0.0.0 --port 5183 > logs/frontend.out.log 2> logs/frontend.err.log < /dev/null &
 ```
 
 启动后访问 `http://localhost:5173`。前端通过 Vite proxy 将 `/api` 请求转发到后端 `localhost:8001`。

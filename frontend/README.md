@@ -20,6 +20,13 @@ npm install
 npm run dev
 ```
 
+linux版本后台启动
+```
+cd frontend
+npm install
+setsid npm run dev -- --host 0.0.0.0 --port 5173 > logs/frontend.out.log 2> logs/frontend.err.log < /dev/null &
+```
+
 ## 工程化检查
 
 ```powershell

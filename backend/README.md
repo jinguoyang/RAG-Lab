@@ -47,6 +47,14 @@ cd C:\Users\Public\Documents\Code\jin\rag-lab\backend
 python -m uvicorn app.main:app --reload
 ```
 
+linux版本：
+```
+conda activate rag-lab
+cd /data/rag/backend
+mkdir -p logs
+nohup python -m uvicorn app.main:app --host 0.0.0.0 --port 8001 > logs/backend.out.log 2> logs/backend.err.log &
+```
+
 启动后可访问：
 
 - `http://127.0.0.1:8000/api/v1/health`
