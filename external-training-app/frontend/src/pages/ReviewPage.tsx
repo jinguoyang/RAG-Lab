@@ -95,6 +95,10 @@ function normalizeTrainingDocuments(documents: TrainingDocument[] = [], abilityG
   return documents.map((document, index) => normalizeTrainingDocument(document, index, abilityGroups));
 }
 
+function isActiveTaskStatus(status?: string) {
+  return status === "pending" || status === "running";
+}
+
 interface DraftPlan {
   taskId: string;
   planName: string;
@@ -105,7 +109,7 @@ interface DraftPlan {
 export function ReviewPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { tasks, addTask, getTask, subscribeToTask } = useTaskContext();
+  const { addTask, getTask, subscribeToTask } = useTaskContext();
   const [draftPlans, setDraftPlans] = useState<DraftPlan[]>([]);
 
   // 从导航状态中读取草稿计划（从编辑器跳转过来时携带）
@@ -113,13 +117,16 @@ export function ReviewPage() {
     const draft = (location.state as { draft?: DraftPlan } | null)?.draft;
     if (draft) {
       setDraftPlans((prev) => {
+        const task = getTask(draft.taskId);
+        // 只有仍在生成的任务才作为本地草稿占位；已完成任务等待平台计划列表返回。
+        if (task && !isActiveTaskStatus(task.status)) return prev;
         if (prev.some((d) => d.taskId === draft.taskId)) return prev;
         return [...prev, draft];
       });
       // 清除导航状态，避免刷新页面时重复添加
       navigate(location.pathname, { replace: true, state: null });
     }
-  }, []);
+  }, [getTask, location.pathname, location.state, navigate]);
   const draftCleanupRef = useRef<Map<string, () => void>>(new Map());
   const [plans, setPlans] = useState<TrainingPlan[]>([]);
   const [viewMode, setViewMode] = useState<"list" | "editor">("list");
@@ -153,24 +160,6 @@ export function ReviewPage() {
     () => plans.filter((item) => item.status === "draft"),
     [plans]
   );
-
-  const recoveredPlanDrafts = useMemo(() => {
-    const savedPlanIds = new Set(plans.map((item) => item.planId));
-    const trackedTaskIds = new Set(draftPlans.map((item) => item.taskId));
-
-    return Array.from(tasks.values()).flatMap((task) => {
-      if (
-        task.type !== "plan_generation"
-        || task.status !== "completed"
-        || trackedTaskIds.has(task.id)
-      ) {
-        return [];
-      }
-      const result = task.result as TrainingPlan | undefined;
-      if (!result?.planId || savedPlanIds.has(result.planId)) return [];
-      return [{ task, plan: result }];
-    });
-  }, [draftPlans, plans, tasks]);
 
   const filteredCandidateDocs = useMemo(() => {
     const query = form.documentQuery.trim().toLowerCase();
@@ -516,43 +505,6 @@ export function ReviewPage() {
               </article>
             );
           })}
-          {recoveredPlanDrafts.map(({ task, plan }) => (
-            <article key={`recovered-${task.id}`} className="plan-item draft">
-              <div className="item-top">
-                <div>
-                  <span className="tag">平台草稿</span>
-                  <span className="status pending">待保存</span>
-                </div>
-                <time>{new Date(task.completedAt || task.createdAt).toLocaleString()}</time>
-              </div>
-              <h3>{plan.planName || plan.jobTitle}</h3>
-              {plan.recommendReason && <p className="explanation">{plan.recommendReason}</p>}
-              <div className="answer-grid">
-                <div>
-                  <span>文档</span>
-                  <strong>{plan.documents?.length || 0} 份</strong>
-                </div>
-                <div>
-                  <span>岗位</span>
-                  <strong>{plan.jobTitle}</strong>
-                </div>
-                <div>
-                  <span>任务 ID</span>
-                  <strong className="text-xs">{task.id.slice(0, 8)}...</strong>
-                </div>
-              </div>
-              <div className="item-actions">
-                <button className="button primary" onClick={() => openEditor(plan)}>
-                  <Pencil size={16} aria-hidden="true" />
-                  继续编辑并保存
-                </button>
-                <button className="button reject" onClick={() => handleDelete(plan.planId)}>
-                  <Trash2 size={16} aria-hidden="true" />
-                  删除
-                </button>
-              </div>
-            </article>
-          ))}
           {platformPlanDrafts.map((plan) => (
             <article key={`platform-${plan.planId}`} className="plan-item draft">
               <div className="item-top">
@@ -591,7 +543,6 @@ export function ReviewPage() {
             </article>
           ))}
           {draftPlans.length === 0
-            && recoveredPlanDrafts.length === 0
             && platformPlanDrafts.length === 0
             && savedPlans.length === 0 ? (
             <div className="empty-state">

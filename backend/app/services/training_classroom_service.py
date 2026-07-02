@@ -247,7 +247,7 @@ def _get_pending_actions(current_state: str, state_row: Any, is_last_section: bo
         return [{"label": "开始学习", "eventType": "continue"}]
     if current_state == "TEACH":
         return [
-            {"label": "进入本节 Checkpoint", "eventType": "continue"},
+            {"label": "完成本节", "eventType": "continue"},
             {"label": "我还不清楚", "eventType": "query"},
         ]
     if current_state == "CHECK_UNDERSTAND":
@@ -1494,7 +1494,7 @@ def apply_classroom_domain_event(
                 resultState=current_state,
                 responseMode="template",
                 visibleContent="当前阶段不允许通过文本指令跳过或结束课程，请按页面按钮完成学习流程。",
-                uiActions=[_button_group(("继续学习", "continue", {}), ("继续追问", "query", {}))],
+                uiActions=[_button_group(("继续学习", "continue", {}))],
                 userMessage=user_message,
                 auditType="invalid_command",
             )
@@ -1518,7 +1518,7 @@ def apply_classroom_domain_event(
             resultState="TEACH" if current_state in {"OFF_TOPIC", "CHECK_UNDERSTAND"} else current_state,
             responseMode="agent_task",
             visibleContent=content,
-            uiActions=[_button_group(("进入本节 Checkpoint", "continue", {}), ("继续追问", "query", {}))],
+            uiActions=[_button_group(("完成本节", "continue", {}))],
             citations=citations,
             userMessage=user_message,
         )
@@ -1547,7 +1547,7 @@ def apply_classroom_domain_event(
             resultState="TEACH",
             responseMode=response_mode,
             visibleContent=content,
-            uiActions=[_button_group(("进入本节 Checkpoint", "continue", {}), ("我还不清楚", "query", {}))],
+            uiActions=[_button_group(("完成本节", "continue", {}), ("我还不清楚", "query", {}))],
             citations=citations,
             userMessage=user_message,
         )
@@ -1711,7 +1711,7 @@ def apply_classroom_domain_event(
                 resultState="TEACH",
                 responseMode=response_mode,
                 visibleContent=f"让我们重新学习本节内容。\n\n{content}",
-                uiActions=[_button_group(("进入本节 Checkpoint", "continue", {}), ("我还不清楚", "query", {}))],
+                uiActions=[_button_group(("完成本节", "continue", {}), ("我还不清楚", "query", {}))],
                 citations=citations,
                 userMessage=user_message,
             )
@@ -1825,7 +1825,7 @@ def apply_classroom_domain_event(
             resultState="TEACH",
             responseMode=response_mode,
             visibleContent=content,
-            uiActions=[_button_group(("进入本节 Checkpoint", "continue", {}), ("我还不清楚", "query", {}))],
+            uiActions=[_button_group(("完成本节", "continue", {}), ("我还不清楚", "query", {}))],
             citations=citations,
             progressUpdate=progress,
             userMessage=user_message,
