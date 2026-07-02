@@ -1,0 +1,90 @@
+{"kind":"deck","id":"pr/7l0zr3","name":"Deck"}
+{"kind":"layout","layoutId":"dbc29f6b-c508-4c92-8d81-269a5680bb5a","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"f3c45e62-34c4-45a5-b007-2cd6c38333f7","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/t3ygg9","slide":1,"title":"RAG-Lab","textShapes":17}
+{"kind":"textbox","id":"sh/1032lszq","slide":1,"text":"RAG-Lab","textPreview":"RAG-Lab","textChars":7,"textLines":1,"bbox":[42,38,180,26]}
+{"kind":"textbox","id":"sh/u9knih4b","slide":1,"text":"01 / 平台价值","textPreview":"01 / 平台价值","textChars":9,"textLines":1,"bbox":[1090,42,148,22]}
+{"kind":"textbox","id":"sh/judg7ads","slide":1,"text":"从“能问答”到“可治理”的企业 RAG 平台","textPreview":"从“能问答”到“可治理”的企业 RAG 平台","textChars":22,"textLines":1,"bbox":[42,88,860,118]}
+{"kind":"textbox","id":"sh/c7u54zid","slide":1,"text":"开箱即用上线，多通道增强命中，全链路可解释，安全可控地持续优化。","textPreview":"开箱即用上线，多通道增强命中，全链路可解释，安全可控地持续优化。","textChars":32,"textLines":1,"bbox":[46,210,760,34]}
+{"kind":"shape","id":"sh/1orytsvu","slide":1,"bbox":[900,92,300,128]}
+{"kind":"textbox","id":"sh/u18jqh0f","slide":1,"text":"面向领导与客户的核心承诺","textPreview":"面向领导与客户的核心承诺","textChars":12,"textLines":1,"bbox":[926,118,248,28]}
+{"kind":"textbox","id":"sh/jm1cfa9w","slide":1,"text":"更快上线 · 更准命中 · 更稳运营","textPreview":"更快上线 · 更准命中 · 更稳运营","textChars":18,"textLines":1,"bbox":[924,158,252,28]}
+{"kind":"shape","id":"sh/cvixczed","slide":1,"bbox":[42,302,374,224]}
+{"kind":"textbox","id":"sh/5gbq1ory","slide":1,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[64,324,44,24]}
+{"kind":"textbox","id":"sh/18jqh0fe","slide":1,"text":"先跑起来，再持续打磨","textPreview":"先跑起来，再持续打磨","textChars":10,"textLines":1,"bbox":[64,360,330,32]}
+{"kind":"textbox","id":"sh/8nqxs72x","slide":1,"text":"分阶段 RAG 管线内置合理默认配置，业务系统可快速上线；深入阶段再对检索、召回、排序、生成逐项精调。","textPreview":"分阶段 RAG 管线内置合理默认配置，业务系统可快速上线；深入阶段再对检索、召回、排序、生成逐项精调。","textChars":51,"textLines":1,"bbox":[64,406,330,102]}
+{"kind":"shape","id":"sh/j2t83itg","slide":1,"bbox":[453,302,374,224]}
+{"kind":"textbox","id":"sh/qh0fepkz","slide":1,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[475,324,44,24]}
+{"kind":"textbox","id":"sh/1w7mp0bi","slide":1,"text":"三路检索，专治复杂问题","textPreview":"三路检索，专治复杂问题","textChars":11,"textLines":1,"bbox":[475,360,330,32]}
+{"kind":"textbox","id":"sh/8bat47y1","slide":1,"text":"语义检索、关键词检索、知识图谱检索可独立开关并调权重，覆盖术语、跨文档关系和隐性问题。","textPreview":"语义检索、关键词检索、知识图谱检索可独立开关并调权重，覆盖术语、跨文档关系和隐性问题。","textChars":43,"textLines":1,"bbox":[475,406,330,102]}
+{"kind":"shape","id":"sh/jqh0fepk","slide":1,"bbox":[864,302,374,224]}
+{"kind":"textbox","id":"sh/q5o7qpg3","slide":1,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[886,324,44,24]}
+{"kind":"textbox","id":"sh/1kre1w7m","slide":1,"text":"可解释、可回滚、可管控","textPreview":"可解释、可回滚、可管控","textChars":11,"textLines":1,"bbox":[886,360,330,32]}
+{"kind":"textbox","id":"sh/c3ylc7u5","slide":1,"text":"Trace 展示每次问答的理解、召回、排序、生成过程；配置自动留版本，可对比、一键回滚；权限粒度深入文档片段。","textPreview":"Trace 展示每次问答的理解、召回、排序、生成过程；配置自动留版本，可对比、一键回滚；权限粒度深入文档片段。","textChars":55,"textLines":1,"bbox":[886,406,330,102]}
+{"kind":"shape","id":"sh/orytsvu9","slide":1,"bbox":[42,574,1196,80]}
+{"kind":"textbox","id":"sh/hcrmhk3q","slide":1,"text":"适合汇报的一句话","textPreview":"适合汇报的一句话","textChars":8,"textLines":1,"bbox":[72,596,160,24]}
+{"kind":"textbox","id":"sh/al87ed8b","slide":1,"text":"把企业沉淀在文档、图片、扫描件、流程图中的知识，变成可追溯、可优化、可安全复用的 AI 问答能力。","textPreview":"把企业沉淀在文档、图片、扫描件、流程图中的知识，变成可追溯、可优化、可安全复用的 AI 问答能力。","textChars":49,"textLines":1,"bbox":[244,591,920,36]}
+{"kind":"notes","id":"nt/t3ygg9","slide":1,"text":""}
+{"kind":"slide","id":"sl/tq0u00","slide":2,"title":"RAG-Lab","textShapes":25}
+{"kind":"textbox","id":"sh/6xkf6dcb","slide":2,"text":"RAG-Lab","textPreview":"RAG-Lab","textChars":7,"textLines":1,"bbox":[42,38,180,26]}
+{"kind":"textbox","id":"sh/hk3q5o7q","slide":2,"text":"02 / 系统架构","textPreview":"02 / 系统架构","textChars":9,"textLines":1,"bbox":[1080,42,158,22]}
+{"kind":"textbox","id":"sh/oza1gvy9","slide":2,"text":"架构上把 RAG 能力、治理闭环与企业安全收口到同一平台","textPreview":"架构上把 RAG 能力、治理闭环与企业安全收口到同一平台","textChars":28,"textLines":1,"bbox":[42,82,1070,54]}
+{"kind":"textbox","id":"sh/zqtcj6to","slide":2,"text":"不是单点问答工具，而是覆盖文档入库、检索增强、答案生成、过程追踪、版本回滚与权限控制的生产级底座。","textPreview":"不是单点问答工具，而是覆盖文档入库、检索增强、答案生成、过程追踪、版本回滚与权限控制的生产级底座。","textChars":49,"textLines":1,"bbox":[44,141,1020,30]}
+{"kind":"shape","id":"sh/65wjudg7","slide":2,"bbox":[48,214,130,62]}
+{"kind":"textbox","id":"sh/hwfyxobm","slide":2,"text":"平台用户\n业务系统","textPreview":"平台用户 | 业务系统","textChars":9,"textLines":2,"bbox":[58,224,110,42]}
+{"kind":"shape","id":"sh/obm58z25","slide":2,"bbox":[220,205,180,80]}
+{"kind":"textbox","id":"sh/zupwb2hw","slide":2,"text":"Web 管理工作台\nRAG App Runtime","textPreview":"Web 管理工作台 | RAG App Runtime","textChars":25,"textLines":2,"bbox":[230,215,160,60]}
+{"kind":"shape","id":"sh/a9w3m94f","slide":2,"bbox":[448,205,200,80]}
+{"kind":"textbox","id":"sh/8bat47y1","slide":2,"text":"FastAPI 后端服务\n统一鉴权 / API 编排","textPreview":"FastAPI 后端服务 | 统一鉴权 / API 编排","textChars":26,"textLines":2,"bbox":[458,215,180,60]}
+{"kind":"shape","id":"sh/1w7mp0bi","slide":2,"bbox":[700,205,250,80]}
+{"kind":"textbox","id":"sh/q5o7qpg3","slide":2,"text":"知识库 · 文档 · 配置 · QA 历史\nRAG 应用封装 · 成员与权限","textPreview":"知识库 · 文档 · 配置 · QA 历史 | RAG 应用封装 · 成员与权限","textChars":38,"textLines":2,"bbox":[710,215,230,60]}
+{"kind":"shape","id":"sh/jqh0fepk","slide":2,"bbox":[1002,205,210,80]}
+{"kind":"textbox","id":"sh/8nqxs72x","slide":2,"text":"Provider 抽象\nLLM / Embedding / Rerank","textPreview":"Provider 抽象 | LLM / Embedding / Rerank","textChars":36,"textLines":2,"bbox":[1012,215,190,60]}
+{"kind":"shape","id":"sh/18jqh0fe","slide":2,"bbox":[178,245,42,0]}
+{"kind":"shape","id":"sh/qh0fepkz","slide":2,"bbox":[400,245,48,0]}
+{"kind":"shape","id":"sh/j2t83itg","slide":2,"bbox":[648,245,52,0]}
+{"kind":"shape","id":"sh/crmhk3q5","slide":2,"bbox":[950,245,52,0]}
+{"kind":"shape","id":"sh/1cfa9w3m","slide":2,"bbox":[48,330,170,30]}
+{"kind":"textbox","id":"sh/5wjudg7a","slide":2,"text":"分阶段 RAG 管线","textPreview":"分阶段 RAG 管线","textChars":10,"textLines":1,"bbox":[58,335,150,20]}
+{"kind":"shape","id":"sh/gbq1oryt","slide":2,"bbox":[48,380,170,78]}
+{"kind":"textbox","id":"sh/nuxc3ylc","slide":2,"text":"多模态文档理解\nPDF / 图片 / 扫描件 / 流程图","textPreview":"多模态文档理解 | PDF / 图片 / 扫描件 / 流程图","textChars":28,"textLines":2,"bbox":[58,390,150,58]}
+{"kind":"shape","id":"sh/y90je9cv","slide":2,"bbox":[262,380,170,78]}
+{"kind":"textbox","id":"sh/58z25kb6","slide":2,"text":"多通道召回\nDense · Sparse · Graph","textPreview":"多通道召回 | Dense · Sparse · Graph","textChars":28,"textLines":2,"bbox":[272,390,150,58]}
+{"kind":"shape","id":"sh/gn29gr2p","slide":2,"bbox":[476,380,170,78]}
+{"kind":"textbox","id":"sh/n29gr2p8","slide":2,"text":"融合与精排\n去重 / Rerank / 调权","textPreview":"融合与精排 | 去重 / Rerank / 调权","textChars":22,"textLines":2,"bbox":[486,390,150,58]}
+{"kind":"shape","id":"sh/yhgn29gr","slide":2,"bbox":[690,380,170,78]}
+{"kind":"textbox","id":"sh/5kb6xkf6","slide":2,"text":"权限过滤\n文档 / Chunk 级控制","textPreview":"权限过滤 | 文档 / Chunk 级控制","textChars":19,"textLines":2,"bbox":[700,390,150,58]}
+{"kind":"shape","id":"sh/czed8v6p","slide":2,"bbox":[904,380,170,78]}
+{"kind":"textbox","id":"sh/qtcj6tov","slide":2,"text":"答案生成与引用\nAnswer / Evidence / Citation","textPreview":"答案生成与引用 | Answer / Evidence / Citation","textChars":36,"textLines":2,"bbox":[914,390,150,58]}
+{"kind":"shape","id":"sh/je9cvixc","slide":2,"bbox":[1118,380,114,78]}
+{"kind":"textbox","id":"sh/8z25kb6x","slide":2,"text":"Trace & Metrics\n可解释 可优化","textPreview":"Trace & Metrics | 可解释 可优化","textChars":23,"textLines":2,"bbox":[1128,390,94,58]}
+{"kind":"shape","id":"sh/1gvy90je","slide":2,"bbox":[218,419,44,0]}
+{"kind":"shape","id":"sh/q1orytsv","slide":2,"bbox":[432,419,44,0]}
+{"kind":"shape","id":"sh/fmlkjm1c","slide":2,"bbox":[646,419,44,0]}
+{"kind":"shape","id":"sh/87ed8bat","slide":2,"bbox":[860,419,44,0]}
+{"kind":"shape","id":"sh/xs72x4na","slide":2,"bbox":[1074,419,44,0]}
+{"kind":"shape","id":"sh/qd4vmtwr","slide":2,"bbox":[48,502,190,30]}
+{"kind":"textbox","id":"sh/fyxobm58","slide":2,"text":"底层技术与服务组件","textPreview":"底层技术与服务组件","textChars":9,"textLines":1,"bbox":[58,507,170,20]}
+{"kind":"shape","id":"sh/za1gvy90","slide":2,"bbox":[48,550,145,62]}
+{"kind":"textbox","id":"sh/ap4r65wj","slide":2,"text":"PostgreSQL\n主数据真值","textPreview":"PostgreSQL | 主数据真值","textChars":16,"textLines":2,"bbox":[58,560,125,42]}
+{"kind":"shape","id":"sh/hgn29gr2","slide":2,"bbox":[214,550,130,62]}
+{"kind":"textbox","id":"sh/svu9knih","slide":2,"text":"MinIO\n对象存储","textPreview":"MinIO | 对象存储","textChars":10,"textLines":2,"bbox":[224,560,110,42]}
+{"kind":"shape","id":"sh/zidonyd0","slide":2,"bbox":[365,550,150,62]}
+{"kind":"textbox","id":"sh/a1gvy90j","slide":2,"text":"Milvus / pgvector\n向量检索","textPreview":"Milvus / pgvector | 向量检索","textChars":22,"textLines":2,"bbox":[375,560,130,42]}
+{"kind":"shape","id":"sh/hoza1gvy","slide":2,"bbox":[536,550,145,62]}
+{"kind":"textbox","id":"sh/s36hcrmh","slide":2,"text":"OpenSearch\n关键词检索","textPreview":"OpenSearch | 关键词检索","textChars":16,"textLines":2,"bbox":[546,560,125,42]}
+{"kind":"shape","id":"sh/3m94fu18","slide":2,"bbox":[702,550,130,62]}
+{"kind":"textbox","id":"sh/a5gbq1or","slide":2,"text":"Neo4j\n知识图谱","textPreview":"Neo4j | 知识图谱","textChars":10,"textLines":2,"bbox":[712,560,110,42]}
+{"kind":"shape","id":"sh/k3q5o7qp","slide":2,"bbox":[853,550,145,62]}
+{"kind":"textbox","id":"sh/donyd0z6","slide":2,"text":"Celery + Redis\n异步任务","textPreview":"Celery + Redis | 异步任务","textChars":19,"textLines":2,"bbox":[863,560,125,42]}
+{"kind":"shape","id":"sh/2x4nap4r","slide":2,"bbox":[1019,538,190,86]}
+{"kind":"textbox","id":"sh/vixczed8","slide":2,"text":"配置版本管理\nDiff / 激活 / 回滚","textPreview":"配置版本管理 | Diff / 激活 / 回滚","textChars":21,"textLines":2,"bbox":[1029,548,170,66]}
+{"kind":"shape","id":"sh/kre1w7mp","slide":2,"bbox":[133,458,146,92]}
+{"kind":"shape","id":"sh/dcbulwva","slide":2,"bbox":[133,458,792.5,92]}
+{"kind":"shape","id":"sh/6psfil0r","slide":2,"bbox":[347,458,93,92]}
+{"kind":"shape","id":"sh/val87ed8","slide":2,"bbox":[347,458,261.5,92]}
+{"kind":"shape","id":"sh/knih4byh","slide":2,"bbox":[347,458,420,92]}
+{"kind":"shape","id":"sh/d8bat47y","slide":2,"bbox":[120.5,458,654.5,92]}
+{"kind":"shape","id":"sh/d4vmtwra","slide":2,"bbox":[825,285,289,253]}
+{"kind":"textbox","id":"sh/oj2t83it","slide":2,"text":"治理层贯穿全链路：Config Revision 锁定运行配置，QARun 记录 Trace / Evidence / Citation，多层权限确保“该看的人能看到，不该看的人看不到”。","textPreview":"治理层贯穿全链路：Config Revision 锁定运行配置，QARun 记录 Trace / Evidence / Citation，多层权限确保“该看的人能看到，不该看的人看不到”。","textChars":94,"textLines":1,"bbox":[52,650,1120,26]}
+{"kind":"notes","id":"nt/tq0u00","slide":2,"text":""}
