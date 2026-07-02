@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     platform_base_url: str = "http://localhost:8000/api/v1"
     platform_app_id: str = ""
     platform_api_key: str = ""
+    backend_port: int = 8001
 
     model_config = {
         "env_prefix": "EXT_TRAINING_",
