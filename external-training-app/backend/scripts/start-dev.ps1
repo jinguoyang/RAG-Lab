@@ -13,4 +13,6 @@ if (Test-Path -LiteralPath $EnvFile) {
     . "$PSScriptRoot\load-env.ps1" -Path $EnvFile
 }
 
+python "$PSScriptRoot\ensure_database.py"
+alembic upgrade head
 python -m uvicorn app.main:app --reload --host 127.0.0.1 --port $Port

@@ -11,7 +11,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY alembic.ini .
 COPY app ./app
 COPY migrations ./migrations
+COPY scripts ./scripts
 
 EXPOSE 8001
 
-CMD ["sh", "-c", "alembic upgrade head && python -m uvicorn app.main:app --host 0.0.0.0 --port ${EXT_TRAINING_BACKEND_PORT:-8001}"]
+CMD ["sh", "-c", "python scripts/ensure_database.py && alembic upgrade head && python -m uvicorn app.main:app --host 0.0.0.0 --port ${EXT_TRAINING_BACKEND_PORT:-8001}"]

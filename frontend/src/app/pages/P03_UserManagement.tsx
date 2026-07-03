@@ -6,7 +6,7 @@ import { Input } from "../components/rag/Input";
 import { Alert } from "../components/rag/Alert";
 import { Badge } from "../components/rag/Badge";
 import { useConfirmDialog } from "../components/rag/ConfirmDialog";
-import { ChevronLeft, ChevronRight, Pencil, RefreshCw, Save, Search, UserPlus, X } from "lucide-react";
+import { Ban, ChevronLeft, ChevronRight, Edit, Pencil, Power, RefreshCw, Save, Search, UserPlus, X } from "lucide-react";
 import { chooseActiveDictionaryValue, dictionaryItemsToOptions, dictionaryLabel, fetchDictionaryBundle } from "../services/dictionaryService";
 import { createUser, disableUser, fetchUsers, updateUser, updateUserStatus } from "../services/userGroupService";
 import type { PlatformRole, UserSummary } from "../types/userGroup";
@@ -41,7 +41,6 @@ export function UserManagement() {
   const confirmDialog = useConfirmDialog();
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [keyword, setKeyword] = useState("");
-  const [queryKeyword, setQueryKeyword] = useState("");
   const [pageNo, setPageNo] = useState(1);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -68,10 +67,10 @@ export function UserManagement() {
   const platformRoleOptions = dictionaryItemsToOptions(platformRoleItems);
   const securityLevelOptions = dictionaryItemsToOptions(securityLevelItems);
 
-  const loadUsers = useCallback(async () => {
+  const loadUsers = useCallback(async (nextKeyword = keyword, nextPageNo = pageNo) => {
     setIsLoading(true);
     try {
-      const page = await fetchUsers({ keyword: queryKeyword, pageNo, pageSize: PAGE_SIZE });
+      const page = await fetchUsers({ keyword: nextKeyword.trim(), pageNo: nextPageNo, pageSize: PAGE_SIZE });
       setUsers(page.items);
       setTotal(page.total);
     } catch (error) {
@@ -83,10 +82,16 @@ export function UserManagement() {
     } finally {
       setIsLoading(false);
     }
-  }, [pageNo, queryKeyword]);
+  }, [keyword, pageNo]);
 
   useEffect(() => {
-    void loadUsers();
+    const timeoutId = window.setTimeout(() => {
+      void loadUsers();
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
   }, [loadUsers]);
 
   useEffect(() => {
@@ -105,15 +110,6 @@ export function UserManagement() {
       }));
     });
   }, []);
-
-  const handleSearch = () => {
-    const nextKeyword = keyword.trim();
-    setPageNo(1);
-    setQueryKeyword(nextKeyword);
-    if (pageNo === 1 && queryKeyword === nextKeyword) {
-      void loadUsers();
-    }
-  };
 
   const handleCreateUser = async () => {
     if (!newUser.username.trim() || !newUser.displayName.trim()) {
@@ -143,12 +139,9 @@ export function UserManagement() {
         securityLevel: chooseActiveDictionaryValue(securityLevelItems, "public", "public"),
       });
       setPageNo(1);
-      setQueryKeyword("");
       setKeyword("");
       setFeedback({ variant: "success", title: "用户已创建", message: "新用户已写入平台用户表。" });
-      if (pageNo === 1 && !queryKeyword) {
-        await loadUsers();
-      }
+      await loadUsers("", 1);
     } catch (error) {
       setFeedback({
         variant: "error",
@@ -315,7 +308,7 @@ export function UserManagement() {
           ))}
         </select>
         <Button variant="primary" onClick={handleCreateUser} disabled={isSaving}>
-          <UserPlus className="w-4 h-4 mr-2" /> 新增
+          <UserPlus className="w-4 h-4 mr-2" /> 新建
         </Button>
       </div>
 
@@ -372,22 +365,20 @@ export function UserManagement() {
         </div>
       )}
 
+        <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-4">
         <div className="relative w-80 max-w-full">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-gray" />
           <Input
             value={keyword}
-            onChange={(event) => setKeyword(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") handleSearch();
+            onChange={(event) => {
+              setPageNo(1);
+              setKeyword(event.target.value);
             }}
             placeholder="按姓名、用户名或邮箱搜索..."
             className="pl-9"
           />
         </div>
-        <Button variant="outline" onClick={handleSearch} disabled={isLoading}>
-          <Search className="w-4 h-4 mr-2" /> 查询
-        </Button>
       </div>
 
       <Table>
@@ -434,16 +425,16 @@ export function UserManagement() {
               <TableCell>{formatDate(user.updatedAt)}</TableCell>
               <TableCell>
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="ghost" size="sm" disabled={isSaving} onClick={() => startEditUser(user)}>
-                    <Pencil className="w-3 h-3 mr-1" /> 编辑
+                  <Button variant="ghost" size="sm" disabled={isSaving} title="编辑" onClick={() => startEditUser(user)}>
+                    <Edit className="w-4 h-4 mr-1" />
                   </Button>
                   {user.status === "active" ? (
-                    <Button variant="ghost" size="sm" disabled={isSaving} onClick={() => void handleDisableUser(user)}>
-                      禁用
+                    <Button variant="ghost" size="sm" disabled={isSaving} title="禁用" onClick={() => void handleDisableUser(user)}>
+                     <Ban className="w-4 h-4 mr-1" />
                     </Button>
                   ) : (
-                    <Button variant="ghost" size="sm" disabled={isSaving} onClick={() => void handleEnableUser(user)}>
-                      恢复启用
+                    <Button variant="ghost" size="sm" disabled={isSaving} title="启用" onClick={() => void handleEnableUser(user)}>
+                      <Power className="w-4 h-4 mr-1" />
                     </Button>
                   )}
                 </div>
@@ -465,6 +456,7 @@ export function UserManagement() {
           </Button>
         </div>
       </div>
+    </div>
     </div>
   );
 }

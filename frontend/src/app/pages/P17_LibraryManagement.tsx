@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { Plus, Search, Trash2, Edit, ChevronLeft, ChevronRight, FileText, Users } from "lucide-react";
+import { Plus, Search, Trash2, Edit, ChevronLeft, ChevronRight, FileText, Users, Folder } from "lucide-react";
 import { PageHeader } from "../components/rag/PageHeader";
 import { Button } from "../components/rag/Button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../components/rag/Table";
@@ -23,7 +23,7 @@ export function LibraryManagement() {
   const [libraries, setLibraries] = useState<LibraryDTO[]>([]);
   const [total, setTotal] = useState(0);
   const [pageNo, setPageNo] = useState(1);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [keyword, setKeyword] = useState("");
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<{
     variant: "success" | "info" | "warning" | "error";
@@ -38,10 +38,10 @@ export function LibraryManagement() {
   const [formDescription, setFormDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const loadData = useCallback(async (keyword = searchTerm, nextPageNo = pageNo) => {
+  const loadData = useCallback(async (nextKeyword = keyword, nextPageNo = pageNo) => {
     setLoading(true);
     try {
-      const page = await fetchLibraries({ keyword, pageNo: nextPageNo, pageSize: PAGE_SIZE });
+      const page = await fetchLibraries({ keyword: nextKeyword.trim(), pageNo: nextPageNo, pageSize: PAGE_SIZE });
       setLibraries(page.items);
       setTotal(page.total);
       setPageNo(page.pageNo);
@@ -54,15 +54,17 @@ export function LibraryManagement() {
     } finally {
       setLoading(false);
     }
-  }, [searchTerm, pageNo]);
+  }, [keyword, pageNo]);
 
   useEffect(() => {
-    void loadData("", 1);
-  }, []);
+    const timeoutId = window.setTimeout(() => {
+      void loadData();
+    }, 250);
 
-  async function handleSearchSubmit() {
-    await loadData(searchTerm, 1);
-  }
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [loadData]);
 
   function openCreateDrawer() {
     setEditingLibrary(null);
@@ -99,7 +101,7 @@ export function LibraryManagement() {
         setFeedback({ variant: "success", title: "创建成功", message: "文档库已创建。" });
       }
       setDrawerOpen(false);
-      await loadData(searchTerm, 1);
+      await loadData(keyword, 1);
     } catch (error) {
       setFeedback({
         variant: "error",
@@ -122,7 +124,7 @@ export function LibraryManagement() {
     try {
       await deleteLibrary(lib.libraryId);
       setFeedback({ variant: "success", title: "删除成功", message: "文档库已删除。" });
-      await loadData(searchTerm, pageNo);
+      await loadData(keyword, pageNo);
     } catch (error) {
       setFeedback({
         variant: "error",
@@ -153,20 +155,19 @@ export function LibraryManagement() {
         )}
 
         {/* 搜索 */}
-        <div className="flex items-center gap-4">
-          <div className="relative flex-1 max-w-md">
+      <div className="mt-6 mb-6 flex items-center gap-4">
+          <div className="relative w-80 max-w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-gray pointer-events-none" />
             <Input
               className="pl-9"
               placeholder="搜索文档库名称..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && void handleSearchSubmit()}
+              value={keyword}
+              onChange={(event) => {
+                setPageNo(1);
+                setKeyword(event.target.value);
+              }}
             />
           </div>
-          <Button variant="secondary" onClick={() => void handleSearchSubmit()}>
-            搜索
-          </Button>
         </div>
 
         {/* 文档库列表 */}
@@ -199,7 +200,7 @@ export function LibraryManagement() {
                   >
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-stone-gray" />
+                        <Folder className="w-4 h-4 text-stone-gray" />
                         <span className="font-medium text-near-black truncate max-w-[300px]">{lib.name}</span>
                       </div>
                       {lib.description && (
@@ -228,22 +229,24 @@ export function LibraryManagement() {
                             navigate(`/library/${lib.libraryId}/members`);
                           }}
                         >
-                          <Users className="w-4 h-4" />
+                        <Users className="w-4 h-4" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
+                          title="编辑"
                           onClick={(e) => {
                             e.stopPropagation();
                             openEditDrawer(lib);
                           }}
                         >
-                          <Edit className="w-4 h-4" />
+                        <Edit className="w-4 h-4" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="text-red-600 hover:text-red-700"
+                          title="删除"
+                          // className="text-red-600 hover:text-red-700"
                           onClick={(e) => {
                             e.stopPropagation();
                             void handleDelete(lib);
@@ -267,7 +270,7 @@ export function LibraryManagement() {
                     variant="secondary"
                     size="sm"
                     disabled={pageNo <= 1}
-                    onClick={() => void loadData(searchTerm, pageNo - 1)}
+                    onClick={() => setPageNo((current) => current - 1)}
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </Button>
@@ -276,7 +279,7 @@ export function LibraryManagement() {
                     variant="secondary"
                     size="sm"
                     disabled={pageNo >= totalPages}
-                    onClick={() => void loadData(searchTerm, pageNo + 1)}
+                    onClick={() => setPageNo((current) => current + 1)}
                   >
                     <ChevronRight className="w-4 h-4" />
                   </Button>
@@ -292,12 +295,12 @@ export function LibraryManagement() {
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/30" onClick={() => setDrawerOpen(false)} />
           <div className="relative w-[420px] bg-ivory border border-border-cream rounded-lg shadow-xl">
-            <div className="p-6 border-b border-border-cream">
+            <div className="p-4 border-b border-border-cream">
               <h2 className="text-lg font-serif text-near-black">
                 {editingLibrary ? "编辑文档库" : "创建文档库"}
               </h2>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="p-4 space-y-6">
               <div>
                 <label className="block text-sm font-medium text-near-black mb-1">名称</label>
                 <Input
@@ -317,7 +320,7 @@ export function LibraryManagement() {
                 />
               </div>
             </div>
-            <div className="p-6 border-t border-border-cream flex items-center gap-3">
+            <div className="p-4 border-t border-border-cream flex items-center gap-3">
               <Button variant="secondary" className="flex-1" onClick={() => setDrawerOpen(false)}>
                 取消
               </Button>

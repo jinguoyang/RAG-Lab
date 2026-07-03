@@ -283,9 +283,9 @@ export function PlatformHome() {
         }
       />
 
-      <div className="mt-8 mb-6 flex items-center gap-4">
-        <div className="relative w-80">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-gray" />
+      <div className="mt-6 mb-6 flex items-center gap-4">
+          <div className="relative w-80 max-w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-gray pointer-events-none" />
           <Input
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
@@ -354,7 +354,7 @@ export function PlatformHome() {
                   <div className="text-xs text-stone-gray mt-1">检索策略：{kbCard.retrievalSummary}</div>
                   <div className="text-xs text-stone-gray mt-1">最近更新：{kbCard.updatedAtLabel}</div>
                 </CardContent>
-                <CardFooter className="pt-2 gap-2">
+                <CardFooter className="flex gap-1 pt-2">
                   <Button
                     variant="outline"
                     size="sm"

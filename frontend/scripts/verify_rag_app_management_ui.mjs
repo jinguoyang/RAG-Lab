@@ -132,6 +132,10 @@ async function verifyRouteAndPage() {
   assert(routeSource.includes("P13_RagAppManagement"), "路由必须注册 P13_RagAppManagement。");
   assert(routeSource.includes('path: "rag-apps"'), "平台路由必须包含 /rag-apps。");
   assert(layoutSource.includes("应用中心"), "平台导航必须显示应用中心入口。");
+  assert(layoutSource.includes("DropdownMenuTrigger"), "平台侧边栏用户栏必须作为账户菜单触发器。");
+  assert(layoutSource.includes("DropdownMenuItem"), "账户菜单必须使用菜单项承载退出登录等操作。");
+  assert(layoutSource.includes("个人中心"), "账户菜单应预留个人中心入口，便于后续扩展。");
+  assert(!layoutSource.includes('<Button variant="ghost" className="w-full justify-start text-stone-gray hover:text-error-red">'), "退出登录不应作为侧边栏底部常驻按钮。");
 }
 
 async function verifyPlaintextKeyGuard() {
@@ -184,6 +188,17 @@ async function verifyConversationDetailPanel() {
   assert(pageSource.includes("查看详情"), "P13 会话列表必须提供查看详情动作。");
 }
 
+async function verifyFilterLayoutGuard() {
+  const pageSource = await readFile(pagePath, "utf8");
+  assert(pageSource.includes("flex flex-wrap items-center"), "P13 筛选栏必须允许控件换行，避免查询按钮越界。");
+  assert(pageSource.includes("w-[128px]"), "P13 状态筛选下拉栏应收窄到够展示状态文字。");
+  assert(pageSource.includes("whitespace-nowrap"), "P13 查询按钮文字必须保持水平排列。");
+  assert(!pageSource.includes('tableClassName="min-w-[900px]"'), "P13 应用列表不得强制 900px 最小宽度造成横向滚动。");
+  assert(pageSource.includes('tableClassName="table-fixed"'), "P13 应用列表应使用固定布局在当前容器内完整展示。");
+  assert(pageSource.includes("w-[28px]"), "P13 应用列表多选列应收窄，缩短多选框与应用名距离。");
+  assert(!pageSource.includes("<TableHead>检索配置</TableHead>"), "P13 应用列表空间不足时不展示检索配置列。");
+}
+
 await verifyServiceContract();
 await verifyAdapterBehavior();
 if (existsSync(pagePath)) {
@@ -192,5 +207,6 @@ if (existsSync(pagePath)) {
   await verifyRuntimeTrialPanel();
   await verifyQARunDeepLink();
   await verifyConversationDetailPanel();
+  await verifyFilterLayoutGuard();
 }
 console.log("RAG App management UI verification passed.");

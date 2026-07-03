@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { NavLink, useNavigate } from "react-router";
+import { NavLink } from "react-router";
 import * as Tabs from "@radix-ui/react-tabs";
 import {
   CheckSquare,
@@ -14,11 +14,9 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
-  ShieldCheck,
   ShieldOff,
   Square,
   Trash2,
-  Users,
   X,
 } from "lucide-react";
 import { Alert } from "../components/rag/Alert";
@@ -42,18 +40,7 @@ import {
 } from "../adapters/ragAppAdapter";
 import { fetchConfigRevisions } from "../services/configService";
 import { fetchKnowledgeBases } from "../services/knowledgeBaseService";
-import {
-  chatWithAppRuntime,
-  createAppRuntimeEmbedToken,
-  createStructuredRunWithAppRuntime,
-  parseAppRuntimeSse,
-  retrieveWithAppRuntime,
-  streamChatWithAppRuntime,
-  submitAppRuntimeFeedback,
-  submitTrainingQuizWithAppRuntime,
-} from "../services/appRuntimeService";
 import { listAgentScenarioTemplates } from "../services/agentScenarioService";
-import { chooseActiveDictionaryValue, fetchDictionaryItemsWithFallback } from "../services/dictionaryService";
 import {
   batchDeleteRagApps,
   createRagApp,
@@ -76,14 +63,6 @@ import {
 import type { ConfigRevisionDTO } from "../types/config";
 import type { AgentScenarioTemplateDTO } from "../types/agentScenario";
 import type { KnowledgeBase } from "../types/knowledgeBase";
-import type {
-  AppRuntimeChatResponse,
-  AppRuntimeRetrieveResponse,
-  AppRuntimeSseEvent,
-  AppRuntimeStructuredRunResponse,
-  AppRuntimeTrainingQuizSubmissionResponse,
-} from "../types/appRuntime";
-import type { DictionaryItemDTO } from "../types/dictionary";
 import type {
   AppInvocationDTO,
   AppInvocationStatsDTO,
@@ -181,7 +160,6 @@ function templateConfigValue(template: AgentScenarioTemplateDTO | undefined, key
 }
 
 export function RagAppManagement() {
-  const navigate = useNavigate();
   const confirmDialog = useConfirmDialog();
   const [apps, setApps] = useState<RagAppDTO[]>([]);
   const [scenarioTemplates, setScenarioTemplates] = useState<AgentScenarioTemplateDTO[]>([]);
@@ -195,7 +173,6 @@ export function RagAppManagement() {
   const [trainingReport, setTrainingReport] = useState<AppTrainingReportDTO | null>(null);
   const [selectedConversationDetail, setSelectedConversationDetail] = useState<AppConversationDetailDTO | null>(null);
   const [keyword, setKeyword] = useState("");
-  const [queryKeyword, setQueryKeyword] = useState("");
   const [kbFilter, setKbFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | RagAppStatus>("");
   const [invocationStatusFilter, setInvocationStatusFilter] = useState<"" | AppInvocationStatus>("");
@@ -213,20 +190,6 @@ export function RagAppManagement() {
   const [appForm, setAppForm] = useState(EMPTY_APP_FORM);
   const [createdPlainApiKey, setCreatedPlainApiKey] = useState<string | null>(null);
   const [keyExpiresAt, setKeyExpiresAt] = useState("");
-  const [runtimeApiKey, setRuntimeApiKey] = useState("");
-  const [runtimeQuery, setRuntimeQuery] = useState("");
-  const [runtimeMode, setRuntimeMode] = useState<"blocking" | "streaming">("blocking");
-  const [runtimeResult, setRuntimeResult] = useState<AppRuntimeChatResponse | null>(null);
-  const [runtimeRetrieveResult, setRuntimeRetrieveResult] = useState<AppRuntimeRetrieveResponse | null>(null);
-  const [trainingStructuredRun, setTrainingStructuredRun] = useState<AppRuntimeStructuredRunResponse | null>(null);
-  const [trainingAnswers, setTrainingAnswers] = useState<Record<string, string>>({});
-  const [trainingSubmission, setTrainingSubmission] = useState<AppRuntimeTrainingQuizSubmissionResponse | null>(null);
-  const [runtimeEvents, setRuntimeEvents] = useState<AppRuntimeSseEvent[]>([]);
-  const [runtimeFeedbackStatus, setRuntimeFeedbackStatus] = useState("wrong");
-  const [runtimeFeedbackNote, setRuntimeFeedbackNote] = useState("");
-  const [isRuntimeRunning, setIsRuntimeRunning] = useState(false);
-  const [feedbackStatusItems, setFeedbackStatusItems] = useState<DictionaryItemDTO[]>([]);
-  const [embedTokenPreview, setEmbedTokenPreview] = useState<{ token: string; expiresAt: string } | null>(null);
   const [selectedAppIds, setSelectedAppIds] = useState<Set<string>>(new Set());
 
   const appRows = useMemo(() => apps.map(toRagAppViewModel), [apps]);
@@ -237,10 +200,6 @@ export function RagAppManagement() {
   const embeddedDeploymentRows = useMemo(
     () => embeddedDeployments.map(toEmbeddedAppDeploymentViewModel),
     [embeddedDeployments],
-  );
-  const activeApiKeyCount = useMemo(
-    () => apiKeys.filter((key) => key.status === "active" && (!key.expiresAt || new Date(key.expiresAt) >= new Date())).length,
-    [apiKeys],
   );
   const invocationRows = useMemo(() => invocations.map(toAppInvocationViewModel), [invocations]);
   const trainingReportView = useMemo(
@@ -264,15 +223,15 @@ export function RagAppManagement() {
     window.open(appUrl, "_blank", "noopener,noreferrer");
   }, [embeddedDeployments]);
 
-  const loadApps = useCallback(async () => {
+  const loadApps = useCallback(async (nextKeyword = keyword, nextPageNo = pageNo) => {
     setIsLoadingApps(true);
     try {
       const [kbPage, appPage] = await Promise.all([
         fetchKnowledgeBases(),
         listRagApps({
-          pageNo,
+          pageNo: nextPageNo,
           pageSize: PAGE_SIZE,
-          keyword: queryKeyword,
+          keyword: nextKeyword.trim(),
           kbId: kbFilter || undefined,
           status: statusFilter,
         }),
@@ -290,7 +249,7 @@ export function RagAppManagement() {
     } finally {
       setIsLoadingApps(false);
     }
-  }, [kbFilter, pageNo, queryKeyword, statusFilter]);
+  }, [kbFilter, keyword, pageNo, statusFilter]);
 
   const loadAppDetail = useCallback(async (app: RagAppDTO) => {
     setIsLoadingDetail(true);
@@ -327,20 +286,19 @@ export function RagAppManagement() {
   }, [invocationStatusFilter]);
 
   useEffect(() => {
-    void loadApps();
+    const timeoutId = window.setTimeout(() => {
+      void loadApps();
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
   }, [loadApps]);
 
   useEffect(() => {
     void listAgentScenarioTemplates()
       .then(setScenarioTemplates)
       .catch(() => setScenarioTemplates([]));
-  }, []);
-
-  useEffect(() => {
-    void fetchDictionaryItemsWithFallback("feedback_status").then((items) => {
-      setFeedbackStatusItems(items);
-      setRuntimeFeedbackStatus((current) => chooseActiveDictionaryValue(items, current, "wrong"));
-    });
   }, []);
 
   useEffect(() => {
@@ -373,11 +331,6 @@ export function RagAppManagement() {
       ignore = true;
     };
   }, [appForm.kbId]);
-
-  const handleSearch = () => {
-    setPageNo(1);
-    setQueryKeyword(keyword.trim());
-  };
 
   const openCreateForm = () => {
     const template = scenarioTemplates.find((item) => item.scenarioType === "knowledge_qa") ?? scenarioTemplates[0];
@@ -733,174 +686,6 @@ export function RagAppManagement() {
     }
   };
 
-  const handleRunRuntimeTrial = async () => {
-    if (!selectedApp || !runtimeApiKey.trim() || !runtimeQuery.trim()) {
-      setFeedback({ variant: "error", title: "试运行信息不完整", message: "请输入 App API Key 和真实问题。" });
-      return;
-    }
-    setIsRuntimeRunning(true);
-    setRuntimeResult(null);
-    setRuntimeRetrieveResult(null);
-    setTrainingStructuredRun(null);
-    setTrainingSubmission(null);
-    setTrainingAnswers({});
-    setRuntimeEvents([]);
-    try {
-      if (runtimeMode === "streaming") {
-        const response = await streamChatWithAppRuntime(runtimeApiKey, { query: runtimeQuery.trim() });
-        const text = await response.text();
-        const events = parseAppRuntimeSse(text);
-        setRuntimeEvents(events);
-        const doneEvent = events.find((event) => event.event === "done");
-        setFeedback({
-          variant: "success",
-          title: "Streaming 试运行完成",
-          message: doneEvent ? "已收到 done 事件，可在调用记录中查看关联 QARun。" : "已收到 SSE 响应，请查看事件列表。",
-        });
-      } else {
-        const [response, retrieveResponse] = await Promise.all([
-          chatWithAppRuntime(runtimeApiKey, { query: runtimeQuery.trim() }),
-          retrieveWithAppRuntime(runtimeApiKey, { query: runtimeQuery.trim(), topK: 3 }),
-        ]);
-        setRuntimeResult(response);
-        setRuntimeRetrieveResult(retrieveResponse);
-        setFeedback({ variant: "success", title: "Blocking 试运行完成", message: `已生成 QARun ${shortId(response.runId)}。` });
-      }
-      await loadAppDetail(selectedApp);
-    } catch (error) {
-      const rawMessage = error instanceof Error ? error.message : "请检查 API Key、应用状态和后端服务。";
-      const friendlyTitle =
-        rawMessage.includes("KB_DISABLED") ? "知识库已停用" :
-        rawMessage.includes("KB_NOT_FOUND") ? "知识库不存在" :
-        rawMessage.includes("APP_DISABLED") ? "应用已停用" :
-        rawMessage.includes("KEY_EXPIRED") ? "API Key 已过期" :
-        "Runtime 试运行失败";
-      const friendlyMessage =
-        rawMessage.includes("KB_DISABLED") ? "知识库已停用，请先在知识库管理页面恢复知识库状态。" :
-        rawMessage.includes("KB_NOT_FOUND") ? "知识库不存在或已删除，请检查应用配置。" :
-        rawMessage.includes("APP_DISABLED") ? "应用已停用，请先启用应用。" :
-        rawMessage.includes("KEY_EXPIRED") ? "API Key 已过期，请创建新的 Key。" :
-        rawMessage;
-      setFeedback({ variant: "error", title: friendlyTitle, message: friendlyMessage });
-    } finally {
-      setIsRuntimeRunning(false);
-    }
-  };
-
-  const handleRunTrainingStructured = async (action: "training_explain" | "training_quiz_generate") => {
-    if (!selectedApp || !runtimeApiKey.trim() || !runtimeQuery.trim()) {
-      setFeedback({ variant: "error", title: "培训试运行信息不完整", message: "请输入 App API Key 和培训主题。" });
-      return;
-    }
-    setIsRuntimeRunning(true);
-    setTrainingStructuredRun(null);
-    setTrainingSubmission(null);
-    setTrainingAnswers({});
-    try {
-      const response = await createStructuredRunWithAppRuntime(runtimeApiKey, {
-        action,
-        topic: runtimeQuery.trim(),
-        difficulty: String(selectedApp.scenarioConfig.difficulty ?? "normal"),
-        questionCount: Number(selectedApp.scenarioConfig.questionCount ?? 5),
-      });
-      setTrainingStructuredRun(response);
-      setFeedback({
-        variant: "success",
-        title: action === "training_explain" ? "培训讲解已生成" : "培训测验已生成",
-        message: `已关联 QARun ${shortId(response.runId)}。`,
-      });
-      await loadAppDetail(selectedApp);
-    } catch (error) {
-      setFeedback({
-        variant: "error",
-        title: "培训试运行失败",
-        message: error instanceof Error ? error.message : "请检查 API Key、应用状态和后端服务。",
-      });
-    } finally {
-      setIsRuntimeRunning(false);
-    }
-  };
-
-  const handleSubmitTrainingQuiz = async () => {
-    const quiz = trainingStructuredRun?.output.quiz;
-    if (!selectedApp || !trainingStructuredRun || !quiz || !runtimeApiKey.trim()) return;
-    setIsRuntimeRunning(true);
-    try {
-      const response = await submitTrainingQuizWithAppRuntime(runtimeApiKey, {
-        conversationId: trainingStructuredRun.conversationId,
-        quizMessageId: trainingStructuredRun.messageId,
-        answers: quiz.questions.map((question) => ({
-          questionId: question.questionId,
-          answer: trainingAnswers[question.questionId] ?? "",
-        })),
-      });
-      setTrainingSubmission(response);
-      setFeedback({
-        variant: "success",
-        title: response.passed ? "训练已通过" : "训练未通过",
-        message: `得分 ${response.score}，结果已写入会话消息。`,
-      });
-      await loadAppDetail(selectedApp);
-    } catch (error) {
-      setFeedback({
-        variant: "error",
-        title: "答题提交失败",
-        message: error instanceof Error ? error.message : "请检查测验消息是否仍属于当前会话。",
-      });
-    } finally {
-      setIsRuntimeRunning(false);
-    }
-  };
-
-  const handleSubmitRuntimeFeedback = async () => {
-    if (!runtimeResult || !runtimeApiKey.trim()) return;
-    setIsRuntimeRunning(true);
-    try {
-      const response = await submitAppRuntimeFeedback(runtimeApiKey, runtimeResult.messageId, {
-        feedbackStatus: runtimeFeedbackStatus,
-        failureType: ["wrong", "citation_error", "no_evidence", "partially_correct"].includes(runtimeFeedbackStatus) ? "manual_review_required" : null,
-        feedbackNote: runtimeFeedbackNote || "P13 试运行人工反馈。",
-        createEvaluationSample: true,
-      });
-      setFeedback({
-        variant: "success",
-        title: "反馈已回流",
-        message: response.evaluationSampleId
-          ? `已更新 QARun 并创建评估样本 ${shortId(response.evaluationSampleId)}。`
-          : "已更新关联 QARun 反馈状态。",
-      });
-    } catch (error) {
-      setFeedback({
-        variant: "error",
-        title: "反馈提交失败",
-        message: error instanceof Error ? error.message : "请检查 API Key 和 messageId 是否仍有效。",
-      });
-    } finally {
-      setIsRuntimeRunning(false);
-    }
-  };
-
-  const handleCreateEmbedTokenPreview = async () => {
-    if (!selectedApp || !runtimeApiKey.trim()) {
-      setFeedback({ variant: "error", title: "无法生成嵌入 Token", message: "请先输入当前应用可用的 App API Key。" });
-      return;
-    }
-    setIsRuntimeRunning(true);
-    try {
-      const response = await createAppRuntimeEmbedToken(runtimeApiKey, { ttlSeconds: 900 });
-      setEmbedTokenPreview({ token: response.embedToken, expiresAt: response.expiresAt });
-      setFeedback({ variant: "success", title: "短期 Token 已生成", message: "嵌入页预览链接已刷新，Token 15 分钟后过期。" });
-    } catch (error) {
-      setFeedback({
-        variant: "error",
-        title: "短期 Token 生成失败",
-        message: error instanceof Error ? error.message : "请检查 API Key 和应用状态。",
-      });
-    } finally {
-      setIsRuntimeRunning(false);
-    }
-  };
-
   const handleOpenConversationDetail = async (conversationId: string) => {
     if (!selectedApp) return;
     setIsLoadingConversation(true);
@@ -947,14 +732,14 @@ export function RagAppManagement() {
               </Alert>
             )}
 
-            <div className="grid grid-cols-1 gap-3 rounded-lg border border-border-cream bg-ivory p-4 lg:grid-cols-[220px_180px_minmax(240px,1fr)_auto]">
+            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border-cream bg-ivory p-4">
               <select
                 value={kbFilter}
                 onChange={(event) => {
                   setKbFilter(event.target.value);
                   setPageNo(1);
                 }}
-                className="h-10 rounded-md border border-border-cream bg-white px-3 text-sm text-near-black focus:outline-none"
+                className="h-10 w-full rounded-md border border-border-cream bg-white px-3 text-sm text-near-black focus:outline-none sm:w-[220px]"
               >
                 <option value="">全部知识库</option>
                 {knowledgeBases.map((kb) => (
@@ -967,27 +752,24 @@ export function RagAppManagement() {
                   setStatusFilter(event.target.value as "" | RagAppStatus);
                   setPageNo(1);
                 }}
-                className="h-10 rounded-md border border-border-cream bg-white px-3 text-sm text-near-black focus:outline-none"
+                className="h-10 w-full rounded-md border border-border-cream bg-white px-3 text-sm text-near-black focus:outline-none sm:w-[128px]"
               >
                 {STATUS_OPTIONS.map((item) => (
                   <option key={item.value || "all"} value={item.value}>{item.label}</option>
                 ))}
               </select>
-              <div className="relative">
+              <div className="relative min-w-[220px] flex-1">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-gray" />
                 <Input
                   value={keyword}
-                  onChange={(event) => setKeyword(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") handleSearch();
+                  onChange={(event) => {
+                    setPageNo(1);
+                    setKeyword(event.target.value);
                   }}
                   placeholder="搜索应用名称或描述..."
                   className="bg-white pl-9"
                 />
               </div>
-              <Button variant="outline" onClick={handleSearch} disabled={isLoadingApps}>
-                <Search className="mr-2 h-4 w-4" /> 查询
-              </Button>
             </div>
 
             {selectedAppIds.size > 0 && (
@@ -1013,10 +795,10 @@ export function RagAppManagement() {
               </div>
             )}
 
-            <Table tableClassName="min-w-[900px]">
+            <Table tableClassName="table-fixed">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-10">
+                  <TableHead className="w-[28px] px-1">
                     <button
                       type="button"
                       className="flex h-5 w-5 items-center justify-center text-stone-gray hover:text-near-black"
@@ -1032,23 +814,22 @@ export function RagAppManagement() {
                       )}
                     </button>
                   </TableHead>
-                  <TableHead>应用</TableHead>
-                  <TableHead>场景</TableHead>
-                  <TableHead>知识库</TableHead>
-                  <TableHead>检索配置</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>更新时间</TableHead>
+                  <TableHead className="w-[35%]">应用</TableHead>
+                  <TableHead className="w-[20%]">场景</TableHead>
+                  <TableHead className="w-[20%]">知识库</TableHead>
+                  <TableHead className="w-[10%]">状态</TableHead>
+                  <TableHead className="w-[15%]">更新时间</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoadingApps && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-stone-gray">加载中...</TableCell>
+                    <TableCell colSpan={6} className="text-stone-gray">加载中...</TableCell>
                   </TableRow>
                 )}
                 {!isLoadingApps && appRows.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-stone-gray">暂无 RAG 应用</TableCell>
+                    <TableCell colSpan={6} className="text-stone-gray">暂无 RAG 应用</TableCell>
                   </TableRow>
                 )}
                 {!isLoadingApps && appRows.map((app) => (
@@ -1060,7 +841,7 @@ export function RagAppManagement() {
                       setSelectedApp(apps.find((item) => item.appId === app.id) ?? null);
                     }}
                   >
-                    <TableCell>
+                    <TableCell className="px-1">
                       <button
                         type="button"
                         className="flex h-5 w-5 items-center justify-center text-stone-gray hover:text-near-black"
@@ -1076,20 +857,21 @@ export function RagAppManagement() {
                         )}
                       </button>
                     </TableCell>
-                    <TableCell>
-                      <div className="font-medium text-near-black">{app.name}</div>
+                    <TableCell className="min-w-0">
+                      <div className="truncate font-medium text-near-black" title={app.name}>{app.name}</div>
                       {app.description && (
-                        <div className="max-w-[260px] truncate text-xs text-stone-gray" title={app.description}>{app.description}</div>
+                        <div className="truncate text-xs text-stone-gray" title={app.description}>{app.description}</div>
                       )}
                     </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <Badge variant="warning">{app.scenarioLabel}</Badge>
-                        <div className="text-xs text-stone-gray">{app.publishChannelLabel}</div>
+                    <TableCell className="min-w-0 overflow-hidden">
+                      <div className="min-w-0 space-y-1">
+                        <Badge variant="warning" className="max-w-full truncate align-middle">{app.scenarioLabel}</Badge>
+                        <div className="truncate text-xs text-stone-gray" title={app.publishChannelLabel}>{app.publishChannelLabel}</div>
                       </div>
                     </TableCell>
-                    <TableCell>{selectedKnowledgeBaseName(knowledgeBases, app.kbId)}</TableCell>
-                    <TableCell className="max-w-[180px] truncate" title={app.defaultRevisionLabel}>{app.defaultRevisionLabel}</TableCell>
+                    <TableCell className="truncate" title={selectedKnowledgeBaseName(knowledgeBases, app.kbId)}>
+                      {selectedKnowledgeBaseName(knowledgeBases, app.kbId)}
+                    </TableCell>
                     <TableCell>
                       <Badge variant={statusBadgeVariant(app.status)}>{app.statusLabel}</Badge>
                     </TableCell>
@@ -1159,75 +941,6 @@ export function RagAppManagement() {
                       onClick={() => void handleDeleteApp(selectedApp)}
                     >
                       <Trash2 className="mr-1 h-3 w-3" /> 删除应用
-                    </Button>
-                  </div>
-                </div>
-
-                {selectedApp.knowledgeBaseName && (
-                  <div className="rounded-lg border border-border-cream bg-parchment p-3 text-sm mt-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="text-stone-gray">所属知识库：</span>
-                        <span className="text-near-black ml-2">{selectedApp.knowledgeBaseName}</span>
-                      </div>
-                      <Badge
-                        variant={
-                          selectedApp.knowledgeBaseStatus === "active" ? "success" :
-                          selectedApp.knowledgeBaseStatus === "disabled" ? "warning" :
-                          "error"
-                        }
-                      >
-                        {selectedApp.knowledgeBaseStatus === "active" ? "运行中" :
-                         selectedApp.knowledgeBaseStatus === "disabled" ? "已停用" :
-                         selectedApp.knowledgeBaseStatus}
-                      </Badge>
-                    </div>
-                    {selectedApp.knowledgeBaseStatus === "disabled" && (
-                      <Alert variant="warning" title="知识库已停用" className="mt-2">
-                        Runtime 调用将被拒绝。请先恢复知识库。
-                      </Alert>
-                    )}
-                  </div>
-                )}
-
-                <div className="rounded-lg border border-border-cream bg-ivory p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="font-serif text-lg text-near-black">权限管理</h3>
-                      <p className="mt-1 text-sm text-stone-gray">应用不单独维护成员，访问边界由所属知识库和 API Key 共同决定。</p>
-                    </div>
-                    <ShieldCheck className="h-5 w-5 text-terracotta" />
-                  </div>
-                  <div className="mt-4 grid gap-2 text-sm">
-                    <div className="flex items-center justify-between rounded-lg border border-border-cream bg-parchment px-3 py-2">
-                      <span className="text-stone-gray">应用开关</span>
-                      <Badge variant={statusBadgeVariant(selectedApp.status)}>{selectedAppView.statusLabel}</Badge>
-                    </div>
-                    <div className="flex items-center justify-between rounded-lg border border-border-cream bg-parchment px-3 py-2">
-                      <span className="text-stone-gray">知识库访问</span>
-                      <Badge
-                        variant={
-                          selectedApp.knowledgeBaseStatus === "active" ? "success" :
-                          selectedApp.knowledgeBaseStatus === "disabled" ? "warning" :
-                          "inactive"
-                        }
-                      >
-                        {selectedApp.knowledgeBaseStatus === "active" ? "运行中" :
-                         selectedApp.knowledgeBaseStatus === "disabled" ? "已停用" :
-                         selectedApp.knowledgeBaseStatus ?? "未知"}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center justify-between rounded-lg border border-border-cream bg-parchment px-3 py-2">
-                      <span className="text-stone-gray">可用 API Key</span>
-                      <Badge variant={activeApiKeyCount > 0 ? "success" : "inactive"}>{activeApiKeyCount}</Badge>
-                    </div>
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" onClick={() => navigate(`/kb/${selectedApp.kbId}/members`)}>
-                      <Users className="mr-1 h-3 w-3" /> 管理知识库权限
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => setActiveTab("keys")}>
-                      <KeyRound className="mr-1 h-3 w-3" /> 管理 API Key
                     </Button>
                   </div>
                 </div>
@@ -1389,167 +1102,6 @@ export function RagAppManagement() {
                             </div>
                           </div>
                         )}
-                        <div className="space-y-3 rounded-lg border border-border-cream bg-parchment p-3">
-                          <div>
-                            <p className="text-xs text-stone-gray">真实 Runtime 试运行</p>
-                            <p className="mt-1 text-xs text-stone-gray">API Key 只保存在当前页面状态，关闭或刷新后不会保留。</p>
-                          </div>
-                          <Input
-                            value={runtimeApiKey}
-                            onChange={(event) => setRuntimeApiKey(event.target.value)}
-                            placeholder="粘贴 rlak_ 开头的 App API Key"
-                            className="bg-white"
-                          />
-                          <textarea
-                            value={runtimeQuery}
-                            onChange={(event) => setRuntimeQuery(event.target.value)}
-                            rows={3}
-                            placeholder={selectedApp.scenarioType === "employee_training" ? "输入培训主题..." : "输入真实问题..."}
-                            className="w-full rounded-md border border-border-cream bg-white px-3 py-2 text-sm text-near-black focus:outline-none"
-                          />
-                          {selectedApp.scenarioType === "employee_training" ? (
-                            <div className="flex flex-wrap items-center justify-end gap-2">
-                              <Button variant="outline" size="sm" disabled={isRuntimeRunning} onClick={() => void handleRunTrainingStructured("training_explain")}>
-                                <FileText className="mr-1 h-3 w-3" /> 生成讲解
-                              </Button>
-                              <Button variant="primary" size="sm" disabled={isRuntimeRunning} onClick={() => void handleRunTrainingStructured("training_quiz_generate")}>
-                                <PlayCircle className="mr-1 h-3 w-3" /> 生成测验
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center justify-between gap-3">
-                              <select
-                                value={runtimeMode}
-                                onChange={(event) => setRuntimeMode(event.target.value as "blocking" | "streaming")}
-                                className="h-9 rounded-md border border-border-cream bg-white px-3 text-sm text-near-black focus:outline-none"
-                              >
-                                <option value="blocking">blocking</option>
-                                <option value="streaming">streaming</option>
-                              </select>
-                              <Button variant="primary" size="sm" disabled={isRuntimeRunning} onClick={() => void handleRunRuntimeTrial()}>
-                                <PlayCircle className="mr-1 h-3 w-3" /> 试运行
-                              </Button>
-                            </div>
-                          )}
-                          {runtimeResult && (
-                            <div className="space-y-2 rounded-lg border border-border-cream bg-white p-3 text-xs">
-                              <div className="text-near-black">{runtimeResult.answer || "无回答内容"}</div>
-                              <div className="font-mono text-stone-gray">runId: {runtimeResult.runId}</div>
-                              <div className="text-stone-gray">Citation：{runtimeResult.citations.length} · messageId：{shortId(runtimeResult.messageId)}</div>
-                              {runtimeRetrieveResult && (
-                                <div className="space-y-1 rounded-md border border-border-cream bg-parchment p-2">
-                                  <div className="text-stone-gray">retrieve 证据摘要：{runtimeRetrieveResult.evidences.length} 条</div>
-                                  {runtimeRetrieveResult.evidences.map((item) => (
-                                    <div key={item.evidenceId} className="text-near-black">
-                                      {item.label}：{item.summary}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                              <select
-                                value={runtimeFeedbackStatus}
-                                onChange={(event) => setRuntimeFeedbackStatus(event.target.value)}
-                                className="h-8 w-full rounded-md border border-border-cream bg-parchment px-2 text-xs text-near-black focus:outline-none"
-                              >
-                                {feedbackStatusItems.map((item) => (
-                                  <option key={item.code} value={item.code} disabled={item.status !== "active"}>
-                                    {item.name}
-                                  </option>
-                                ))}
-                              </select>
-                              <textarea
-                                value={runtimeFeedbackNote}
-                                onChange={(event) => setRuntimeFeedbackNote(event.target.value)}
-                                rows={2}
-                                placeholder="反馈备注..."
-                                className="w-full rounded-md border border-border-cream bg-parchment px-2 py-1 text-xs text-near-black focus:outline-none"
-                              />
-                              <Button variant="outline" size="sm" disabled={isRuntimeRunning} onClick={() => void handleSubmitRuntimeFeedback()}>
-                                提交反馈并加入评估集
-                              </Button>
-                            </div>
-                          )}
-                          {trainingStructuredRun && (
-                            <div className="space-y-3 rounded-lg border border-border-cream bg-white p-3 text-xs">
-                              <div className="font-mono text-stone-gray">runId: {trainingStructuredRun.runId}</div>
-                              {trainingStructuredRun.output.explanation && (
-                                <div className="space-y-2">
-                                  <div className="font-medium text-near-black">{trainingStructuredRun.output.explanation.topic}</div>
-                                  <p className="whitespace-pre-wrap leading-5 text-near-black">{trainingStructuredRun.output.explanation.summary}</p>
-                                </div>
-                              )}
-                              {trainingStructuredRun.output.quiz && (
-                                <div className="space-y-3">
-                                  <div className="text-stone-gray">
-                                    测验：{trainingStructuredRun.output.quiz.questionCount} 题 · 难度 {trainingStructuredRun.output.quiz.difficulty}
-                                  </div>
-                                  {trainingStructuredRun.output.quiz.questions.map((question, index) => (
-                                    <div key={question.questionId} className="space-y-2 rounded-md border border-border-cream bg-parchment p-2">
-                                      <div className="font-medium text-near-black">{index + 1}. {question.stem}</div>
-                                      <select
-                                        value={trainingAnswers[question.questionId] ?? ""}
-                                        onChange={(event) => setTrainingAnswers((current) => ({ ...current, [question.questionId]: event.target.value }))}
-                                        className="h-8 w-full rounded-md border border-border-cream bg-white px-2 text-xs text-near-black focus:outline-none"
-                                      >
-                                        <option value="">选择答案</option>
-                                        {question.options.map((option) => (
-                                          <option key={option} value={option}>{option}</option>
-                                        ))}
-                                      </select>
-                                    </div>
-                                  ))}
-                                  <Button variant="primary" size="sm" disabled={isRuntimeRunning} onClick={() => void handleSubmitTrainingQuiz()}>
-                                    提交答题并评分
-                                  </Button>
-                                </div>
-                              )}
-                              {trainingSubmission && (
-                                <div className="space-y-2 rounded-md border border-border-cream bg-parchment p-2">
-                                  <div className="font-medium text-near-black">
-                                    得分 {trainingSubmission.score} / 100 · {trainingSubmission.passed ? "已通过" : "未通过"}
-                                  </div>
-                                  {trainingSubmission.results.map((item) => (
-                                    <div key={item.questionId} className="text-stone-gray">
-                                      {item.questionId}：{item.isCorrect ? "正确" : "错误"}，正确答案：{item.correctAnswer}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                          {runtimeEvents.length > 0 && (
-                            <div className="max-h-36 overflow-auto rounded-lg border border-border-cream bg-white p-3 text-xs">
-                              {runtimeEvents.map((event, index) => (
-                                <div key={`${event.event}-${index}`} className="font-mono text-stone-gray">
-                                  {event.event}: {JSON.stringify(event.data)}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          <div className="rounded-lg border border-border-cream bg-white p-3 text-xs">
-                            <div className="mb-2 flex items-center justify-between gap-2">
-                              <span className="text-stone-gray">嵌入页预览</span>
-                              <Button variant="outline" size="sm" disabled={isRuntimeRunning} onClick={() => void handleCreateEmbedTokenPreview()}>
-                                生成短期 Token
-                              </Button>
-                            </div>
-                            {embedTokenPreview ? (
-                              <div className="space-y-1">
-                                <a
-                                  className="break-all font-mono text-terracotta hover:underline"
-                                  href={`/embed/runtime?token=${encodeURIComponent(embedTokenPreview.token)}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                >
-                                  /embed/runtime?token={shortId(embedTokenPreview.token, 24)}
-                                </a>
-                                <div className="text-stone-gray">过期时间：{new Date(embedTokenPreview.expiresAt).toLocaleString("zh-CN")}</div>
-                              </div>
-                            ) : (
-                              <p className="text-stone-gray">使用当前 API Key 生成短期 Token 后，可打开嵌入页验证问答、Citation 和反馈。</p>
-                            )}
-                          </div>
-                        </div>
                       </div>
                     )}
                     {!isLoadingDetail && activeTab === "keys" && (

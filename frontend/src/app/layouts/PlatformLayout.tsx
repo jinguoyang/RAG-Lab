@@ -1,6 +1,13 @@
 import { Outlet, NavLink } from "react-router";
-import { Users, Building, LogOut, Book, Rocket, ListTree, FolderOpen } from "lucide-react";
-import { Button } from "../components/rag/Button";
+import { Users, Building, LogOut, Book, Rocket, ListTree, FolderOpen, UserRound, ChevronUp } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 
 export function PlatformLayout() {
   return (
@@ -55,20 +62,39 @@ export function PlatformLayout() {
         </nav>
 
         <div className="p-4 border-t border-border-cream">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-8 h-8 rounded-full bg-terracotta text-white flex items-center justify-center text-sm font-medium">
-              AD
-            </div>
-            <div>
-              <p className="text-sm font-medium text-near-black">管理员用户</p>
-              <p className="text-xs text-stone-gray">平台管理员</p>
-            </div>
-          </div>
-          <NavLink to="/login">
-            <Button variant="ghost" className="w-full justify-start text-stone-gray hover:text-error-red">
-              <LogOut className="w-4 h-4 mr-2" /> 退出登录
-            </Button>
-          </NavLink>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="flex w-full items-center gap-3 rounded-md p-2 text-left transition-colors hover:bg-parchment focus:outline-none focus:ring-2 focus:ring-focus-blue"
+              >
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-terracotta text-sm font-medium text-white">
+                  AD
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-near-black">管理员用户</p>
+                  <p className="truncate text-xs text-stone-gray">平台管理员</p>
+                </div>
+                <ChevronUp className="h-4 w-4 shrink-0 text-stone-gray" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="top" align="start" className="w-56">
+              {/* <DropdownMenuLabel>
+                <div className="text-sm font-medium text-near-black">管理员用户</div>
+                <div className="text-xs font-normal text-stone-gray">平台管理员</div>
+              </DropdownMenuLabel> */}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem disabled>
+                <UserRound className="mr-2 h-4 w-4" /> 个人中心
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild className="text-error-red focus:text-error-red">
+                <NavLink to="/login">
+                  <LogOut className="mr-2 h-4 w-4" /> 退出登录
+                </NavLink>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </aside>
 

@@ -6,7 +6,7 @@ import { Input } from "../components/rag/Input";
 import { Alert } from "../components/rag/Alert";
 import { Badge } from "../components/rag/Badge";
 import { useConfirmDialog } from "../components/rag/ConfirmDialog";
-import { ChevronLeft, ChevronRight, Pencil, Plus, Power, RefreshCw, Save, Search, Trash2, Users, X } from "lucide-react";
+import { Ban, ChevronLeft, ChevronRight, Edit, Pencil, Plus, Power, RefreshCw, Save, Search, Trash2, Users, X } from "lucide-react";
 import {
   addUsersToGroup,
   createUserGroup,
@@ -35,7 +35,6 @@ export function UserGroupManagement() {
   const [groups, setGroups] = useState<UserGroupSummary[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<UserGroupDetail | null>(null);
   const [keyword, setKeyword] = useState("");
-  const [queryKeyword, setQueryKeyword] = useState("");
   const [pageNo, setPageNo] = useState(1);
   const [total, setTotal] = useState(0);
   const [newGroup, setNewGroup] = useState({ name: "", description: "" });
@@ -50,10 +49,10 @@ export function UserGroupManagement() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const isSelectedGroupActive = selectedGroup?.status === "active";
 
-  const loadGroups = useCallback(async () => {
+  const loadGroups = useCallback(async (nextKeyword = keyword, nextPageNo = pageNo) => {
     setIsLoading(true);
     try {
-      const page = await fetchUserGroups({ keyword: queryKeyword, pageNo, pageSize: PAGE_SIZE });
+      const page = await fetchUserGroups({ keyword: nextKeyword.trim(), pageNo: nextPageNo, pageSize: PAGE_SIZE });
       setGroups(page.items);
       setTotal(page.total);
     } catch (error) {
@@ -65,20 +64,17 @@ export function UserGroupManagement() {
     } finally {
       setIsLoading(false);
     }
-  }, [pageNo, queryKeyword]);
+  }, [keyword, pageNo]);
 
   useEffect(() => {
-    void loadGroups();
-  }, [loadGroups]);
-
-  const handleSearch = () => {
-    const nextKeyword = keyword.trim();
-    setPageNo(1);
-    setQueryKeyword(nextKeyword);
-    if (pageNo === 1 && queryKeyword === nextKeyword) {
+    const timeoutId = window.setTimeout(() => {
       void loadGroups();
-    }
-  };
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [loadGroups]);
 
   const handleCreateGroup = async () => {
     if (!newGroup.name.trim()) {
@@ -94,13 +90,10 @@ export function UserGroupManagement() {
       });
       setNewGroup({ name: "", description: "" });
       setPageNo(1);
-      setQueryKeyword("");
       setKeyword("");
       setSelectedGroup(await fetchUserGroup(group.groupId));
       setFeedback({ variant: "success", title: "用户组已创建", message: "可以继续在右侧添加组成员。" });
-      if (pageNo === 1 && !queryKeyword) {
-        await loadGroups();
-      }
+      await loadGroups("", 1);
     } catch (error) {
       setFeedback({
         variant: "error",
@@ -346,33 +339,30 @@ export function UserGroupManagement() {
       )}
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-6">
-        <div className="space-y-4">
+        <div className="space-y-5">
           <div className="flex flex-wrap items-center gap-4">
             <div className="relative w-80 max-w-full">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-gray" />
               <Input
                 value={keyword}
-                onChange={(event) => setKeyword(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") handleSearch();
+                onChange={(event) => {
+                  setPageNo(1);
+                  setKeyword(event.target.value);
                 }}
                 placeholder="搜索用户组..."
                 className="pl-9"
               />
             </div>
-            <Button variant="outline" onClick={handleSearch} disabled={isLoading}>
-              <Search className="w-4 h-4 mr-2" /> 查询
-            </Button>
           </div>
 
-          <Table>
+          <Table tableClassName="min-w-0 table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead>组名</TableHead>
-                <TableHead>成员数</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>创建日期</TableHead>
-                <TableHead>操作</TableHead>
+                <TableHead className="w-[42%]">组名</TableHead>
+                <TableHead className="w-[72px]">成员数</TableHead>
+                <TableHead className="w-[72px]">状态</TableHead>
+                <TableHead className="w-[104px]">创建日期</TableHead>
+                <TableHead className="w-[168px]">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -387,33 +377,34 @@ export function UserGroupManagement() {
                 </TableRow>
               )}
               {!isLoading && groups.map((group) => (
-                <TableRow key={group.groupId} className={selectedGroup?.groupId === group.groupId ? "bg-parchment" : ""}>
-                  <TableCell>
-                    <div className="font-medium text-near-black">{group.name}</div>
-                    <div className="text-xs text-stone-gray">{group.description || group.groupId}</div>
+                <TableRow
+                  key={group.groupId}
+                  onClick={() => void handleSelectGroup(group)}
+                  className={selectedGroup?.groupId === group.groupId ? "bg-parchment" : ""}
+                >
+                  <TableCell className="min-w-0">
+                    <div className="truncate font-medium text-near-black">{group.name}</div>
+                    <div className="truncate text-xs text-stone-gray">{group.description || group.groupId}</div>
                   </TableCell>
-                  <TableCell>{group.memberCount} 人</TableCell>
+                  <TableCell className="whitespace-nowrap">{group.memberCount} 人</TableCell>
                   <TableCell>
                     <Badge variant={group.status === "active" ? "success" : "inactive"}>
                       {group.status === "active" ? "启用" : "停用"}
                     </Badge>
                   </TableCell>
-                  <TableCell>{formatDate(group.createdAt)}</TableCell>
+                  <TableCell className="whitespace-nowrap">{formatDate(group.createdAt)}</TableCell>
                   <TableCell>
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => void handleSelectGroup(group)} disabled={isSaving}>
-                        管理成员
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => startEditGroup(group)} disabled={isSaving}>
-                        <Pencil className="w-3 h-3 mr-1" /> 编辑
+                    <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
+                      <Button variant="ghost" size="sm" title="编辑" onClick={() => startEditGroup(group)} disabled={isSaving}>
+                        <Edit className="w-4 h-4 mr-1" />
                       </Button>
                       {group.status === "active" ? (
-                        <Button variant="ghost" size="sm" onClick={() => void handleUpdateGroupStatus(group, "disabled")} disabled={isSaving}>
-                          <Power className="w-3 h-3 mr-1" /> 停用
+                        <Button variant="ghost" size="sm" title="禁用" onClick={() => void handleUpdateGroupStatus(group, "disabled")} disabled={isSaving}>
+                          <Ban className="w-4 h-4 mr-1" />
                         </Button>
                       ) : (
-                        <Button variant="ghost" size="sm" onClick={() => void handleUpdateGroupStatus(group, "active")} disabled={isSaving}>
-                          <Power className="w-3 h-3 mr-1" /> 恢复启用
+                        <Button variant="ghost" size="sm" title="启用" onClick={() => void handleUpdateGroupStatus(group, "active")} disabled={isSaving}>
+                          <Power className="w-4 h-4 mr-1" />
                         </Button>
                       )}
                     </div>
